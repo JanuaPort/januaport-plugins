@@ -70,7 +70,10 @@ Die einzige Naht ist ein **gemeinsames Verzeichnis**:
 
 1. Verzeichnisse anlegen: ein Ablage-Verzeichnis (Eigentümer UID 65532, wie
    der Container läuft) und ein separates, restriktives Verzeichnis für
-   Zugangsdaten/Schlüsseldatei (`chmod 700`, ebenfalls UID 65532).
+   Zugangsdaten/Schlüsseldatei (`chmod 700`, ebenfalls UID 65532). Eine `.env`
+   **neben** der Compose-Datei setzt die beiden Host-Pfade für die Compose
+   (`JNPT_EBICS_GEHEIM`, `JNPT_EBICS_ABLAGE` — Defaults siehe Kopf der
+   Compose-Datei); diese `.env` gehört **nicht** ins Repo.
 2. `config.example.php` nach `config.php` kopieren und **von Hand in einem
    Editor** ausfüllen — Host-ID, URL (**muss** `https://` sein), Partner-/
    User-ID, Protokollversion, Schlüsselwort, Ablage-Pfad. Niemals durch einen
@@ -183,9 +186,16 @@ Die einzige Naht ist ein **gemeinsames Verzeichnis**:
 
 Beim Hersteller produktiv im Einsatz belegt: Erstinitialisierung gegen eine
 echte Bank am 20.08.2026, seit 07.09.2026 im laufenden Timer-Betrieb für ein
-eigenes Firmenkonto (EBICS H005) — inklusive eines realen
-Bankschlüssel-Prüflaufs. Ein Beleg gegen ein zweites Institut oder gegen EBICS
-H004 steht aus.
+eigenes Firmenkonto (EBICS H005). Der Prüfweg `hpb.php --pruefen` lief am
+07.09.2026 live gegen die Bank (unveränderte Schlüssel erkannt, eine
+absichtlich falsche Prüfsumme korrekt mit Exit 5 abgewiesen) — eine **echte
+Schlüsselrotation seitens der Bank** ist damit noch nicht belegt, nur der
+Prüfmechanismus selbst. Ein Beleg gegen ein zweites Institut oder gegen EBICS
+H004 steht ebenfalls aus.
+
+Ausführlicheres Betreiber-Runbook (Fehlersuche, Datenschutz-Linie) liegt im
+Produkt-Repo `JanuaPort/januaport` (`docs/ebics-abholer.md`) — bis zum GoLive
+dort ebenfalls privat.
 
 ## Enthaltene Dateien
 
@@ -199,6 +209,7 @@ H004 steht aus.
 | `docker-compose.ebics-abholer.yml`, `Dockerfile` | Container-Setup |
 | `ebics-abholer.service`, `ebics-abholer.timer` | systemd-Einheiten für den täglichen Lauf |
 | `config.example.php` | Konfigurationsvorlage (nur Platzhalter, kein echter Zugang) |
+| `composer.json`, `composer.lock` | Abhängigkeiten (`ebics-api/ebics-client-php`, `setasign/fpdf`). Das Lock-File pinnt exakt die Fassungen, die live gegen eine echte Bank gelaufen sind — bewusst eingecheckt, nicht regeneriert |
 | `tests/run.php` | Testsuite ohne jeden Netzwerkzugriff (assert-basiert, kein PHPUnit) |
 
 Tests ausführen (reine Logik, kein Netz, keine Bank):
