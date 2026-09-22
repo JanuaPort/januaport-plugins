@@ -1,0 +1,6 @@
+{
+    "require": {
+        "ebics-api/ebics-client-php": "^3.0",
+        "setasign/fpdf": "^1.8"
+    }
+}

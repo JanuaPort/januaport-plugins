@@ -1,0 +1,134 @@
+{
+    "_readme": [
+        "This file locks the dependencies of your project to a known state",
+        "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
+        "This file is @generated automatically"
+    ],
+    "content-hash": "1606f19715168222e47d0fafaa5df0ac",
+    "packages": [
+        {
+            "name": "ebics-api/ebics-client-php",
+            "version": "3.2.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/ebics-api/ebics-client-php.git",
+                "reference": "a2199631d1ba8ae8dfeb3d9c18e97d990f8e42e7"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/ebics-api/ebics-client-php/zipball/a2199631d1ba8ae8dfeb3d9c18e97d990f8e42e7",
+                "reference": "a2199631d1ba8ae8dfeb3d9c18e97d990f8e42e7",
+                "shasum": ""
+            },
+            "require": {
+                "ext-bcmath": "*",
+                "ext-curl": "*",
+                "ext-dom": "*",
+                "ext-json": "*",
+                "ext-libxml": "*",
+                "ext-openssl": "*",
+                "ext-zip": "*",
+                "ext-zlib": "*",
+                "php": "^8.5"
+            },
+            "require-dev": {
+                "ebics-api/cfonb-php": "^1.0",
+                "ebics-api/mt942-php": "^1.0",
+                "phpstan/phpstan": "~2.1.50",
+                "phpunit/phpunit": "~13.1.7",
+                "psr/http-client": "^1.0",
+                "psr/http-factory": "^1.1",
+                "setasign/fpdf": "^1.8",
+                "squizlabs/php_codesniffer": "~3.13.5"
+            },
+            "suggest": {
+                "ebics-api/cfonb-php": "If you need to parse format CFONB from FDL requests.",
+                "ebics-api/mt942-php": "If you need to parse format MT942 from VMK, STA requests.",
+                "setasign/fpdf": "If you need to generate PDF file letter for Bank."
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "EbicsApi\\Ebics\\": "src"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Andrew Svirin"
+                }
+            ],
+            "description": "PHP library to communicate with bank through EBICS protocol.",
+            "keywords": [
+                "cfonb.120",
+                "cfonb.240",
+                "client",
+                "ebics",
+                "mt940",
+                "mt942",
+                "openssl",
+                "php",
+                "rsa",
+                "x509"
+            ],
+            "support": {
+                "source": "https://github.com/ebics-api/ebics-client-php/tree/v3.2.0"
+            },
+            "time": "2026-07-14T16:43:54+00:00"
+        },
+        {
+            "name": "setasign/fpdf",
+            "version": "1.8.2",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/Setasign/FPDF.git",
+                "reference": "d77904018090c17dc9f3ab6e944679a7a47e710a"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/Setasign/FPDF/zipball/d77904018090c17dc9f3ab6e944679a7a47e710a",
+                "reference": "d77904018090c17dc9f3ab6e944679a7a47e710a",
+                "shasum": ""
+            },
+            "type": "library",
+            "autoload": {
+                "classmap": [
+                    "fpdf.php"
+                ]
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Olivier Plathey",
+                    "email": "oliver@fpdf.org",
+                    "homepage": "http://fpdf.org/"
+                }
+            ],
+            "description": "FPDF is a PHP class which allows to generate PDF files with pure PHP. F from FPDF stands for Free: you may use it for any kind of usage and modify it to suit your needs.",
+            "homepage": "http://www.fpdf.org",
+            "keywords": [
+                "fpdf",
+                "pdf"
+            ],
+            "support": {
+                "source": "https://github.com/Setasign/FPDF/tree/1.8.2"
+            },
+            "time": "2019-12-08T10:32:10+00:00"
+        }
+    ],
+    "packages-dev": [],
+    "aliases": [],
+    "minimum-stability": "stable",
+    "stability-flags": {},
+    "prefer-stable": false,
+    "prefer-lowest": false,
+    "platform": {},
+    "platform-dev": {},
+    "plugin-api-version": "2.9.0"
+}

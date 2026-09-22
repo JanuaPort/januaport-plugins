@@ -1,0 +1,41 @@
+# ebics-abholer.timer — weckt den EBICS-Abholer (#549).
+#
+# WARUM FRUEH MORGENS: camt.053 ist der VORTAGESAUSZUG. Die Bank stellt ihn in
+# der Nacht bereit; ein Lauf um 05:30 findet ihn vor, ohne dass jemand wartet.
+#
+# WARUM DREIMAL: Ein `Type=oneshot`-Dienst kennt kein `Restart=` — die
+# Wiederholung nach einem Fehlschlag muss also der Timer leisten. Der Lauf um
+# 05:30 ist der eigentliche; die beiden spaeteren holen nach, wenn die Bank
+# morgens nicht erreichbar war oder das Netz weg war.
+#
+# ⚠️ WARUM DAS HARMLOS IST: Der taegliche Abruf laeuft OHNE Zeitraum. Die Bank
+# liefert dann genau das, was dieser Teilnehmer noch nicht quittiert hat —
+# jeder Auszug also genau einmal. Ein zusaetzlicher Lauf findet nichts Neues,
+# meldet das als Erfolg und ist nach einer Sekunde fertig. (Und selbst wenn
+# doppelt geliefert wuerde: der Abholer ueberschreibt nie, er nummeriert.)
+#
+# Anderes Intervall gewuenscht? Per Drop-in, nicht durch Editieren dieser Datei:
+#   systemctl edit ebics-abholer.timer
+
+[Unit]
+Description=Weckt den JanuaPort EBICS-Abholer (taeglich, mit Nachholen)
+
+[Timer]
+OnCalendar=*-*-* 05:30:00
+OnCalendar=*-*-* 11:30:00
+OnCalendar=*-*-* 17:30:00
+
+# Streuung, damit nicht alle Anlagen zur selben Sekunde bei derselben Bank
+# anklopfen. Bis zu 15 Minuten spaeter ist fuer einen Vortagesauszug egal.
+RandomizedDelaySec=900
+
+# ⚠️ Persistent=true: Nach einer Ausfallzeit (Box aus, Stromausfall, Urlaub)
+# wird der verpasste Lauf beim naechsten Start nachgeholt. Zusammen mit der
+# Buchfuehrung der Bank („was ist noch nicht quittiert?") heisst das: Es geht
+# kein Auszug verloren, auch wenn die Anlage tagelang stand.
+Persistent=true
+
+Unit=ebics-abholer.service
+
+[Install]
+WantedBy=timers.target
