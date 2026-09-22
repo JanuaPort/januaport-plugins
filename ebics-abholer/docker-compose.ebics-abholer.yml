@@ -1,0 +1,63 @@
+# Compose-Beispiel fuer den EBICS-Abholer (#549) — ein Beisteller NEBEN dem
+# Gateway, kein Bestandteil davon.
+#
+# ⚠️ EIGENSTAENDIGE DATEI. Sie wird bewusst NICHT in die Gateway-Compose
+# eingebunden (`docker/docker-compose*.yml` bleiben unveraendert): Wer keinen
+# Bankabruf braucht, merkt von diesem Teil nichts. Der eigene Projektname sorgt
+# dafuer, dass hier nichts am Stack `jnpt` haengt.
+#
+# Start (so ruft es der systemd-Timer):
+#   docker compose -f docker-compose.ebics-abholer.yml run --rm -T --no-deps ebics-abholer
+#
+# Einmalig bauen:
+#   docker compose -f docker-compose.ebics-abholer.yml build
+#
+# Die beiden Pfade der Anlage stehen in einer `.env` NEBEN dieser Datei
+# (nicht im Repo — siehe .gitignore):
+#   JNPT_EBICS_GEHEIM=/etc/jnpt/ebics
+#   JNPT_EBICS_ABLAGE=/var/lib/jnpt/ebics-eingang
+name: jnpt-ebics
+
+services:
+  ebics-abholer:
+    build:
+      context: .
+    image: jnpt-ebics-abholer:local
+
+    # Kein `restart:` — dieser Dienst ist ein EINMALIGER Lauf. Geweckt wird er
+    # vom systemd-Timer auf dem Host (ebics-abholer.timer), genau wie der
+    # Update-Aktuator. Ein Scheduler im Container waere ein zweiter Ort mit
+    # einer zweiten Uhr.
+    restart: "no"
+
+    volumes:
+      # ⚠️ DIE EINZIGE NAHT ZUM GATEWAY: das kontrollierte Verzeichnis. Genau
+      # dieser Host-Ordner wird beim Gateway (schreibgeschuetzt) als Quelle der
+      # Datei-Integrationsart eingehaengt. Mehr teilen die beiden nicht — kein
+      # Netzwerk, keine Datenbank, kein Socket.
+      - ${JNPT_EBICS_ABLAGE:-/var/lib/jnpt/ebics-eingang}:/ablage
+
+      # Zugangsdaten und Schluesseldatei. NUR LESEN: Der taegliche Abruf
+      # veraendert die Schluesseldatei nicht. Fuer die Initialisierung
+      # (init.php/hpb.php) wird derselbe Mount einmalig schreibbar gefahren —
+      # siehe Runbook.
+      - ${JNPT_EBICS_GEHEIM:-/etc/jnpt/ebics}:/geheim:ro
+
+    # ── Haertung ────────────────────────────────────────────────────────────
+    # Der Abholer braucht: ausgehendes HTTPS zur Bank, Lesen von /geheim,
+    # Schreiben in /ablage. Sonst nichts.
+    read_only: true
+    tmpfs:
+      # Die Bibliothek entpackt den ZIP-Container ueber eine temporaere Datei.
+      - /tmp:mode=1777,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    # Der Normalfall. Die Initialisierungs-Skripte werden von Hand angegeben:
+    #   docker compose -f … run --rm ebics-abholer php /app/init.php
+    command: ["php", "/app/fetch.php"]
+
+# ⚠️ KEIN `networks:`-Eintrag und KEIN gemeinsames Netz mit dem Gateway. Der
+# Abholer redet mit der Bank und mit dem Dateisystem — nicht mit JanuaPort.

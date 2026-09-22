@@ -1,0 +1,23 @@
+# ⚠️ Alles, was in diesem Ordner entsteht, ist entweder ein Zugang zum
+# Firmenkonto oder eine Abhaengigkeit. Nichts davon gehoert ins Repo.
+
+# Die ausgefuellte Konfiguration — Bankkennungen und das Schluesselwort der
+# Schluesseldatei. Die Vorlage (config.example.php) bleibt getrackt.
+config.php
+
+# Die Schluesseldatei. Ab der Freischaltung IST sie der Bankzugang.
+keyring.json
+*.keyring.json
+
+# Die nummerierten Sicherungen aus dem Bankschluesselwechsel (#617). Sie sind
+# vollwertige Schluesseldateien — also derselbe Bankzugang.
+sicherung-*
+
+# Das Initialisierungsprotokoll (Pruefsummen der oeffentlichen Schluessel).
+*.pdf
+
+# Abhaengigkeiten (kommen aus composer.lock, nicht aus dem Repo).
+vendor/
+
+# Lokale Compose-Variablen (Pfade der Anlage).
+.env

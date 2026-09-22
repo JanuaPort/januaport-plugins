@@ -1,0 +1,68 @@
+# ebics-abholer.service — der taegliche camt.053-Abruf als einmaliger Lauf (#549).
+#
+# Gestartet wird die Unit vom Timer (ebics-abholer.timer). Sie holt die
+# Kontoauszuege bei der Bank ab und legt sie im kontrollierten Verzeichnis ab —
+# mehr nicht. Sie entscheidet nichts und sie reicht nichts ein.
+#
+# Von Hand ausloesen:  systemctl start ebics-abholer.service
+# Mitlesen:            journalctl -u ebics-abholer.service -f
+# Nachzug (Zeitraum):  docker compose -f /opt/jnpt/ebics-abholer/docker-compose.ebics-abholer.yml \
+#                        run --rm -T --no-deps ebics-abholer php /app/fetch.php --von=2026-08-01 --bis=2026-08-05
+
+[Unit]
+Description=JanuaPort EBICS-Abholer (taeglicher camt.053-Abruf)
+Documentation=https://github.com/JanuaPort/januaport/blob/main/docs/ebics-abholer.md
+# Ohne Docker geht hier nichts; ohne Netz kein Bankzugang.
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+
+# Compose liest die `.env` aus dem Arbeitsverzeichnis — dort stehen die beiden
+# Pfade der Anlage (JNPT_EBICS_GEHEIM, JNPT_EBICS_ABLAGE).
+WorkingDirectory=/opt/jnpt/ebics-abholer
+ExecStart=/usr/bin/docker compose -f /opt/jnpt/ebics-abholer/docker-compose.ebics-abholer.yml run --rm -T --no-deps ebics-abholer
+
+# Ein Lauf ist ein paar HTTPS-Runden und ein paar Dateien. Zehn Minuten sind
+# grosszuegig und trotzdem eine Grenze: Ein haengender Lauf darf den naechsten
+# Termin nicht blockieren.
+TimeoutStartSec=600
+
+# ⚠️ KEIN Restart= — systemd laesst das bei Type=oneshot nicht sinnvoll zu.
+# Die Wiederholung nach einem Fehlschlag leistet der Timer, der mehrmals am
+# Tag feuert; ein Wiederholungslauf ist folgenlos, weil die Bank jeden Auszug
+# nur einmal als neu fuehrt (Begruendung im Timer).
+
+# ── Haertung ────────────────────────────────────────────────────────────────
+# Der Dienst braucht den Docker-Socket (er IST die Stelle, die Docker hat) und
+# laeuft deshalb als root — genau wie der Update-Aktuator. Alles andere wird
+# zugemacht.
+#
+# ⚠️ ProtectHome ist READ-ONLY, nicht `yes`: Zieht die Anlage ihr Image aus
+# einer privaten Registry, liegen die Zugangsdaten in /root/.docker/config.json.
+# Mit `yes` ist /root fuer den Dienst leer und der Pull scheitert mitten im
+# Lauf. Diese Lehre wurde am Update-Aktuator live bezahlt (#509) — sie gilt
+# hier unveraendert.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+UMask=0077
+
+# Ausgabe geht nach journald (Default). Der Abruf protokolliert AUSSCHLIESSLICH
+# Anzahl und Dateinamen — nie einen Kontoumsatz, nie eine IBAN, nie ein
+# Schluesselwort.
+
+# ⚠️ Bewusst KEIN [Install]-Abschnitt: Diese Unit wird nie aktiviert, sie wird
+# geweckt. Aktiviert (`systemctl enable`) wird ausschliesslich der Timer.
+
