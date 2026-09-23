@@ -1,0 +1,39 @@
+# Secret- und PII-Scan der offenen JanuaPort-Repos (JanuaPort/januaport#787).
+# Die Standardregeln von gitleaks finden Zugangsdaten; die zwei eigenen Regeln
+# finden Kundendaten, die in Specs, Rezepten und Beispielen am ehesten landen.
+# Eine Ausnahme kommt nur mit Begründung im Kommentar dazu.
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "iban-dach"
+description = "IBAN aus Deutschland, Österreich oder der Schweiz"
+regex = '''\b(?:DE\d{2}(?: ?\d{4}){4} ?\d{2}|AT\d{2}(?: ?\d{4}){4}|CH\d{2}(?: ?[0-9A-Z]{4}){4} ?[0-9A-Z])\b'''
+keywords = ["de", "at", "ch"]
+
+[[rules.allowlists]]
+description = "Prüfsummen-Beispiel aus der Privacy-Mustertabelle"
+regexTarget = "match"
+regexes = ['''DE89 ?3704 ?0044 ?0532 ?0130 ?00''']
+
+[[rules]]
+id = "email-adresse"
+description = "E-Mail-Adresse außerhalb der Beispiel- und Hausdomains"
+regex = '''\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'''
+keywords = ["@"]
+
+[[rules.allowlists]]
+description = "Beispieldomains (RFC 2606) und die eigene Domain"
+regexTarget = "match"
+regexes = ['''@(?:[A-Za-z0-9-]+\.)*(?:example\.(?:com|org|net)|januaport\.ai|contoso\.com)$''']
+
+[[rules.allowlists]]
+description = "Lock-Dateien tragen die öffentlichen Autorenangaben fremder Pakete"
+paths = ['''(?:^|/)(?:composer\.lock|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|go\.sum)$''']
+
+[[allowlists]]
+description = "Öffentliche Berechtigungs-IDs von Microsoft Graph (in jedem Tenant gleich, von Microsoft dokumentiert): User.Read, openid, profile, offline_access"
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
+regexes = ['''^(?:e1fe6dd8-ba31-4d61-89e7-88639da4683d|37f7f235-527c-4136-accd-4a02d197296e|14dad69e-099b-42c9-810b-d002981feec1|7427e0e9-2fba-42fe-b0c0-848c9e6a8182)$''']
