@@ -1,0 +1,52 @@
+# Pester-Tests des Beistellers kartei-rpa (JanuaPort/januaport#806).
+#
+# Laeuft unter Windows PowerShell 5.1 (`shell: powershell`) - genau der
+# Fassung, die Power Automate Desktop auf dem Roboter-Rechner startet. Der
+# Transport ist gemockt; es geht keine Anfrage raus. Dazu vier Waechter ueber
+# den Quelltext: ASCII ohne BOM, kein Token-Wert, keine Kennung des
+# Pilotbetriebs, nur Beispiel-Hosts.
+name: kartei-rpa
+
+on:
+  push:
+    paths:
+      - 'kartei-rpa/**'
+      - '.github/workflows/kartei-rpa.yml'
+  pull_request:
+    paths:
+      - 'kartei-rpa/**'
+      - '.github/workflows/kartei-rpa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pester:
+    name: Test (kartei-rpa, Pester, Windows PowerShell 5.1)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Windows PowerShell bringt nur Pester 3.4 mit. Ob ein neueres auf dem
+      # Runner-Image liegt, ist eine Zusage des Images, keine des Projekts.
+      - name: Pester bereitstellen
+        shell: powershell
+        run: |
+          if (-not (Get-Module -ListAvailable Pester | Where-Object { $_.Version.Major -ge 5 })) {
+            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Scope CurrentUser -Force | Out-Null
+            Install-Module Pester -MinimumVersion 5.5.0 -Scope CurrentUser -Force -SkipPublisherCheck
+          }
+
+      # Konfigurations-Objekt statt -CI: stabil ueber Pester-Fassungen und
+      # ohne testResults.xml im Arbeitsverzeichnis.
+      - name: Pester-Tests
+        shell: powershell
+        run: |
+          Import-Module Pester -MinimumVersion 5.0 -Force
+          $PSVersionTable.PSVersion.ToString()
+          $cfg = New-PesterConfiguration
+          $cfg.Run.Path = 'kartei-rpa/tests'
+          $cfg.Run.Exit = $true
+          $cfg.Output.Verbosity = 'Detailed'
+          Invoke-Pester -Configuration $cfg
