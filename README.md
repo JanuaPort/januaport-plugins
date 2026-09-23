@@ -13,6 +13,7 @@ Beisteller neben dem JanuaPort-Gateway: EBICS-Abholer, Box-Provisionierung u. a.
 | Ordner | Was es tut | Status |
 |---|---|---|
 | [`ebics-abholer/`](ebics-abholer/) | Holt taeglich den Kontoauszug (camt.053) per EBICS bei der Bank ab und legt ihn als Datei in einem gemeinsamen Verzeichnis ab, aus dem JanuaPort ihn liest. | beim Hersteller produktiv belegt (eigenes Firmenkonto, EBICS H005, seit 07.09.2026) |
+| [`kartei-rpa/`](kartei-rpa/) | PowerShell-Modul und vier Aktions-Skripte, mit denen ein RPA-Werkzeug (Power Automate Desktop) eine Kartei-Arbeitsliste abarbeitet: freigegebene Saetze holen, sperren, im Fachsystem buchen, Ergebnis zurueckschreiben. Feldnamen per Einstellungsdatei, Voreinstellung = Rezept "Zahlungseingang". | mit gemocktem Transport getestet (Pester, Windows PowerShell 5.1); diese Fassung noch nicht gegen eine echte Anlage gelaufen (JanuaPort/januaport#806) |
 | `box/` | Provisionierung der JanuaPort Box (on-prem-Appliance). | geplant (JanuaPort/januaport#781) |
 
 Keine Kundendaten, keine Schluessel, keine Betreiberwerte in diesem Repository.
