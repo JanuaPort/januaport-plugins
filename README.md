@@ -1,19 +1,35 @@
 # januaport-plugins
 
-Beisteller neben dem JanuaPort-Gateway: EBICS-Abholer, Box-Provisionierung u. a. (Apache 2.0)
+**English** · [Deutsch](README.de.md)
 
-**Status:** privat bis zum GoLive von JanuaPort (Flip in der GoLive-Checkliste JanuaPort/januaport#788). Teil des Open-Core-Pivots (JanuaPort/januaport#773).
+Sidecars for JanuaPort: small, separate services that run next to the gateway, not inside it.
 
-**Lizenz:** Apache License 2.0 (`LICENSE`), Copyright 2026 JanuaPort GmbH (`NOTICE`). Beitraege: `CONTRIBUTING.md`.
+JanuaPort is a self-hosted MCP gateway. It connects AI assistants to a company's existing systems with
+fine-grained permissions and records access in an append-only audit log. The core of JanuaPort is
+proprietary software of JanuaPort GmbH and is not part of this repository. This repository is one of the
+open edges around it.
 
-**Zustaendig:** Lead + BOX (#778, #781) — Ownership je Unterordner; Inhalte kommen mit den genannten Tickets.
+- **License:** Apache License 2.0 ([`LICENSE`](LICENSE), [`NOTICE`](NOTICE))
+- **Links:** [januaport.ai](https://januaport.ai) · [Security policy](SECURITY.md) · [Contributing](CONTRIBUTING.md)
+- **Language:** The guides in the subfolders are currently written in German.
 
-## Enthaltene Beisteller
+No customer data, no keys, no operator values in this repository.
 
-| Ordner | Was es tut | Status |
+---
+
+## Why sidecars
+
+The JanuaPort gateway is a single static binary in a minimal container. Anything that needs a different
+runtime, its own schedule or its own credentials runs as a separate sidecar next to it. A sidecar reaches
+JanuaPort only through documented interfaces: a shared directory, or the MCP endpoint with its
+own token. It can be switched off without touching the gateway.
+
+## Included sidecars
+
+Status labels: **Built** · **In progress** · **Planned**. Each entry says what exactly has been verified.
+
+| Folder | What it does | Status |
 |---|---|---|
-| [`ebics-abholer/`](ebics-abholer/) | Holt taeglich den Kontoauszug (camt.053) per EBICS bei der Bank ab und legt ihn als Datei in einem gemeinsamen Verzeichnis ab, aus dem JanuaPort ihn liest. | beim Hersteller produktiv belegt (eigenes Firmenkonto, EBICS H005, seit 07.09.2026) |
-| [`kartei-rpa/`](kartei-rpa/) | PowerShell-Modul und vier Aktions-Skripte, mit denen ein RPA-Werkzeug (Power Automate Desktop) eine Kartei-Arbeitsliste abarbeitet: freigegebene Saetze holen, sperren, im Fachsystem buchen, Ergebnis zurueckschreiben. Feldnamen per Einstellungsdatei, Voreinstellung = Rezept "Zahlungseingang". | mit gemocktem Transport getestet (Pester, Windows PowerShell 5.1); diese Fassung noch nicht gegen eine echte Anlage gelaufen (JanuaPort/januaport#806) |
-| `box/` | Provisionierung der JanuaPort Box (on-prem-Appliance). | geplant (JanuaPort/januaport#781) |
-
-Keine Kundendaten, keine Schluessel, keine Betreiberwerte in diesem Repository.
+| [`ebics-abholer/`](ebics-abholer/) | Fetches the daily bank statement (camt.053) from the bank via EBICS and places it as a file in a shared directory that JanuaPort reads from. It cannot submit payments. | **Built.** In productive use at JanuaPort GmbH for its own company account (EBICS H005, daily timer run since 7 September 2026). Verified against one bank so far. |
+| [`kartei-rpa/`](kartei-rpa/) | A PowerShell module and four action scripts that let an RPA tool (Power Automate Desktop) work through a work list in the JanuaPort Kartei (structured record store): fetch approved records, lock them one by one, book them in the business system, write the result back. Field names come from a settings file; the defaults match the recipe "Zahlungseingang" (incoming payments) in `januaport-recipes`. | **Built.** Tested with a mocked transport (Pester, Windows PowerShell 5.1). This version has not yet run against a real installation. |
+| `box/` (not in this repository yet) | Provisioning for the JanuaPort Box (on-premises appliance). | **Planned.** |
