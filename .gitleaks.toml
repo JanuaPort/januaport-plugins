@@ -31,3 +31,9 @@ regexes = ['''@(?:[A-Za-z0-9-]+\.)*(?:example\.(?:com|org|net)|januaport\.ai|con
 [[rules.allowlists]]
 description = "Lock-Dateien tragen die öffentlichen Autorenangaben fremder Pakete"
 paths = ['''(?:^|/)(?:composer\.lock|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|go\.sum)$''']
+
+[[allowlists]]
+description = "Öffentliche Berechtigungs-IDs von Microsoft Graph (in jedem Tenant gleich, von Microsoft dokumentiert): User.Read, openid, profile, offline_access"
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
+regexes = ['''^(?:e1fe6dd8-ba31-4d61-89e7-88639da4683d|37f7f235-527c-4136-accd-4a02d197296e|14dad69e-099b-42c9-810b-d002981feec1|7427e0e9-2fba-42fe-b0c0-848c9e6a8182)$''']
