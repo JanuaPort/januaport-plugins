@@ -229,8 +229,10 @@ bricht es mit „Platzhalter nicht ersetzt" ab.
   vollständige Überschreiben, die Einstellungen, die Ausgabeformen der vier
   PAD-Skripte und den Quelltext selbst (nur ASCII, kein Token-Wert, keine
   fremden Prozent-Paare in `pad/`).
-- **Herkunft:** Die Vorfassung dieses Moduls lief in einem Pilotbetrieb gegen
-  eine echte Anlage über TLS. **Diese verallgemeinerte Fassung ist neu
+- **Herkunft:** Die Vorfassung dieses Moduls wurde gegen eine echte Anlage
+  über TLS erprobt. Im Pilotbetrieb, aus dem das Rezept `zahlungseingang`
+  stammt, bucht dagegen ein von Hand gebauter Flow; weder die Vorfassung noch
+  dieses Modul sind dort eingesetzt. **Diese verallgemeinerte Fassung ist neu
   geschrieben und noch nicht gegen eine echte Anlage gelaufen.**
 - **PAD wurde für dieses Paket nicht bedient.** Die Schrittfolge in
   `pad/FLOW-VORLAGE.md` stammt aus der Microsoft-Dokumentation; gelaufen ist
