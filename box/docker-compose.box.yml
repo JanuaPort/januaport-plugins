@@ -1,0 +1,348 @@
+# docker-compose.box.yml — JanuaPort Box: der Gateway-Stack auf der Appliance beim Kunden.
+#
+#   LAN ──443──▶ caddy ─────────(jnpt:8484, intern)──┐
+#   LAN ──8443─▶ caddy-admin ────────────────────────┤──▶ jnpt  (KEIN Host-Port)
+#   Tailnet ───▶ tailscale ──────────────────────────┘   (Profil `wartung`, default AUS)
+#
+#   - caddy:       die Werkzeug-Fläche im Kunden-LAN. Whitelist + Default-404 aus
+#                  ./Caddyfile — die harte Sicherheitsgrenze.
+#   - caddy-admin: die Betreiber-Fläche (volle Instanz) auf 8443, interne CA,
+#                  nur aus dem Kunden-LAN (./Caddyfile.admin).
+#   - jnpt:        das Gateway. Veröffentlicht KEINEN Host-Port.
+#   - tailscale:   der Fernwartungs-Zugang. Läuft NUR mit dem Profil `wartung`
+#                  (Opt-in des Kunden, sichtbar und abschaltbar).
+#
+# Die Cloud-KI (ChatGPT) kommt NICHT über diese Datei herein, sondern über den
+# Tunnel-Client, einen eigenen Stack, der dem Netz `jnpt_default` beitritt und
+# jnpt:8484 direkt anspricht (RUNBOOK.md, Anbindung). Es gibt keinen
+# öffentlichen Endpunkt.
+#
+# ⚠️ Unterschiede zu einer Cloud-VM — bewusst, nicht vergessen:
+#   1. KEINE Cloud-Firewall davor. Der Host schützt sich selbst:
+#      scripts/hardening.sh (nftables deny-inbound).
+#   2. Die Host-Binds sind PARAMETRISIERT und stehen default auf Loopback
+#      (deny-by-default). LAN-Betrieb ist ein bewusster Schritt, siehe
+#      JNPT_BIND_ADDR unten.
+#   3. Tailscale ist nicht immer an, sondern ein Compose-Profil.
+#
+# Start (der Projektname steht IN dieser Datei — `-p` wird nie getippt):
+#
+#   docker compose -f /opt/jnpt/box/docker-compose.box.yml pull
+#   docker compose -f /opt/jnpt/box/docker-compose.box.yml up -d
+#
+# Mit Fernwartung (nur nach Opt-in des Kunden): `COMPOSE_PROFILES=wartung` in
+# die .env neben dieser Datei. Dann startet jeder Aufruf — von Hand, beim Boot,
+# durch den Update-Aktuator — dasselbe Profil, ohne dass jemand an
+# `--profile wartung` denken muss.
+#
+# Syntax-Check (JANUAPORT_IMAGE ist Pflicht, sonst bricht die Interpolation
+# bewusst ab):
+#   JANUAPORT_IMAGE=ghcr.io/januaport/januaport:<tag> \
+#     docker compose -f docker-compose.box.yml config -q
+#
+# Schritt-für-Schritt: RUNBOOK.md · Hinweise für Agenten: CLAUDE.md
+#
+# Namen: Die Bezeichner dieser Hülle heißen `jnpt` — Projekt `jnpt` (Top-Level
+# `name:`), Service `jnpt` (Vertrag mit ./Caddyfile: `reverse_proxy jnpt:8484`),
+# Bridge jnpt0, Netz jnpt_default, Volume jnpt-data, Secret jnpt_master_key,
+# Pfad /opt/jnpt. Die Bezeichner des Produkts bestimmt das Binary: `JNPT_*`-Envs,
+# `/jnpt`, und die Dateien IM Volume (`/data/jnpt.db`).
+#
+# ⚠️ Warum der Projektname in der Datei steht und nicht als `-p` in der
+# Anleitung: Ohne Projektname leitet Compose ihn vom Verzeichnis ab (`box`) und
+# legt FRISCHE, leere Volumes an — die Box käme mit leerer Datenbank hoch. Ein
+# `-p`, an das jeder Hand-Start und jedes `docker compose exec` denken muss, ist
+# genau diese Falle. Ein zweiter Ort für denselben Namen wäre eine zweite Wahrheit.
+
+name: jnpt
+
+services:
+  jnpt:
+    # Fertiges Image aus GHCR — die Box zieht dasselbe Artefakt wie jede andere
+    # Anlage. PFLICHT-Variable ohne Default: bewusst KEIN `:latest`, damit auf
+    # einer unbeaufsichtigten Kiste ein benennbarer Stand läuft (ein wanderndes
+    # `latest` wäre ein unkontrollierter Update-Pfad neben dem Update-Aktuator).
+    # Fehlt die Variable, bricht `docker compose` mit der :?-Meldung ab.
+    image: ${JANUAPORT_IMAGE:?JANUAPORT_IMAGE setzen, z. B. ghcr.io/januaport/januaport:<tag>}
+    # KEIN `ports:` — JanuaPort ist vom Host aus nicht direkt erreichbar. Der
+    # Weg führt über caddy/caddy-admin (LAN, gefiltert), tailscale (Tailnet) oder
+    # den Tunnel-Client (Compose-Netz).
+    environment:
+      # Master-Key NICHT als Klartext-Env, sondern als Datei-Referenz auf das
+      # gemountete Docker-Secret (Inhalt: 64 Hex-Zeichen, openssl rand -hex 32).
+      # Er liegt damit außerhalb von /data — wer die Platte im laufenden Zustand
+      # kopiert, hat Datenbank und Schlüssel nicht am selben Ort.
+      JNPT_MASTER_KEY_FILE: /run/secrets/jnpt_master_key
+      JNPT_LOG_FORMAT: json
+      # Deckel für gleichzeitige Prüfungen opaker Tokens. Der Produkt-Default
+      # (2 × Kerne) weist auf einer kleinen Box schon bei rund zehn parallelen
+      # Clients mit EINEM gültigen Token 503 „server busy" zurück. Die Box hat
+      # keinen öffentlichen Endpunkt; .env.example setzt deshalb 1000. Leer =
+      # Produkt-Default. Eine Ersatzbox muss denselben Wert tragen.
+      JNPT_MAX_VERIFY_CONCURRENCY: ${JNPT_MAX_VERIFY_CONCURRENCY:-}
+      # Laufzeit-Schlüssel des Tunnel-Clients: Das Gateway materialisiert ihn aus
+      # dem Tresor an diesen Pfad — auf ein tmpfs, nicht auf die Platte. Der
+      # Tunnel-Stack hängt das VERZEICHNIS read-only ein.
+      JNPT_TUNNEL_KEY_FILE: /run/jnpt/tunnel/openai-runtime-key
+      # Update-Feed: leer = kein Prüf-Ticker. Vor der Auslieferung sind beide
+      # Werte Pflicht; ausführen tut der Update-Aktuator auf dem Host, nie ein
+      # Container.
+      JNPT_UPDATE_MANIFEST_URL: ${JNPT_UPDATE_MANIFEST_URL:-}
+      JNPT_UPDATE_PUBLIC_KEYS: ${JNPT_UPDATE_PUBLIC_KEYS:-}
+      # ── Cloud-KI-Anbindung + SSO des Kunden-Tenants (RUNBOOK.md, Anbindung) ─
+      # Durchreiche: leer = aus. Ohne diese Zeilen erreichte kein SSO-Wert das
+      # Binary — der Tunnel-Weg braucht sie (Ressource + Nutzer-Anmeldung).
+      JNPT_PUBLIC_URL: ${JNPT_PUBLIC_URL:-}
+      JNPT_SSO_ENABLED: ${JNPT_SSO_ENABLED:-false}
+      JNPT_SSO_ISSUER: ${JNPT_SSO_ISSUER:-}
+      JNPT_SSO_AUDIENCE: ${JNPT_SSO_AUDIENCE:-}
+      JNPT_SSO_CLIENT_ID: ${JNPT_SSO_CLIENT_ID:-}
+      JNPT_SSO_AUTH_SCOPE: ${JNPT_SSO_AUTH_SCOPE:-}
+      JNPT_SSO_GROUPS_CLAIM: ${JNPT_SSO_GROUPS_CLAIM:-}
+      # SSO-Rolle = Basis-Gate: nur Träger dieser App-Rolle dürfen sich anmelden;
+      # die Team-Rollen entscheiden danach, was jemand darf. Leer = kein Basis-Gate
+      # (die Freigabe-Liste in der Admin-GUI greift trotzdem).
+      JNPT_SSO_REQUIRED_ROLE: ${JNPT_SSO_REQUIRED_ROLE:-}
+      JNPT_SSO_GROUP_SCOPES: ${JNPT_SSO_GROUP_SCOPES:-}
+      JNPT_SSO_DEFAULT_SCOPE: ${JNPT_SSO_DEFAULT_SCOPE:-}
+      # Lizenz-Abruf — optional; die Werte aus der Admin-GUI gewinnen.
+      JNPT_LICENSE_FETCH_URL: ${JNPT_LICENSE_FETCH_URL:-}
+      JNPT_LICENSE_FETCH_TOKEN: ${JNPT_LICENSE_FETCH_TOKEN:-}
+      # Login-Bremse quellengenau: X-Forwarded-For gilt NUR von den drei eigenen
+      # Proxys (caddy .10, tailscale .11, caddy-admin .12, feste Adressen unten).
+      # Ohne die Liste zählte die Bremse hinter caddy-admin einmal für alle
+      # Betreiber — ein Angreifer im LAN sperrte alle zugleich aus. Bewusst FEST
+      # und ohne ${…}: nie das Subnetz, denn am Netz hängt auch der Tunnel-Client,
+      # und der dürfte den Header sonst fälschen. Wer eine Adresse ändert, ändert
+      # sie hier und im Netz-Block gemeinsam.
+      JNPT_TRUSTED_PROXY_CIDR: 10.201.44.10,10.201.44.11,10.201.44.12
+    volumes:
+      # Geteilte Ablage des Kunden: reiner HOST-MOUNT. Das Gateway sieht nur ein
+      # Verzeichnis und kennt kein SMB/CIFS oder SharePoint — genau so ist es
+      # gewollt. Nicht eingerichtet = leeres lokales Verzeichnis. Der Mountpoint
+      # trägt auf dem Host `chattr +i`, damit ein weggefallener Mount NICHT still
+      # auf die Systemplatte schreibt.
+      #
+      # ⚠️ propagation: rslave ist PFLICHT, nicht Geschmack. Die Mounts UNTER
+      # /ablage sind die Einstiegspunkte (je Freigabe/Ordner einer). Mit Dockers
+      # Default (rprivate) sieht der Container NUR die Mounts, die beim Start
+      # schon hingen; ein später eingehängter Einstiegspunkt bleibt drinnen ein
+      # leeres Verzeichnis — ohne Fehler, ohne Log-Zeile. Gemessen: Nach-Mount
+      # ohne rslave unsichtbar, mit rslave sichtbar, nach umount wieder weg.
+      - type: bind
+        source: ${JNPT_ABLAGE_HOST:-/srv/jnpt/ablage}
+        target: /ablage
+        bind:
+          propagation: rslave
+      # Bereitstellungs-Verzeichnis des Laufzeit-Schlüssels. Angelegt per
+      # tmpfiles-Regel des Tunnel-Stacks (0750, 65532) — /run ist ein tmpfs und
+      # wäre nach einem Neustart sonst weg.
+      - /run/jnpt/tunnel:/run/jnpt/tunnel
+      # /data = NUR die SQLite-DB (+ WAL/SHM, lokale Sicherungen). Auf der Box
+      # liegt das Volume auf der LUKS-verschlüsselten Systemplatte — Diebstahl
+      # der Kiste gibt ohne TPM/Recovery-Key nichts her.
+      - jnpt-data:/data
+      # ── EBICS-Eingang: die EINZIGE Naht zum EBICS-Abholer (../ebics-abholer) ─
+      # Bewusst AUSKOMMENTIERT. Zwei Gründe:
+      #   1. Ohne Bankabruf soll niemand von diesem Teil etwas merken (der
+      #      Abholer ist ein optionaler Beisteller, kein Teil des Gateways).
+      #   2. Ein Bind-Mount auf ein NICHT vorhandenes Host-Verzeichnis lässt
+      #      Docker es als root anlegen — dann gehört es dem falschen Nutzer,
+      #      und der Abholer (uid 65532) scheitert. Den Ordner deshalb VORHER
+      #      mit der richtigen Kennung anlegen, dann die Zeile einkommentieren.
+      # ⚠️ `:ro` ist die Rollenverteilung: Der Abholer schreibt, JanuaPort liest.
+      # Es ist DASSELBE Host-Verzeichnis, das beim Abholer als Ablage steht —
+      # zwei verschiedene wären zwei Wahrheiten, und die Kette wäre still tot.
+      # Der Pfad IM Container ist frei wählbar; er muss nur mit dem Verzeichnis
+      # der Datei-Integration übereinstimmen.
+      #- /var/lib/jnpt/ebics-eingang:/data/ebics-eingang:ro
+    secrets:
+      - jnpt_master_key
+    restart: unless-stopped
+    # Bewusst KEIN docker-healthcheck: Das distroless-Image hat weder Shell noch
+    # curl/wget. Liveness wird von außen über /healthz geprüft — und das
+    # Erfolgskriterium der Box ist ohnehin nicht /healthz, sondern ein echter
+    # MCP-Rundlauf (RUNBOOK.md, Prüfen).
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      # ── Host-Bind der Werkzeug-Fläche, PARAMETRISIERT ──────────────────────
+      # Default `127.0.0.1` = zu (deny-by-default): frisch hochgezogen ist die
+      # Box von außen NICHT erreichbar. Die Öffnung ist ein bewusster Schritt
+      # in der .env:
+      #   JNPT_BIND_ADDR=192.0.2.10   → nur auf der LAN-Adresse der Box
+      #                                 (DHCP-Reservierung) = Regelbetrieb
+      #   JNPT_BIND_ADDR=0.0.0.0      → alle Interfaces. Für die Box NICHT
+      #                                 vorgesehen: sie hat keinen öffentlichen
+      #                                 Endpunkt.
+      # Zweite Verteidigungslinie ist IMMER die Host-Firewall
+      # (scripts/hardening.sh) — der Compose-Bind allein ist kein Schutz.
+      - "${JNPT_BIND_ADDR:-127.0.0.1}:443:443"
+      - "${JNPT_BIND_ADDR:-127.0.0.1}:443:443/udp" # HTTP/3 (QUIC)
+      # Port 80 bräuchte nur die ACME-HTTP-01-Challenge. Die Box bezieht ihr
+      # Zertifikat aus Caddys interner CA (JNPT_CADDY_TLS) — der Bind bleibt
+      # auf Loopback.
+      - "${JNPT_ACME_BIND_ADDR:-127.0.0.1}:80:80"
+    environment:
+      # Vom Caddyfile referenziert.
+      JNPT_DOMAIN: ${JNPT_DOMAIN}
+      JNPT_ACME_EMAIL: ${JNPT_ACME_EMAIL}
+      # Auf der Box `tls internal`: Zertifikat für den Box-Namen aus Caddys
+      # interner CA — kein DNS, kein ACME, kein offener Port (RUNBOOK.md,
+      # „Box-Name ohne öffentliches DNS"). Leer = ACME.
+      JNPT_CADDY_TLS: ${JNPT_CADDY_TLS:-}
+      # Optionaler zweiter, LAN-interner Name der Werkzeug-Fläche. Leer = ein
+      # Name. Braucht einen A-Record im DNS des Kunden.
+      JNPT_LAN_ALIAS: ${JNPT_LAN_ALIAS:-}
+    volumes:
+      # Die Sicherheitsgrenze: Whitelist + Default-404, read-only.
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Persistenz der Zertifikate und der internen CA — ein Verlust hieße: neue
+      # Wurzel, erneuter Import bei jedem Client, der ihr vertraut.
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - jnpt
+    restart: unless-stopped
+    networks:
+      default:
+        # Der Box-Name existiert nur in der Box. Im Compose-Netz löst er per
+        # Alias auf DIESEN Caddy auf — so erreicht der Tunnel-Client (eigener
+        # Stack im selben Netz) die Anmelde-Metadaten unter https://<box-name>
+        # mit Caddys interner CA, ohne DNS beim Kunden und ohne extra_hosts.
+        aliases:
+          - ${JNPT_DOMAIN}
+        # Feste Adresse = vertrauter Proxy (JNPT_TRUSTED_PROXY_CIDR).
+        ipv4_address: 10.201.44.10
+
+  # ── Betreiber-Fläche: EIGENE Mini-Caddy-Instanz für das Kunden-LAN ─────────
+  # Volle Instanz (Admin-GUI, /admin/mcp, Admin-API) auf 8443 — Admin ist nie
+  # öffentlich, nur LAN und Tailnet; so trägt der Betreiber jeden Geheimnis-Wert
+  # selbst ein. Bewusst eine ZWEITE Instanz statt eines Site-Blocks im
+  # Haupt-Caddy: die Whitelist bleibt buchstäblich unberührt, und IP-Aufrufe
+  # ohne SNI brauchen `default_sni` — eine globale Option, die nur eine eigene
+  # Instanz besitzen kann (Begründung in Caddyfile.admin). Die Host-Firewall
+  # gibt 8443 ausschließlich im Modus `--https lan` fürs Kunden-CIDR frei.
+  caddy-admin:
+    image: caddy:2-alpine
+    ports:
+      - "${JNPT_BIND_ADDR:-127.0.0.1}:8443:8443"
+    environment:
+      # Site-Adresse + default_sni der Betreiber-Fläche (Caddyfile.admin).
+      JNPT_BIND_ADDR: ${JNPT_BIND_ADDR:-127.0.0.1}
+    volumes:
+      - ./Caddyfile.admin:/etc/caddy/Caddyfile:ro
+      # Eigene interne CA — persistiert, damit der einmalige Import des
+      # Root-Zertifikats beim Betreiber Neustarts überlebt.
+      - caddy-admin-data:/data
+      - caddy-admin-config:/config
+    depends_on:
+      - jnpt
+    restart: unless-stopped
+    networks:
+      default:
+        # Feste Adresse = vertrauter Proxy. Das ist der Login-Pfad der
+        # Betreiber — hier zählt die Bremse je Client.
+        ipv4_address: 10.201.44.12
+
+  tailscale:
+    # ── Fernwartungs-Opt-in ────────────────────────────────────────────────────
+    # Der Wartungszugang existiert NUR, wenn der Kunde ihn ausdrücklich
+    # einräumt. Deshalb ein Compose-Profil statt eines Dauer-Sidecars: ohne
+    # Profil `wartung` wird der Container gar nicht erst erzeugt. Das ist die
+    # technische Form von „sichtbar und abschaltbar" — der Kunde bzw. sein
+    # IT-Dienstleister sieht ein benanntes Modul im Stack und kann es jederzeit
+    # stilllegen. Kein versteckter Zugang, kein Phone-Home.
+    # Entzug ist mehr als das Profil (Auth-Key widerrufen, Knoten entfernen,
+    # Host-tailscaled abschalten) — vollständige Prozedur: RUNBOOK.md.
+    profiles: ["wartung"]
+    image: tailscale/tailscale:stable
+    hostname: ${TS_HOSTNAME:-jnpt-box}
+    # containerboot wertet KEIN TS_AUTHKEY_FILE aus — nur TS_AUTHKEY. Ein
+    # schlanker Wrapper liest den Auth-Key zur Laufzeit aus dem gemounteten
+    # Docker-Secret (bleibt file-basiert und steht NICHT in der statischen
+    # Compose-Env bzw. im `docker inspect`).
+    entrypoint:
+      - /bin/sh
+      - -c
+      - 'export TS_AUTHKEY="$$(cat /run/secrets/tailscale_authkey)"; exec /usr/local/bin/containerboot'
+    environment:
+      # Persistenter State (sonst bei jedem Neustart ein neuer Tailnet-Knoten).
+      TS_STATE_DIR: /var/lib/tailscale
+      # `tailscale serve`-Konfiguration: Tailnet-HTTPS → volle JanuaPort-Instanz
+      # (Admin + Werkzeuge), read-only.
+      TS_SERVE_CONFIG: /config/tailscale-serve.json
+      # Userspace-Networking: kein /dev/net/tun, kein NET_ADMIN/privileged.
+      # ⚠️ Konsequenz: dieser Container bringt den HOST nicht ins Tailnet — er
+      # exponiert nur die Anwendung. Host-SSH über das Tailnet braucht
+      # zusätzlich `tailscaled` auf dem Host (RUNBOOK.md, Wartungszugang).
+      TS_USERSPACE: "true"
+      TS_EXTRA_ARGS: --hostname=${TS_HOSTNAME:-jnpt-box}
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - ./tailscale-serve.json:/config/tailscale-serve.json:ro
+    secrets:
+      - tailscale_authkey
+    depends_on:
+      - jnpt
+    # KEIN Inbound-Firewall-Port: Tailscale baut die Verbindung per
+    # NAT-Traversal/DERP ausschließlich über Outbound auf.
+    restart: unless-stopped
+    networks:
+      default:
+        # Feste Adresse = vertrauter Proxy: `tailscale serve` setzt
+        # X-Forwarded-For mit der Tailnet-Adresse.
+        ipv4_address: 10.201.44.11
+
+networks:
+  default:
+    driver_opts:
+      # Fester Bridge-Name statt br-<hash>: Die Host-Firewall
+      # (scripts/hardening.sh) muss Container-Forwarding GEZIELT für diese
+      # Bridge erlauben — in nftables muss jede Tabelle am selben Hook das Paket
+      # durchlassen, Dockers eigene Freigaben genügen nicht. Ein fester Name
+      # macht die Regel les- und prüfbar.
+      com.docker.network.bridge.name: jnpt0
+    # Festes Subnetz für die Login-Bremse: Nur wer eine feste Adresse hat, kann
+    # in JNPT_TRUSTED_PROXY_CIDR stehen. Warum 10.201.44.0/24: außerhalb von
+    # Dockers Standard-Pools (172.17–31/16, 192.168/16 — dort liegt typisch auch
+    # das Kunden-LAN) und des Tailnets 100.64/10. Die festen Proxy-Adressen
+    # .10–.12 liegen UNTERHALB von ip_range: Docker vergibt dynamisch (jnpt,
+    # Tunnel-Client) nur aus .128/25, so belegt kein zuerst startender Container
+    # eine davon.
+    # ⚠️ Eine Änderung an diesem Block legt das Netz NEU an. Hängt dabei der
+    # Tunnel-Client noch am Netz, bleibt jnpt gestoppt („active endpoints").
+    # Umbau nur im Wartungsfenster (RUNBOOK.md, Netz-Umbau), nie per Aktuator.
+    ipam:
+      config:
+        - subnet: 10.201.44.0/24
+          ip_range: 10.201.44.128/25
+
+volumes:
+  # Der volle Volume-Name ist `<projekt>_<vol>`, hier also `jnpt_jnpt-data`. An
+  # diesem Namen hängen die Daten; ein umbenanntes Volume ließe Compose beim
+  # nächsten Start ein frisches, LEERES anlegen. Der Master-Key kommt bewusst als
+  # Secret aus /run/secrets, damit Platte und Schlüssel nicht am selben Ort liegen.
+  jnpt-data:
+  caddy-data:
+  caddy-config:
+  # Interne CA der Betreiber-Fläche — Verlust hieße: neuer Root-Import beim
+  # Betreiber.
+  caddy-admin-data:
+  caddy-admin-config:
+  tailscale-state:
+
+# File-basierte Secrets. Die echten Dateien liegen auf der Box unter secrets/;
+# im Repository sind NUR *.example-Platzhalter, .gitignore hält den Rest draußen.
+#
+# ⚠️ Stolperfalle: Compose ohne Swarm reicht Host-uid/-Rechte unverändert durch
+# (`uid`/`mode` werden ignoriert). Das jnpt-Image läuft distroless als nonroot
+# (uid 65532) — eine `0600 root`-Datei ist für den Container UNLESBAR, und jnpt
+# bricht mit „permission denied" ab. Den Master-Key deshalb mit
+# `install -o 65532 -g 65532 -m 0400` anlegen (RUNBOOK.md).
+secrets:
+  jnpt_master_key:
+    file: ./secrets/jnpt_master_key
+  tailscale_authkey:
+    file: ./secrets/tailscale_authkey

@@ -1,0 +1,23 @@
+{
+	"//": "TS_SERVE_CONFIG für den Wartungs-Container der Box (Profil wartung).",
+	"//1": "Proxyt das Tailnet-HTTPS (Port 443 auf dem MagicDNS-Namen des Knotens)",
+	"//2": "auf die VOLLE JanuaPort-Instanz (jnpt:8484) — Admin und Werkzeuge. Das ist",
+	"//3": "die Wartungsfläche: /admin/mcp, /api/admin/*, die GUI und /metrics sind",
+	"//4": "hier nur im Tailnet erreichbar, nie öffentlich. Dieser Knoten wird NIE",
+	"//5": "per Funnel veröffentlicht. Tailscale stellt das HTTPS-Zertifikat des",
+	"//6": "Knotens automatisch aus. Kein Inbound-Firewall-Port nötig (DERP/Outbound).",
+	"TCP": {
+		"443": {
+			"HTTPS": true
+		}
+	},
+	"Web": {
+		"${TS_CERT_DOMAIN}:443": {
+			"Handlers": {
+				"/": {
+					"Proxy": "http://jnpt:8484"
+				}
+			}
+		}
+	}
+}

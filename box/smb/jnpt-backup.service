@@ -1,0 +1,9 @@
+[Unit]
+Description=JanuaPort: taegliche Sicherung auf die Freigabe des Kunden
+# Ohne die Ablage hat der Lauf keinen Sinn — und er darf NICHT lokal ausweichen.
+Requires=srv-jnpt-sicherung.mount
+After=srv-jnpt-sicherung.mount docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/jnpt-backup.sh

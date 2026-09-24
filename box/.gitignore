@@ -1,0 +1,5 @@
+# Werte der Anlage gehören auf die Box, nie ins Repository.
+.env
+secrets/*
+!secrets/*.example
+!secrets/.gitkeep

@@ -1,0 +1,37 @@
+# srv-jnpt-sicherung.mount — das Sicherungs-Ziel auf der Freigabe des Kunden.
+#
+# NUR FUER DEN HOST. Dieses Verzeichnis wird NICHT in den Gateway-Container
+# gereicht: Die Sicherung ist Betreiber-Infrastruktur, die KI sieht sie nie —
+# per Konstruktion, nicht per Rechte-Modell (haengt die ganze Freigabe unter
+# /ablage, wird sicherungen/ zum Einstiegspunkt — genau das vermeidet dieser
+# Schnitt). jnpt-backup.sh kopiert das verschluesselte Artefakt
+# aus dem Volume hierher.
+#
+# ⚠️ Unit-NAME = Pfad (`systemd-escape -p --suffix=mount /srv/jnpt/sicherung`).
+
+[Unit]
+Description=JanuaPort: Sicherungs-Ziel auf der Freigabe des Kunden (SMB/CIFS)
+After=network-online.target
+Wants=network-online.target
+
+[Mount]
+# <<< ANPASSEN: Server, Freigabe und der Unterordner „sicherungen".
+# CIFS erlaubt einen Unterordner der Freigabe als Quelle (prefixpath) — so
+# haengt hier NUR sicherungen/, nie die Wurzel der Freigabe.
+What=//nas.example.com/<freigabe>/sicherungen
+Where=/srv/jnpt/sicherung
+Type=cifs
+
+#   credentials= Zugangsdaten in eigener Datei, 0600, root. NIE hier, nie im Repo.
+#   uid/gid 0    der Host-Dienst (jnpt-backup.sh) laeuft als root; kein Container.
+#   file_mode/dir_mode: auf CIFS die EINZIGEN Rechte, die es gibt (fchmod ist
+#                ein No-Op) — der echte Schutz ist die ACL der Freigabe.
+#   seal         SMB3-Verschluesselung auf dem Draht (Artefakt = ganze Anlage).
+#                Kann der Server das nicht: streichen und im Betriebsprotokoll vermerken.
+#   nofail       ein nicht erreichbares NAS darf die Box nicht am Booten hindern.
+Options=credentials=/etc/jnpt/smb/ablage.cred,uid=0,gid=0,file_mode=0600,dir_mode=0700,vers=3.1.1,seal,nofail,_netdev
+
+TimeoutSec=30
+
+[Install]
+WantedBy=multi-user.target

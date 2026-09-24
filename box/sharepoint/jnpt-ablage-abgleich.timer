@@ -1,0 +1,10 @@
+[Unit]
+Description=JanuaPort: Abgleich Use-Case-Ablage <-> SharePoint alle 5 Minuten
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+# Ein laufender Abgleich wird nicht ueberholt: das Skript haelt ein flock.
+
+[Install]
+WantedBy=timers.target

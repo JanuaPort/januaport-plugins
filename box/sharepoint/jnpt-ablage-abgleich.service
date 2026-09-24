@@ -1,0 +1,20 @@
+[Unit]
+Description=JanuaPort: Zwei-Wege-Abgleich Use-Case-Ablage <-> SharePoint
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Als der Nutzer des Gateway-Containers: fs.protected_hardlinks=1 — nur so kann der
+# Gateway-Prozess synchronisierte Dateien spaeter per os.Link verschieben (move_file).
+User=65532
+Group=65532
+ExecStart=/usr/local/sbin/jnpt-ablage-abgleich.sh
+# Arbeitsverzeichnis von bisync (Listings), lokaler Papierkorb, Lock.
+StateDirectory=jnpt/rclone-bisync
+# <<< ANPASSEN: derselbe Einstiegspunkt wie LOKAL in jnpt-ablage-abgleich.sh.
+ReadWritePaths=/srv/jnpt/ablage/beispiel /srv/jnpt/ablage-papierkorb
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true

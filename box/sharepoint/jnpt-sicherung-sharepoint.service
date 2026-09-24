@@ -1,0 +1,11 @@
+[Unit]
+Description=JanuaPort: taegliche Sicherung in die SharePoint-Site des Kunden
+# Ohne Docker keine Sicherung; ohne Netz kein Upload — beides prueft das Skript selbst
+# und bricht mit Exit != 0 ab (der Timer wiederholt beim naechsten Takt).
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/jnpt-sicherung-sharepoint.sh
+# Das Secret liest das Skript selbst aus /etc/jnpt/rclone/sicherung.secret (0600 root).

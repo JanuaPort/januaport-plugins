@@ -1,0 +1,36 @@
+# BEISPIEL. Der Unit-NAME folgt dem Pfad, nicht dieser Datei:
+# `systemd-escape -p --suffix=mount /srv/jnpt/ablage/<name>`.
+# Muster: ein bestehender Fachordner des Kunden wird Einstiegspunkt.
+# srv-jnpt-ablage-beispiel.mount — Einstiegspunkt „beispiel" fuer die KI.
+#
+# Jeder Mount unter /srv/jnpt/ablage ist im Container ein Einstiegspunkt unter
+# /ablage. Der Admin legt darunter die Ablagen an (je Ordner eine), die KI
+# bekommt je Zugang und je Ablage Rechte.
+#
+# ⚠️ Unit-NAME = Pfad (`systemd-escape -p --suffix=mount <Where>`). Wer Where=
+# aendert, benennt die Datei mit um — sonst startet systemd die Unit nicht.
+# ⚠️ Leerzeichen in What= sind erlaubt (systemd reicht den Wert unveraendert an
+# mount durch); NICHT in Anfuehrungszeichen setzen.
+
+[Unit]
+Description=JanuaPort: Einstiegspunkt beispiel (SMB/CIFS)
+After=network-online.target
+Wants=network-online.target
+
+[Mount]
+# <<< ANPASSEN: vollstaendiger UNC-Pfad des Ordners (nicht X:\ — der
+# Laufwerksbuchstabe ist eine Client-Sicht). \\server\freigabe\ordner wird zu
+# //server/freigabe/ordner.
+What=//nas.example.com/daten/<Ordner>
+Where=/srv/jnpt/ablage/beispiel
+Type=cifs
+
+#   uid/gid 65532 = der Non-Root-Nutzer des Gateway-Containers.
+#   serverino: stabile Inode-Nummern — die Ablage nagelt ihren Ordner an Geraet + Inode fest.
+#   seal: siehe srv-jnpt-sicherung.mount.
+Options=credentials=/etc/jnpt/smb/ablage.cred,uid=65532,gid=65532,file_mode=0600,dir_mode=0700,vers=3.1.1,seal,serverino,nofail,_netdev
+
+TimeoutSec=30
+
+[Install]
+WantedBy=multi-user.target
