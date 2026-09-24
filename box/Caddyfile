@@ -1,0 +1,110 @@
+# Caddyfile — Werkzeug-Fläche der Box (Port 443 im Kunden-LAN) vor JanuaPort.
+#
+# DIE EINE HARTE SICHERHEITSGRENZE der Box nach außen.
+# Caddy terminiert TLS für ${JNPT_DOMAIN} (auf der Box aus der internen CA, s.
+# JNPT_CADDY_TLS) und gibt nach innen NUR die Werkzeug-/Anmelde-Fläche an
+# JanuaPort weiter. JanuaPort selbst veröffentlicht KEINEN Host-Port (siehe
+# docker-compose.box.yml).
+#
+# Whitelist-Prinzip (deny-by-default): Der @public-Matcher beschreibt
+# ABSCHLIESSEND, was erreichbar ist. Alles, was nicht matcht, endet in
+# `respond 404`. Damit sind die Admin-Flächen hier NICHT erreichbar:
+#   - /admin/mcp     (Admin-MCP)
+#   - /api/admin/*   (Admin-REST-API)
+#   - /              (Admin-GUI, React-SPA)
+#   - /metrics       (Betriebsdaten)
+# Diese Pfade liegen ausschließlich auf der Betreiber-Fläche (caddy-admin, 8443,
+# nur Kunden-LAN) und im Tailnet (Wartungszugang, tailscale-serve.json).
+#
+# WICHTIG bei Änderungen: Nie einen Admin-Pfad in den @public-Zweig aufnehmen.
+# Der Default-404 ist die Absicherung — die Whitelist ist die einzige Stelle,
+# an der Pfade freigeschaltet werden.
+#
+# Herkunft: Diese Datei ist eine Kopie der Whitelist, die JanuaPort für alle
+# Anlagen verwendet (siehe README.md, Herkunft). Die Direktiven sind unverändert;
+# eine Änderung der Whitelist wird dort entschieden und hier nachgezogen.
+
+{
+	# Globale Optionen. ACME-Konto-Kontakt (JNPT_ACME_EMAIL, über die Compose-
+	# Umgebung gesetzt). Mit interner CA unbenutzt, aber als Option gesetzt,
+	# damit dieselbe Datei auch mit ACME trägt. ⚠️ Er ist KEIN Ablauf-Warner:
+	# Let's Encrypt verschickt keine Ablauf-Mails mehr.
+	email {$JNPT_ACME_EMAIL}
+}
+
+# Site-Block für den Box-Namen. Zweiter Name (optional): JNPT_LAN_ALIAS hängt
+# einen LAN-internen Namen an denselben Site-Block. Leer = genau ein Name. Der
+# Alias ist ein TRANSPORTNAME, keine Identität — JNPT_PUBLIC_URL bleibt der Name,
+# an dem die Anmeldung hängt. Voraussetzung außerhalb von JanuaPort: ein
+# A-Record im DNS des Kunden.
+{$JNPT_DOMAIN} {$JNPT_LAN_ALIAS} {
+	# TLS-Aussteller, per Umgebung schaltbar: Auf der Box steht
+	# JNPT_CADDY_TLS="tls internal" — Caddy stellt das Zertifikat für den
+	# Box-Namen aus seiner INTERNEN CA aus (kein ACME, kein offener Port; die
+	# Wurzel wandert als CA-Bundle zum Tunnel-Client). Ist die Variable NICHT
+	# gesetzt, expandiert der Platzhalter leer und Caddy holt das Zertifikat per
+	# ACME — das scheitert auf einer Box ohne öffentliche Erreichbarkeit.
+	{$JNPT_CADDY_TLS}
+
+	# --- Whitelist: ausschließlich die Werkzeug-/Anmelde-Fläche -------------
+	# Pfade, die ein KI-Client / die OAuth-Discovery braucht:
+	#   /mcp            Werkzeug-MCP-Endpunkt (Bearer-Token, exakt dieser Pfad)
+	#   /healthz        Liveness
+	#   /.well-known/oauth-protected-resource
+	#                   RFC-9728 Protected Resource Metadata (Anmeldung per SSO;
+	#                   wird von JanuaPort NUR bei aktivem JNPT_SSO_ENABLED
+	#                   bedient — ohne SSO liefert JanuaPort hier 404). Gewollt.
+	# WICHTIG: /mcp ist im Gateway EXAKT ein Pfad (kein Subtree). Die Whitelist
+	# matcht daher NUR `path /mcp` — NICHT `/mcp/*`. Ein /mcp/<subpfad> ist im
+	# Gateway kein MCP-Endpunkt; freigegeben fiele er auf JanuaPorts
+	# SPA-Catch-all und lieferte die Admin-GUI aus (Info-Leak). Er bleibt hier
+	# unmatched → Default-404; zusätzlich liefert JanuaPort für /mcp/* selbst 404.
+	# Metadaten-Discovery für den pfadbehafteten resource-Indicator:
+	# MCP-Clients verlangen, dass die `resource` EXAKT die MCP-Server-URL inkl.
+	# Pfad ist (`https://<host>/mcp`); der 401-Header verweist dann auf
+	# `<MCP-URL>/.well-known/oauth-protected-resource`. JanuaPort liefert die
+	# Metadaten an der Wurzel aus → diesen pfadbehafteten Aufruf auf den
+	# Wurzelpfad umschreiben. Reine Discovery, KEIN Admin-Pfad.
+	# (Muss VOR @public stehen — Caddy nimmt das erste passende handle.)
+	handle /mcp/.well-known/oauth-protected-resource {
+		rewrite * /.well-known/oauth-protected-resource
+		reverse_proxy jnpt:8484
+	}
+
+	# Endpoint-Views: benannte MCP-Endpunkte unter dem FESTEN Präfix
+	# `/mcp/v/<view>`. Freigegeben wird NUR dieser Präfix — JanuaPort serviert
+	# darunter ausschließlich registrierte Views (MCP-Endpunkt + Metadaten je
+	# View, beide mit Bearer/SSO wie /mcp) und liefert für alles andere selbst
+	# 404 (fail-closed, zweite Verteidigungslinie). Es ist KEIN Admin-Pfad.
+	# Metadaten an der NORMATIVEN Pfadform aus RFC 9728 §3.1: Dort steht das
+	# Well-Known-Segment ZWISCHEN Host und Resource-Pfad
+	# (`/.well-known/oauth-protected-resource/mcp` bzw. `…/mcp/v/<view>`) — genau
+	# diese Adresse leitet ein MCP-Client selbst ab. JanuaPort serviert unter
+	# diesem Subtree ausschließlich die Metadaten bekannter Ressourcen und
+	# liefert für alles andere selbst 404 (ohne aktives SSO ist der ganze
+	# Subtree 404).
+	@public {
+		path /mcp
+		path /mcp/v/*
+		path /healthz
+		path /.well-known/oauth-protected-resource
+		path /.well-known/oauth-protected-resource/*
+	}
+	handle @public {
+		reverse_proxy jnpt:8484
+	}
+
+	# --- Default: alles andere ist hier NICHT erreichbar --------------------
+	# Greift für /admin/mcp, /api/admin/*, /metrics, / (GUI) und alles Übrige.
+	# 404 statt 403, um die Existenz der Admin-Fläche nicht zu bestätigen.
+	handle {
+		respond "Not found" 404
+	}
+
+	# Zugriffslog auf stdout (Container-Logs); Format kompakt. Caddy redigiert
+	# keine Header automatisch — Authorization-Header NICHT mitloggen.
+	log {
+		output stdout
+		format console
+	}
+}

@@ -1,0 +1,30 @@
+#!/bin/sh
+# jnpt-netz-warten — laeuft als ExecStartPre von docker.service: Docker startet erst,
+# wenn das Netz WIRKLICH da ist (Adresse auf der LAN-Buchse, Default-Route, DNS antwortet).
+#
+# WARUM: Gemessen bei einem Reboot im Betrieb — `ifupdown-wait-online` war nach 2 s
+# „fertig", der NIC-Link kam 4 s SPAETER, die DHCP-Lease noch spaeter. Docker startete
+# bei erreichtem network-online.target, aber ohne Adresse und ohne Nameserver:
+#   * Caddy (443/8443 an die LAN-Adresse gebunden): „cannot assign requested address" →
+#     Container blieb Exited, die Box war von aussen TOT, bis jemand von Hand eingriff.
+#   * Gateway und Tunnel-Client: „DNS resolver has no external nameservers" → kein Feed,
+#     kein Tunnel, bis zum Container-Neustart.
+# `network-online.target` verspricht bei DHCP nichts, was Docker braucht. Dieses Skript
+# wartet auf die drei Dinge, die Docker braucht — hoechstens WARTE_MAX Sekunden, danach
+# startet Docker trotzdem (ein Geraet ohne Netz soll wenigstens lokal hochkommen).
+set -u
+IFACE=${JNPT_LAN_IFACE:-enp1s0}
+WARTE_MAX=${JNPT_NETZ_WARTE_MAX:-180}
+PROBE_HOST=${JNPT_NETZ_PROBE_HOST:-api.openai.com}
+t=0
+while [ "$t" -lt "$WARTE_MAX" ]; do
+  ADDR=$(ip -4 -o addr show dev "$IFACE" 2>/dev/null | awk '{print $4}' | head -1)
+  ROUTE=$(ip -4 route show default 2>/dev/null | head -1)
+  if [ -n "$ADDR" ] && [ -n "$ROUTE" ] && getent hosts "$PROBE_HOST" >/dev/null 2>&1; then
+    echo "jnpt-netz-warten: Netz da nach ${t}s — $IFACE $ADDR, Route, DNS."
+    exit 0
+  fi
+  sleep 2; t=$((t + 2))
+done
+echo "jnpt-netz-warten: WARNUNG — nach ${WARTE_MAX}s kein vollstaendiges Netz (Adresse='${ADDR:-}', Route='${ROUTE:-}', DNS=?). Docker startet trotzdem." >&2
+exit 0

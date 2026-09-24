@@ -1,0 +1,11 @@
+[Unit]
+Description=JanuaPort: taegliche Sicherung nach SharePoint
+
+[Timer]
+# Nachts; Persistent holt einen verpassten Lauf nach (die Box darf aus gewesen sein).
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target

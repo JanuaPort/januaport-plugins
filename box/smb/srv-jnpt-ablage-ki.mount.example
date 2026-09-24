@@ -1,0 +1,29 @@
+# BEISPIEL. Der Unit-NAME folgt dem Pfad, nicht dieser Datei:
+# `systemd-escape -p --suffix=mount /srv/jnpt/ablage/<name>`.
+# Muster: ein eigener KI-Wurzelordner auf der Freigabe des Kunden.
+# srv-jnpt-ablage-ki.mount — Einstiegspunkt „ki": ein Ordner, den der Kunde fuer
+# kuenftige Use Cases anlegt.
+#
+# ⚠️ Eine Ablage ist EIN Ordner direkt unter dem Einstiegspunkt (Ordner = Name,
+# kein Pfad). Eine Schachtelung „ki/<usecase>/<ordner>" gibt es als Ablage
+# nicht — entweder flach benennen („<usecase>-offen") oder je Use Case einen
+# eigenen Unterordner der Freigabe als weiteren Einstiegspunkt mounten.
+#
+# ⚠️ Unit-NAME = Pfad.
+
+[Unit]
+Description=JanuaPort: Einstiegspunkt ki (SMB/CIFS, KI-Wurzelordner)
+After=network-online.target
+Wants=network-online.target
+
+[Mount]
+# <<< ANPASSEN: UNC-Pfad des KI-Wurzelordners.
+What=//nas.example.com/daten/<KI-Ordner>
+Where=/srv/jnpt/ablage/ki
+Type=cifs
+Options=credentials=/etc/jnpt/smb/ablage.cred,uid=65532,gid=65532,file_mode=0600,dir_mode=0700,vers=3.1.1,seal,serverino,nofail,_netdev
+
+TimeoutSec=30
+
+[Install]
+WantedBy=multi-user.target

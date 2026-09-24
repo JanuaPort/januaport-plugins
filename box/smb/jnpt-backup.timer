@@ -1,0 +1,12 @@
+[Unit]
+Description=JanuaPort: taegliche Sicherung auf die Freigabe des Kunden
+
+[Timer]
+# Nachts, wenn niemand arbeitet; Persistent holt einen verpassten Lauf nach
+# (die Box darf ausgeschaltet gewesen sein).
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target

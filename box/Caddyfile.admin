@@ -1,0 +1,39 @@
+# Caddyfile.admin — Betreiber-Fläche der Box: EIGENE Caddy-Instanz.
+#
+# Warum eine zweite Instanz statt eines Site-Blocks im Haupt-Caddy:
+#
+#   1. Die Werkzeug-Fläche (./Caddyfile) bleibt buchstäblich unberührt — kein
+#      Wrapper, nicht einmal ein geänderter Mount. Die Whitelist bleibt die
+#      eine Wahrheit.
+#   2. Betreiber erreichen die Fläche über die LAN-IP — und Clients, die eine
+#      IP ansteuern, senden KEIN SNI (so will es TLS). Die Abhilfe
+#      (`default_sni`) ist eine GLOBALE Option und gehört damit in einen
+#      Options-Block, den nur eine eigene Instanz besitzt. Ohne sie bricht der
+#      Handshake mit „internal error" ab.
+#
+# Erreichbarkeits-Schichten (alle drei müssen offen sein):
+#   - Compose bindet ${JNPT_BIND_ADDR}:8443 auf den Host (Default Loopback)
+#   - scripts/hardening.sh gibt 8443 NUR im Modus `--https lan` und nur für das
+#     Kunden-LAN-CIDR frei
+#   - TLS terminiert die INTERNE CA dieser Instanz (`local_certs`): im LAN gibt
+#     es keinen öffentlichen Zertifikatsweg. Root-Zertifikat exportieren und
+#     beim Betreiber importieren: RUNBOOK.md, Betreiber-Fläche. Die CA liegt im
+#     Volume caddy-admin-data und überlebt Neustarts — der Import bleibt ein
+#     Einmal-Handgriff.
+
+{
+	# Alles an dieser Instanz läuft über die interne CA — sie bedient
+	# ausschließlich das Kunden-LAN, ein öffentliches Zertifikat gibt es
+	# hier nie.
+	local_certs
+	# Kein Root-Zertifikat in den Container-Truststore installieren —
+	# vertraut wird beim Betreiber (Import), nicht im Container.
+	skip_install_trust
+	# IP-Aufrufe kommen ohne SNI an; dieser Name wählt dann das Zertifikat.
+	default_sni {$JNPT_BIND_ADDR}
+}
+
+# Volle Instanz (Admin-GUI, /admin/mcp, Admin-API) — nur im Kunden-LAN.
+https://{$JNPT_BIND_ADDR}:8443 {
+	reverse_proxy jnpt:8484
+}

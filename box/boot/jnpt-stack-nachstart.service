@@ -1,0 +1,20 @@
+[Unit]
+Description=JanuaPort: Stack nach dem Boot nachziehen (Container, die beim Docker-Start scheiterten)
+# Zweite Sicherung neben jnpt-netz-warten: Ein Container, dessen Start beim Docker-Boot
+# scheitert (z. B. Port-Bind ohne Adresse), bleibt trotz restart-Policy „Exited" — Docker
+# wiederholt einen FEHLGESCHLAGENEN Start nicht. `compose up -d` holt ihn nach.
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 20
+# Kein `--profile wartung` hier: Das Profil steht als COMPOSE_PROFILES in /opt/jnpt/box/.env,
+# genau dann, wenn der Kunde den Wartungszugang eingeraeumt hat. So startet der Boot nie
+# einen Zugang, den es nicht geben soll.
+ExecStart=/usr/bin/docker compose -f /opt/jnpt/box/docker-compose.box.yml up -d
+# Tunnel-Stack ebenfalls (eigene Compose, tritt jnpt_default bei); fehlt er, ist das kein Fehler.
+ExecStart=-/bin/sh -c 'cd /opt/jnpt/tunnel && docker compose -f docker-compose.tunnel.yml up -d'
+
+[Install]
+WantedBy=multi-user.target

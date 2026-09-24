@@ -1,0 +1,62 @@
+# box/tunnel/profiles/box.yaml.example — Profil des OpenAI-Tunnel-Clients auf der
+# JanuaPort Box (RUNBOOK.md, Anbindung). Kopie als /opt/jnpt/tunnel/profiles/box.yaml
+# auf die Box; Platzhalter <…> ersetzen. Schema: Konfigurations-Doku des Clients
+# unter github.com/openai/tunnel-client (Profil-Datei = dasselbe Schema wie die
+# Konfiguration).
+#
+# Diese Datei enthält KEIN Secret: Den Laufzeit-Schlüssel legt das Gateway aus
+# seinem Tresor nach /run/jnpt/tunnel/; der Tunnel-Stack hängt das Verzeichnis
+# read-only unter /run/secrets/jnpt ein, gelesen wird per file:-Verweis.
+config_version: 1
+
+control_plane:
+  # Tunnel-Kennung aus der Platform-Organisation, die den Tunnel besitzt
+  # (Muster: der Kunde). Form: tunnel_ + 32 Hex-Zeichen.
+  tunnel_id: tunnel_<32-hex>
+  # Laufzeit-Schlüssel — NUR als Datei-Verweis (Compose mountet ihn read-only).
+  api_key: file:/run/secrets/jnpt/openai-runtime-key
+  # base_url bleibt auf dem Default https://api.openai.com (einziger Egress).
+
+log:
+  # Beide Werte PFLICHT: `level` ohne `format` bricht den Start ab
+  # (Endlos-Neustart mit einer einzigen Log-Zeile).
+  level: info
+  format: json
+
+health:
+  # 0.0.0.0 IM Container, damit der Loopback-Publish 127.0.0.1:8081 des Hosts
+  # greift; der Client-Default 127.0.0.1:8080 wäre von außen unerreichbar.
+  listen_addr: 0.0.0.0:8080
+
+mcp:
+  server_urls:
+    # Ein Kanal je Verbindungspunkt. Jede Endpoint-View wäre ein weiterer Kanal
+    # `<view> → /mcp/v/<view>`. Ziel ist das Gateway DIREKT im Compose-Netz,
+    # nicht über Caddy; der Kanal ist auf /mcp festgenagelt — mehr sieht der
+    # KI-Client nicht.
+    - channel: main
+      url: http://jnpt:8484/mcp
+
+harpoon:
+  # harpoon = eingebauter Mini-MCP-Server des Clients, der dem Modell einen
+  # erlaubnisgeprüften HTTP-Zugriff auf GENAU diese Ziele gibt. Er ist der
+  # Weg, über den ChatGPT die Anmelde-Metadaten der Box und den Entra-Login
+  # erreicht. Ohne mindestens ein Ziel: `unsupported channel "harpoon"` im
+  # Sekundentakt. Die automatische Registrierung greift nur für
+  # Loopback/private Adressen — deshalb explizit.
+  #
+  # ⛔ NIEMALS http://jnpt:8484 als Ziel: harpoon würde dem Modell die
+  #    Admin-Fläche an Caddys Whitelist vorbei öffnen. Nur Ziele, die
+  #    ohnehin über Caddy (Whitelist) oder öffentlich erreichbar sind.
+  # ⛔ KEIN Komma in `description`: der Client serialisiert Ziele als
+  #    komma-getrennte key=value-Kette → Endlos-Neustart.
+  targets:
+    # Der Box-Name: löst im Compose-Netz per Alias auf den Caddy der Box auf
+    # (docker-compose.box.yml, Alias ${JNPT_DOMAIN}); Zertifikat aus Caddys
+    # interner CA, Vertrauen über CA_BUNDLE.
+    - label: box
+      url: https://<BOX_NAME>
+      description: JanuaPort Box - Anmelde-Metadaten der Ressource
+    - label: entra
+      url: https://login.microsoftonline.com
+      description: Microsoft Entra - Anmeldung der Nutzer
