@@ -10,6 +10,43 @@ A catalog entry is not a statement that the image is free of known vulnerabiliti
 states that this exact digest was measured, scanned and seen running with the named
 JanuaPort version.
 
+## v0.0.15 — 28 September 2026
+
+| Field | Value |
+|---|---|
+| Image | `ghcr.io/openai/tunnel-client` |
+| Upstream version | `v0.0.15` |
+| Digest (OCI index) | `sha256:119799b778ba8411a124f53588f9dc837fd62ba03e5fadf77d675123c92ab58e` |
+| Platforms | `linux/amd64` (`sha256:4194e1b0…`), `linux/arm64` (`sha256:57b274af…`) |
+| Kind | `service`, third party |
+| Checked with | JanuaPort 0.67 |
+
+**Digest** measured twice on 28 September 2026: registry manifest header and
+`docker buildx imagetools inspect`. Both agree.
+
+**Running proof:** not yet. Unlike `v0.0.14`, this digest ran nowhere before it was
+catalogued. The update of the showcase installation from `v0.0.14` to this entry, through
+the signed catalog and the updater, is the proof. If the update fails, the updater keeps
+`v0.0.14`, and this entry is amended with the date and the finding.
+
+**Scan** at the digest, per platform: Trivy 0.74.0, vulnerability database v2 of
+28 September 2026, scanner `vuln`, base Alpine 3.22.6. Both platforms identical:
+**0 critical · 5 high** · 4 medium · 3 low · 1 unknown (`v0.0.14`: 0 · 11 · 15 · 15 · 2).
+Fixed compared with `v0.0.14`: Alpine `libcrypto3` / `libssl3` (CVE-2026-14456) and four of
+the five `golang.org/x/net` findings in `tunnel-client`. Remaining high findings, each with
+a fixed version upstream:
+
+- `usr/bin/cloudflared`: `golang.org/x/crypto` v0.53.0 (CVE-2026-56854);
+  `google.golang.org/grpc` v1.83.0 (CVE-2026-84304, CVE-2026-84445)
+- `usr/bin/tunnel-client`: `go.opentelemetry.io/otel/sdk` v1.41.0 (CVE-2026-39883);
+  `golang.org/x/net` v0.55.0 (CVE-2026-46600)
+
+**Decision:** catalogued, because it is strictly better than `v0.0.14` on every scan
+severity and all remaining findings are upstream. This entry is the first real plugin
+update of the catalog.
+
+Source: JanuaPort/januaport#885.
+
 ## v0.0.14 — 27 September 2026
 
 | Field | Value |
