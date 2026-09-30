@@ -282,3 +282,50 @@ func TestForbiddenFieldsExplicit(t *testing.T) {
 		}
 	}
 }
+
+// SEC-Abnahme 0993c07 (Nachzug): ipc, pid und network_mode kennen neben
+// container:<name> auch service:<name>. Beides teilt den Namensraum eines
+// anderen Dienstes und ist verboten.
+func TestServicePrefixForbiddenPerService(t *testing.T) {
+	base := readCompose(t)
+	anchors := map[string]string{
+		"script-runner":         "    command: [\"mediator\"]\n",
+		"script-runner-fetcher": "    command: [\"fetcher\"]\n",
+	}
+	for svc, anchor := range anchors {
+		for _, ins := range []string{
+			"    ipc: service:script-runner-sandbox\n",
+			"    pid: service:script-runner-sandbox\n",
+			"    network_mode: service:script-runner-sandbox\n",
+		} {
+			t.Run(svc+"/"+strings.TrimSpace(ins), func(t *testing.T) {
+				if v := CheckCompose([]byte(strings.Replace(base, anchor, anchor+ins, 1))); len(v) == 0 {
+					t.Fatal("nicht erkannt")
+				}
+			})
+		}
+	}
+	for _, tt := range []struct{ from, to string }{
+		{"    ipc: none\n", "    ipc: service:script-runner\n"},
+		{"    network_mode: none\n", "    network_mode: service:script-runner\n"},
+		{"    command: [\"guard\"]\n", "    command: [\"guard\"]\n    pid: service:script-runner\n"},
+	} {
+		t.Run("script-runner-sandbox/"+strings.TrimSpace(tt.to[strings.LastIndex(strings.TrimSpace(tt.to), "\n")+1:]), func(t *testing.T) {
+			if v := CheckCompose([]byte(strings.Replace(base, tt.from, tt.to, 1))); len(v) == 0 {
+				t.Fatal("nicht erkannt")
+			}
+		})
+	}
+	ok := service{Image: "${JNPT_SCRIPT_RUNNER_IMAGE:?x}", SecurityOpt: []string{"no-new-privileges:true"}, CapDrop: []string{"ALL"}, ReadOnly: true}
+	for name, mod := range map[string]func(*service){
+		"ipc":          func(s *service) { s.Ipc = "service:x" },
+		"pid":          func(s *service) { s.Pid = "service:x" },
+		"network_mode": func(s *service) { s.NetworkMode = "service:x" },
+	} {
+		s := ok
+		mod(&s)
+		if v := checkCommon("x", s); len(v) == 0 {
+			t.Errorf("checkCommon: %s service:x nicht erkannt", name)
+		}
+	}
+}
