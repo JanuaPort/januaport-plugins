@@ -29,6 +29,7 @@ import (
 
 const (
 	project    = "p2-928-sr"
+	projectDP  = "p2-928-dp"
 	sshdName   = "p2-928-sshd"
 	runtimeKey = "probe-runtime-key-not-a-secret"
 	runToken   = "jnptrun_PROBE_PROBE_PROBE_PROBE_PROBE_PROBE_PROBE_P"
@@ -110,7 +111,10 @@ func compose(proj string, files []string, args ...string) (string, error) {
 	return run("docker", append(full, args...)...)
 }
 
-var mainFiles = []string{"../docker-compose.yml", "compose.probe.yml"}
+var (
+	mainFiles = []string{"../docker-compose.yml", "compose.probe.yml"}
+	dpFiles   = []string{"../docker-compose.yml", "compose.probe.yml", "compose.default-seccomp.yml"}
+)
 
 func TestMain(m *testing.M) {
 	os.Setenv("JNPT_SCRIPT_RUNNER_IMAGE", image)
@@ -141,6 +145,7 @@ func cleanup() {
 		return
 	}
 	_, _ = compose(project, mainFiles, "down", "-v", "--remove-orphans", "-t", "1")
+	_, _ = compose(projectDP, dpFiles, "down", "-v", "--remove-orphans", "-t", "1")
 	_, _ = run("docker", "rm", "-f", sshdName)
 }
 
@@ -667,4 +672,66 @@ func TestR12ImageHasNoPipAndSha1dcGit(t *testing.T) {
 		t.Fatalf("kein Beleg für sha1dc: %s %v", out, err)
 	}
 	t.Logf("sha1dc-Beleg: Kollisionsmeldung im git-Binary (%s Treffer)", strings.TrimSpace(out))
+}
+
+// F3 B2, Gegenprobe zum ganzen Lauf oben: mit unserem Profil meldet der
+// Wächter profile "jnpt" und wird bedient.
+func TestB2OwnProfileRegistered(t *testing.T) {
+	out := must(t, "docker", "logs", project+"-script-runner-1")
+	if !strings.Contains(out, "seccomp=2 profile=jnpt usable=true") {
+		t.Fatalf("keine Registrierung mit unserem Profil:\n%s", out)
+	}
+}
+
+// F3 B2: Sandbox mit dem Docker-Standardprofil (unser Profil weggelassen) →
+// Seccomp-Modus 2, aber profile "other" → isolation invalid, keine Werkzeuge,
+// kein Lauf. Unter Docker Desktop beweist das mehr als unconfined.
+func TestB2DockerDefaultProfileFailsClosed(t *testing.T) {
+	if out, err := compose(projectDP, dpFiles, "up", "-d", "--no-deps", "script-runner", "script-runner-sandbox"); err != nil {
+		t.Fatalf("compose up: %v %s", err, out)
+	}
+	defer func() { _, _ = compose(projectDP, dpFiles, "down", "-v", "-t", "1") }()
+	if err := seed(projectDP+"_probe-keys", "runtime-key", runtimeKey+"\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := seed(projectDP+"_probe-keys", "pins.json", pinsJSON()); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(60 * time.Second)
+	var meta string
+	var tools int
+	for time.Now().Before(deadline) {
+		out, _ := run("docker", "logs", projectDP+"-script-runner-1")
+		if res, err := listTools(projectDP); err == nil && strings.Contains(out, "sandbox registered") {
+			b, _ := json.Marshal(res.Meta)
+			meta, tools = string(b), len(res.Tools)
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	logs, _ := run("docker", "logs", projectDP+"-script-runner-1")
+	t.Logf("Registrierung: %s", grepLine(logs, "sandbox registered"))
+	if !strings.Contains(logs, "seccomp=2 profile=other usable=false") {
+		t.Fatalf("Wächter meldet nicht Modus 2 mit fremdem Profil:\n%s", logs)
+	}
+	if !strings.Contains(meta, `"isolation":"invalid"`) || tools != 0 || strings.Contains(meta, `"state":"ready"`) {
+		t.Fatalf("nicht fail-closed: tools=%d %s", tools, meta)
+	}
+	_, m, err := tryCall(projectDP, "quick", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m["end"] != "refused" || m["detail"] != "state" {
+		t.Fatalf("Aufruf: %v/%v", m["end"], m["detail"])
+	}
+	t.Logf("B2: tools/list isolation invalid, 0 Werkzeuge, Aufruf %v/%v", m["end"], m["detail"])
+}
+
+func grepLine(s, needle string) string {
+	for _, l := range strings.Split(s, "\n") {
+		if strings.Contains(l, needle) {
+			return l
+		}
+	}
+	return ""
 }

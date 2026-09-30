@@ -1,0 +1,8 @@
+# Test-Überlagerung NUR für die B2-Sonde (Vertrag Fassung 3): Die Sandbox
+# läuft mit dem Docker-Standardprofil statt mit unserem. Der Wächter sieht
+# Seccomp-Modus 2, aber process_vm_readv erreicht den Kernel — er meldet
+# profile "other", und der vermittler darf nicht bedienen. Nie ausliefern.
+services:
+  script-runner-sandbox:
+    security_opt: !override
+      - no-new-privileges:true

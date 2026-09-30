@@ -568,34 +568,60 @@ func TestM6CanaryNeverInResultOrLog(t *testing.T) {
 	}
 }
 
-// S2 fail-closed: meldet der Wächter seccomp ≠ 2, bedient der vermittler nicht.
-func TestSeccompNot2FailsClosed(t *testing.T) {
-	e := newEnv(t, nil, withBusyWait(300*time.Millisecond))
+// S2 + F3 B2 fail-closed: bedient wird nur bei seccomp 2 UND profile "jnpt".
+// Modus 2 allein beweist nur irgendeinen Filter (Docker-Standard,
+// Docker Desktop mit unconfined).
+func TestSeccompOrProfileFailsClosed(t *testing.T) {
+	tests := []struct {
+		name    string
+		seccomp int
+		profile string
+	}{
+		{"seccomp 0", 0, contract.ProfileJnpt},
+		{"fremdes Profil", 2, contract.ProfileOther},
+		{"Profil fehlt (alter Wächter)", 2, ""},
+		{"unbekannter Wert", 2, "JNPT"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newEnv(t, nil, withBusyWait(300*time.Millisecond))
+			e.writePins(e.quickPin())
+			g := dialGuardProfile(t, e.sock, "i1", tt.seccomp, tt.profile)
+			deadline := time.Now().Add(3 * time.Second)
+			var res *mcp.ListToolsResult
+			for time.Now().Before(deadline) {
+				res = e.listTools()
+				if strings.Contains(mustJSON(res.Meta), `"isolation":"invalid"`) {
+					break
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
+			meta := mustJSON(res.Meta)
+			if !strings.Contains(meta, `"isolation":"invalid"`) || strings.Contains(meta, `"state":"ready"`) {
+				t.Fatalf("nicht fail-closed: %s", meta)
+			}
+			if len(res.Tools) != 0 {
+				t.Fatalf("%d Werkzeuge", len(res.Tools))
+			}
+			if m := runMeta(t, e.mustCall("quick", map[string]any{})); m["end"] != contract.EndRefused || m["detail"] != contract.DetailState {
+				t.Fatalf("Aufruf: %v", m)
+			}
+			_ = g.conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+			if _, err := frame.Read(g.conn, 1<<20); err == nil {
+				t.Fatal("job an eine Sandbox ohne unser Profil")
+			}
+		})
+	}
+}
+
+// Gegenprobe: seccomp 2 und profile "jnpt" → bedient.
+func TestSeccomp2AndProfileJnptServes(t *testing.T) {
+	e := newEnv(t, nil)
 	e.writePins(e.quickPin())
-	g := dialGuard(t, e.sock, "i1", 0)
-	deadline := time.Now().Add(3 * time.Second)
-	var res *mcp.ListToolsResult
-	for time.Now().Before(deadline) {
-		res = e.listTools()
-		if strings.Contains(mustJSON(res.Meta), `"isolation":"invalid"`) {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	if !strings.Contains(mustJSON(res.Meta), `"isolation":"invalid"`) {
-		t.Fatalf("isolation nicht invalid: %s", mustJSON(res.Meta))
-	}
-	if len(res.Tools) != 0 {
-		t.Fatalf("%d Werkzeuge trotz seccomp 0", len(res.Tools))
-	}
-	call := e.mustCall("quick", map[string]any{})
-	if m := runMeta(t, call); m["end"] == contract.EndOK {
-		t.Fatalf("Lauf trotz seccomp 0: %v", m)
-	}
-	_ = g.conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
-	if _, err := frame.Read(g.conn, 1<<20); err == nil {
-		t.Fatal("job an eine Sandbox mit seccomp 0")
-	}
+	done := e.oneRun("i1", func(g *fakeGuard, _ frame.Job) { g.exited(0) })
+	e.waitReady("quick")
+	assertEnd(t, e.mustCall("quick", map[string]any{}), contract.EndOK, "")
+	<-done
 }
 
 func mustJSON(v any) string {

@@ -3,8 +3,11 @@ package frame
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"io"
+	"os"
+	"reflect"
 	"testing"
 )
 
@@ -72,5 +75,26 @@ func TestTypeOfRejectsNonObject(t *testing.T) {
 		if _, err := TypeOf([]byte(in)); err == nil {
 			t.Errorf("TypeOf(%s) ohne Fehler", in)
 		}
+	}
+}
+
+// F3 B2: der Rahmen hello trägt das Profil aus dem Selbsttest. Die Form steht
+// als Golden-Datei neben den Vertragsdateien.
+func TestHelloGolden(t *testing.T) {
+	got, err := json.Marshal(Hello{Type: TypeHello, Instance: "0123456789abcdef0123456789abcdef", Isolation: "gvisor", Seccomp: 2, Profile: "jnpt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile("../../contract/golden/frame_hello.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a, b any
+	_ = json.Unmarshal(got, &a)
+	if err := json.Unmarshal(want, &b); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(a, b) {
+		t.Fatalf("hello = %s, Golden = %s", got, want)
 	}
 }

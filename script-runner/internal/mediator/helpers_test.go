@@ -379,6 +379,12 @@ type fakeGuard struct {
 
 func dialGuard(t *testing.T, sock, instance string, seccomp int) *fakeGuard {
 	t.Helper()
+	return dialGuardProfile(t, sock, instance, seccomp, contract.ProfileJnpt)
+}
+
+// dialGuardProfile meldet zusätzlich das Profil aus dem Selbsttest (F3 B2).
+func dialGuardProfile(t *testing.T, sock, instance string, seccomp int, profile string) *fakeGuard {
+	t.Helper()
 	var conn net.Conn
 	var err error
 	for i := 0; i < 250; i++ {
@@ -393,7 +399,7 @@ func dialGuard(t *testing.T, sock, instance string, seccomp int) *fakeGuard {
 	}
 	g := &fakeGuard{t: t, conn: conn, instance: instance}
 	t.Cleanup(func() { _ = conn.Close() })
-	g.send(frame.Hello{Type: frame.TypeHello, Instance: instance, Isolation: contract.IsolationStandard, Seccomp: seccomp})
+	g.send(frame.Hello{Type: frame.TypeHello, Instance: instance, Isolation: contract.IsolationStandard, Seccomp: seccomp, Profile: profile})
 	return g
 }
 
