@@ -71,7 +71,8 @@ Webhook, keine GUI. Es gibt keinen Weg zurück zum Git-Anbieter außer `fetch`.
 - **Weg C** (plugin-intern): Unix-Socket `/run/script-runner/sandbox.sock`.
   Wächter → vermittler: `hello{instance,isolation,seccomp}`,
   `tool_call{id,name,arguments}`, `output{data}`,
-  `exited{code,signal?,error_type?,error_at?}`. vermittler → Wächter:
+  `exited{code,signal?,error_type?,error_at?}`. `hello` trägt seit Fassung 3
+  `profile` (`jnpt`|`other`, Golden `contract/golden/frame_hello.json`). vermittler → Wächter:
   `job{files:[{path,data_b64}],entry,input}`, `tool_result{id,result}`.
 - **Weg D** (plugin-intern): Volume `/var/lib/script-runner` mit `wanted/<sha>`
   und `repo_url` (schreibt der vermittler), `store.git`, `store.url`,
@@ -124,8 +125,15 @@ und `vendor/` darin (reines Python, R12).
    und `error_at` (nur `<Datei im Pin>:<Zeile>`, sonst weg). Ausgabe nur bei
    `ok`. Der vermittler loggt nur Zählwerte und feste Codes — nie Argumente,
    Ausgabe, Fehlertexte oder git-stderr.
-6. **S2 — fail-closed.** Nur `hello` mit `seccomp: 2` und bekannter Isolation
-   kommt in den Slot; sonst `isolation: invalid`, kein Werkzeug, `/healthz` 503.
+6. **S2 / B2 — fail-closed.** Nur `hello` mit `seccomp: 2` **und**
+   `profile: "jnpt"` und bekannter Isolation kommt in den Slot; sonst
+   `isolation: invalid`, Pins `pending`, kein Werkzeug, `/healthz` 503.
+   `profile` ist der Selbsttest des Wächters vor `hello`:
+   `process_vm_readv(0, NULL, 0, NULL, 0, 0)` → nur **genau EPERM** ergibt
+   `jnpt` (EINVAL = Docker-Standard, der Aufruf erreicht den Kernel; Erfolg
+   oder ENOSYS = kein bzw. fremder Filter). Es ist der eine Syscall, den unser
+   Profil über den Standard hinaus sperrt (Messung S1). Modus 2 allein beweist
+   nur irgendeinen Filter.
 7. **V2 / M7 — der abholer vertraut niemandem.** Jede `wanted/`-Zeile und die
    `repo_url` prüft er selbst (Allowlist), bevor git läuft; git nur mit
    `protocol.allow=never`, `protocol.ssh.allow=always`, `transfer.fsckObjects`,
@@ -134,6 +142,31 @@ und `vendor/` darin (reines Python, R12).
    (Wächter `TestNoPushPathInSource`). Der Deploy-Key hängt nur im abholer.
 9. **Compose ist Vertrag §6.** `internal/hygiene` prüft jede Zeile samt
    Negativproben; eine Änderung dort ist eine Vertragsfrage.
+
+## Ratifizierte Auslegungen (Vertrag Fassung 3)
+
+Diese Auslegungen aus dem Bau von P2 hat LEAD in Fassung 3 bestätigt —
+**ratifiziert (F3)**, damit Vertrag:
+
+- `isolation: invalid` → sonst bereite Pins werden als `pending` gemeldet
+  (§5 „kein Pin ready“; das Gateway registriert nach §2(a) nichts). —
+  ratifiziert (F3)
+- `error_at` = `<pin-pfad>/<datei>:<zeile>`, relativ zum Repository. —
+  ratifiziert (F3)
+- Lauf-Token oder Lauf-ID fehlen oder sind falsch geformt → JSON-RPC-Fehler
+  (Protokollverstoß). — ratifiziert (F3)
+- `pins.json`: ungültiger Name oder Commit → `manifest_invalid`, ungültiger
+  Pfad → `bad_path`. — ratifiziert (F3)
+- Grenze v1: gepinnter Ordner ≤ 4 MiB und ≤ 1000 Dateien, sonst
+  `manifest_invalid`. — ratifiziert (F3)
+- OOM = SIGKILL, das nicht vom Wächter kam → `limit/memory`. — ratifiziert (F3)
+- Fork-Bombe: runc → EAGAIN (`error/exception`, `BlockingIOError`), runsc →
+  `limit/sandbox_lost`; beides zulässig. — ratifiziert (F3)
+- `tools/list` trägt die Cache-Felder des SDK (`ttlMs`, `cacheScope`), das SDK
+  setzt `resultType` und die Server-Info in `_meta`; P3 ignoriert sie im
+  Abgleich wie der Draht-Test hier. — ratifiziert (F3)
+- `/healthz` auf `0.0.0.0:8091` im Container, Host nur `127.0.0.1` — von SEC
+  als Grenze angenommen (F3, SEC 5911712051).
 
 ## Bewusste Design-Entscheidungen
 
@@ -155,9 +188,11 @@ und `vendor/` darin (reines Python, R12).
 - **`error_at` repo-relativ** (`<pin-pfad>/<datei>:<zeile>`), damit die KI die
   Stelle im Repository direkt findet.
 - **Health-Port 8091 im Container auf allen Adressen, auf dem Host nur
-  Loopback** (Muster Tunnel-Client). Der Aktuator braucht eine Host-URL; aus
-  `jnpt_default` ist `/healthz` damit ebenfalls erreichbar — es verrät nur
-  „bereit/nicht bereit“.
+  Loopback** (Muster Tunnel-Client). Der Aktuator braucht eine Host-URL.
+  **Grenze (von SEC angenommen, F3):** Aus `jnpt_default` ist `/healthz`
+  erreichbar und verrät nur bereit/nicht bereit — Antwort ausschließlich
+  `ok` (200) oder `not ready` (503), jeder andere Pfad 404 (Test
+  `TestHealthBodiesAndOtherPaths404`).
 - **Nutzer 65532 für vermittler und abholer:** Die Plugin-Ordner auf dem Host
   gehören 65532 mit 0750; `cap_drop: ALL` nimmt root die Leserechte. Die
   Sandbox läuft als 65533.
@@ -168,14 +203,23 @@ und `vendor/` darin (reines Python, R12).
 ## Stolperfallen (aus der Messung P0 und dieser Umsetzung)
 
 - **S2:** runsc ignoriert das Seccomp-Profil ohne `--oci-seccomp` (Modus 0).
-- **runsc braucht `--host-uds=open`** (gemessen hier, P2): Ohne das Flag
-  verweigert gVisor die Verbindung zu einem Unix-Socket, den ein Prozess
-  außerhalb der Sandbox angelegt hat (`ECONNREFUSED`) — die Sandbox kommt nie
-  in den Slot. Vertrag §6 nennt nur `--oci-seccomp`; Änderung ist gemeldet.
+- **runsc braucht `--host-uds=open`** (gemessen in P2, Vertrag F3 B1): Ohne
+  das Flag verweigert gVisor die Verbindung zu einem Unix-Socket, den ein
+  Prozess außerhalb der Sandbox angelegt hat (`ECONNREFUSED`) — die Sandbox
+  kommt nie in den Slot. `open`, nicht `all`: nur Öffnen eingehängter Sockets,
+  kein Anlegen; die Grenze ist die Mount-Liste (R9-Sonde: nur die erwarteten
+  Mounts; `/run/script-runner` enthält genau `sandbox.sock`).
+- **Eigener Runtime-Name `runsc-jnpt`** (SEC-Bedingung zu B1):
+  `runtimeArgs` gelten für jeden Container, der den Runtime-Namen nutzt. Ein
+  eigener Eintrag `runsc-jnpt` mit `["--oci-seccomp", "--host-uds=open"]`
+  (`deploy/daemon.json.example`), `JNPT_SCRIPT_RUNNER_RUNTIME=runsc-jnpt`; ein
+  vorhandenes `runsc` des Betreibers bleibt unberührt. Wächter:
+  `TestDaemonJSONExample`, `TestDocsUseOwnRuntimeName`.
 - **Seccomp 2 ist unter Docker Desktop kein Beweis für das eigene Profil:**
   Dort meldet auch `seccomp=unconfined` Modus 2 (der Container erbt einen
-  Filter der VM). Unter runc auf einem normalen Host und unter runsc ist
-  unconfined = 0.
+  Filter der VM); unter runsc ist unconfined = 0. Deshalb der
+  Profil-Selbsttest (B2); die Sonden prüfen Standardprofil und unconfined →
+  `invalid`, unser Profil → bedient.
 - **G1:** gVisor verbraucht selbst Host-PIDs; eine Fork-Bombe endet dort als
   `limit/sandbox_lost`, unter runc als EAGAIN (`error/exception`,
   `BlockingIOError`). Deckel 128.

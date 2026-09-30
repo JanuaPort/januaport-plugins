@@ -17,7 +17,7 @@ ENV_FILE=/opt/jnpt/plugins/script-runner/.env
 ENV_KEY=JNPT_SCRIPT_RUNNER_IMAGE
 
 # 200 erst, wenn der runtime-key da ist und eine Sandbox mit Seccomp-Modus 2
-# sich gemeldet hat. Eine falsch registrierte runsc-Runtime fällt so schon
+# sich gemeldet hat. Eine falsch registrierte Runtime (runsc-jnpt) fällt so schon
 # beim Hochfahren auf.
 HEALTH_URL=http://127.0.0.1:8091/healthz
 

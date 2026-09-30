@@ -52,10 +52,12 @@ Die Werte sind Grenzen dieser Fassung, keine Zusagen.
 | Sprache | Python 3.12 mit Standardbibliothek; reines Python unter `vendor/` im Skriptordner; **kein pip**, keine kompilierten Erweiterungen |
 | Git | nur ssh; ein Repository je Anlage |
 
-**Isolation:** Wo gVisor (`runsc`) eingerichtet ist, läuft die Sandbox darin;
-sonst unter runc mit der Härtung oben und geteiltem Kernel. Welche Isolation
-aktiv ist, zeigt JanuaPort an. Meldet die Sandbox keinen aktiven
-Seccomp-Filter, bedient der Läufer nicht.
+**Isolation:** Wo gVisor (Runtime `runsc-jnpt`) eingerichtet ist, läuft die
+Sandbox darin; sonst unter runc mit der Härtung oben und geteiltem Kernel.
+Welche Isolation aktiv ist, zeigt JanuaPort an. Vor jeder Anmeldung prüft die
+Sandbox selbst, dass genau **unser** Seccomp-Profil greift (ein gesperrter
+Syscall muss mit EPERM abgewiesen werden). Greift ein anderes oder gar kein
+Profil, bedient der Läufer nicht.
 
 ## Ein Skript anlegen
 
@@ -93,19 +95,28 @@ strukturiert.
   `JNPT_SCRIPT_RUNNER_IMAGE`. Start mit
   `docker compose -f /opt/jnpt/plugins/script-runner/docker-compose.yml up -d`.
 - **Umgebung:** `JNPT_SCRIPT_RUNNER_IMAGE` (Pflicht), `JNPT_SCRIPT_RUNNER_RUNTIME`
-  (Standard `runc`, mit gVisor `runsc`), `JNPT_GATEWAY_URL` (Standard
+  (Standard `runc`, mit gVisor `runsc-jnpt`), `JNPT_GATEWAY_URL` (Standard
   `http://jnpt:8484`).
 - **Schlüssel:** JanuaPort legt sie selbst ab — `runtime-key` und `pins.json` in
   `/run/jnpt/plugins/script-runner/`, den Deploy-Key in
   `/run/jnpt/plugins/script-runner-git/`. Die Ordner entstehen über
   systemd-tmpfiles; Beispiel: `deploy/jnpt-plugins-script-runner.conf.example`.
   Ein Schlüsselwechsel braucht keinen Neustart.
-- **gVisor:** in `/etc/docker/daemon.json` als Runtime `runsc` mit
-  `"runtimeArgs": ["--oci-seccomp", "--host-uds=open"]`. Ohne `--oci-seccomp`
-  greift das Profil nicht (der Läufer bedient dann nicht); ohne
-  `--host-uds=open` erreicht die Sandbox den Läufer nicht.
+- **gVisor:** in `/etc/docker/daemon.json` ein **eigener** Runtime-Eintrag
+  `runsc-jnpt` mit `"runtimeArgs": ["--oci-seccomp", "--host-uds=open"]`
+  (Vorlage: `deploy/daemon.json.example`) und `JNPT_SCRIPT_RUNNER_RUNTIME=runsc-jnpt`
+  in der `.env`. Ein eigener Name, weil `runtimeArgs` für jeden Container
+  gelten, der den Namen nutzt — ein vorhandenes `runsc` des Betreibers bleibt
+  so unberührt. Ohne `--oci-seccomp` greift das Profil nicht (der Läufer
+  bedient dann nicht); ohne `--host-uds=open` erreicht die Sandbox den Läufer
+  nicht. `open` (nicht `all`) erlaubt nur das Öffnen von Unix-Sockets, die in
+  die Sandbox eingehängt sind, kein Anlegen; eingehängt ist nur der
+  Socket-Ordner des Läufers, read-only — die Grenze ist die Mount-Liste.
 - **Gesundheit:** `curl -s http://127.0.0.1:8091/healthz` → `ok`, sobald der
-  Schlüssel da ist und sich eine Sandbox mit Seccomp gemeldet hat.
+  Schlüssel da ist und sich eine Sandbox mit unserem Profil gemeldet hat, sonst
+  `not ready` (503); jeder andere Pfad 404. Auf dem Host nur Loopback; aus dem
+  Netz `jnpt_default` ist der Port ebenfalls erreichbar und verrät dort nur
+  bereit/nicht bereit.
 - **Deploy-Key:** nur Leserecht auf das eine Skript-Repository. Der Läufer hat
   keinen Weg, zu schreiben.
 

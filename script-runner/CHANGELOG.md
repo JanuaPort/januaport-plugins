@@ -2,6 +2,22 @@
 
 ## Unveröffentlicht (JanuaPort/januaport#928, P2)
 
+### Nachzug Vertrag Fassung 3 (B1, B2, SEC-Auflagen)
+
+- **B2:** Der Wächter prüft vor `hello` selbst, dass unser Seccomp-Profil
+  greift (`process_vm_readv` → genau EPERM), und meldet `"profile": "jnpt"`
+  oder `"other"`. Der vermittler bedient nur bei Seccomp-Modus 2 **und**
+  `profile: "jnpt"`; sonst `isolation: invalid`. Sonden: Docker-Standardprofil
+  und `unconfined` → invalid, unser Profil → bedient.
+- **B1:** gVisor als eigener Runtime-Eintrag `runsc-jnpt` mit
+  `runtimeArgs: ["--oci-seccomp", "--host-uds=open"]`
+  (`deploy/daemon.json.example`, `JNPT_SCRIPT_RUNNER_RUNTIME=runsc-jnpt`);
+  Rezept der runsc-Sonde in `probe/run-runsc.sh`.
+- `/healthz`: nur `ok`/`not ready`, jeder andere Pfad 404; Grenze in
+  `CLAUDE.md` benannt. Ratifizierte Auslegungen in `CLAUDE.md` markiert.
+
+### Erste Fassung
+
 Erste Fassung, **im Bau**; noch nicht auf einer Anlage gelaufen, kein
 Katalogeintrag, kein veröffentlichtes Image.
 

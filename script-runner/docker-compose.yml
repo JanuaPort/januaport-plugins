@@ -61,9 +61,11 @@ services:
     memswap_limit: 512m
     cpus: 1
     user: "65533:65533"
-    # Auf Anlagen mit gVisor: runsc, in daemon.json mit
-    # runtimeArgs ["--oci-seccomp"] registriert — sonst ignoriert runsc das
-    # Seccomp-Profil, und der vermittler bedient nicht (Befund S2).
+    # Auf Anlagen mit gVisor: runsc-jnpt, ein EIGENER Runtime-Eintrag in
+    # daemon.json mit runtimeArgs ["--oci-seccomp", "--host-uds=open"]
+    # (deploy/daemon.json.example, Vertrag F3 B1). Ohne --oci-seccomp greift
+    # das Profil nicht und der vermittler bedient nicht (S2/B2); ohne
+    # --host-uds=open erreicht die Sandbox den Socket nicht.
     runtime: ${JNPT_SCRIPT_RUNNER_RUNTIME:-runc}
     # Genau ein Lauf je Instanz; der Wächter endet danach, Docker startet
     # DENSELBEN Container neu — mit leerem tmpfs (M3).
