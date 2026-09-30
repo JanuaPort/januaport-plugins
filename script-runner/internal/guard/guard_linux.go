@@ -18,6 +18,9 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"golang.org/x/sys/unix"
+
+	"github.com/januaport/januaport-plugins/script-runner/internal/contract"
 	"github.com/januaport/januaport-plugins/script-runner/internal/frame"
 )
 
@@ -36,7 +39,7 @@ func Run(cfg Config) int {
 		fmt.Fprintln(os.Stderr, "guard: nicht PID 1")
 		return 1
 	}
-	hello := frame.Hello{Type: frame.TypeHello, Instance: newInstanceID(), Isolation: unameIsolation(), Seccomp: selfSeccomp()}
+	hello := frame.Hello{Type: frame.TypeHello, Instance: newInstanceID(), Isolation: unameIsolation(), Seccomp: selfSeccomp(), Profile: selfProfile()}
 	conn, job := waitForJob(cfg.SocketPath, hello)
 	r := &runState{conn: conn}
 	r.run(cfg, job)
@@ -63,6 +66,22 @@ func utsString(b []int8) string {
 		out = append(out, byte(c))
 	}
 	return string(out)
+}
+
+// selfProfile ist der Profil-Selbsttest (Vertrag Fassung 3, B2):
+// process_vm_readv ist der eine Syscall, den unser Profil über den
+// Docker-Standard hinaus sperrt. Unter dem Standardprofil erreicht er den
+// Kernel (EINVAL), ohne Filter ebenso; nur unser Profil antwortet mit EPERM.
+func selfProfile() string {
+	_, _, errno := syscall.RawSyscall6(unix.SYS_PROCESS_VM_READV, 0, 0, 0, 0, 0, 0)
+	return profileFromErrno(errno)
+}
+
+func profileFromErrno(errno syscall.Errno) string {
+	if errno == syscall.EPERM {
+		return contract.ProfileJnpt
+	}
+	return contract.ProfileOther
 }
 
 func selfSeccomp() int {

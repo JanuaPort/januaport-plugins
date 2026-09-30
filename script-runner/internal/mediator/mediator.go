@@ -110,10 +110,11 @@ func (m *Mediator) pollLoop(ctx context.Context) {
 	}
 }
 
-// onHello übernimmt die Selbstauskunft einer frischen Instanz. Nur
-// Seccomp-Modus 2 macht sie nutzbar (S2, fail-closed).
-func (m *Mediator) onHello(isolation string, seccomp int) bool {
-	ok := seccomp == 2 && (isolation == contract.IsolationGVisor || isolation == contract.IsolationStandard)
+// onHello übernimmt die Selbstauskunft einer frischen Instanz. Nutzbar ist
+// sie nur mit Seccomp-Modus 2 UND unserem Profil (S2, Fassung 3 B2,
+// fail-closed).
+func (m *Mediator) onHello(isolation string, seccomp int, profile string) bool {
+	ok := seccomp == 2 && profile == contract.ProfileJnpt && (isolation == contract.IsolationGVisor || isolation == contract.IsolationStandard)
 	m.mu.Lock()
 	if ok {
 		m.isolation = isolation

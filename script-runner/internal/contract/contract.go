@@ -68,6 +68,14 @@ const (
 	IsolationInvalid  = "invalid"
 )
 
+// Ergebnis des Profil-Selbsttests im hello (Fassung 3, B2). Nur "jnpt"
+// belegt, dass UNSER Seccomp-Profil aktiv ist; Modus 2 allein belegt nur
+// irgendeinen Filter.
+const (
+	ProfileJnpt  = "jnpt"
+	ProfileOther = "other"
+)
+
 // Zustände und Gründe eines Pins (Vertrag §2).
 const (
 	StatePending = "pending"

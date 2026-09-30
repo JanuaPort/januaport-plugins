@@ -36,12 +36,14 @@ const (
 	TypeError      = "error"
 )
 
-// Hello meldet eine frische Sandbox-Instanz (Vertrag §5, V1).
+// Hello meldet eine frische Sandbox-Instanz (Vertrag §5, V1). Profile ist
+// das Ergebnis des Profil-Selbsttests (Fassung 3, B2): "jnpt" oder "other".
 type Hello struct {
 	Type      string `json:"type"`
 	Instance  string `json:"instance"`
 	Isolation string `json:"isolation"`
 	Seccomp   int    `json:"seccomp"`
+	Profile   string `json:"profile"`
 }
 
 // File ist eine Datei des gepinnten Baums, Pfad relativ zum Pin-Ordner.

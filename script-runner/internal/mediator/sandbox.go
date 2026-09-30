@@ -20,11 +20,11 @@ type sandboxes struct {
 	mu      sync.Mutex
 	current *sbConn
 	idle    chan *sbConn
-	onHello func(isolation string, seccomp int) bool
+	onHello func(isolation string, seccomp int, profile string) bool
 	log     *slog.Logger
 }
 
-func newSandboxes(onHello func(string, int) bool, log *slog.Logger) *sandboxes {
+func newSandboxes(onHello func(string, int, string) bool, log *slog.Logger) *sandboxes {
 	return &sandboxes{idle: make(chan *sbConn, 1), onHello: onHello, log: log}
 }
 
@@ -114,12 +114,17 @@ func (s *sandboxes) handshake(sc *sbConn) bool {
 	if json.Unmarshal(payload, &h) != nil || h.Type != frame.TypeHello {
 		return false
 	}
-	usable := s.onHello(h.Isolation, h.Seccomp)
+	usable := s.onHello(h.Isolation, h.Seccomp, h.Profile)
 	instance := h.Instance
 	if !instanceRe.MatchString(instance) {
 		instance = "unlesbar"
 	}
-	s.log.Info("sandbox registered", "instance", instance, "isolation", h.Isolation, "seccomp", h.Seccomp, "usable", usable)
+	profile := h.Profile
+	if profile != "jnpt" {
+		profile = "other"
+	}
+	s.log.Info("sandbox registered", "instance", instance, "isolation", h.Isolation, "seccomp", h.Seccomp,
+		"profile", profile, "usable", usable)
 	if !usable {
 		// Die Instanz bleibt verbunden, bekommt aber nie einen job (S2).
 		return true
