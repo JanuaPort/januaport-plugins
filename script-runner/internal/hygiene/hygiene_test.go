@@ -94,6 +94,9 @@ func TestSeccompProfile(t *testing.T) {
 	if first.Action != "SCMP_ACT_ERRNO" || first.ErrnoRet == nil || *first.ErrnoRet != 1 {
 		t.Fatalf("erste Regel ist keine EPERM-Sperre: %+v", first)
 	}
+	if len(DeniedSyscalls) != 17 {
+		t.Fatalf("SEC-Liste hat %d Einträge, want 17", len(DeniedSyscalls))
+	}
 	deny := map[string]bool{}
 	for _, n := range first.Names {
 		deny[n] = true
@@ -135,5 +138,60 @@ func TestDockerfile(t *testing.T) {
 	}
 	if strings.Contains(s, "pip install") {
 		t.Error("pip install im Dockerfile")
+	}
+}
+
+// SEC-Bedingung zu F3 B1: eigener Runtime-Name. runtimeArgs gelten für jeden
+// Container, der den Namen nutzt; ein bestehendes „runsc“ des Betreibers
+// bleibt unberührt.
+func TestDaemonJSONExample(t *testing.T) {
+	b, err := os.ReadFile("../../deploy/daemon.json.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var d struct {
+		Runtimes map[string]struct {
+			Path        string   `json:"path"`
+			RuntimeArgs []string `json:"runtimeArgs"`
+		} `json:"runtimes"`
+	}
+	if err := json.Unmarshal(b, &d); err != nil {
+		t.Fatal(err)
+	}
+	if len(d.Runtimes) != 1 {
+		t.Fatalf("genau eine Runtime erwartet, %d", len(d.Runtimes))
+	}
+	r, ok := d.Runtimes["runsc-jnpt"]
+	if !ok || r.Path == "" {
+		t.Fatalf("Runtime runsc-jnpt fehlt: %+v", d.Runtimes)
+	}
+	if strings.Join(r.RuntimeArgs, " ") != "--oci-seccomp --host-uds=open" {
+		t.Fatalf("runtimeArgs = %v", r.RuntimeArgs)
+	}
+}
+
+// Kein Text setzt JNPT_SCRIPT_RUNNER_RUNTIME auf „runsc“ oder legt einen
+// daemon.json-Eintrag „runsc“ an; README und CLAUDE.md nennen runsc-jnpt,
+// --host-uds=open (nicht all) und --oci-seccomp.
+func TestDocsUseOwnRuntimeName(t *testing.T) {
+	bad := regexp.MustCompile(`JNPT_SCRIPT_RUNNER_RUNTIME[=:]\s*"?runsc([^-]|$)|--runtime[ =]runsc([^-]|$)|"runsc"\s*:|host-uds=all`)
+	files := []string{"../../README.md", "../../CLAUDE.md", "../../docker-compose.yml",
+		"../../deploy/daemon.json.example", "../../probe/run-runsc.sh"}
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m := bad.Find(b); m != nil {
+			t.Errorf("%s: %q", f, m)
+		}
+	}
+	for _, f := range []string{"../../README.md", "../../CLAUDE.md"} {
+		b, _ := os.ReadFile(f)
+		for _, want := range []string{"runsc-jnpt", "--host-uds=open", "--oci-seccomp"} {
+			if !strings.Contains(string(b), want) {
+				t.Errorf("%s nennt %q nicht", f, want)
+			}
+		}
 	}
 }

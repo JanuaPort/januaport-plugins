@@ -1,0 +1,10 @@
+# Test-Überlagerung NUR für die B2-Sonde (SEC-Gate zu Fassung 3): Sandbox
+# ganz ohne Seccomp. Unter runc auf Docker Desktop meldet der Kernel trotzdem
+# Modus 2 (geerbter Filter), unter runsc Modus 0 — in beiden Fällen meldet der
+# Wächter profile "other", und der vermittler darf nicht bedienen. Nie
+# ausliefern.
+services:
+  script-runner-sandbox:
+    security_opt: !override
+      - no-new-privileges:true
+      - seccomp=unconfined

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -589,9 +590,11 @@ func TestSeccompOrProfileFailsClosed(t *testing.T) {
 			g := dialGuardProfile(t, e.sock, "i1", tt.seccomp, tt.profile)
 			deadline := time.Now().Add(3 * time.Second)
 			var res *mcp.ListToolsResult
+			// isolation ist vor dem ersten hello ohnehin invalid: warten, bis die
+			// Registrierung verarbeitet und die Pins geladen sind.
 			for time.Now().Before(deadline) {
 				res = e.listTools()
-				if strings.Contains(mustJSON(res.Meta), `"isolation":"invalid"`) {
+				if strings.Contains(e.logs.String(), "sandbox registered") && strings.Contains(mustJSON(res.Meta), `"name":"quick"`) {
 					break
 				}
 				time.Sleep(20 * time.Millisecond)
@@ -683,4 +686,41 @@ func TestSymlinkPinInvalidAndRefused(t *testing.T) {
 		t.Fatalf("broken nicht als symlink gemeldet: %s", mustJSON(e.listTools().Meta))
 	}
 	assertEnd(t, e.mustCall("broken", map[string]any{}), contract.EndRefused, contract.DetailState)
+}
+
+// SEC zu /healthz: nur dieser Pfad, nur „ok“ oder „not ready“. Alles andere
+// 404 — der Listener verrät nichts außer bereit/nicht bereit.
+func TestHealthBodiesAndOtherPaths404(t *testing.T) {
+	e := newEnv(t, nil)
+	hs := httptest.NewServer(e.m.HealthHandler())
+	defer hs.Close()
+	get := func(path string) (int, string) {
+		resp, err := http.Get(hs.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(b)
+	}
+	if code, body := get("/healthz"); code != http.StatusServiceUnavailable || body != "not ready\n" {
+		t.Fatalf("ohne Sandbox: %d %q", code, body)
+	}
+	_ = dialGuard(t, e.sock, "i1", 2)
+	deadline := time.Now().Add(3 * time.Second)
+	code, body := 0, ""
+	for time.Now().Before(deadline) {
+		if code, body = get("/healthz"); code == http.StatusOK {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if code != http.StatusOK || body != "ok\n" {
+		t.Fatalf("bereit: %d %q", code, body)
+	}
+	for _, p := range []string{"/", "/healthz/", "/healthz/x", "/mcp", "/metrics", "/debug/pprof/"} {
+		if code, _ := get(p); code != http.StatusNotFound {
+			t.Errorf("%s: %d, want 404", p, code)
+		}
+	}
 }
