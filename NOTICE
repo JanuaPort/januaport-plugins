@@ -3,3 +3,11 @@ Copyright 2026 JanuaPort GmbH
 
 This product includes software developed by
 JanuaPort GmbH (https://januaport.ai/).
+
+script-runner/seccomp/moby-default.json is the default seccomp profile of the
+Moby project (https://github.com/moby/profiles, seccomp/default.json at commit
+a21872828a8e5745d79e2fc1a07ee6dad8aedffa), Copyright The Moby Authors,
+licensed under the Apache License 2.0. script-runner/seccomp/
+jnpt-sandbox-seccomp.json is derived from it by script-runner/seccomp/derive.py
+(changes: the syscalls of a deny list are removed from the allow rules, and an
+explicit deny rule is prepended).
