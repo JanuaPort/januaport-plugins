@@ -1,0 +1,18 @@
+{
+  "_meta": {
+    "januaport.ai/run": {
+      "end": "limit",
+      "detail": "frame",
+      "bytes_out": 0,
+      "tool_calls": 0,
+      "isolation": "gvisor"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "Das Skript hat eine zu große Nachricht gesendet."
+    }
+  ],
+  "isError": true
+}

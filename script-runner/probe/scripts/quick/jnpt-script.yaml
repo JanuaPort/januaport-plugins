@@ -1,0 +1,7 @@
+name: quick
+description: Sonde quick (JanuaPort/januaport#928).
+entry: main.py
+input_schema:
+  type: object
+tools: []
+timeout_s: 5

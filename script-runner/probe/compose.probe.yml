@@ -1,0 +1,24 @@
+# Test-Überlagerung für die Docker-Sonden (probe/run.sh). NICHT ausliefern.
+#
+# Ersetzt nur, was auf einem Testrechner nicht existiert: das Netz des
+# Gateways (p2-928-mcp statt jnpt_default), die Host-Ordner unter
+# /run/jnpt/plugins (Volumes statt tmpfs des Hosts) und den Health-Port auf
+# dem Host (entfällt, damit nichts mit anderen Diensten kollidiert). Alles
+# andere — Härtung, Sandbox, Profil — kommt unverändert aus docker-compose.yml.
+services:
+  script-runner:
+    volumes:
+      - probe-keys:/run/jnpt/plugins/script-runner:ro
+    ports: !reset []
+  script-runner-fetcher:
+    volumes:
+      - probe-gitkey:/run/jnpt/plugins/script-runner-git:ro
+
+volumes:
+  probe-keys: {}
+  probe-gitkey: {}
+
+networks:
+  default:
+    external: true
+    name: p2-928-mcp

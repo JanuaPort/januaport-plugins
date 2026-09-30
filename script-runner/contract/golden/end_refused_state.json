@@ -1,0 +1,18 @@
+{
+  "_meta": {
+    "januaport.ai/run": {
+      "end": "refused",
+      "detail": "state",
+      "bytes_out": 0,
+      "tool_calls": 0,
+      "isolation": "gvisor"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "Dieses Skript ist nicht ausführbereit."
+    }
+  ],
+  "isError": true
+}

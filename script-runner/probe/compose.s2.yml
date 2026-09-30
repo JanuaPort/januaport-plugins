@@ -1,0 +1,9 @@
+# Test-Überlagerung NUR für die S2-Sonde (fail-closed): Die Sandbox läuft
+# absichtlich ohne Seccomp, der Wächter meldet deshalb 0, und der vermittler
+# darf nicht bedienen. Diese Datei verletzt die Compose-Hygiene mit Absicht
+# und wird nie ausgeliefert.
+services:
+  script-runner-sandbox:
+    security_opt: !override
+      - no-new-privileges:true
+      - seccomp=unconfined

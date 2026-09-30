@@ -1,0 +1,18 @@
+{
+  "_meta": {
+    "januaport.ai/run": {
+      "end": "limit",
+      "detail": "tool_calls",
+      "bytes_out": 0,
+      "tool_calls": 50,
+      "isolation": "gvisor"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "Das Skript hat mehr als 50 Werkzeugaufrufe versucht."
+    }
+  ],
+  "isError": true
+}

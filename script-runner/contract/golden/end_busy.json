@@ -1,0 +1,17 @@
+{
+  "_meta": {
+    "januaport.ai/run": {
+      "end": "busy",
+      "bytes_out": 0,
+      "tool_calls": 0,
+      "isolation": "gvisor"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "Der Skript-Läufer ist gerade belegt. In etwa 10 Sekunden erneut versuchen."
+    }
+  ],
+  "isError": true
+}

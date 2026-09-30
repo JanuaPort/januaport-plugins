@@ -1,0 +1,52 @@
+{
+  "_meta": {
+    "januaport.ai/runner": {
+      "contract": 1,
+      "isolation": "gvisor",
+      "pins": [
+        {
+          "name": "invoice_check",
+          "commit": "3333333333333333333333333333333333333333",
+          "state": "ready"
+        },
+        {
+          "name": "waiting",
+          "commit": "5555555555555555555555555555555555555555555555555555555555555555",
+          "state": "pending"
+        },
+        {
+          "name": "broken",
+          "commit": "6666666666666666666666666666666666666666",
+          "state": "invalid",
+          "reason": "symlink"
+        }
+      ]
+    }
+  },
+  "tools": [
+    {
+      "_meta": {
+        "januaport.ai/script": {
+          "commit": "3333333333333333333333333333333333333333",
+          "path": "invoice-check",
+          "declared_tools": [
+            "kartei_find",
+            "memory_append"
+          ],
+          "timeout_s": 20,
+          "manifest_sha": "4444444444444444444444444444444444444444"
+        }
+      },
+      "name": "invoice_check",
+      "description": "Prüft offene Rechnungen gegen die Kartei.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  ]
+}
