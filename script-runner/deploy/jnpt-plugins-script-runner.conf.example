@@ -1,0 +1,18 @@
+# BEISPIEL — systemd-tmpfiles-Zeilen für den Skript-Läufer
+# (JanuaPort/januaport#928). Die verbindliche Fassung liefert die
+# Auslieferung (P4) mit JanuaPort aus; diese Datei zeigt nur die Form.
+#
+# Ablage auf der Anlage: als zusätzliche Zeilen in
+# /etc/tmpfiles.d/jnpt-plugins.conf, danach
+#   systemd-tmpfiles --create /etc/tmpfiles.d/jnpt-plugins.conf
+#
+# Jeder Ordner unter /run/jnpt/plugins lässt im Gateway eine Schlüssel-Stelle
+# erscheinen (plugin-<name>); das Gateway schreibt dort runtime-key hinein.
+#   script-runner      runtime-key (Weg A, R13) und pins.json — nur der
+#                      vermittler hängt ihn ein
+#   script-runner-git  runtime-key = der Deploy-Key (nur Lesen) — nur der
+#                      abholer hängt ihn ein (R8)
+# Beide Dienste lesen ihre Datei bei jedem Abgleich neu; ein Neustart nach
+# einem Schlüsselwechsel ist nicht nötig.
+d /run/jnpt/plugins/script-runner 0750 65532 65532 -
+d /run/jnpt/plugins/script-runner-git 0750 65532 65532 -

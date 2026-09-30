@@ -37,7 +37,7 @@ func TestComposeMutationsAreCaught(t *testing.T) {
 	}{
 		{"seccomp unconfined", "seccomp=./seccomp/jnpt-sandbox-seccomp.json", "seccomp=unconfined"},
 		{"apparmor unconfined", "      - no-new-privileges:true\n      - seccomp=", "      - no-new-privileges:true\n      - apparmor=unconfined\n      - seccomp="},
-		{"no-new-privileges fehlt am mediator", "# mediator-security\n    security_opt:\n      - no-new-privileges:true", "# mediator-security\n    security_opt:\n      - label=type:x"},
+		{"no-new-privileges fehlt am mediator", "    command: [\"mediator\"]\n    security_opt:\n      - no-new-privileges:true", "    command: [\"mediator\"]\n    security_opt:\n      - label=type:x"},
 		{"privileged", "    read_only: true\n", "    read_only: true\n    privileged: true\n"},
 		{"cap_add", "    cap_drop: [ALL]\n", "    cap_drop: [ALL]\n    cap_add: [SYS_ADMIN]\n"},
 		{"docker.sock", "      - sockets:/run/script-runner:ro\n", "      - sockets:/run/script-runner:ro\n      - /var/run/docker.sock:/var/run/docker.sock\n"},

@@ -15,9 +15,9 @@ src=$(cd "$here" && (pwd -W 2>/dev/null || pwd))
 export MSYS_NO_PATHCONV=1
 
 img=p2-928-script-runner:test
-docker build -q -t "$img" "$here" >/dev/null
-docker build -q -t p2-928-sshd:test "$here/probe/sshd" >/dev/null
-docker build -q -t p2-928-probe-runner:test -f "$here/probe/runner.Dockerfile" "$here/probe" >/dev/null
+docker build -q -t "$img" "$src" >/dev/null
+docker build -q -t p2-928-sshd:test "$src/probe/sshd" >/dev/null
+docker build -q -t p2-928-probe-runner:test -f "$src/probe/runner.Dockerfile" "$src/probe" >/dev/null
 docker network create p2-928-mcp >/dev/null 2>&1 || true
 
 rc=0

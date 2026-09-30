@@ -157,7 +157,7 @@ func TestToolsListGolden(t *testing.T) {
 
 func TestToolsListInvalidIsolationListsNoTool(t *testing.T) {
 	listed := []ListedPin{{Name: "a", Commit: strings.Repeat("3", 40), State: StateReady,
-		Script: &ScriptMeta{Path: "a", TimeoutS: 1, ManifestSHA: strings.Repeat("4", 40)},
+		Script:      &ScriptMeta{Path: "a", TimeoutS: 1, ManifestSHA: strings.Repeat("4", 40)},
 		InputSchema: map[string]any{"type": "object"}}}
 	res := ToolsList(listed, IsolationInvalid)
 	if len(res.Tools) != 0 {

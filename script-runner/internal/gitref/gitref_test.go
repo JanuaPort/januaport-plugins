@@ -17,13 +17,13 @@ func TestValidCommit(t *testing.T) {
 		{strings.Repeat("a", 41), false},
 		{strings.Repeat("a", 39), false},
 		{strings.Repeat("a", 63), false},
-		{"abc1234", false},             // kurzer Hash
-		{"main", false},                // Branch-Name
-		{"refs/heads/main", false},     // voller Ref
-		{"--upload-pack=x", false},     // Option
-		{"-oProxyCommand=x", false},    // Option
+		{"abc1234", false},              // kurzer Hash
+		{"main", false},                 // Branch-Name
+		{"refs/heads/main", false},      // voller Ref
+		{"--upload-pack=x", false},      // Option
+		{"-oProxyCommand=x", false},     // Option
 		{strings.ToUpper(hex40), false}, // nur Kleinbuchstaben, wie git sie schreibt
-		{hex40 + "\n", false},          // Zeilenumbruch
+		{hex40 + "\n", false},           // Zeilenumbruch
 		{hex40[:20] + "\n" + hex40[:19], false},
 		{"", false},
 	}

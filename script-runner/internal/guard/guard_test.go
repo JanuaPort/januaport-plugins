@@ -31,15 +31,15 @@ func TestParseSeccomp(t *testing.T) {
 }
 
 func TestIsolationFromRelease(t *testing.T) {
-	tests := []struct{ release, version, want string }{
-		{"5.15.167.4-microsoft-standard-WSL2", "#1 SMP", "standard"},
-		{"6.8.0-45-generic", "#45-Ubuntu SMP", "standard"},
-		{"4.4.0-gvisor", "#1 SMP", "gvisor"},
-		{"4.4.0", "#1 SMP Sun Jan 10 15:06:54 PST 2016", "gvisor"},
+	tests := []struct{ release, want string }{
+		{"5.15.167.4-microsoft-standard-WSL2", "standard"},
+		{"6.8.0-45-generic", "standard"},
+		{"4.19.0-gvisor", "gvisor"}, // gemessen: runsc release-20260921.0 im dind
+		{"4.4.0", "standard"},
 	}
 	for _, tt := range tests {
-		if got := isolation(tt.release, tt.version); got != tt.want {
-			t.Errorf("isolation(%q, %q) = %q, want %q", tt.release, tt.version, got, tt.want)
+		if got := isolation(tt.release); got != tt.want {
+			t.Errorf("isolation(%q) = %q, want %q", tt.release, got, tt.want)
 		}
 	}
 }

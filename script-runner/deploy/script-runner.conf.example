@@ -1,0 +1,29 @@
+# BEISPIEL — Host-Deskriptor des Plugins „script-runner“
+# (JanuaPort/januaport#928, Form nach JanuaPort/januaport#885). Die
+# verbindliche Fassung mit dem echten Image-Repository kommt mit der
+# Auslieferung (P4). Ablage: /etc/jnpt-updater.d/script-runner.conf,
+# root:root, 0600 oder 0644, kein Symlink.
+
+# Repository-Allowlist: nur das Repository, kein Tag, kein Digest.
+IMAGE_REPO=registry.example.com/januaport/script-runner
+
+# Die ausgelieferte Compose mit dem Projektnamen jnpt-plugin-script-runner.
+COMPOSE_FILE=/opt/jnpt/plugins/script-runner/docker-compose.yml
+
+# Der vermittler; Sandbox und abholer startet Compose über depends_on mit.
+SERVICE=script-runner
+
+ENV_FILE=/opt/jnpt/plugins/script-runner/.env
+ENV_KEY=JNPT_SCRIPT_RUNNER_IMAGE
+
+# 200 erst, wenn der runtime-key da ist und eine Sandbox mit Seccomp-Modus 2
+# sich gemeldet hat. Eine falsch registrierte runsc-Runtime fällt so schon
+# beim Hochfahren auf.
+HEALTH_URL=http://127.0.0.1:8091/healthz
+
+# Ohne das Profil startet die Sandbox nicht.
+REQUIRE=/opt/jnpt/plugins/script-runner/seccomp/jnpt-sandbox-seccomp.json
+
+# Der Store liegt in einem Volume des eigenen Compose-Projekts; `down -v`
+# entfernt ihn. Keine Host-Ordner.
+#DATA_DIRS=

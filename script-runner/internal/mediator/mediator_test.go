@@ -37,6 +37,17 @@ func TestToolsListWireMatchesGolden(t *testing.T) {
 	s := strings.ReplaceAll(string(raw), e.fx.commit, strings.Repeat("3", 40))
 	s = strings.ReplaceAll(s, e.fx.blob("invoice-check/jnpt-script.yaml"), strings.Repeat("4", 40))
 	s = strings.ReplaceAll(s, `"isolation":"standard"`, `"isolation":"gvisor"`)
+	// Protokollfelder des SDK (resultType, serverInfo) sind nicht Teil des
+	// Vertrags. Die Fixture hat nur einen Commit; die Golden-Datei zeigt für
+	// „broken“ einen eigenen.
+	var wire map[string]any
+	_ = json.Unmarshal([]byte(s), &wire)
+	delete(wire, "resultType")
+	meta := wire["_meta"].(map[string]any)
+	delete(meta, "io.modelcontextprotocol/serverInfo")
+	meta["januaport.ai/runner"].(map[string]any)["pins"].([]any)[2].(map[string]any)["commit"] = strings.Repeat("6", 40)
+	b, _ := json.Marshal(wire)
+	s = string(b)
 	want, err := os.ReadFile("../../contract/golden/tools_list.json")
 	if err != nil {
 		t.Fatal(err)
