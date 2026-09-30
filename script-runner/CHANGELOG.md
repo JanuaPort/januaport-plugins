@@ -2,6 +2,16 @@
 
 ## Unveröffentlicht (JanuaPort/januaport#928, P2)
 
+### Nachzug SEC-Zweitprüfung (Bedingung vor dem Merge)
+
+- Compose-Wächter deny by default: `KnownFields(true)`, dazu ausdrückliche
+  Verbote für `volumes_from`, `userns_mode`/`pid`/`uts`/`cgroup` `host`,
+  `ipc` `host`/`shareable`, `network_mode` `host`/`container:*`, `devices`,
+  `sysctls`, `extra_hosts`; Negativproben je Dienst.
+- Symlink im Pin-Pfad meldet `symlink` — mit Tabellenfällen (SHA-1/SHA-256,
+  jeder Pfadbestandteil, auch im vermittler) belegt; der bisherige Code tat
+  das bereits.
+
 ### Nachzug Vertrag Fassung 3 (B1, B2, SEC-Auflagen)
 
 - **B2:** Der Wächter prüft vor `hello` selbst, dass unser Seccomp-Profil

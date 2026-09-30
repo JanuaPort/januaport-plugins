@@ -140,8 +140,18 @@ und `vendor/` darin (reines Python, R12).
    ohne Hooks und Submodule; Aufruf `git fetch origin -- <sha>`.
 8. **R8 — kein Weg zurück.** Kein `push`, kein `receive-pack` im Code
    (Wächter `TestNoPushPathInSource`). Der Deploy-Key hängt nur im abholer.
-9. **Compose ist Vertrag §6.** `internal/hygiene` prüft jede Zeile samt
-   Negativproben; eine Änderung dort ist eine Vertragsfrage.
+9. **Compose ist Vertrag §6, der Wächter prüft deny by default.**
+   `internal/hygiene` dekodiert mit `KnownFields(true)`: Jeder Schlüssel, den
+   das Struct nicht kennt, ist ein Verstoß — das Struct kennt genau die
+   Schlüssel der ausgelieferten Compose. Zusätzlich sind ausdrücklich
+   verboten, auch wenn jemand sie ins Struct aufnimmt: `volumes_from` (würde
+   der Sandbox Schlüsselordner und Store einhängen), `userns_mode`/`pid`/`uts`/
+   `cgroup` `host` bzw. `container:*`, `ipc` `host`/`shareable`/`container:*`,
+   `network_mode` `host`/`container:*`, `devices`, `sysctls`, `extra_hosts`
+   (SEC-Zweitprüfung, Bedingung vor dem Merge). Negativproben je Dienst in
+   `TestComposeUnknownAndForbiddenKeysPerService`. Wer der Compose einen
+   neuen Schlüssel gibt, nimmt ihn bewusst ins Struct auf — das ist eine
+   Vertragsfrage.
 
 ## Ratifizierte Auslegungen (Vertrag Fassung 3)
 

@@ -4,6 +4,7 @@
 package hygiene
 
 import (
+	"bytes"
 	"fmt"
 	"slices"
 	"strings"
@@ -36,29 +37,40 @@ type compose struct {
 	Networks map[string]network `yaml:"networks"`
 }
 
+// service kennt genau die Schlüssel, die die ausgelieferte Compose nutzt,
+// dazu die gefährlichen, die checkCommon ausdrücklich verbietet. Alles andere
+// weist KnownFields ab (deny by default).
 type service struct {
-	Image       string   `yaml:"image"`
-	Command     []string `yaml:"command"`
-	User        string   `yaml:"user"`
-	Privileged  bool     `yaml:"privileged"`
-	CapAdd      []string `yaml:"cap_add"`
-	CapDrop     []string `yaml:"cap_drop"`
-	SecurityOpt []string `yaml:"security_opt"`
-	ReadOnly    bool     `yaml:"read_only"`
-	NetworkMode string   `yaml:"network_mode"`
-	Networks    []string `yaml:"networks"`
-	Ipc         string   `yaml:"ipc"`
-	Pid         string   `yaml:"pid"`
-	PidsLimit   int      `yaml:"pids_limit"`
-	MemLimit    string   `yaml:"mem_limit"`
-	MemswapLim  string   `yaml:"memswap_limit"`
-	Cpus        float64  `yaml:"cpus"`
-	Runtime     string   `yaml:"runtime"`
-	Restart     string   `yaml:"restart"`
-	Tmpfs       []string `yaml:"tmpfs"`
-	Volumes     []string `yaml:"volumes"`
-	Ports       []string `yaml:"ports"`
-	Devices     []string `yaml:"devices"`
+	Image       string            `yaml:"image"`
+	Environment map[string]string `yaml:"environment"`
+	DependsOn   []string          `yaml:"depends_on"`
+	Command     []string          `yaml:"command"`
+	User        string            `yaml:"user"`
+	Privileged  bool              `yaml:"privileged"`
+	CapAdd      []string          `yaml:"cap_add"`
+	CapDrop     []string          `yaml:"cap_drop"`
+	SecurityOpt []string          `yaml:"security_opt"`
+	ReadOnly    bool              `yaml:"read_only"`
+	NetworkMode string            `yaml:"network_mode"`
+	Networks    []string          `yaml:"networks"`
+	Ipc         string            `yaml:"ipc"`
+	Pid         string            `yaml:"pid"`
+	PidsLimit   int               `yaml:"pids_limit"`
+	MemLimit    string            `yaml:"mem_limit"`
+	MemswapLim  string            `yaml:"memswap_limit"`
+	Cpus        float64           `yaml:"cpus"`
+	Runtime     string            `yaml:"runtime"`
+	Restart     string            `yaml:"restart"`
+	Tmpfs       []string          `yaml:"tmpfs"`
+	Volumes     []string          `yaml:"volumes"`
+	Ports       []string          `yaml:"ports"`
+	Devices     []string          `yaml:"devices"`
+	VolumesFrom []string          `yaml:"volumes_from"`
+	UsernsMode  string            `yaml:"userns_mode"`
+	Uts         string            `yaml:"uts"`
+	Cgroup      string            `yaml:"cgroup"`
+	Sysctls     any               `yaml:"sysctls"`
+	ExtraHosts  any               `yaml:"extra_hosts"`
 }
 
 type volume struct {
@@ -74,8 +86,10 @@ type network struct {
 // CheckCompose liefert alle Verstöße; leer heißt sauber.
 func CheckCompose(src []byte) []string {
 	var c compose
-	if err := yaml.Unmarshal(src, &c); err != nil {
-		return []string{"kein gültiges YAML: " + err.Error()}
+	dec := yaml.NewDecoder(bytes.NewReader(src))
+	dec.KnownFields(true)
+	if err := dec.Decode(&c); err != nil {
+		return []string{"unbekannter Schlüssel oder kein gültiges YAML: " + err.Error()}
 	}
 	var v []string
 	add := func(f string, a ...any) { v = append(v, fmt.Sprintf(f, a...)) }
@@ -128,11 +142,28 @@ func checkCommon(name string, s service) []string {
 	if !s.ReadOnly {
 		add("read_only fehlt")
 	}
-	if s.NetworkMode == "host" || s.Pid == "host" || s.Ipc == "host" {
-		add("Host-Namespace")
+	if s.NetworkMode == "host" || strings.HasPrefix(s.NetworkMode, "container:") {
+		add("network_mode %q", s.NetworkMode)
+	}
+	if s.Ipc == "host" || s.Ipc == "shareable" || strings.HasPrefix(s.Ipc, "container:") {
+		add("ipc %q", s.Ipc)
+	}
+	for key, val := range map[string]string{"pid": s.Pid, "userns_mode": s.UsernsMode, "uts": s.Uts, "cgroup": s.Cgroup} {
+		if val == "host" || strings.HasPrefix(val, "container:") {
+			add("%s %q", key, val)
+		}
+	}
+	if len(s.VolumesFrom) > 0 {
+		add("volumes_from")
 	}
 	if len(s.Devices) > 0 {
 		add("devices")
+	}
+	if s.Sysctls != nil {
+		add("sysctls")
+	}
+	if s.ExtraHosts != nil {
+		add("extra_hosts")
 	}
 	if !strings.HasPrefix(s.Image, "${JNPT_SCRIPT_RUNNER_IMAGE:?") {
 		add("Image nicht aus JNPT_SCRIPT_RUNNER_IMAGE")
