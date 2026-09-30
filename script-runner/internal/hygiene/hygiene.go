@@ -142,14 +142,14 @@ func checkCommon(name string, s service) []string {
 	if !s.ReadOnly {
 		add("read_only fehlt")
 	}
-	if s.NetworkMode == "host" || strings.HasPrefix(s.NetworkMode, "container:") {
+	if s.NetworkMode == "host" || sharesNamespace(s.NetworkMode) {
 		add("network_mode %q", s.NetworkMode)
 	}
-	if s.Ipc == "host" || s.Ipc == "shareable" || strings.HasPrefix(s.Ipc, "container:") {
+	if s.Ipc == "host" || s.Ipc == "shareable" || sharesNamespace(s.Ipc) {
 		add("ipc %q", s.Ipc)
 	}
 	for key, val := range map[string]string{"pid": s.Pid, "userns_mode": s.UsernsMode, "uts": s.Uts, "cgroup": s.Cgroup} {
-		if val == "host" || strings.HasPrefix(val, "container:") {
+		if val == "host" || sharesNamespace(val) {
 			add("%s %q", key, val)
 		}
 	}
@@ -245,4 +245,11 @@ func checkFetcher(s service) []string {
 		v = append(v, "script-runner-fetcher: Deploy-Key-Ordner nicht read-only eingehängt")
 	}
 	return v
+}
+
+// sharesNamespace erkennt beide Formen, mit denen Compose den Namensraum eines
+// anderen Containers oder Dienstes übernimmt: container:<name> und
+// service:<name>.
+func sharesNamespace(v string) bool {
+	return strings.HasPrefix(v, "container:") || strings.HasPrefix(v, "service:")
 }

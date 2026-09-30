@@ -146,8 +146,8 @@ und `vendor/` darin (reines Python, R12).
    Schlüssel der ausgelieferten Compose. Zusätzlich sind ausdrücklich
    verboten, auch wenn jemand sie ins Struct aufnimmt: `volumes_from` (würde
    der Sandbox Schlüsselordner und Store einhängen), `userns_mode`/`pid`/`uts`/
-   `cgroup` `host` bzw. `container:*`, `ipc` `host`/`shareable`/`container:*`,
-   `network_mode` `host`/`container:*`, `devices`, `sysctls`, `extra_hosts`
+   `cgroup` `host` bzw. `container:*`/`service:*`, `ipc` `host`/`shareable`/`container:*`/`service:*`,
+   `network_mode` `host`/`container:*`/`service:*`, `devices`, `sysctls`, `extra_hosts`
    (SEC-Zweitprüfung, Bedingung vor dem Merge). Negativproben je Dienst in
    `TestComposeUnknownAndForbiddenKeysPerService`. Wer der Compose einen
    neuen Schlüssel gibt, nimmt ihn bewusst ins Struct auf — das ist eine

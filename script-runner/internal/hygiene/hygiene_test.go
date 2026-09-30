@@ -310,7 +310,7 @@ func TestServicePrefixForbiddenPerService(t *testing.T) {
 		{"    network_mode: none\n", "    network_mode: service:script-runner\n"},
 		{"    command: [\"guard\"]\n", "    command: [\"guard\"]\n    pid: service:script-runner\n"},
 	} {
-		t.Run("script-runner-sandbox/"+strings.TrimSpace(tt.to[strings.LastIndex(strings.TrimSpace(tt.to), "\n")+1:]), func(t *testing.T) {
+		t.Run("script-runner-sandbox/"+strings.Fields(tt.to)[len(strings.Fields(tt.to))-2], func(t *testing.T) {
 			if v := CheckCompose([]byte(strings.Replace(base, tt.from, tt.to, 1))); len(v) == 0 {
 				t.Fatal("nicht erkannt")
 			}

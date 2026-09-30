@@ -8,6 +8,8 @@
   Verbote für `volumes_from`, `userns_mode`/`pid`/`uts`/`cgroup` `host`,
   `ipc` `host`/`shareable`, `network_mode` `host`/`container:*`, `devices`,
   `sysctls`, `extra_hosts`; Negativproben je Dienst.
+- `ipc`, `pid` und `network_mode`: neben `container:<name>` ist auch
+  `service:<name>` verboten (SEC-Abnahme, Nachzug).
 - Symlink im Pin-Pfad meldet `symlink` — mit Tabellenfällen (SHA-1/SHA-256,
   jeder Pfadbestandteil, auch im vermittler) belegt; der bisherige Code tat
   das bereits.
