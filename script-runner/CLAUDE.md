@@ -86,7 +86,7 @@ Webhook, keine GUI. Es gibt keinen Weg zurück zum Git-Anbieter außer `fetch`.
 | `description` | ja | 1–1024 Zeichen; die KI wählt danach aus |
 | `entry` | ja | relativer Pfad zu einer `.py`-Datei im Pin-Ordner |
 | `input_schema` | ja | JSON-Schema als YAML, `type: object` |
-| `tools` | ja (darf leer sein) | qualifizierte Werkzeugnamen `^[a-z][a-z0-9_-]{0,127}$`, keine Dopplung, nie `skript_*`/`admin_*`; Basis-Werkzeuge (`catalog`, `memory_*` …) sind zulässig und müssen deklariert sein |
+| `tools` | ja (darf leer sein) | qualifizierte Werkzeugnamen `^[a-z][a-z0-9_-]{0,127}$`, keine Dopplung, nie `script_*`/`admin_*` (Vertrag F4: das Gateway registriert `script_<name>`); Basis-Werkzeuge (`catalog`, `memory_*` …) sind zulässig und müssen deklariert sein |
 | `timeout_s` | ja | 1–25 |
 
 Unbekannte Felder machen das Manifest ungültig (`manifest_invalid`). Ob ein

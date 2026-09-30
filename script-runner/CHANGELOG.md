@@ -2,6 +2,13 @@
 
 ## Unveröffentlicht (JanuaPort/januaport#928, P2)
 
+### Nachzug Vertrag Fassung 4 (englische Namen)
+
+- Der Manifest-Prüfer sperrt das Werkzeugpräfix `script_` statt `skript_`: Das
+  Gateway registriert je Pin `script_<name>`, ein Skript darf also kein
+  Skript-Werkzeug deklarieren (keine Rekursion). `skript_` hat keine
+  Sonderrolle mehr. Golden-Dateien unverändert.
+
 ### Nachzug SEC-Zweitprüfung (Bedingung vor dem Merge)
 
 - Compose-Wächter deny by default: `KnownFields(true)`, dazu ausdrückliche

@@ -44,11 +44,11 @@ func (e *Invalid) Error() string { return "manifest: " + e.Msg }
 var toolRe = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,127}$`)
 
 // ValidToolName: ein qualifizierter Werkzeugname, wie ihn das Gateway auf
-// /mcp zeigt (Kleinbuchstaben, Ziffern, `_`, `-`). `skript_*` und `admin_*`
+// /mcp zeigt (Kleinbuchstaben, Ziffern, `_`, `-`). `script_*` und `admin_*`
 // sind nie zulässig (keine Rekursion, keine Admin-Fläche). Ob das Werkzeug
 // existiert, prüft nur das Gateway (Vertrag §2c).
 func ValidToolName(s string) bool {
-	return toolRe.MatchString(s) && !strings.HasPrefix(s, "skript_") && !strings.HasPrefix(s, "admin_")
+	return toolRe.MatchString(s) && !strings.HasPrefix(s, "script_") && !strings.HasPrefix(s, "admin_")
 }
 
 // Parse liest und prüft ein Manifest. pinName ist der Name aus pins.json;
