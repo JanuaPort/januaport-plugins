@@ -195,3 +195,90 @@ func TestDocsUseOwnRuntimeName(t *testing.T) {
 		}
 	}
 }
+
+// SEC-Zweitprüfung (Bedingung vor dem Merge): deny by default. Jeder
+// Schlüssel, den der Wächter nicht kennt, ist ein Verstoß (KnownFields), und
+// die gefährlichen Schlüssel sind zusätzlich ausdrücklich verboten — auch
+// wenn sie im Struct stehen. Tabellenfälle je Dienst.
+func TestComposeUnknownAndForbiddenKeysPerService(t *testing.T) {
+	base := readCompose(t)
+	anchors := map[string]string{
+		"script-runner":         "    command: [\"mediator\"]\n",
+		"script-runner-sandbox": "    command: [\"guard\"]\n",
+		"script-runner-fetcher": "    command: [\"fetcher\"]\n",
+	}
+	inserts := []string{
+		"    volumes_from: [script-runner]\n",
+		"    userns_mode: host\n",
+		"    cgroup: host\n",
+		"    uts: host\n",
+		"    pid: host\n",
+		"    sysctls: {net.ipv4.ip_forward: 1}\n",
+		"    extra_hosts: [\"jnpt:10.0.0.1\"]\n",
+		"    devices: [/dev/fuse]\n",
+		"    fantasie_schluessel: 1\n",
+	}
+	for svc, anchor := range anchors {
+		if !strings.Contains(base, anchor) {
+			t.Fatalf("Testfehler: Anker für %s fehlt", svc)
+		}
+		for _, ins := range inserts {
+			t.Run(svc+"/"+strings.TrimSpace(ins), func(t *testing.T) {
+				mutated := strings.Replace(base, anchor, anchor+ins, 1)
+				if v := CheckCompose([]byte(mutated)); len(v) == 0 {
+					t.Fatal("nicht erkannt")
+				}
+			})
+		}
+	}
+	// Schlüssel, die die Sandbox schon trägt, werden ersetzt statt verdoppelt.
+	for _, tt := range []struct{ from, to string }{
+		{"    ipc: none\n", "    ipc: host\n"},
+		{"    ipc: none\n", "    ipc: shareable\n"},
+		{"    network_mode: none\n", "    network_mode: container:script-runner\n"},
+		{"    network_mode: none\n", "    network_mode: host\n"},
+	} {
+		t.Run("sandbox/"+strings.TrimSpace(tt.to), func(t *testing.T) {
+			if v := CheckCompose([]byte(strings.Replace(base, tt.from, tt.to, 1))); len(v) == 0 {
+				t.Fatal("nicht erkannt")
+			}
+		})
+	}
+	// Auch auf oberster Ebene: ein unbekannter Schlüssel ist ein Verstoß.
+	if v := CheckCompose([]byte(base + "\nconfigs: {}\n")); len(v) == 0 {
+		t.Fatal("unbekannter Top-Level-Schlüssel nicht erkannt")
+	}
+}
+
+// Die ausdrücklichen Verbote greifen auch ohne KnownFields: checkCommon
+// bekommt einen Dienst, der die Schlüssel im Struct trägt.
+func TestForbiddenFieldsExplicit(t *testing.T) {
+	base := service{Image: "${JNPT_SCRIPT_RUNNER_IMAGE:?x}", SecurityOpt: []string{"no-new-privileges:true"}, CapDrop: []string{"ALL"}, ReadOnly: true}
+	tests := []struct {
+		name string
+		mod  func(*service)
+	}{
+		{"volumes_from", func(s *service) { s.VolumesFrom = []string{"script-runner"} }},
+		{"userns_mode", func(s *service) { s.UsernsMode = "host" }},
+		{"uts", func(s *service) { s.Uts = "host" }},
+		{"cgroup", func(s *service) { s.Cgroup = "host" }},
+		{"pid", func(s *service) { s.Pid = "host" }},
+		{"ipc host", func(s *service) { s.Ipc = "host" }},
+		{"ipc shareable", func(s *service) { s.Ipc = "shareable" }},
+		{"network_mode host", func(s *service) { s.NetworkMode = "host" }},
+		{"network_mode container", func(s *service) { s.NetworkMode = "container:x" }},
+		{"devices", func(s *service) { s.Devices = []string{"/dev/fuse"} }},
+		{"sysctls", func(s *service) { s.Sysctls = map[string]any{"a": 1} }},
+		{"extra_hosts", func(s *service) { s.ExtraHosts = []any{"a:1.2.3.4"} }},
+	}
+	if v := checkCommon("x", base); len(v) != 0 {
+		t.Fatalf("Grundfall nicht sauber: %v", v)
+	}
+	for _, tt := range tests {
+		s := base
+		tt.mod(&s)
+		if v := checkCommon("x", s); len(v) == 0 {
+			t.Errorf("%s nicht erkannt", tt.name)
+		}
+	}
+}

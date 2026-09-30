@@ -217,3 +217,33 @@ func itoa(n int) string {
 	}
 	return string(b)
 }
+
+// SEC-Zweitprüfung (Nebenpunkt): ein Symlink IM Pin-Pfad — ein
+// Pfadbestandteil hat Modus 120000 — meldet `symlink`, nicht hash_mismatch.
+func TestLoadRejectsSymlinkInPinPath(t *testing.T) {
+	tests := []struct{ format, name, link, path, target string }{
+		{"sha1", "letzter Bestandteil", "tool", "tool", "real"},
+		{"sha1", "mittlerer Bestandteil", "scripts", "scripts/real", "real"},
+		{"sha1", "verschachtelt", "a/tool", "a/tool", "../real"},
+		{"sha1", "absolutes Ziel", "tool", "tool", "/etc"},
+		{"sha256", "letzter Bestandteil", "tool", "tool", "real"},
+		{"sha256", "mittlerer Bestandteil", "scripts", "scripts/real", "real"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.format+"/"+tt.name, func(t *testing.T) {
+			r := newRepo(t, tt.format)
+			r.write("real/main.py", "x")
+			r.write("real/real/main.py", "x")
+			full := filepath.Join(r.dir, filepath.FromSlash(tt.link))
+			_ = os.MkdirAll(filepath.Dir(full), 0o755)
+			if err := os.Symlink(tt.target, full); err != nil {
+				t.Skip("Symlinks nicht verfügbar:", err)
+			}
+			commit := r.commit()
+			if mode := r.git("ls-tree", commit, tt.link); !strings.HasPrefix(mode, "120000") {
+				t.Fatalf("Testfehler: %s ist kein Symlink-Eintrag: %q", tt.link, mode)
+			}
+			assertInvalid(t, r, commit, tt.path, contract.ReasonSymlink)
+		})
+	}
+}

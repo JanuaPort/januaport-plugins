@@ -724,3 +724,16 @@ func TestHealthBodiesAndOtherPaths404(t *testing.T) {
 		}
 	}
 }
+
+// SEC-Zweitprüfung (Nebenpunkt): Pin-Pfad, dessen letzter Bestandteil ein
+// Symlink ist → Zustand invalid mit Grund symlink (nicht hash_mismatch).
+func TestSymlinkAsPinPathReportsSymlink(t *testing.T) {
+	e := newEnv(t, nil)
+	e.writePins(append(e.quickPin(), pinRow{Name: "via_link", Path: "broken/passwd", Commit: e.fx.commit}))
+	_ = dialGuard(t, e.sock, "i1", 2)
+	e.waitReady("quick")
+	meta := mustJSON(e.listTools().Meta)
+	if !strings.Contains(meta, `{"commit":"`+e.fx.commit+`","name":"via_link","reason":"symlink","state":"invalid"}`) {
+		t.Fatalf("via_link nicht als symlink gemeldet: %s", meta)
+	}
+}
