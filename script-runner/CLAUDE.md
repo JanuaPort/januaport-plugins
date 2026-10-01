@@ -21,8 +21,9 @@ Kommentaren und Tests verweisen darauf.
 | `guard` | `script-runner-sandbox` | Wächter: PID 1 der Sandbox, `PR_SET_DUMPABLE 0`, meldet `hello`, nimmt **genau einen** job, startet `python -I`, räumt den Prozessbaum ab (V1/V3), hält die Instanz 10,5 s (B1) |
 | `fetcher` | `script-runner-fetcher` | abholer: holt gepinnte Commits per ssh in den Bare-Store, prüft `wanted/` und `repo_url` selbst (V2, M7) |
 
-**Nicht hier, mit Absicht:** Katalogeintrag, Release- und Signierstrecke,
-Host-Units/tmpfiles (P4, Gateway-Repo — hier nur Beispiele unter `deploy/`),
+**Nicht hier, mit Absicht:** Katalogeintrag und Signatur (die liegt auf dem
+Katalog), Host-Units/tmpfiles (P4b, Gateway-Repo — hier nur Beispiele unter
+`deploy/`),
 Pin-Speicher, Lauf-Token, Relay, Audit, `scan` (P1/P3, Gateway), Rezept (P5).
 Kein pip im Lauf, keine zweite Sprache, keine Netzfreigabe je Skript, kein
 Webhook, keine GUI. Es gibt keinen Weg zurück zum Git-Anbieter außer `fetch`.
@@ -46,7 +47,7 @@ Webhook, keine GUI. Es gibt keinen Weg zurück zum Git-Anbieter außer `fetch`.
 | `seccomp/` | Profil, Quelle (moby) und Herleitung `derive.py` |
 | `contract/golden/` | Golden-JSON für §2–§4 — P3 kopiert sie unverändert ins Gateway-Repo |
 | `probe/` | Docker-Sonden (Build-Tag `docker`), Test-Überlagerung, SSH-Git-Anbieter |
-| `deploy/` | Beispiele: tmpfiles-Zeilen, Host-Deskriptor |
+| `deploy/` | Beispiele: tmpfiles-Zeilen, Host-Deskriptor (echtes `IMAGE_REPO`, runtime-key in `REQUIRE`), `.env.example`, `daemon.json.example` |
 
 ## Draht-Vertrag (Kurzfassung, maßgeblich ist das Ticket)
 
@@ -210,6 +211,41 @@ Diese Auslegungen aus dem Bau von P2 hat LEAD in Fassung 3 bestätigt —
   `known_hosts` im Store). Die Integrität hängt am Commit-Hash und an der
   Nachrechnung in der Senke, nicht am Kanal.
 
+## Release (P4a)
+
+- **Strecke:** `.github/workflows/script-runner-release.yml` im Repo-Root.
+  Auslöser **nur** der Tag `script-runner-vX.Y.Z` (Schema im Job `unit`
+  geprüft), den das Quality Gate setzt. Jobs: `unit` → `build` → `probes` und
+  `scan` → `publish`.
+- **Ein Build, per Digest, ohne Tag:** `build` pusht nur `linux/amd64` mit
+  SBOM und Provenance `mode=max` nach `ghcr.io/januaport/script-runner`
+  (`push-by-digest`). Erst `publish` setzt den Image-Tag `X.Y.Z` (kein
+  `latest`) per `imagetools create` und prüft, dass er auf denselben Digest
+  zeigt. Anlagen beziehen das Image nur per Digest aus dem signierten Katalog.
+- **SEC C1 — geprüft = ausgeliefert:** `probes` zieht genau den gepushten
+  Digest, vergleicht den Config-Digest des lokalen Images (aus `docker save`,
+  unabhängig vom Image-Store des Runners — beim containerd-Store ist
+  `docker inspect .Id` der Index-Digest, nicht die Config) mit `config.digest`
+  der amd64-Plattform im Registry-Index und fährt dann `probe/run.sh` mit
+  `P2_IMAGE=<repo>@<digest>`. Die Zusammenfassung des Laufs nennt Digest und
+  Lauf-ID; beides gehört in den Kuratierungs-Nachweis (`CHANGELOG.md`).
+  Gewählt statt „Build → Sonden → zweiter Build mit Push“, weil ein zweiter
+  buildx-Lauf nicht zwingend dasselbe Image erzeugt.
+- **SEC C2:** In `build` und `publish` (einzige Jobs mit `packages: write`)
+  laufen nur `actions/*` und `docker/*`. Trivy läuft im Job `scan` ohne
+  Schreibrecht als Binary mit gepinnter Version und SHA-256, bekommt das Image
+  als Datei (kein Token) und legt den Bericht als Artefakt ab — **kein Gate**.
+  Alle Aktionen sind per Commit-SHA gepinnt (Kommentar = Fassung).
+- **Wächter:** `internal/hygiene/release_test.go` (Auslöser, Rechte je Job,
+  Pinning, Build-Parameter, Reihenfolge, E6, Deskriptor, `.env.example`,
+  gVisor-Pin). Er liest `.github/workflows/` im Repo-Root — die Unit-Tests
+  brauchen deshalb den ganzen Checkout (siehe „Prüfen“).
+- **CI-Auslöser (E6):** `script-runner.yml` läuft nur bei Push auf `main` und
+  per `workflow_dispatch`; `secret-scan.yml` bleibt auf jedem Push und Pull
+  Request (#787, öffentliches Repo).
+- **Kuratierung:** Vorlage am Ende von `CHANGELOG.md`; je Image der benötigte
+  Commit von Compose und Profil (E3) und die Lauf-ID der Sonden (C1).
+
 ## Stolperfallen (aus der Messung P0 und dieser Umsetzung)
 
 - **S2:** runsc ignoriert das Seccomp-Profil ohne `--oci-seccomp` (Modus 0).
@@ -243,13 +279,27 @@ Diese Auslegungen aus dem Bau von P2 hat LEAD in Fassung 3 bestätigt —
   „neu gestartet mit leerem tmpfs“.
 - **CRLF:** `.gitattributes` erzwingt LF; `run.sh`, Dockerfiles und Golden-Dateien
   brechen sonst in einem Windows-Checkout.
+- **E1 — relativer Profilpfad:** Der Aktuator ruft
+  `docker compose --env-file … -f /opt/jnpt/plugins/script-runner/docker-compose.yml`
+  ohne `cd` auf, systemd mit cwd `/`. Compose (gemessen v2.33.0 und v5.5.1)
+  liest `seccomp=./seccomp/…` beim Anlegen gegen das **Projektverzeichnis**,
+  nicht gegen das cwd; `compose config` zeigt den Pfad trotzdem unaufgelöst
+  (`./seccomp/…`) — `config` ist also kein Beleg. Die Sonde
+  `TestE1SeccompProfileFromProjectDirWithCwdRoot` legt die Sandbox mit cwd `/`
+  an und vergleicht das Profil im Container mit der Datei. Den Pfad deshalb
+  **relativ** lassen: ein absoluter Pfad bräche Sonden und lokale Läufe.
 
 ## Prüfen
 
 ```sh
 # Unit-Tests (in einem Linux-Container; auf Windows hängt lokales go test)
-docker run --rm -v "$PWD":/src -w /src golang:1.25.13 go test ./...
-python3 seccomp/derive.py --check
+# aus dem Repo-Root: der Release-Wächter liest .github/workflows/
+docker run --rm -v "$PWD":/repo -w /repo/script-runner golang:1.25.13 go test ./...
+python3 script-runner/seccomp/derive.py --check
 # Docker-Sonden gegen den echten Stack (Präfix p2-928-, räumt selbst auf)
-sh probe/run.sh
+sh script-runner/probe/run.sh
+# gegen ein fertiges Image (so fährt es die Release-Strecke)
+P2_IMAGE=ghcr.io/januaport/script-runner@sha256:… sh script-runner/probe/run.sh
+# Workflows
+docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:latest
 ```

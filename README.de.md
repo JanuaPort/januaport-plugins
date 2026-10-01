@@ -34,3 +34,14 @@ Kennzeichnung: **Gebaut** · **Im Bau** · **Geplant**. Jeder Eintrag sagt, was 
 | [`box/`](box/) | Provisionierung der JanuaPort Box, eines lüfterlosen Mini-PCs, auf dem das Gateway beim Kunden läuft: Compose-Stack, Host-Härtung, Boot-Ordnung, Caddy-Flächen, Profil für den OpenAI-Tunnel, optionale Sicherung nach SharePoint oder SMB und ein Runbook. Kein eingehender Port aus dem Internet; Fernwartung nur nach Opt-in des Kunden. | **Gebaut.** Läuft seit August 2026 auf einer Pilot-Anlage. Hier liegt eine bereinigte, verallgemeinerte Fassung (neutrale Namen, Installationsort `/opt/jnpt/box`), die in genau dieser Form noch nicht auf einem Gerät gelaufen ist. |
 | [`tunnel/`](tunnel/) | Kuratierungs-Nachweis für den Katalog-Eintrag `tunnel`: den Client des OpenAI Secure MCP Tunnel, ein Fremd-Image, das JanuaPort im signierten Plugin-Katalog anbietet. Kein Code; das Changelog hält je kuratiertem Digest den Scan und die geprüfte JanuaPort-Version fest (englisch). | **Gebaut.** Erster Eintrag `v0.0.14`, geprüft mit JanuaPort 0.66 am 27. September 2026. |
 | [`script-runner/`](script-runner/) | Führt gepinnte Python-Skripte aus dem Git-Repository des Betreibers aus, wenn eine KI sie über JanuaPort aufruft. Ein Skript darf selbst JanuaPort-Werkzeuge nutzen, mit den Rechten des Aufrufers und nur die deklarierten. Drei Dienste aus einem Image: ein vermittler neben dem Gateway, eine Sandbox ohne Netz (ein Lauf je Instanz, gVisor wo vorhanden) und ein abholer per ssh mit Nur-Lese-Deploy-Key. | **Im Bau.** Mit Unit-Tests und Docker-Sonden gegen einen Stub-Gateway und einen lokalen Git-Server geprüft, unter runc und unter gVisor (runsc). Die Gateway-Seite (Pins, Lauf-Token, Audit), Auslieferung und Katalogeintrag fehlen noch; noch nicht auf einer Anlage gelaufen. |
+
+## Releases
+
+Images, die dieses Repository selbst baut, entstehen nur aus einem Versions-Tag, nie aus einem
+Branch. Für `script-runner` heißt der Tag `script-runner-vX.Y.Z`: Der Workflow fährt die Unit-Tests,
+baut ein Image für `linux/amd64` mit SBOM und Provenance, pusht es per Digest nach
+`ghcr.io/januaport/script-runner`, fährt die Docker-Sonden gegen genau diesen Digest und setzt erst
+danach den Image-Tag `X.Y.Z`. Ein Schwachstellen-Bericht (Trivy) hängt am Lauf; er ist kein Gate.
+Anlagen beziehen das Image nur per Digest aus dem signierten Plugin-Katalog von JanuaPort. Was je
+Digest geprüft wurde, steht vor dem Katalogeintrag im `CHANGELOG.md` des Beistellers. Veröffentlicht
+ist noch kein Release.

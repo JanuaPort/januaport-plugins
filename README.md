@@ -35,3 +35,13 @@ Status labels: **Built** · **In progress** · **Planned**. Each entry says what
 | [`box/`](box/) | Provisioning for the JanuaPort Box, a fanless mini PC that runs the gateway on the customer's premises: Compose stack, host hardening, boot order, Caddy surfaces, OpenAI tunnel profile, optional backup to SharePoint or SMB, and a runbook. No inbound port from the internet; remote maintenance only on the customer's opt-in. | **Built.** Running on a pilot installation since August 2026. This repository holds a cleaned-up, generalised copy (neutral names, install path `/opt/jnpt/box`) that has not yet run on a device in exactly this form. |
 | [`tunnel/`](tunnel/) | Curation record for the catalog entry `tunnel`: the OpenAI Secure MCP Tunnel client, a third-party image that JanuaPort offers in its signed plugin catalog. No code here; the changelog records each curated digest, its scan and the JanuaPort version it was checked with. | **Built.** First entry `v0.0.14`, checked with JanuaPort 0.66 on 27 September 2026. |
 | [`script-runner/`](script-runner/) | Runs pinned Python scripts from the operator's Git repository when an AI calls them through JanuaPort. A script may use JanuaPort tools itself, with the caller's permissions and only the tools it declares. Three services from one image: a mediator next to the gateway, a sandbox without network (one run per instance, gVisor where available) and an ssh fetcher with a read-only deploy key. | **In progress.** Tested with unit tests and Docker probes against a stub gateway and a local Git server, under runc and under gVisor (runsc). The gateway side (pins, run token, audit), release and catalog entry are not built yet; not yet run on an installation. |
+
+## Releases
+
+Images that this repository builds itself are released only from a version tag, never from a branch.
+For `script-runner` the tag is `script-runner-vX.Y.Z`: the workflow runs the unit tests, builds one
+`linux/amd64` image with SBOM and provenance, pushes it by digest to `ghcr.io/januaport/script-runner`,
+runs the Docker probes against exactly that digest, and only then sets the image tag `X.Y.Z`. A
+vulnerability report (Trivy) is attached to the run; it is not a gate. Installations obtain the image
+only by digest from JanuaPort's signed plugin catalog. What was checked for each digest is recorded in
+the sidecar's `CHANGELOG.md` before it is catalogued. No release has been published yet.
