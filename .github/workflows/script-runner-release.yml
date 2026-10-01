@@ -1,0 +1,208 @@
+# Release des Skript-Läufers (JanuaPort/januaport#928, P4a).
+#
+# Auslöser ist ausschließlich der Tag script-runner-vX.Y.Z, den das Quality
+# Gate setzt. Ablauf:
+#   unit     Go-Tests, go vet, Seccomp-Profil = Herleitung
+#   build    EIN Build, nur linux/amd64, mit SBOM und Provenance, per Digest
+#            nach GHCR gepusht — ohne Tag
+#   probes   zieht genau diesen Digest, vergleicht den Config-Digest des
+#            geprüften Images mit dem der amd64-Plattform des gepushten
+#            (SEC C1) und fährt die Docker-Sonden dagegen (R12, sha1dc, B2 …)
+#   scan     Trivy-Bericht als Artefakt — kein Gate, entschieden wird im
+#            Kuratierungs-Nachweis (script-runner/CHANGELOG.md)
+#   publish  erst nach grünen Sonden: Tag X.Y.Z auf denselben Digest
+#
+# Warum Sonden gegen den gepushten Digest statt Build → Sonden → zweiter
+# Build mit Push: Ein zweiter buildx-Lauf erzeugt nicht zwingend dasselbe
+# Image (Zeitstempel in der Config). So ist das geprüfte Image das
+# ausgelieferte, und der Vergleich in `probes` belegt es zusätzlich. Ein
+# Digest ohne Tag ist kein Angebot: Anlagen beziehen das Image nur über den
+# signierten Katalog, und der nennt nur einen kuratierten Digest.
+#
+# SEC C2: In den Jobs mit packages: write laufen nur actions/* und docker/*.
+# Alle Aktionen sind per Commit-SHA gepinnt (Kommentar = Fassung).
+name: script-runner-release
+
+on:
+  push:
+    tags:
+      - "script-runner-v*"
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_REPO: ghcr.io/januaport/script-runner
+
+jobs:
+  unit:
+    name: Unit-Tests (script-runner)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: script-runner
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: script-runner/go.mod
+          cache-dependency-path: script-runner/go.sum
+      - name: Tag-Schema script-runner-vX.Y.Z
+        run: echo "$GITHUB_REF_NAME" | grep -Eq '^script-runner-v[0-9]+\.[0-9]+\.[0-9]+$'
+      - name: go vet
+        run: go vet ./... && go vet -tags docker ./probe/
+      - name: go test
+        run: go test -count=1 ./...
+      - name: Seccomp-Profil = Herleitung
+        run: python3 seccomp/derive.py --check
+
+  build:
+    name: Build und Push per Digest (GHCR, amd64)
+    needs: unit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build und Push
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: script-runner
+          # v1 nur amd64 (Plan P4 E7): Die Sonden laufen nur dort.
+          platforms: linux/amd64
+          # Ohne Tag: getaggt wird erst in publish, nach grünen Sonden.
+          outputs: type=image,name=${{ env.IMAGE_REPO }},push-by-digest=true,name-canonical=true,push=true
+          sbom: true
+          provenance: mode=max
+          labels: |
+            org.opencontainers.image.title=script-runner
+            org.opencontainers.image.description=JanuaPort script-runner (mediator, sandbox, fetcher)
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=Apache-2.0
+
+  probes:
+    name: Docker-Sonden gegen den gepushten Digest
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    env:
+      DIGEST: ${{ needs.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # SEC C1: Das geprüfte Image ist das gepushte. Config-Digest aus dem
+      # lokal gezogenen Image (aus `docker save`, unabhängig vom Image-Store
+      # des Runners) gegen config.digest der amd64-Plattform im Registry-Index.
+      - name: Config-Digest geprüft = gepusht (SEC C1)
+        run: |
+          set -eu
+          ref="${IMAGE_REPO}@${DIGEST}"
+          docker pull -q --platform linux/amd64 "$ref"
+          amd64=$(docker buildx imagetools inspect --raw "$ref" \
+            | jq -r '.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64") | .digest')
+          [ "$(printf '%s\n' "$amd64" | grep -c .)" = 1 ] || { echo "nicht genau eine amd64-Plattform: $amd64" >&2; exit 1; }
+          pushed=$(docker buildx imagetools inspect --raw "${IMAGE_REPO}@${amd64}" | jq -r '.config.digest')
+          checked=sha256:$(docker save "$ref" | tar -xOf - manifest.json | jq -r '.[0].Config' | grep -oE '[0-9a-f]{64}')
+          echo "docker inspect .Id:  $(docker image inspect -f '{{.Id}}' "$ref")"
+          echo "geprüft (Config):    $checked"
+          echo "gepusht (amd64):     $pushed"
+          [ "$checked" = "$pushed" ] || { echo "Config-Digest weicht ab — Abbruch" >&2; exit 1; }
+          # Die Sonden brauchen die Registry nicht mehr; der Go-Test-Läufer
+          # soll kein Token sehen.
+          docker logout ghcr.io
+      - name: Sonden
+        run: P2_IMAGE="${IMAGE_REPO}@${DIGEST}" sh script-runner/probe/run.sh
+      # Für den Kuratierungs-Nachweis: welcher Lauf hat welchen Digest geprüft.
+      - name: Nachweis
+        run: |
+          {
+            echo "### script-runner ${GITHUB_REF_NAME}"
+            echo "- Digest (Index): \`${DIGEST}\`"
+            echo "- Sonden grün in Lauf \`${{ github.run_id }}\` (Versuch ${{ github.run_attempt }})"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  scan:
+    name: Trivy-Bericht (kein Gate)
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    env:
+      DIGEST: ${{ needs.build.outputs.digest }}
+      TRIVY_VERSION: 0.74.0
+      TRIVY_SHA256: 2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a
+    steps:
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Trivy bekommt eine Datei, kein Registry-Token.
+      - name: Image als Datei
+        run: |
+          docker pull -q --platform linux/amd64 "${IMAGE_REPO}@${DIGEST}"
+          docker save -o image.tar "${IMAGE_REPO}@${DIGEST}"
+          docker logout ghcr.io
+      - name: Trivy installieren
+        run: |
+          curl -sSfL -o trivy.tar.gz \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "${TRIVY_SHA256}  trivy.tar.gz" | sha256sum -c -
+          tar -xzf trivy.tar.gz -C "$RUNNER_TEMP" trivy
+      - name: Scan
+        run: |
+          mkdir -p report
+          "$RUNNER_TEMP/trivy" image --input image.tar --scanners vuln --exit-code 0 \
+            --format json --output report/trivy.json
+          "$RUNNER_TEMP/trivy" convert --format table --output report/trivy.txt report/trivy.json
+          echo "${DIGEST}" > report/digest.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: trivy-${{ github.ref_name }}
+          path: report/
+
+  publish:
+    name: Tag auf den geprüften Digest
+    needs: [build, probes]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      DIGEST: ${{ needs.build.outputs.digest }}
+    steps:
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Kein `latest`: Anlagen beziehen per Digest aus dem Katalog.
+      - name: Tag setzen und prüfen
+        run: |
+          set -eu
+          version="${GITHUB_REF_NAME#script-runner-v}"
+          docker buildx imagetools create -t "${IMAGE_REPO}:${version}" "${IMAGE_REPO}@${DIGEST}"
+          tagged=sha256:$(docker buildx imagetools inspect --raw "${IMAGE_REPO}:${version}" | sha256sum | cut -d' ' -f1)
+          echo "Tag ${version} → ${tagged}"
+          [ "$tagged" = "$DIGEST" ] || { echo "Tag zeigt nicht auf den geprüften Digest" >&2; exit 1; }
+          echo "- Tag \`${version}\` → \`${tagged}\`" >> "$GITHUB_STEP_SUMMARY"

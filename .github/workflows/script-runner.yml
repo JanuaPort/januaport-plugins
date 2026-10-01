@@ -10,10 +10,7 @@ name: script-runner
 
 on:
   push:
-    paths:
-      - 'script-runner/**'
-      - '.github/workflows/script-runner.yml'
-  pull_request:
+    branches: [main]
     paths:
       - 'script-runner/**'
       - '.github/workflows/script-runner.yml'

@@ -7,6 +7,9 @@
 # Volumes tragen das Präfix p2-928- und werden am Ende entfernt.
 #
 # Aufruf aus beliebigem Ordner:  sh script-runner/probe/run.sh [go-test-Argumente]
+# Mit P2_IMAGE=<Referenz> laufen die Sonden gegen ein vorhandenes Image statt
+# gegen einen eigenen Build — so prüft die Release-Strecke genau den
+# gepushten Digest (SEC C1).
 set -eu
 here=$(cd "$(dirname "$0")/.." && pwd)
 # Git Bash auf Windows: Docker braucht den Windows-Pfad und keine
@@ -14,8 +17,12 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 src=$(cd "$here" && (pwd -W 2>/dev/null || pwd))
 export MSYS_NO_PATHCONV=1
 
-img=p2-928-script-runner:test
-docker build -q -t "$img" "$src" >/dev/null
+if [ -n "${P2_IMAGE:-}" ]; then
+  img=$P2_IMAGE
+else
+  img=p2-928-script-runner:test
+  docker build -q -t "$img" "$src" >/dev/null
+fi
 docker build -q -t p2-928-sshd:test "$src/probe/sshd" >/dev/null
 docker build -q -t p2-928-probe-runner:test -f "$src/probe/runner.Dockerfile" "$src/probe" >/dev/null
 docker network create p2-928-mcp >/dev/null 2>&1 || true

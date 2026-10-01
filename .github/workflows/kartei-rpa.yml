@@ -9,10 +9,7 @@ name: kartei-rpa
 
 on:
   push:
-    paths:
-      - 'kartei-rpa/**'
-      - '.github/workflows/kartei-rpa.yml'
-  pull_request:
+    branches: [main]
     paths:
       - 'kartei-rpa/**'
       - '.github/workflows/kartei-rpa.yml'
