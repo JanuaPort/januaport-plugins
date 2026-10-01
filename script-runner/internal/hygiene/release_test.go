@@ -311,6 +311,20 @@ func TestReleaseWorkflowOrderAndC1(t *testing.T) {
 			t.Errorf("publish ohne %q", want)
 		}
 	}
+	// SEC H-a: Weicht der Config-Digest ab, bricht probes ab; publish bricht
+	// ab, wenn der Tag nicht auf den geprüften Digest zeigt.
+	if !regexp.MustCompile(`\[ "\$checked" = "\$pushed" \] \|\| \{[^}]*exit 1; \}`).MatchString(probes) {
+		t.Error("probes: Config-Digest-Vergleich ohne Abbruch (exit 1)")
+	}
+	if !regexp.MustCompile(`\[ "\$tagged" = "\$DIGEST" \] \|\| \{[^}]*exit 1; \}`).MatchString(publish) {
+		t.Error("publish: kein Abbruch, wenn der Tag nicht auf den geprüften Digest zeigt")
+	}
+	// Kein `latest`: Anlagen beziehen per Digest aus dem Katalog.
+	for name, j := range w.Jobs {
+		if strings.Contains(strings.ToLower(j.text()), "latest") {
+			t.Errorf("Job %s setzt oder nennt latest", name)
+		}
+	}
 }
 
 // E6 (korrigiert nach SEC): script-runner.yml und kartei-rpa.yml laufen nur
