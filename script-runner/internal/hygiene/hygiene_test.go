@@ -176,7 +176,7 @@ func TestDaemonJSONExample(t *testing.T) {
 func TestDocsUseOwnRuntimeName(t *testing.T) {
 	bad := regexp.MustCompile(`JNPT_SCRIPT_RUNNER_RUNTIME[=:]\s*"?runsc([^-]|$)|--runtime[ =]runsc([^-]|$)|"runsc"\s*:|host-uds=all`)
 	files := []string{"../../README.md", "../../CLAUDE.md", "../../docker-compose.yml",
-		"../../deploy/daemon.json.example", "../../probe/run-runsc.sh"}
+		"../../deploy/daemon.json.example", "../../deploy/.env.example", "../../probe/run-runsc.sh"}
 	for _, f := range files {
 		b, err := os.ReadFile(f)
 		if err != nil {
