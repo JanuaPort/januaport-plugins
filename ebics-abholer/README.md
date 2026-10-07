@@ -71,14 +71,18 @@ Die einzige Naht ist ein **gemeinsames Verzeichnis**:
 1. Verzeichnisse anlegen: ein Ablage-Verzeichnis (Eigentümer UID 65532, wie
    der Container läuft) und ein separates, restriktives Verzeichnis für
    Zugangsdaten/Schlüsseldatei (`chmod 700`, ebenfalls UID 65532). Eine `.env`
-   **neben** der Compose-Datei setzt die beiden Host-Pfade für die Compose
-   (`JNPT_EBICS_GEHEIM`, `JNPT_EBICS_ABLAGE` — Defaults siehe Kopf der
-   Compose-Datei); diese `.env` gehört **nicht** ins Repo.
+   **neben** der Compose-Datei (Vorlage: `.env.example`) setzt das Image und
+   die beiden Host-Pfade (`JNPT_EBICS_IMAGE`, `JNPT_EBICS_GEHEIM`,
+   `JNPT_EBICS_ABLAGE`); diese `.env` gehört **nicht** ins Repo.
 2. `config.example.php` nach `config.php` kopieren und **von Hand in einem
    Editor** ausfüllen — Host-ID, URL (**muss** `https://` sein), Partner-/
    User-ID, Protokollversion, Schlüsselwort, Ablage-Pfad. Niemals durch einen
    Chat, ein KI-Werkzeug oder ein Ticketsystem schleusen.
-3. Image bauen: `docker compose -f docker-compose.ebics-abholer.yml build`.
+3. Image festlegen: in der `.env` `JNPT_EBICS_IMAGE=ghcr.io/januaport/ebics@sha256:…`
+   mit dem Digest aus [`CHANGELOG.md`](CHANGELOG.md), dann
+   `docker compose -f docker-compose.ebics-abholer.yml pull`. Ohne
+   `JNPT_EBICS_IMAGE` bricht Compose mit einer Meldung ab. Wer lieber selbst
+   baut, nimmt den Rückweg unter „Image".
 4. Einmalig `init.php` ausführen — erzeugt die Schlüsselpaare, sendet INI/HIA
    an die Bank und schreibt ein Initialisierungsprotokoll (PDF). **Ab hier
    läuft eine Frist** (bei den meisten Banken zehn Tage), bis das
@@ -135,6 +139,44 @@ Die einzige Naht ist ein **gemeinsames Verzeichnis**:
   `--pruefen`-Bildschirmausgabe zurückspielen). Vor jedem Schreiben wandert die
   alte Schlüsseldatei als nummerierte Sicherung zur Seite — überschrieben wird
   nie.
+
+## Image
+
+Das Image `ghcr.io/januaport/ebics` entsteht im Workflow
+`.github/workflows/ebics-abholer.yml` dieses Repos — für `linux/amd64` und
+`linux/arm64`, mit SPDX-SBOM und SLSA-Provenance als Attestation. Bezogen wird
+es **per Digest**, nie per Tag allein: Der Digest ist die Zusage, dass genau das
+gescannte Image läuft. Welcher Digest zu welcher Fassung gehört und was der Scan
+gefunden hat, steht in [`CHANGELOG.md`](CHANGELOG.md).
+
+**Release-Ablauf:** Jede Änderung in diesem Ordner durchläuft die Teststrecke
+ohne Netz, den Bau für beide Architekturen und den K-Scan — veröffentlicht wird
+dabei nichts. Erst ein Tag `ebics-abholer/vX.Y.Z` (gesetzt nach dem Merge)
+pusht das Image, zunächst nur per Digest; der K-Scan prüft genau diesen Digest
+je Plattform, und erst danach bekommt er den Versions-Tag. Der Lauf nennt den
+Index-Digest in seiner Zusammenfassung; er wandert in den CHANGELOG und in die
+`.env` der Anlage.
+
+**K-Scan:** je Plattform
+`trivy image --platform <p> --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1`.
+Ein kritischer oder hoher Befund **mit** Fix macht den Lauf rot und wird durch
+Neubau behoben (Basis oder Abhängigkeit anheben), nicht weggeschrieben.
+Ausnahmen stehen nur in `.trivyignore`, je Zeile mit CVE, Grund und `exp:`
+höchstens 90 Tage. Befunde ohne Fix blocken nicht und stehen im CHANGELOG.
+
+**Rückweg „lokal bauen":** ohne Registry, etwa zum Prüfen einer Änderung:
+
+```bash
+docker build -t jnpt-ebics-abholer:local .
+# in der .env:  JNPT_EBICS_IMAGE=jnpt-ebics-abholer:local
+```
+
+Prüfen, was das Image zusagt (Nutzer, Befehl, Erweiterungen, Teststrecke ohne
+Netz, Größe) — aus dem Repo-Wurzelverzeichnis:
+
+```bash
+bash ebics-abholer/tests/image.sh jnpt-ebics-abholer:local
+```
 
 ## Grenzen
 
@@ -206,17 +248,24 @@ dort ebenfalls privat.
 | `hpb.php` | Bankschlüssel holen/prüfen/übernehmen (Erstabruf, `--pruefen`, `--uebernehmen`) |
 | `letter.php` | Initialisierungsprotokoll aus einer vorhandenen Schlüsseldatei neu erzeugen (spricht mit niemandem) |
 | `logik.php` / `start.php` / `version.php` | interne Logik- und I/O-Bausteine |
-| `docker-compose.ebics-abholer.yml`, `Dockerfile` | Container-Setup |
+| `docker-compose.ebics-abholer.yml`, `Dockerfile` | Container-Setup (Image per Digest; Bau mehrstufig) |
+| `.env.example` | Vorlage der `.env` neben der Compose (Image-Pin, Pfade) |
+| `CHANGELOG.md` | je Fassung Digest, Scan-Ergebnis, geprüfte JanuaPort-Fassung, Datum |
+| `.trivyignore` | Ausnahmen des K-Scans (CVE, Grund, Ablauf ≤ 90 Tage) — derzeit keine |
 | `ebics-abholer.service`, `ebics-abholer.timer` | systemd-Einheiten für den täglichen Lauf |
 | `config.example.php` | Konfigurationsvorlage (nur Platzhalter, kein echter Zugang) |
 | `composer.json`, `composer.lock` | Abhängigkeiten (`ebics-api/ebics-client-php`, `setasign/fpdf`). Das Lock-File pinnt exakt die Fassungen, die live gegen eine echte Bank gelaufen sind — bewusst eingecheckt, nicht regeneriert |
 | `tests/run.php` | Testsuite ohne jeden Netzwerkzugriff (assert-basiert, kein PHPUnit) |
+| `tests/image.sh` | Prüfstrecke für Dockerfile, Compose, Workflow und das gebaute Image |
 
 Tests ausführen (reine Logik, kein Netz, keine Bank):
 
 ```bash
 docker run --rm -v "$PWD:/app" -w /app php:8.5-cli php tests/run.php
 ```
+
+Vollständig (mit `vendor/`) läuft sie im gebauten Image:
+`docker run --rm --network none <image> php /app/tests/run.php`.
 
 ---
 
