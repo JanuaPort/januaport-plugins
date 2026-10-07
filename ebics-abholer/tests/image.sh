@@ -62,12 +62,13 @@ dockerfile_mehrstufig() {
   [ "$stufen" -ge 2 ] || { echo "nur $stufen Stufe(n)"; return 1; }
 }
 
-# Composer darf nur in einer Bau-Stufe vorkommen, nie in der letzten.
+# Das Composer-WERKZEUG darf nur in einer Bau-Stufe vorkommen, nie in der
+# letzten. composer.json/composer.lock duerfen mit — die Teststrecke prueft sie.
 dockerfile_composer_nur_im_bau() {
   local laufzeit
   laufzeit="$(code "$ORDNER/Dockerfile" | awk '/^FROM /{buf=""} {buf=buf"\n"$0} END{print buf}')"
-  if printf '%s' "$laufzeit" | grep -qi 'composer'; then
-    echo 'die Laufzeit-Stufe erwaehnt composer'
+  if printf '%s' "$laufzeit" | grep -qiE 'composer:|bin/composer|composer (install|update|require)'; then
+    echo 'die Laufzeit-Stufe holt oder ruft Composer'
     return 1
   fi
 }
