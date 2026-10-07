@@ -9,20 +9,30 @@
 # Start (so ruft es der systemd-Timer):
 #   docker compose -f docker-compose.ebics-abholer.yml run --rm -T --no-deps ebics-abholer
 #
-# Einmalig bauen:
-#   docker compose -f docker-compose.ebics-abholer.yml build
-#
-# Die beiden Pfade der Anlage stehen in einer `.env` NEBEN dieser Datei
-# (nicht im Repo — siehe .gitignore):
+# Alle Werte der Anlage stehen in einer `.env` NEBEN dieser Datei (nicht im
+# Repo — siehe .gitignore; Vorlage: .env.example):
+#   JNPT_EBICS_IMAGE=ghcr.io/januaport/ebics@sha256:<Digest aus dem CHANGELOG>
 #   JNPT_EBICS_GEHEIM=/etc/jnpt/ebics
 #   JNPT_EBICS_ABLAGE=/var/lib/jnpt/ebics-eingang
-name: jnpt-ebics
+#
+# Das Image kommt per Digest aus der Registry (JanuaPort/januaport#1005). Ein
+# Tag allein reicht nicht: Der Digest ist die Zusage, dass genau das gepruefte
+# und gescannte Image laeuft. Ohne JNPT_EBICS_IMAGE bricht Compose mit einer
+# Meldung ab, statt still irgendein Image zu nehmen.
+#
+# Rueckweg „lokal bauen" (ohne Registry, etwa zum Pruefen einer Aenderung):
+#   docker build -t jnpt-ebics-abholer:local .
+#   JNPT_EBICS_IMAGE=jnpt-ebics-abholer:local   (in der .env)
+#
+# ⚠️ Der Projektname heisst seit #1005 `jnpt-plugin-ebics` (vorher
+# `jnpt-ebics`). Da kein Dauer-Container laeuft, bleibt beim Wechsel nichts
+# stehen. Netz-Namen, auf die sich eine Anlage verlaesst (etwa ein fester
+# Bridge-Name fuer Firewall-Regeln), setzt die Anlage selbst per Overlay.
+name: jnpt-plugin-ebics
 
 services:
   ebics-abholer:
-    build:
-      context: .
-    image: jnpt-ebics-abholer:local
+    image: ${JNPT_EBICS_IMAGE:?JNPT_EBICS_IMAGE fehlt — Digest-Pin in die .env neben dieser Datei (Vorlage .env.example)}
 
     # Kein `restart:` — dieser Dienst ist ein EINMALIGER Lauf. Geweckt wird er
     # vom systemd-Timer auf dem Host (ebics-abholer.timer), genau wie der

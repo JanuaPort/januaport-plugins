@@ -1,0 +1,13 @@
+# Ausnahmen des K-Scans fuer das Image des EBICS-Abholers (JanuaPort/januaport#1005).
+#
+# Regel (SEC, verbindlich): Der Scan blockt jeden Befund CRITICAL oder HIGH,
+# fuer den es einen Fix gibt. Ein solcher Befund wird durch Neubau behoben
+# (Basis-Image oder Abhaengigkeit anheben), nicht hier weggeschrieben. Eine
+# Ausnahme ist der letzte Ausweg und steht nur hier, je Zeile in genau dieser
+# Form — Ablauf hoechstens 90 Tage nach dem Eintrag, tests/image.sh prueft das:
+#
+#   CVE-JJJJ-NNNNN exp:JJJJ-MM-TT # Grund, warum der Fix nicht greift, und wer entschieden hat
+#
+# Laeuft eine Ausnahme ab, ist der Release-Lauf wieder rot. Das ist gewollt.
+#
+# Stand: keine Ausnahme.
