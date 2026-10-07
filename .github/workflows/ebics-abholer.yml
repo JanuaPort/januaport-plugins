@@ -1,0 +1,211 @@
+# Pruefen und Ausliefern des EBICS-Abholers (JanuaPort/januaport#1005).
+#
+# Zwei Ausloeser, zwei Aufgaben:
+#   - jede Aenderung unter ebics-abholer/ (Push, Pull Request): Teststrecke
+#     ohne Netz, Bau fuer amd64 und arm64, K-Scan je Plattform. Nichts wird
+#     veroeffentlicht.
+#   - ein Tag `ebics-abholer/vX.Y.Z`, den der Gate-Halter NACH dem Merge setzt:
+#     dasselbe, dann Multi-Arch-Bau mit SBOM und Provenance, Push nach
+#     ghcr.io/januaport/ebics zuerst NUR per Digest, K-Scan genau dieses
+#     Digests je Plattform, und erst wenn der gruen ist, der Versions-Tag.
+#     Der Index-Digest steht am Ende in der Zusammenfassung des Laufs; er
+#     wandert von dort in ebics-abholer/CHANGELOG.md und in die .env der Anlage.
+#
+# Pfadfilter gelten fuer Tag-Pushes nicht (GitHub wertet `paths` dort nicht
+# aus) — der Tag loest also immer aus.
+#
+# Actions per voller Commit-SHA mit Versionskommentar; Trivy als Binary mit
+# fester Version und Pruefsumme (wie gitleaks in secret-scan.yml), nicht als
+# Action.
+name: ebics-abholer
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - 'ebics-abholer/v*.*.*'
+    paths:
+      - 'ebics-abholer/**'
+      - '.github/workflows/ebics-abholer.yml'
+  pull_request:
+    paths:
+      - 'ebics-abholer/**'
+      - '.github/workflows/ebics-abholer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/januaport/ebics
+  TRIVY_VERSION: 0.75.0
+  TRIVY_SHA256: c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f
+
+jobs:
+  pruefen:
+    name: Pruefen (${{ matrix.plattform }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        plattform:
+          - linux/amd64
+          - linux/arm64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # QEMU fuer arm64 auf dem amd64-Runner: Bau UND Teststrecke laufen
+      # in der Zielarchitektur.
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Image bauen (ohne Push)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ebics-abholer
+          platforms: ${{ matrix.plattform }}
+          load: true
+          push: false
+          tags: ebics-pruefung:lokal
+
+      # Statische Pruefungen plus das gebaute Image: Nutzer, Befehl,
+      # Erweiterungen, die volle Teststrecke (tests/run.php) mit
+      # --network none, sauberer Abbruch ohne Konfiguration, Groesse.
+      - name: Teststrecke ohne Netz
+        run: bash ebics-abholer/tests/image.sh ebics-pruefung:lokal
+
+      - name: Trivy installieren
+        run: |
+          curl -sSfL -o trivy.tar.gz \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "${TRIVY_SHA256}  trivy.tar.gz" | sha256sum -c -
+          tar -xzf trivy.tar.gz -C "$RUNNER_TEMP" trivy
+
+      # K-Scan nach SEC-Regel. Rot bei jedem CRITICAL/HIGH mit Fix.
+      - name: K-Scan
+        run: |
+          "$RUNNER_TEMP/trivy" image --platform "${{ matrix.plattform }}" \
+            --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 \
+            --ignorefile ebics-abholer/.trivyignore \
+            ebics-pruefung:lokal
+
+  release:
+    name: Release (GHCR)
+    if: startsWith(github.ref, 'refs/tags/ebics-abholer/v')
+    needs: pruefen
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Version aus dem Tag
+        id: version
+        run: |
+          version="${GITHUB_REF_NAME#ebics-abholer/v}"
+          if ! printf '%s' "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Tag ${GITHUB_REF_NAME} ist kein ebics-abholer/vX.Y.Z"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Login GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Nur die OCI-Labels (Quelle, Revision, Zeitpunkt, Version); getaggt
+      # wird erst nach dem Scan.
+      - name: Metadaten
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          labels: |
+            org.opencontainers.image.title=ebics
+            org.opencontainers.image.description=JanuaPort EBICS-Abholer — holt camt.053 per EBICS und legt ihn als Datei ab
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.licenses=Apache-2.0
+
+      # Push NUR per Digest — ohne Tag ist das Image fuer niemanden „die
+      # neue Fassung", bis der Scan es freigibt. SBOM (SPDX) und SLSA-
+      # Provenance haengen als Attestationen am Index.
+      - name: Bauen und per Digest pushen
+        id: bau
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ebics-abholer
+          platforms: linux/amd64,linux/arm64
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          sbom: true
+          provenance: mode=max
+
+      - name: Trivy installieren
+        run: |
+          curl -sSfL -o trivy.tar.gz \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "${TRIVY_SHA256}  trivy.tar.gz" | sha256sum -c -
+          tar -xzf trivy.tar.gz -C "$RUNNER_TEMP" trivy
+
+      # Derselbe K-Scan, jetzt gegen genau den gepushten Digest — das ist der
+      # bindende Scan, der im CHANGELOG steht.
+      - name: K-Scan des Digests je Plattform
+        env:
+          DIGEST: ${{ steps.bau.outputs.digest }}
+        run: |
+          for plattform in linux/amd64 linux/arm64; do
+            echo "── $plattform"
+            "$RUNNER_TEMP/trivy" image --platform "$plattform" \
+              --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 \
+              --ignorefile ebics-abholer/.trivyignore \
+              "${IMAGE}@${DIGEST}"
+          done
+
+      # Der Tag zeigt auf denselben Index; die Pruefung danach stellt sicher,
+      # dass beim Taggen kein neuer Index entstanden ist.
+      - name: Versions-Tag setzen
+        env:
+          DIGEST: ${{ steps.bau.outputs.digest }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker buildx imagetools create -t "${IMAGE}:${VERSION}" "${IMAGE}@${DIGEST}"
+          ist="$(docker buildx imagetools inspect "${IMAGE}:${VERSION}" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          if [ "$ist" != "$DIGEST" ]; then
+            echo "::error::Tag ${VERSION} zeigt auf ${ist}, gebaut und gescannt wurde ${DIGEST}"
+            exit 1
+          fi
+
+      - name: Index-Digest ausgeben
+        env:
+          DIGEST: ${{ steps.bau.outputs.digest }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          echo "::notice title=ebics ${VERSION}::${IMAGE}@${DIGEST}"
+          {
+            echo "## ebics ${VERSION}"
+            echo
+            echo "Index-Digest: \`${DIGEST}\`"
+            echo
+            echo "Pin fuer die .env der Anlage:"
+            echo
+            echo "\`\`\`"
+            echo "JNPT_EBICS_IMAGE=${IMAGE}@${DIGEST}"
+            echo "\`\`\`"
+            echo
+            echo "K-Scan (Trivy ${TRIVY_VERSION}, CRITICAL/HIGH mit Fix): gruen fuer linux/amd64 und linux/arm64."
+            echo "Digest und Scan-Ergebnis in ebics-abholer/CHANGELOG.md eintragen."
+          } >> "$GITHUB_STEP_SUMMARY"
