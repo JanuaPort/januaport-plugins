@@ -19,9 +19,11 @@ REPO="$(cd "$ORDNER/.." && pwd)"
 WORKFLOW="$REPO/.github/workflows/ebics-abholer.yml"
 IMAGE="${1:-}"
 
-# Obergrenze fuer das Image (Groesse laut `docker image inspect`). Vorher
-# (php:8.5-cli, Debian, ein Stockwerk) lag es bei rund 800 MB entpackt.
-GROESSE_MAX_MB=150
+# Obergrenze fuer das entpackte Dateisystem des Images (`du` im Container).
+# Bewusst nicht `docker image inspect .Size`: Das meldet je nach Image-Store
+# entpackt (klassisch) oder komprimiert (containerd) — zwei verschiedene
+# Zahlen fuer dasselbe Image. Vorher (php:8.5-cli, Debian, eine Stufe): 601 MB.
+GROESSE_MAX_MB=200
 
 GRUEN=0
 ROT=0
@@ -249,9 +251,12 @@ if [ -n "$IMAGE" ]; then
   }
 
   image_groesse() {
-    local b
-    b="$(docker image inspect "$IMAGE" --format '{{.Size}}')"
-    [ $((b / 1000000)) -le "$GROESSE_MAX_MB" ] || { echo "$((b / 1000000)) MB > $GROESSE_MAX_MB MB"; return 1; }
+    local kb mb
+    kb="$(docker run --rm --network none --user 0 --entrypoint du "$IMAGE" -sxk / 2>/dev/null | tail -1 | cut -f1)"
+    [ -n "$kb" ] || { echo 'du lieferte nichts'; return 1; }
+    mb=$((kb * 1024 / 1000000))
+    echo "$mb MB"
+    [ "$mb" -le "$GROESSE_MAX_MB" ] || { echo "$mb MB > $GROESSE_MAX_MB MB"; return 1; }
   }
 
   echo "Image $IMAGE"
