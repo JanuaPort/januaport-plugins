@@ -15,13 +15,13 @@ Ein Befund mit Fix wird durch Neubau behoben (Basis oder Abhängigkeit anheben),
 weggeschrieben. Ausnahmen nur in `.trivyignore`, je Zeile mit CVE, Grund und `exp:`
 höchstens 90 Tage. CRITICAL- und HIGH-Befunde ohne Fix blocken nicht, stehen aber hier.
 
-## 1.0.0 — noch nicht veröffentlicht
+## 1.0.0 — 2026-10-07
 
 | Feld | Wert |
 |---|---|
 | Image | `ghcr.io/januaport/ebics` |
-| Version | `1.0.0` (Tag `ebics-abholer/v1.0.0`, setzt der Gate-Halter nach dem Merge) |
-| Digest (OCI-Index) | `sha256:<trägt der Gate-Halter aus der Zusammenfassung des Release-Laufs ein>` |
+| Version | `1.0.0` (Tag `ebics-abholer/v1.0.0` → `07a96be`, Release-Lauf 37677075032) |
+| Digest (OCI-Index) | `sha256:c6f43220230616ed4685eb5710c7e096aab3165173fa7ba49fec91a92ed8f370` |
 | Plattformen | `linux/amd64`, `linux/arm64` |
 | Art | Job (einmaliger Lauf per systemd-Timer), kein Dienst |
 | Basis | `php:8.5.11-cli-alpine3.24` (per Digest gepinnt), Composer 2.10.3 nur in der Bau-Stufe |
@@ -48,9 +48,14 @@ nächsten Anheben der Basis:
 - `nghttp2-libs` 1.69.0-r0: CVE-2026-58055 (behoben in 1.70.0-r0)
 - `zlib` 1.3.2-r0: CVE-2026-85091 (behoben in 1.3.2-r1)
 
-**Bindender Scan:** Der Release-Lauf scannt den gepushten Digest je Plattform noch
-einmal und setzt den Versions-Tag erst danach. Sein Ergebnis und sein Datum ersetzen
-beim Eintragen des Digests die Zeilen oben.
+**Bindender Scan (7. Oktober 2026, Release-Lauf 37677075032):** Trivy 0.75.0 gegen
+genau `ghcr.io/januaport/ebics@sha256:c6f432202306…` je Plattform, CRITICAL/HIGH mit Fix:
+**0 Befunde** für `linux/amd64` und `linux/arm64` (Alpine 3.24.2 und
+`composer/installed.json`). Der Versions-Tag `1.0.0` wurde erst danach gesetzt und zeigt
+nachweislich auf denselben Index. Attestationen am Index: SBOM (SPDX, 349 bzw. 346
+Einträge je Plattform) und SLSA-Provenance. Das Paket ist bis zum GHCR-Flip **privat**.
+Die beiden mittleren Befunde aus dem Vorab-Scan oben bleiben bis zum nächsten Anheben
+der Basis.
 
 **Laufbeleg:** steht aus — ein Lauf mit genau diesem Digest am Showcase (Start,
 Konfig-Prüfung, sauberer Abbruch ohne Schlüssel) und ein Lauf von Hand auf der
