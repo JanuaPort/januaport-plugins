@@ -1,0 +1,17 @@
+{
+  "_meta": {
+    "januaport.ai/run": {
+      "end": "timeout",
+      "bytes_out": 0,
+      "tool_calls": 0,
+      "isolation": "gvisor"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "Das Skript hat die Wandzeit überschritten und wurde beendet."
+    }
+  ],
+  "isError": true
+}

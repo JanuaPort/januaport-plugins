@@ -1,0 +1,109 @@
+# Skript-Läufer (JanuaPort/januaport#928) — Beisteller neben dem Gateway.
+#
+# Drei Dienste aus einem Image:
+#   script-runner          vermittler: MCP für das Gateway (nur im Netz
+#                          jnpt_default, Port 8090), /healthz nur auf dem
+#                          Host-Loopback (8091)
+#   script-runner-sandbox  Wächter + Python: kein Netz, kein Schlüssel, genau
+#                          ein Lauf je Instanz, danach Neustart mit leerem tmpfs
+#   script-runner-fetcher  abholer: holt gepinnte Commits per ssh, eigenes Netz
+#
+# Ablage auf der Anlage: /opt/jnpt/plugins/script-runner/ (diese Datei, das
+# Seccomp-Profil unter seccomp/ und die .env mit JNPT_SCRIPT_RUNNER_IMAGE).
+# Start immer mit -f:
+#   docker compose -f /opt/jnpt/plugins/script-runner/docker-compose.yml up -d
+#
+# Die Ordner unter /run/jnpt/plugins/ legt systemd-tmpfiles an; das Gateway
+# schreibt hinein (Beispiel: deploy/jnpt-plugins-script-runner.conf.example).
+# Compose-Hygiene: internal/hygiene prüft diese Datei (Vertrag §6, SEC-Zeile 3).
+name: jnpt-plugin-script-runner
+
+services:
+  script-runner:
+    image: ${JNPT_SCRIPT_RUNNER_IMAGE:?JNPT_SCRIPT_RUNNER_IMAGE fehlt in /opt/jnpt/plugins/script-runner/.env}
+    command: ["mediator"]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    cap_drop: [ALL]
+    user: "65532:65532"
+    environment:
+      JNPT_GATEWAY_URL: ${JNPT_GATEWAY_URL:-http://jnpt:8484}
+    volumes:
+      # runtime-key und pins.json; ein ORDNER-Mount, damit ein atomar
+      # ersetzter Schlüssel ankommt.
+      - /run/jnpt/plugins/script-runner:/run/jnpt/plugins/script-runner:ro
+      - sockets:/run/script-runner
+      - store:/var/lib/script-runner
+    networks: [default]
+    ports:
+      # Nur /healthz, nur Host-Loopback (HEALTH_URL des Deskriptors). MCP hat
+      # keinen Host-Port.
+      - "127.0.0.1:8091:8091"
+    # Der Deskriptor kennt genau einen SERVICE; `up -d script-runner` startet
+    # so auch Sandbox und abholer.
+    depends_on: [script-runner-sandbox, script-runner-fetcher]
+    restart: unless-stopped
+
+  script-runner-sandbox:
+    image: ${JNPT_SCRIPT_RUNNER_IMAGE:?JNPT_SCRIPT_RUNNER_IMAGE fehlt in /opt/jnpt/plugins/script-runner/.env}
+    command: ["guard"]
+    # Vertrag §6, Zeile für Zeile.
+    network_mode: none
+    read_only: true
+    ipc: none
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=./seccomp/jnpt-sandbox-seccomp.json
+    pids_limit: 128
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 1
+    user: "65533:65533"
+    # Auf Anlagen mit gVisor: runsc-jnpt, ein EIGENER Runtime-Eintrag in
+    # daemon.json mit runtimeArgs ["--oci-seccomp", "--host-uds=open"]
+    # (deploy/daemon.json.example, Vertrag F3 B1). Ohne --oci-seccomp greift
+    # das Profil nicht und der vermittler bedient nicht (S2/B2); ohne
+    # --host-uds=open erreicht die Sandbox den Socket nicht.
+    runtime: ${JNPT_SCRIPT_RUNNER_RUNTIME:-runc}
+    # Genau ein Lauf je Instanz; der Wächter endet danach, Docker startet
+    # DENSELBEN Container neu — mit leerem tmpfs (M3).
+    restart: always
+    tmpfs:
+      # mode/uid/gid sind Pflicht: ohne sie legt Docker /work nach einem
+      # Neustart als root:755 an, und die Sandbox kann nicht mehr schreiben (G2).
+      - /work:size=64m,noexec,nosuid,nodev,uid=65533,gid=65533,mode=0700
+      - /tmp:size=16m,noexec,nosuid,nodev,uid=65533,gid=65533,mode=0700
+    volumes:
+      # Der einzige Mount: der Socket-Ordner, read-only (M4).
+      - sockets:/run/script-runner:ro
+
+  script-runner-fetcher:
+    image: ${JNPT_SCRIPT_RUNNER_IMAGE:?JNPT_SCRIPT_RUNNER_IMAGE fehlt in /opt/jnpt/plugins/script-runner/.env}
+    command: ["fetcher"]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    cap_drop: [ALL]
+    user: "65532:65532"
+    tmpfs:
+      - /tmp:size=1m,noexec,nosuid,nodev,uid=65532,gid=65532,mode=0700
+    volumes:
+      # Nur der Deploy-Key, nie pins.json oder der runtime-key (R8).
+      - /run/jnpt/plugins/script-runner-git:/run/jnpt/plugins/script-runner-git:ro
+      - store:/var/lib/script-runner
+    # Eigenes Netz mit Ausgang zum Git-Anbieter; kein Weg zum Gateway.
+    networks: [egress]
+    restart: unless-stopped
+
+volumes:
+  sockets: {}
+  store: {}
+
+networks:
+  default:
+    external: true
+    # Das Netz des Gateway-Stacks; es existiert erst, wenn das Gateway läuft.
+    name: jnpt_default
+  egress: {}

@@ -1,0 +1,17 @@
+{
+  "_meta": {
+    "januaport.ai/run": {
+      "end": "internal",
+      "bytes_out": 0,
+      "tool_calls": 0,
+      "isolation": "gvisor"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "Interner Fehler im Skript-Läufer."
+    }
+  ],
+  "isError": true
+}

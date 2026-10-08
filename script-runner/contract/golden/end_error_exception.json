@@ -1,0 +1,20 @@
+{
+  "_meta": {
+    "januaport.ai/run": {
+      "end": "error",
+      "detail": "exception",
+      "error_type": "ValueError",
+      "error_at": "invoice-check/main.py:42",
+      "bytes_out": 0,
+      "tool_calls": 1,
+      "isolation": "gvisor"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "Das Skript ist mit einer Ausnahme abgebrochen: ValueError in invoice-check/main.py:42."
+    }
+  ],
+  "isError": true
+}

@@ -1,0 +1,52 @@
+# Tests des Beistellers script-runner (JanuaPort/januaport#928).
+#
+# unit:   Go-Tests (Vertrag als Golden-JSON, vermittler gegen Stub-Gateway und
+#         Fake-Wächter, Senke gegen echtes git, abholer, Compose-Hygiene),
+#         go vet und die Prüfung, dass das Seccomp-Profil der Herleitung aus
+#         dem Docker-Standardprofil entspricht.
+# probes: die Docker-Sonden gegen den echten Stack (Image, Compose, Sandbox,
+#         SSH-Git-Anbieter, Stub-Gateway) — probe/run.sh.
+name: script-runner
+
+on:
+  push:
+    paths:
+      - 'script-runner/**'
+      - '.github/workflows/script-runner.yml'
+  pull_request:
+    paths:
+      - 'script-runner/**'
+      - '.github/workflows/script-runner.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Test (script-runner, Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: script-runner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: script-runner/go.mod
+          cache-dependency-path: script-runner/go.sum
+      - name: go vet
+        run: go vet ./... && go vet -tags docker ./probe/
+      - name: go test
+        run: go test -count=1 ./...
+      - name: Seccomp-Profil = Herleitung
+        run: python3 seccomp/derive.py --check
+
+  probes:
+    name: Docker-Sonden (script-runner)
+    runs-on: ubuntu-latest
+    needs: unit
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sonden
+        run: sh script-runner/probe/run.sh

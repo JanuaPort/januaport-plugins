@@ -1,0 +1,22 @@
+{
+  "_meta": {
+    "januaport.ai/run": {
+      "end": "ok",
+      "bytes_out": 27,
+      "tool_calls": 3,
+      "isolation": "gvisor"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"checked\":12,\"open\":[\"A-1\"]}"
+    }
+  ],
+  "structuredContent": {
+    "checked": 12,
+    "open": [
+      "A-1"
+    ]
+  }
+}

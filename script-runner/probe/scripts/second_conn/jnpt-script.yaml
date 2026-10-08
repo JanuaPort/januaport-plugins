@@ -1,0 +1,7 @@
+name: second_conn
+description: Sonde second_conn (JanuaPort/januaport#928).
+entry: main.py
+input_schema:
+  type: object
+tools: []
+timeout_s: 10

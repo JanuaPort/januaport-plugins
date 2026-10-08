@@ -1,0 +1,18 @@
+{
+  "_meta": {
+    "januaport.ai/runner": {
+      "contract": 1,
+      "isolation": "invalid",
+      "pins": [
+        {
+          "name": "a",
+          "commit": "3333333333333333333333333333333333333333",
+          "state": "pending"
+        }
+      ]
+    }
+  },
+  "ttlMs": 0,
+  "cacheScope": "private",
+  "tools": []
+}

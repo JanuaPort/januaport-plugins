@@ -1,0 +1,8 @@
+name: ok_echo
+description: Sonde ok_echo (JanuaPort/januaport#928).
+entry: main.py
+input_schema:
+  type: object
+tools:
+  - kartei_find
+timeout_s: 10

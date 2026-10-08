@@ -1,0 +1,7 @@
+{
+  "type": "hello",
+  "instance": "0123456789abcdef0123456789abcdef",
+  "isolation": "gvisor",
+  "seccomp": 2,
+  "profile": "jnpt"
+}

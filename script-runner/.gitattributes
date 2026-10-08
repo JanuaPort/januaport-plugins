@@ -1,0 +1,3 @@
+# Skripte, Dockerfiles und Golden-Dateien laufen in Linux-Containern und
+# werden byte-genau verglichen: immer LF, auch in einem Windows-Checkout.
+* text=auto eol=lf

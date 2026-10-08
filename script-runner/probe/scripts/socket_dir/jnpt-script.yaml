@@ -1,0 +1,7 @@
+name: socket_dir
+description: Sonde socket_dir (JanuaPort/januaport#928).
+entry: main.py
+input_schema:
+  type: object
+tools: []
+timeout_s: 10

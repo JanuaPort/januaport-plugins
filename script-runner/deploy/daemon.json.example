@@ -1,0 +1,8 @@
+{
+  "runtimes": {
+    "runsc-jnpt": {
+      "path": "/usr/bin/runsc",
+      "runtimeArgs": ["--oci-seccomp", "--host-uds=open"]
+    }
+  }
+}
