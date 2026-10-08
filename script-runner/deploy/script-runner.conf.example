@@ -1,13 +1,15 @@
-# BEISPIEL — Host-Deskriptor des Plugins „script-runner“
-# (JanuaPort/januaport#928, Form nach JanuaPort/januaport#885). Die
-# verbindliche Fassung mit dem echten Image-Repository kommt mit der
-# Auslieferung (P4). Ablage: /etc/jnpt-updater.d/script-runner.conf,
-# root:root, 0600 oder 0644, kein Symlink.
+# Host-Deskriptor des Plugins „script-runner“ (JanuaPort/januaport#928, Form
+# nach JanuaPort/januaport#885). Ablage: /etc/jnpt-updater.d/script-runner.conf,
+# root:root, 0600 oder 0644, kein Symlink. Syntax KEY=VALUE, geparst, nie
+# ausgeführt.
 
-# Repository-Allowlist: nur das Repository, kein Tag, kein Digest.
-IMAGE_REPO=registry.example.com/januaport/script-runner
+# Repository-Allowlist: nur das Repository, kein Tag, kein Digest. Ziel ist
+# immer ${IMAGE_REPO}@<Digest aus dem signierten Katalog>.
+IMAGE_REPO=ghcr.io/januaport/script-runner
 
 # Die ausgelieferte Compose mit dem Projektnamen jnpt-plugin-script-runner.
+# Das Seccomp-Profil steht darin relativ; Compose löst es gegen diesen Ordner
+# auf, auch wenn der Aktuator mit cwd / läuft (E1, Sonde im Plugins-Repo).
 COMPOSE_FILE=/opt/jnpt/plugins/script-runner/docker-compose.yml
 
 # Der vermittler; Sandbox und abholer startet Compose über depends_on mit.
@@ -17,12 +19,15 @@ ENV_FILE=/opt/jnpt/plugins/script-runner/.env
 ENV_KEY=JNPT_SCRIPT_RUNNER_IMAGE
 
 # 200 erst, wenn der runtime-key da ist und eine Sandbox mit Seccomp-Modus 2
-# sich gemeldet hat. Eine falsch registrierte Runtime (runsc-jnpt) fällt so schon
-# beim Hochfahren auf.
+# und unserem Profil sich gemeldet hat. Eine falsch registrierte Runtime
+# (runsc-jnpt) fällt so schon beim Hochfahren auf.
 HEALTH_URL=http://127.0.0.1:8091/healthz
 
-# Ohne das Profil startet die Sandbox nicht.
-REQUIRE=/opt/jnpt/plugins/script-runner/seccomp/jnpt-sandbox-seccomp.json
+# Vorbedingungen (durch `:` getrennt): das Profil — ohne es startet die
+# Sandbox nicht — und der runtime-key, den JanuaPort ablegt. Fehlt der
+# Schlüssel, bucht der Aktuator `unprovisioned` statt `failed`; ein
+# Aktivieren vor dem Eintragen des Schlüssels sperrt so keinen Digest.
+REQUIRE=/opt/jnpt/plugins/script-runner/seccomp/jnpt-sandbox-seccomp.json:/run/jnpt/plugins/script-runner/runtime-key
 
 # Der Store liegt in einem Volume des eigenen Compose-Projekts; `down -v`
 # entfernt ihn. Keine Host-Ordner.

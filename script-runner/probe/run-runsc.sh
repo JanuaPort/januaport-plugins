@@ -2,7 +2,8 @@
 # Docker-Sonden des Skript-Läufers unter gVisor (JanuaPort/januaport#928).
 #
 # Rezept ohne Eingriff in den Docker des Rechners: ein Wegwerf-dind
-# (p2-928-dind), darin gVisor aus dem Release-Tarball mit sha512-Prüfung und
+# (p2-928-dind), darin gVisor aus dem Release-Tarball einer gepinnten Fassung
+# (dieselbe wie im Runbook) mit SHA-512-Prüfung gegen die Konstante unten und
 # die Runtime aus deploy/daemon.json.example — Name runsc-jnpt,
 # runtimeArgs --oci-seccomp und --host-uds=open. Ein eigener Name, damit die
 # Argumente nur für den Skript-Läufer gelten und ein vorhandenes runsc
@@ -17,6 +18,10 @@ src=$(cd "$here" && (pwd -W 2>/dev/null || pwd))
 export MSYS_NO_PATHCONV=1
 dind=p2-928-dind
 img=p2-928-script-runner:test
+# gVisor-Fassung (Tag release-<Fassung>) und SHA-512 von gvisor.tar.zstd.
+# Ein Wechsel ist eine bewusste Änderung mit Changelog-Eintrag.
+gvisor_release=20260928.0
+gvisor_sha512=4ce35ca83aef7f96b06cde668e0b23aa98b05aa1829508e974196c2a1e02786c95f5bf79315fd7ddcfd88fe7a00f083ed8053e25eff7673d28d5256440caae8b
 
 docker build -q -t "$img" "$src" >/dev/null
 docker build -q -t p2-928-sshd:test "$src/probe/sshd" >/dev/null
@@ -31,13 +36,12 @@ until docker exec "$dind" docker info >/dev/null 2>&1; do
   sleep 1
 done
 
-docker exec "$dind" sh -ec '
+docker exec -e gvisor_release="$gvisor_release" -e gvisor_sha512="$gvisor_sha512" "$dind" sh -ec '
   apk add -q zstd curl >/dev/null
   cd /tmp
-  u=https://storage.googleapis.com/gvisor/releases/release/latest/x86_64
+  u=https://storage.googleapis.com/gvisor/releases/release/$gvisor_release/x86_64
   curl -sSfLO "$u/gvisor.tar.zstd"
-  curl -sSfLO "$u/gvisor.tar.zstd.sha512"
-  sha512sum -c gvisor.tar.zstd.sha512
+  echo "$gvisor_sha512  gvisor.tar.zstd" | sha512sum -c -
   zstd -dq gvisor.tar.zstd -o gvisor.tar
   tar -xf gvisor.tar -C /usr/bin runsc gvisor-bin
   mkdir -p /etc/docker'

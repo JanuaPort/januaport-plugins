@@ -90,6 +90,13 @@ strukturiert.
 
 ## Betrieb
 
+- **Image:** `ghcr.io/januaport/script-runner`, gebaut von der
+  Release-Strecke dieses Repos (Tag `script-runner-vX.Y.Z`, nur `linux/amd64`,
+  mit SBOM und Provenance). Die Anlage bezieht es nur per Digest aus dem
+  signierten Katalog; der Aktuator schreibt `JNPT_SCRIPT_RUNNER_IMAGE` in die
+  `.env` (Beispiel: `deploy/.env.example`, Deskriptor:
+  `deploy/script-runner.conf.example`). Was je Digest geprüft wurde, steht in
+  `CHANGELOG.md`.
 - **Ablage:** `/opt/jnpt/plugins/script-runner/` mit `docker-compose.yml`,
   `seccomp/jnpt-sandbox-seccomp.json` und einer `.env` mit
   `JNPT_SCRIPT_RUNNER_IMAGE`. Start mit
@@ -129,8 +136,9 @@ verantwortet, Branch-Schutz, Prüfung vor dem Pinnen).
 ## Prüfen
 
 ```sh
-docker run --rm -v "$PWD":/src -w /src golang:1.25.13 go test ./...
-sh probe/run.sh    # Docker-Sonden gegen den echten Stack
+# aus dem Repo-Root
+docker run --rm -v "$PWD":/repo -w /repo/script-runner golang:1.25.13 go test ./...
+sh script-runner/probe/run.sh    # Docker-Sonden gegen den echten Stack
 ```
 
 Einzelheiten für Entwickler: `CLAUDE.md`. Änderungen: `CHANGELOG.md`.

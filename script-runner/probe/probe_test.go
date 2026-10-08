@@ -19,6 +19,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -32,6 +34,7 @@ const (
 	project    = "p2-928-sr"
 	projectDP  = "p2-928-dp"
 	projectUC  = "p2-928-uc"
+	projectE1  = "p2-928-e1"
 	sshdName   = "p2-928-sshd"
 	runtimeKey = "probe-runtime-key-not-a-secret"
 	runToken   = "jnptrun_PROBE_PROBE_PROBE_PROBE_PROBE_PROBE_PROBE_P"
@@ -150,6 +153,7 @@ func cleanup() {
 	_, _ = compose(project, mainFiles, "down", "-v", "--remove-orphans", "-t", "1")
 	_, _ = compose(projectDP, dpFiles, "down", "-v", "--remove-orphans", "-t", "1")
 	_, _ = compose(projectUC, ucFiles, "down", "-v", "--remove-orphans", "-t", "1")
+	_, _ = compose(projectE1, mainFiles, "down", "-v", "--remove-orphans", "-t", "1")
 	_, _ = run("docker", "rm", "-f", sshdName)
 }
 
@@ -773,4 +777,59 @@ func grepLine(s, needle string) string {
 		}
 	}
 	return ""
+}
+
+// E1 (Plan P4): Der Aktuator ruft `docker compose --env-file … -f <absolut>`
+// ohne cd auf, systemd startet ihn mit cwd /. Das Seccomp-Profil steht in der
+// Compose relativ (./seccomp/…). Compose muss es gegen das Projektverzeichnis
+// auflösen, nicht gegen das cwd — sonst startet die Sandbox auf der Anlage
+// nicht. `compose config` zeigt den Pfad unaufgelöst; maßgeblich ist, was
+// beim Anlegen im Container landet: genau unser Profil.
+func TestE1SeccompProfileFromProjectDirWithCwdRoot(t *testing.T) {
+	dir, err := filepath.Abs("..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	envFile := filepath.Join(t.TempDir(), ".env")
+	if err := os.WriteFile(envFile, []byte("JNPT_SCRIPT_RUNNER_IMAGE="+image+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	composeFromRoot := func(args ...string) (string, error) {
+		full := append([]string{"compose", "-p", projectE1, "--env-file", envFile,
+			"-f", filepath.Join(dir, "docker-compose.yml")}, args...)
+		cmd := exec.Command("docker", full...)
+		cmd.Dir = "/"
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	defer func() { _, _ = composeFromRoot("down", "-v", "-t", "1") }()
+	if out, err := composeFromRoot("up", "--no-start", "--no-deps", "script-runner-sandbox"); err != nil {
+		t.Fatalf("compose up mit cwd /: %v\n%s", err, out)
+	}
+
+	opts := must(t, "docker", "inspect", "-f", "{{json .HostConfig.SecurityOpt}}", projectE1+"-script-runner-sandbox-1")
+	var secOpts []string
+	if err := json.Unmarshal([]byte(opts), &secOpts); err != nil {
+		t.Fatal(err)
+	}
+	var got any
+	for _, o := range secOpts {
+		if p, ok := strings.CutPrefix(o, "seccomp="); ok {
+			if err := json.Unmarshal([]byte(p), &got); err != nil {
+				t.Fatalf("seccomp-Option ist kein Profil: %.80q", p)
+			}
+		}
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "seccomp", "jnpt-sandbox-seccomp.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want any
+	if err := json.Unmarshal(b, &want); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatal("Sandbox trägt nicht das Profil aus dem Projektverzeichnis")
+	}
+	t.Logf("E1: cwd / → Profil aus %s/seccomp/ im Container", dir)
 }
