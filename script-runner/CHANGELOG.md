@@ -1,5 +1,12 @@
 # Changelog — script-runner
 
+## Unveröffentlicht
+
+- Nur Test: `TestNewConnectionOnlyAfterEOF` wartet nach dem Schließen des
+  Fake-Wächters auf das vom Mediator gelesene EOF und die Freigabe des Slots.
+  Die V1-Prüfung vor EOF bleibt erhalten; kein Produktcode geändert, kein
+  Release (JanuaPort/januaport#1056).
+
 ## 0.1.1 — Neubau gegen Trivy-Funde mit Fix (JanuaPort/januaport#928)
 
 Noch nicht getaggt; den Tag `script-runner-v0.1.1` setzt das Quality Gate.

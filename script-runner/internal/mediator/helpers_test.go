@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -443,6 +444,44 @@ func (g *fakeGuard) waitEOF() error {
 				return fmt.Errorf("kein EOF: %w", err)
 			}
 			return nil
+		}
+	}
+}
+
+// closeGuardAndWaitEOF wartet auf das gelesene EOF und die Freigabe des
+// Slots (V1). Das lokale Close allein bestätigt beides noch nicht.
+func (e *env) closeGuardAndWaitEOF(g *fakeGuard) {
+	e.t.Helper()
+	e.m.sb.mu.Lock()
+	sc := e.m.sb.current
+	e.m.sb.mu.Unlock()
+	if sc == nil {
+		e.t.Fatal("keine Sandbox-Verbindung vor EOF")
+	}
+	if err := g.conn.Close(); err != nil {
+		e.t.Fatal(err)
+	}
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+	select {
+	case <-sc.eof:
+	case <-timer.C:
+		e.t.Fatal("vermittler hat EOF nicht gelesen")
+	}
+	// serve schließt eof unmittelbar vor der Freigabe unter sb.mu. Auch
+	// diesen Schritt beobachten, bevor die nächste Verbindung entsteht.
+	for {
+		e.m.sb.mu.Lock()
+		free := e.m.sb.current == nil
+		e.m.sb.mu.Unlock()
+		if free {
+			return
+		}
+		select {
+		case <-timer.C:
+			e.t.Fatal("Sandbox-Slot nach EOF nicht freigegeben")
+		default:
+			runtime.Gosched()
 		}
 	}
 }

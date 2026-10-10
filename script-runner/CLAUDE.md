@@ -109,6 +109,10 @@ und `vendor/` darin (reines Python, R12).
    exited → kill(-1) → waitpid → Restprozesse? → close → Frist). **Nie** eine
    Zeitgrenze einbauen, nach der der vermittler ohne EOF neu annimmt — das wäre
    genau das V1-Fenster.
+   `TestNewConnectionOnlyAfterEOF` prüft die Ablehnung vor EOF. Danach wartet
+   die Testhilfe auf den EOF-Kanal und die Freigabe von `sandboxes.current`
+   unter dessen Mutex, bevor sie die nächste Verbindung öffnet; das lokale
+   Schließen des Fake-Wächters allein bestätigt die Freigabe noch nicht.
 2. **M2 — der vermittler misst selbst.** Wandzeit mit eigener Uhr ab dem
    Senden des jobs; `exited` zählt nur für ok/error innerhalb der Wandzeit.
    Der Wächter setzt `PR_SET_DUMPABLE 0` als erste Handlung und bedient nur
