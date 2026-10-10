@@ -43,7 +43,9 @@ Funde mit Fix in MEDIUM und LOW sind ebenfalls weg (0.1.0: 35 bzw. 7, 0.1.1:
 `golang.org/x/sys` v0.44.0 (CVE-2026-39824). Der Kuratierungs-Nachweis folgt
 nach dem Release-Lauf mit dem Digest aus der Strecke.
 
-## Unveröffentlicht (JanuaPort/januaport#928, P2)
+## 0.1.0 — 2026-10-10 (getaggt, nicht katalogisiert; JanuaPort/januaport#928, P2)
+
+Tag `script-runner-v0.1.0` → `db298d2`, Release-Lauf `38044703224`. Abgelöst durch 0.1.1 (Funde mit Fix, siehe oben).
 
 ### Auslieferung (P4a)
 
