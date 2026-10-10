@@ -294,7 +294,7 @@ Diese Auslegungen aus dem Bau von P2 hat LEAD in Fassung 3 bestätigt —
 ```sh
 # Unit-Tests (in einem Linux-Container; auf Windows hängt lokales go test)
 # aus dem Repo-Root: der Release-Wächter liest .github/workflows/
-docker run --rm -v "$PWD":/repo -w /repo/script-runner golang:1.25.13 go test ./...
+docker run --rm -v "$PWD":/repo -w /repo/script-runner golang:1.26.9 go test ./...
 python3 script-runner/seccomp/derive.py --check
 # Docker-Sonden gegen den echten Stack (Präfix p2-928-, räumt selbst auf)
 sh script-runner/probe/run.sh
