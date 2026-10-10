@@ -5,7 +5,7 @@
 # Beide Basis-Images sind per Digest gepinnt (Index-Digest, gültig für jede
 # Architektur). Ein Wechsel ist eine bewusste Änderung mit Changelog-Eintrag.
 
-FROM golang:1.25.13@sha256:cbff9d1a9041b316010f2da6b701b6c0d597718cb90928c85eb597334a0d23d4 AS build
+FROM golang:1.26.9@sha256:d7722066f0b60ceccb6c0643cbed1f5f9e15506ac237146c95333504d7805d89 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -14,7 +14,7 @@ COPY internal ./internal
 # Statisch, ohne CGO: dasselbe Binary läuft in allen drei Diensten.
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/script-runner .
 
-FROM python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
+FROM python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
 # git (Debian-Build, SHA-1 über sha1dc) und der ssh-Client für den abholer.
 # pip und ensurepip werden entfernt: im Lauf gibt es keine Installation (R12).
 # Zwei Nutzer ohne Login: 65532 für vermittler und abholer (Eigentümer der

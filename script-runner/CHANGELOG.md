@@ -1,6 +1,51 @@
 # Changelog — script-runner
 
-## Unveröffentlicht (JanuaPort/januaport#928, P2)
+## 0.1.1 — Neubau gegen Trivy-Funde mit Fix (JanuaPort/januaport#928)
+
+Noch nicht getaggt; den Tag `script-runner-v0.1.1` setzt das Quality Gate.
+**0.1.0 wird nicht katalogisiert:** Der Trivy-Bericht des Release-Laufs
+`38044703224` (Digest `sha256:ee9ae6b07472aeb42271c75f4e0703a251e4dcb272b4c2602ed38e94c7c1c0ef`)
+zeigt hohe Funde, für die es einen Fix gibt; nach der K-Scan-Regel wird ein
+solcher Fund durch einen Neubau behoben. Kein Verhalten des Läufers ist
+geändert.
+
+- Go-Builder `golang:1.25.13` → `golang:1.26.9`
+  (`sha256:d7722066f0b60ceccb6c0643cbed1f5f9e15506ac237146c95333504d7805d89`),
+  `go.mod` `go 1.26.9` (die CI testet mit `go-version-file: go.mod`), der
+  Test-Läufer der Sonden ebenso. Behebt in der Go-Standardbibliothek
+  CVE-2026-78667, CVE-2026-78669 und CVE-2026-97031 (HIGH).
+- Laufzeit-Basis `python:3.12-slim` neu gepinnt auf
+  `sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1`
+  (Debian 13.7, Python 3.12.15). Darin `openssl`/`libssl3t64`
+  `3.5.7-1~deb13u3` (CVE-2026-84782) und `libpcre2-8-0` `10.46-1~deb13u3`
+  (CVE-2026-103111). Ein eigenes `apt-get install --only-upgrade` ist dafür
+  nicht nötig.
+- Wächter `TestDockerfile`: Go-Builder 1.26 per Digest, und `go.mod` nennt
+  dieselbe Go-Fassung wie der Builder.
+- **openssh-client CVE-2026-60002 (CRITICAL):** Use-after-free im Client,
+  nicht blockierend, kein Fix verfügbar; Neubau, sobald Debian 13 openssh
+  ≥ 10.4p1 liefert. Der abholer nutzt den Client für git über ssh.
+
+**Scan** mit Trivy 0.74.0 (wie die Release-Strecke: Image als Datei,
+`--scanners vuln`), Zählung HIGH und CRITICAL:
+
+| | mit Fix | ohne Fix |
+|---|---|---|
+| 0.1.0, Release-Lauf `38044703224`, Datenbank vom 10.10.2026 | 7 HIGH (stdlib ×3, openssl ×3 Pakete, libpcre2) | 1 CRITICAL, 60 HIGH |
+| 0.1.1, lokaler Build `linux/amd64`, Datenbank vom 10.10.2026 | **0** | 1 CRITICAL, 60 HIGH |
+
+Die 61 Funde ohne Fix (Status `affected`, bei Perl `fix_deferred`) liegen in
+Debian-Paketen der Basis: openssh-client (CVE-2026-60002 CRITICAL,
+CVE-2026-59999, CVE-2026-60000), util-linux und seine Bibliotheken, libcurl
+(gnutls), libgnutls, libexpat, ncurses, Perl, libsystemd/libudev, libacl. Die
+Funde mit Fix in MEDIUM und LOW sind ebenfalls weg (0.1.0: 35 bzw. 7, 0.1.1:
+0). Offen mit Fix, nur UNKNOWN: `liblzma5` `5.8.1-1+deb13u2` (DSA-6549-1) und
+`golang.org/x/sys` v0.44.0 (CVE-2026-39824). Der Kuratierungs-Nachweis folgt
+nach dem Release-Lauf mit dem Digest aus der Strecke.
+
+## 0.1.0 — 2026-10-10 (getaggt, nicht katalogisiert; JanuaPort/januaport#928, P2)
+
+Tag `script-runner-v0.1.0` → `db298d2`, Release-Lauf `38044703224`. Abgelöst durch 0.1.1 (Funde mit Fix, siehe oben).
 
 ### Auslieferung (P4a)
 
