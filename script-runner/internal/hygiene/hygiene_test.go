@@ -128,8 +128,18 @@ func TestDockerfile(t *testing.T) {
 	if !regexp.MustCompile(`(?m)^FROM python:3\.[0-9]+-slim@sha256:[0-9a-f]{64}`).MatchString(s) {
 		t.Error("Python-Basis nicht per Digest gepinnt")
 	}
-	if !regexp.MustCompile(`(?m)^FROM golang:1\.25\.[0-9]+@sha256:[0-9a-f]{64} AS build`).MatchString(s) {
-		t.Error("Go-Builder nicht per Digest gepinnt")
+	builder := regexp.MustCompile(`(?m)^FROM golang:(1\.26\.[0-9]+)@sha256:[0-9a-f]{64} AS build`).FindStringSubmatch(s)
+	if builder == nil {
+		t.Fatal("Go-Builder nicht per Digest gepinnt")
+	}
+	// Die CI testet mit go-version-file: go.mod; Image und Tests sollen
+	// dieselbe Go-Fassung sehen.
+	mod, err := os.ReadFile("../../go.mod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`(?m)^go ` + regexp.QuoteMeta(builder[1]) + `$`).Match(mod) {
+		t.Errorf("go.mod nennt nicht die Go-Fassung des Builders %s", builder[1])
 	}
 	for _, want := range []string{"ensurepip", "pip", "CGO_ENABLED=0"} {
 		if !strings.Contains(s, want) {
