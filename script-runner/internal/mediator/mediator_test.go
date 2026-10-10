@@ -371,7 +371,7 @@ func TestNewConnectionOnlyAfterEOF(t *testing.T) {
 	}
 	early.Close()
 
-	g1.conn.Close()
+	e.closeGuardAndWaitEOF(g1)
 	got := make(chan string, 1)
 	go func() {
 		g2 := dialGuard(t, e.sock, "instance-2", 2)
