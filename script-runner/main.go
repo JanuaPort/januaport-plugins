@@ -3,7 +3,7 @@
 //
 //	script-runner mediator   vermittler: MCP-Server für das Gateway, Senke, Slot
 //	script-runner guard      Wächter: PID 1 der Sandbox, genau ein Lauf je Instanz
-//	script-runner fetcher    abholer: holt gepinnte Commits per ssh in den Store
+//	script-runner fetcher    abholer: prüft Pins gegen den Standard-Zweig und holt Objekte per ssh in den Store
 package main
 
 import (

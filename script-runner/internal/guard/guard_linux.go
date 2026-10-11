@@ -144,7 +144,7 @@ func (r *runState) run(cfg Config, job frame.Job) {
 	}
 	ours := os.NewFile(uintptr(fds[0]), "bootstrap-guard")
 	theirs := os.NewFile(uintptr(fds[1]), "bootstrap-child")
-	defer ours.Close()
+	defer func() { _ = ours.Close() }()
 
 	cmd := exec.Command(cfg.Python, "-I", cfg.Bootstrap, pinDir, job.Entry)
 	cmd.Dir = pinDir
@@ -162,7 +162,7 @@ func (r *runState) run(cfg Config, job frame.Job) {
 		r.exited = &frame.Exited{Type: frame.TypeExited, Code: 1}
 		return
 	}
-	defer stdout.Close()
+	defer func() { _ = stdout.Close() }()
 	cmd.Stdout = stdoutW
 	// stderr bleibt leer (/dev/null): Tracebacks verlassen die Sandbox nie (M6).
 	err = cmd.Start()

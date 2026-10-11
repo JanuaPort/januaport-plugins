@@ -1,10 +1,12 @@
-// Package fetcher ist der abholer: Er holt genau die gewünschten Commits
+// Package fetcher ist der abholer: Nur Vorfahren des frisch aufgelösten
+// Remote-Standard-Zweigkopfs werden freigegeben (SEC L3, #1083). Er holt Objekte
 // per ssh in den Bare-Store (Vertrag §8, Nachtrag 2a). Er vertraut dem
 // vermittler nicht: jede Zeile aus wanted/ und die repo_url prüft er selbst
-// (V2, M7). Es gibt keinen Weg zurück zum Git-Anbieter außer fetch.
+// (V2, M7). Der Git-Anbieter wird nur mit ls-remote und fetch gelesen.
 package fetcher
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -18,12 +20,14 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/januaport/januaport-plugins/script-runner/internal/contract"
 	"github.com/januaport/januaport-plugins/script-runner/internal/gitref"
 )
 
 // Runner führt git mit genau dieser Umgebung aus.
 type Runner interface {
 	Run(ctx context.Context, env []string, args ...string) error
+	Output(ctx context.Context, env []string, args ...string) ([]byte, error)
 }
 
 // ExecGit ruft das git des Images. Stderr ist nur für Tests; im Betrieb
@@ -32,15 +36,37 @@ type ExecGit struct{ Stderr io.Writer }
 
 // Run implementiert Runner.
 func (g ExecGit) Run(ctx context.Context, env []string, args ...string) error {
+	return g.command(ctx, env, args...).Run()
+}
+
+func (g ExecGit) command(ctx context.Context, env []string, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = env
 	cmd.Stderr = g.Stderr
-	return cmd.Run()
+	return cmd
+}
+
+// Output liest ausschließlich die begrenzte HEAD-Antwort von ls-remote.
+func (g ExecGit) Output(ctx context.Context, env []string, args ...string) ([]byte, error) {
+	cmd := g.command(ctx, env, args...)
+	var out headOutput
+	cmd.Stdout = &out
+	err := cmd.Run()
+	return out.buf.Bytes(), err
+}
+
+type headOutput struct{ buf bytes.Buffer }
+
+func (b *headOutput) Write(p []byte) (int, error) {
+	if b.buf.Len()+len(p) > 4096 {
+		return 0, errors.New("fetcher: HEAD-Antwort zu groß")
+	}
+	return b.buf.Write(p)
 }
 
 // Config des abholers.
 type Config struct {
-	StoreDir   string        // gemeinsames Volume: wanted/, repo_url, store.git, failed/
+	StoreDir   string        // gemeinsames Volume: wanted/, repo_url, store.git, approved/, failed/
 	KeyPath    string        // Deploy-Key (…/script-runner-git/runtime-key)
 	TmpDir     string        // tmpfs für die Schlüsselkopie
 	Interval   time.Duration // Abstand der Durchläufe
@@ -101,21 +127,53 @@ func (f *Fetcher) Once(ctx context.Context) {
 	if gitref.CheckRepoURL(url) != nil {
 		f.cfg.Logger.Warn("repo_url abgewiesen", "wanted", len(wanted))
 		for _, sha := range wanted {
-			f.markFailed(sha)
+			f.markFailed(sha, contract.ReasonFetchFailed)
 		}
 		return
 	}
 	if err := f.ensureStore(ctx, url, wanted[0]); err != nil {
 		f.cfg.Logger.Warn("Store nicht bereit")
+		f.failAll(wanted)
+		return
+	}
+	key, err := f.copyKey()
+	if err != nil {
+		f.failAll(wanted)
+		return
+	}
+	defer func() { _ = os.Remove(key) }()
+	// Auch gespeicherte und zuletzt abgewiesene Pins werden frisch geprüft.
+	// Der Fetch holt exakt den angekündigten Hash, selbst wenn HEAD danach
+	// schon weitergezogen ist.
+	head, err := f.defaultHead(ctx, key)
+	if err != nil || f.fetchWithKey(ctx, head, key) != nil {
+		f.failAll(wanted)
 		return
 	}
 	var fetched, failed int
 	for _, sha := range wanted {
-		if f.hasCommit(ctx, sha) || f.recentlyFailed(sha) {
+		if sha != head && !f.hasCommit(ctx, sha) {
+			if f.recentlyFailed(sha) {
+				continue
+			}
+			if err := f.fetchWithKey(ctx, sha, key); err != nil {
+				f.markFailed(sha, contract.ReasonFetchFailed)
+				failed++
+				continue
+			}
+		}
+		if err := f.isAncestor(ctx, sha, head); err != nil {
+			reason := contract.ReasonFetchFailed
+			var exit *exec.ExitError
+			if errors.As(err, &exit) && exit.ExitCode() == 1 {
+				reason = contract.ReasonNotOnDefaultBranch
+			}
+			f.markFailed(sha, reason)
+			failed++
 			continue
 		}
-		if err := f.fetch(ctx, sha); err != nil {
-			f.markFailed(sha)
+		if err := f.markApproved(sha, url); err != nil {
+			f.markFailed(sha, contract.ReasonFetchFailed)
 			failed++
 			continue
 		}
@@ -166,7 +224,7 @@ func (f *Fetcher) ensureStore(ctx context.Context, url, firstSha string) error {
 // initStore legt einen leeren Bare-Store für url an. Das Objektformat folgt
 // der Hashlänge (40 → sha1, 64 → sha256).
 func (f *Fetcher) initStore(ctx context.Context, url, sha string) error {
-	for _, p := range []string{f.gitDir(), filepath.Join(f.cfg.StoreDir, "failed"), filepath.Join(f.cfg.StoreDir, "store.url")} {
+	for _, p := range []string{filepath.Join(f.cfg.StoreDir, "approved"), f.gitDir(), filepath.Join(f.cfg.StoreDir, "failed"), filepath.Join(f.cfg.StoreDir, "store.url")} {
 		if err := os.RemoveAll(p); err != nil {
 			return err
 		}
@@ -176,17 +234,17 @@ func (f *Fetcher) initStore(ctx context.Context, url, sha string) error {
 		format = "sha256"
 	}
 	env := f.env("")
-	if err := f.cfg.Git.Run(ctx, env, "init", "-q", "--bare", "--object-format="+format, f.gitDir()); err != nil {
+	if err := f.cfg.Git.Run(ctx, env, append(append([]string{}, hardening...), "init", "-q", "--bare", "--object-format="+format, f.gitDir())...); err != nil {
 		return err
 	}
-	if err := f.cfg.Git.Run(ctx, env, "--git-dir="+f.gitDir(), "config", "remote.origin.url", url); err != nil {
+	if err := f.cfg.Git.Run(ctx, env, f.gitArgs("config", "remote.origin.url", url)...); err != nil {
 		return err
 	}
 	return os.WriteFile(filepath.Join(f.cfg.StoreDir, "store.url"), []byte(url), 0o600)
 }
 
 func (f *Fetcher) hasCommit(ctx context.Context, sha string) bool {
-	return f.cfg.Git.Run(ctx, f.env(""), "--git-dir="+f.gitDir(), "cat-file", "-e", sha+"^{commit}") == nil
+	return f.cfg.Git.Run(ctx, f.env(""), f.gitArgs("cat-file", "-e", sha+"^{commit}")...) == nil
 }
 
 func (f *Fetcher) recentlyFailed(sha string) bool {
@@ -194,15 +252,41 @@ func (f *Fetcher) recentlyFailed(sha string) bool {
 	return err == nil && time.Since(st.ModTime()) < f.cfg.RetryAfter
 }
 
-func (f *Fetcher) markFailed(sha string) {
-	dir := filepath.Join(f.cfg.StoreDir, "failed")
-	_ = os.MkdirAll(dir, 0o755)
-	_ = os.WriteFile(filepath.Join(dir, sha), nil, 0o644)
+func (f *Fetcher) failAll(wanted []string) {
+	for _, sha := range wanted {
+		f.markFailed(sha, contract.ReasonFetchFailed)
+	}
 }
 
-// hardening gilt für jeden Fetch: nur ssh, jedes Objekt geprüft, keine
+func (f *Fetcher) markFailed(sha, reason string) {
+	_ = os.Remove(filepath.Join(f.cfg.StoreDir, "approved", sha))
+	dir := filepath.Join(f.cfg.StoreDir, "failed")
+	if err := writeMarker(dir, sha, reason); err != nil {
+		f.cfg.Logger.Warn("Fehlerzustand nicht gespeichert")
+	}
+}
+
+// Freigaben sind an die geprüfte repo_url gebunden. Vorhandene Objekte
+// allein reichen dem vermittler nicht; alte Stores starten ohne Freigabe.
+func (f *Fetcher) markApproved(sha, url string) error {
+	return writeMarker(filepath.Join(f.cfg.StoreDir, "approved"), sha, url)
+}
+
+func writeMarker(dir, sha, content string) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	path := filepath.Join(dir, sha)
+	if err := os.WriteFile(path+".tmp", []byte(content), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(path+".tmp", path)
+}
+
+// hardening gilt für jeden Git-Aufruf: nur ssh, jedes Objekt geprüft, keine
 // Hooks, keine Submodule. Der Store ist bare; es gibt keinen Checkout und
 // damit weder LFS-Filter noch Arbeitsbaum.
+// Diese Liste wird auch allen lokalen Prüfungen und ls-remote mitgegeben.
 var hardening = []string{
 	"-c", "protocol.allow=never",
 	"-c", "protocol.ssh.allow=always",
@@ -213,7 +297,46 @@ var hardening = []string{
 	"-c", "fetch.recurseSubmodules=false",
 }
 
-// fetch holt genau einen Commit: `git fetch origin -- <sha>` (V2).
+func (f *Fetcher) gitArgs(args ...string) []string {
+	return append(append(append([]string{}, hardening...), "--git-dir="+f.gitDir()), args...)
+}
+
+func (f *Fetcher) defaultHead(ctx context.Context, key string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	b, err := f.cfg.Git.Output(ctx, f.env(key), f.gitArgs("ls-remote", "--symref", "origin", "HEAD")...)
+	if err != nil {
+		return "", err
+	}
+	var branch, head string
+	for _, line := range strings.Split(strings.TrimSuffix(string(b), "\n"), "\n") {
+		fields := strings.Split(line, "\t")
+		if len(fields) != 2 || fields[1] != "HEAD" {
+			return "", errors.New("fetcher: ungültige Remote-HEAD-Antwort")
+		}
+		switch {
+		case strings.HasPrefix(fields[0], "ref: refs/heads/") && len(fields[0]) > len("ref: refs/heads/") && branch == "":
+			branch = fields[0]
+		case gitref.ValidCommit(fields[0]) && head == "":
+			head = fields[0]
+		default:
+			return "", errors.New("fetcher: ungültige Remote-HEAD-Antwort")
+		}
+	}
+	if branch == "" || head == "" {
+		return "", errors.New("fetcher: kein Standard-Zweig")
+	}
+	return head, nil
+}
+
+func (f *Fetcher) isAncestor(ctx context.Context, sha, head string) error {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	return f.cfg.Git.Run(ctx, f.env(""), f.gitArgs("merge-base", "--is-ancestor", sha, head)...)
+}
+
+// fetch holt ein Objekt per Hash. Ausführbar wird es erst nach dem
+// Vorfahr-Nachweis gegen den frisch aufgelösten Standard-Zweigkopf (L3).
 func (f *Fetcher) fetch(ctx context.Context, sha string) error {
 	if !gitref.ValidCommit(sha) {
 		return errors.New("fetcher: ungültiger Commit")
@@ -222,10 +345,15 @@ func (f *Fetcher) fetch(ctx context.Context, sha string) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(key)
-	args := append(append([]string{}, hardening...),
-		"--git-dir="+f.gitDir(), "fetch", "--no-tags", "--no-recurse-submodules", "--no-write-fetch-head",
-		"origin", "--", sha)
+	defer func() { _ = os.Remove(key) }()
+	return f.fetchWithKey(ctx, sha, key)
+}
+
+func (f *Fetcher) fetchWithKey(ctx context.Context, sha, key string) error {
+	if !gitref.ValidCommit(sha) {
+		return errors.New("fetcher: ungültiger Commit")
+	}
+	args := f.gitArgs("fetch", "--no-tags", "--no-recurse-submodules", "--no-write-fetch-head", "origin", "--", sha)
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	return f.cfg.Git.Run(ctx, f.env(key), args...)

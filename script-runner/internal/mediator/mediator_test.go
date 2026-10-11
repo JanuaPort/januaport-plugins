@@ -82,7 +82,7 @@ func TestAuthRequiresRuntimeKey(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusUnauthorized {
 			t.Errorf("Authorization %q: Status %d, want 401", auth, resp.StatusCode)
 		}
@@ -99,7 +99,7 @@ func TestAuthFailsClosedWithoutKeyFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("Status %d, want 401", resp.StatusCode)
 	}
@@ -117,7 +117,7 @@ func TestHealthOnlyOwnHandlerAndNoMCP(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		status = resp.StatusCode
 		if status == http.StatusOK {
 			break
@@ -128,7 +128,7 @@ func TestHealthOnlyOwnHandlerAndNoMCP(t *testing.T) {
 		t.Fatalf("/healthz = %d", status)
 	}
 	resp, _ := http.Post(hs.URL+"/mcp", "application/json", strings.NewReader(`{}`))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("/mcp auf dem Health-Listener = %d, want 404", resp.StatusCode)
 	}
@@ -194,7 +194,7 @@ func TestMissingRunTokenIsProtocolError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 	if _, err := s.CallTool(context.Background(), &mcp.CallToolParams{Name: "quick", Arguments: map[string]any{}}); err == nil {
 		t.Fatal("kein JSON-RPC-Fehler ohne Lauf-Token")
 	}
@@ -205,7 +205,7 @@ func TestBusyWithoutSandbox(t *testing.T) {
 	e.writePins(e.quickPin())
 	g := dialGuard(t, e.sock, "i1", 2)
 	e.waitReady("quick")
-	g.conn.Close() // Instanz weg, keine neue da
+	_ = g.conn.Close() // Instanz weg, keine neue da
 	time.Sleep(50 * time.Millisecond)
 	start := time.Now()
 	res := e.mustCall("quick", map[string]any{})
@@ -238,7 +238,7 @@ func TestRunOKWithToolCall(t *testing.T) {
 		g.send(frame.Output{Type: frame.TypeOutput, Data: `{"checked":`})
 		g.send(frame.Output{Type: frame.TypeOutput, Data: `12}`})
 		g.exited(0)
-		g.conn.Close()
+		_ = g.conn.Close()
 	}()
 	res := e.mustCall("invoice_check", map[string]any{"limit": 5})
 	m := assertEnd(t, res, contract.EndOK, "")
@@ -313,14 +313,14 @@ func TestV1SecondConnectionLosesRunAndNextJobGoesToFreshInstance(t *testing.T) {
 			secondClosed <- true
 			return
 		}
-		defer c.Close()
+		defer func() { _ = c.Close() }()
 		_ = frame.Write(c, frame.Hello{Type: frame.TypeHello, Instance: "attacker", Isolation: contract.IsolationStandard, Seccomp: 2})
 		_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
 		_, err = frame.Read(c, 64<<20)
 		secondClosed <- err != nil && !isTimeout(err)
 		// Der echte Wächter sieht das Ende und schließt erst danach.
 		_ = g1.waitEOF()
-		g1.conn.Close()
+		_ = g1.conn.Close()
 	}()
 	res := e.mustCall("quick", map[string]any{})
 	assertEnd(t, res, contract.EndLimit, contract.DetailSandboxLost)
@@ -334,7 +334,7 @@ func TestV1SecondConnectionLosesRunAndNextJobGoesToFreshInstance(t *testing.T) {
 		g3.job()
 		got <- g3.instance
 		g3.exited(0)
-		g3.conn.Close()
+		_ = g3.conn.Close()
 	}()
 	res = e.mustCall("quick", map[string]any{})
 	assertEnd(t, res, contract.EndOK, "")
@@ -369,7 +369,7 @@ func TestNewConnectionOnlyAfterEOF(t *testing.T) {
 	if _, err := frame.Read(early, 1<<20); err == nil || isTimeout(err) {
 		t.Fatalf("Verbindung vor EOF nicht geschlossen: %v", err)
 	}
-	early.Close()
+	_ = early.Close()
 
 	e.closeGuardAndWaitEOF(g1)
 	got := make(chan string, 1)
@@ -378,7 +378,7 @@ func TestNewConnectionOnlyAfterEOF(t *testing.T) {
 		g2.job()
 		got <- g2.instance
 		g2.exited(0)
-		g2.conn.Close()
+		_ = g2.conn.Close()
 	}()
 	assertEnd(t, e.mustCall("quick", map[string]any{}), contract.EndOK, "")
 	if <-got != "instance-2" {
@@ -699,7 +699,7 @@ func TestHealthBodiesAndOtherPaths404(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		b, _ := io.ReadAll(resp.Body)
 		return resp.StatusCode, string(b)
 	}

@@ -314,7 +314,7 @@ func (e *env) listTools() *mcp.ListToolsResult {
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 	res, err := s.ListTools(context.Background(), nil)
 	if err != nil {
 		e.t.Fatal(err)
@@ -342,7 +342,7 @@ func (e *env) call(name string, args any, commit string) (*mcp.CallToolResult, e
 	if err != nil {
 		return nil, err
 	}
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 	return s.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: args})
 }
 

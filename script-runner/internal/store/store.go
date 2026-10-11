@@ -221,7 +221,7 @@ func objectID(typ string, data []byte, hashLen int) string {
 	} else {
 		h = sha1.New() //nolint:gosec // siehe Import
 	}
-	fmt.Fprintf(h, "%s %d\x00", typ, len(data))
+	_, _ = fmt.Fprintf(h, "%s %d\x00", typ, len(data))
 	h.Write(data)
 	return hex.EncodeToString(h.Sum(nil))
 }

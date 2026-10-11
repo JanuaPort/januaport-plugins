@@ -7,7 +7,7 @@
 // einem Go-Container, der an diesem Netz hängt, den Alias „jnpt“ trägt und
 // den Docker-Socket des Hosts nutzt. Der Test selbst ist der Stub-Gateway
 // (Weg B, :8484) und fährt die ausgelieferte Compose mit einer Test-Überlagerung
-// hoch. Alle Namen tragen das Präfix p2-928-.
+// hoch. Alle Namen tragen P2_PREFIX (Standard p2-928).
 package probe
 
 import (
@@ -21,6 +21,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -31,21 +32,23 @@ import (
 )
 
 const (
-	project    = "p2-928-sr"
-	projectDP  = "p2-928-dp"
-	projectUC  = "p2-928-uc"
-	projectE1  = "p2-928-e1"
-	sshdName   = "p2-928-sshd"
 	runtimeKey = "probe-runtime-key-not-a-secret"
 	runToken   = "jnptrun_PROBE_PROBE_PROBE_PROBE_PROBE_PROBE_PROBE_P"
 	runID      = "0b1e4c8a-6f2d-4b7e-9a31-2c5d7e8f9a10"
 )
 
 var (
-	image   = envOr("P2_IMAGE", "p2-928-script-runner:test")
-	sshdImg = envOr("P2_SSHD_IMAGE", "p2-928-sshd:test")
-	commit  string
-	gw      *stubGateway
+	prefix            = envOr("P2_PREFIX", "p2-928")
+	project           = prefix + "-sr"
+	projectDP         = prefix + "-dp"
+	projectUC         = prefix + "-uc"
+	projectE1         = prefix + "-e1"
+	sshdName          = prefix + "-sshd"
+	containerSequence atomic.Uint64
+	image             = envOr("P2_IMAGE", "p2-928-script-runner:test")
+	sshdImg           = envOr("P2_SSHD_IMAGE", "p2-928-sshd:test")
+	commit            string
+	gw                *stubGateway
 )
 
 func envOr(k, d string) string {
@@ -91,12 +94,19 @@ func startStubGateway() *stubGateway {
 }
 
 func run(name string, args ...string) (string, error) {
+	if name == "docker" && len(args) > 0 && args[0] == "run" && !slices.Contains(args, "--name") {
+		args = append([]string{"run", "--name", nextContainerName()}, args[1:]...)
+	}
 	cmd := exec.Command(name, args...)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
 	err := cmd.Run()
 	return out.String(), err
+}
+
+func nextContainerName() string {
+	return fmt.Sprintf("%s-helper-%d", prefix, containerSequence.Add(1))
 }
 
 func must(t testing.TB, name string, args ...string) string {
@@ -235,7 +245,7 @@ func pinsJSON() string {
 // seed schreibt eine Datei in ein Volume, so wie der Materialisierer des
 // Gateways es auf dem Host tut: Ordner 0750, Eigentümer 65532.
 func seed(volume, name, content string) error {
-	cmd := exec.Command("docker", "run", "--rm", "-i", "--user", "0", "--entrypoint", "sh", "-v", volume+":/k", image, "-c",
+	cmd := exec.Command("docker", "run", "--name", nextContainerName(), "--rm", "-i", "--user", "0", "--entrypoint", "sh", "-v", volume+":/k", image, "-c",
 		"umask 077 && cat > /k/"+name+".tmp && mv /k/"+name+".tmp /k/"+name+" && chown -R 65532:65532 /k && chmod 0750 /k")
 	cmd.Stdin = strings.NewReader(content)
 	out, err := cmd.CombinedOutput()

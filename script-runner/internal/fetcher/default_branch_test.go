@@ -3,6 +3,7 @@ package fetcher
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +17,8 @@ import (
 type localRemoteGit struct {
 	remote      string
 	failLS      bool
+	failWanted  string
+	failMerge   bool
 	lsText      string
 	beforeFetch func()
 	calls       [][]string
@@ -35,6 +38,12 @@ func (g *localRemoteGit) command(ctx context.Context, env []string, args ...stri
 }
 
 func (g *localRemoteGit) Run(ctx context.Context, env []string, args ...string) error {
+	if slices.Contains(args, "fetch") && args[len(args)-1] == g.failWanted {
+		return errors.New("wanted fetch failed")
+	}
+	if slices.Contains(args, "merge-base") && g.failMerge {
+		return errors.New("merge-base failed")
+	}
 	if slices.Contains(args, "fetch") && g.beforeFetch != nil {
 		fn := g.beforeFetch
 		g.beforeFetch = nil
@@ -186,7 +195,6 @@ func TestDefaultBranchHeadFetchFailsClosed(t *testing.T) {
 	r := newBranchRemote(t, "main")
 	s, g := branchSetup(t, r, r.base)
 	g.beforeFetch = func() {
-		testGit(t, r.work, "--git-dir="+r.bare, "config", "remote.origin.url", "irrelevant")
 		// Removing the remote after discovery makes the actual head fetch fail.
 		if err := os.Rename(r.bare, r.bare+".offline"); err != nil {
 			t.Fatal(err)
@@ -194,6 +202,80 @@ func TestDefaultBranchHeadFetchFailsClosed(t *testing.T) {
 	}
 	s.f.Once(context.Background())
 	assertRejected(t, s, r.base, "fetch_failed")
+}
+
+func TestDefaultBranchChangesAreResolvedFreshly(t *testing.T) {
+	r := newBranchRemote(t, "trunk")
+	s, _ := branchSetup(t, r, r.head, r.side)
+	s.f.Once(context.Background())
+	assertApproved(t, s, r.head)
+	assertRejected(t, s, r.side, "not_on_default_branch")
+	testGit(t, r.work, "--git-dir="+r.bare, "symbolic-ref", "HEAD", "refs/heads/side")
+	s.f.Once(context.Background())
+	assertApproved(t, s, r.side)
+	assertRejected(t, s, r.head, "not_on_default_branch")
+}
+
+func TestFetchUsesExactlyTheDiscoveredHead(t *testing.T) {
+	r := newBranchRemote(t, "main")
+	s, g := branchSetup(t, r, r.head)
+	g.beforeFetch = func() {
+		testGit(t, r.work, "--git-dir="+r.bare, "update-ref", "refs/heads/main", r.side)
+	}
+	s.f.Once(context.Background())
+	assertApproved(t, s, r.head)
+	for _, call := range g.calls {
+		if slices.Contains(call, "fetch") && call[len(call)-1] != r.head {
+			t.Fatalf("fetch followed moved branch instead of discovered head: %v", call)
+		}
+	}
+	s.f.Once(context.Background())
+	assertRejected(t, s, r.head, "not_on_default_branch")
+}
+
+func TestMergeBaseErrorFailsClosed(t *testing.T) {
+	r := newBranchRemote(t, "main")
+	s, g := branchSetup(t, r, r.head)
+	s.f.Once(context.Background())
+	assertApproved(t, s, r.head)
+	g.failMerge = true
+	s.f.Once(context.Background())
+	assertRejected(t, s, r.head, "fetch_failed")
+}
+
+func TestFailedWantedFetchWaitsButHeadIsStillFresh(t *testing.T) {
+	r := newBranchRemote(t, "main")
+	s, g := branchSetup(t, r, r.side)
+	g.failWanted = r.side
+	s.f.Once(context.Background())
+	assertRejected(t, s, r.side, "fetch_failed")
+	g.failWanted = ""
+	start := len(g.calls)
+	s.f.Once(context.Background())
+	assertRejected(t, s, r.side, "fetch_failed")
+	var resolves, fetches int
+	for _, call := range g.calls[start:] {
+		if slices.Contains(call, "ls-remote") {
+			resolves++
+		}
+		if slices.Contains(call, "fetch") {
+			fetches++
+			if call[len(call)-1] != r.head {
+				t.Fatalf("failed wanted fetch retried too early: %v", call)
+			}
+		}
+	}
+	if resolves != 1 || fetches != 1 {
+		t.Fatalf("default head not freshly resolved and fetched: %d, %d", resolves, fetches)
+	}
+}
+
+func TestRemoteHEADOutputIsBounded(t *testing.T) {
+	var out headOutput
+	_, err := io.Copy(&out, strings.NewReader(strings.Repeat("x", 4097)))
+	if err == nil || out.buf.Len() > 4096 {
+		t.Fatal("unbounded remote HEAD output")
+	}
 }
 
 func TestForceRewriteRevokesStoredCommitAndCanRecover(t *testing.T) {

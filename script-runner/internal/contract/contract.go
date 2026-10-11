@@ -82,14 +82,15 @@ const (
 	StateReady   = "ready"
 	StateInvalid = "invalid"
 
-	ReasonFetchFailed      = "fetch_failed"
-	ReasonHashMismatch     = "hash_mismatch"
-	ReasonSymlink          = "symlink"
-	ReasonGitlink          = "gitlink"
-	ReasonBadPath          = "bad_path"
-	ReasonManifestMissing  = "manifest_missing"
-	ReasonManifestInvalid  = "manifest_invalid"
-	ReasonToolNotQualified = "tool_not_qualified"
+	ReasonFetchFailed        = "fetch_failed"
+	ReasonNotOnDefaultBranch = "not_on_default_branch"
+	ReasonHashMismatch       = "hash_mismatch"
+	ReasonSymlink            = "symlink"
+	ReasonGitlink            = "gitlink"
+	ReasonBadPath            = "bad_path"
+	ReasonManifestMissing    = "manifest_missing"
+	ReasonManifestInvalid    = "manifest_invalid"
+	ReasonToolNotQualified   = "tool_not_qualified"
 )
 
 // Grenzen v1, soweit der vermittler sie durchsetzt.

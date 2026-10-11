@@ -356,7 +356,7 @@ func readKeyValues(t *testing.T, path string) (map[string]string, []string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	kv := map[string]string{}
 	var comments []string
 	sc := bufio.NewScanner(f)
