@@ -5,7 +5,35 @@
 Getaggt als `script-runner-v0.1.3`. Enthält alles aus 0.1.2 (#1083 P2, nur
 Vorfahren des Standard-Zweigs) und die folgenden Korrekturen. Funde ohne Fix wie
 in 0.1.2: Ausnahme bis 2027-01-08 in JanuaPort/januaport#1059. Der
-Kuratierungs-Nachweis mit dem Digest folgt nach dem Release-Lauf.
+Kuratierungs-Nachweis unten.
+
+| Feld | Wert |
+|---|---|
+| Image | `ghcr.io/januaport/script-runner` |
+| Tag | `script-runner-v0.1.3` (Image-Tag `0.1.3`) |
+| Digest (OCI-Index) | `sha256:47e2f63730edb02e4037cddf91d8f632d8822d39cae40ab24edf2e47b84eb568` |
+| Plattform | `linux/amd64` (`sha256:113d393ca308e877528635453756b65d2aecf9cc09516a7eaf76a3508bb87513`), sonst keine (der zweite Eintrag ist die Attestation) |
+| Art | `service`, eigener Build (Plugins-Repo) |
+| Geprüft mit | Sonden der Release-Strecke; der Lauf gegen JanuaPort folgt mit der Belegfahrt JanuaPort/januaport#928 P4c |
+| Benötigter Commit von Compose und Profil | `98752f7` (`docker-compose.yml`, `seccomp/jnpt-sandbox-seccomp.json`) |
+| Lauf der Sonden | Release-Lauf `38124655517`: hat genau diesen Digest geprüft (SEC C1) |
+
+**Digest** zweimal gemessen am 2026-10-11: Zusammenfassung des Release-Laufs
+(`Tag 0.1.3 → sha256:47e2f637…`) und `docker buildx imagetools inspect`. Beide
+stimmen überein. SBOM (136 Pakete) und Provenance hängen als Attestation am
+Index; die Provenance nennt den Release-Lauf `38124655517`.
+
+**Sonden:** grün im Lauf `38124655517` gegen genau diesen Digest.
+
+**Scan:** Trivy 0.74.0 (Artefakt `trivy-script-runner-v0.1.3`, erstellt
+2026-10-11T08:25Z), Scanner `vuln`: **1 critical · 60 high** · 94 medium ·
+117 low · 15 unknown. **Kein HIGH oder CRITICAL mit Fix-Fassung.** Alle 61 hohen
+Funde sind ohne Fix und dieselben wie in 0.1.1 (openssh-client CVE-2026-60002
+CRITICAL, dazu util-linux, libcurl/gnutls, libgnutls, libexpat, ncurses, Perl,
+libsystemd/libudev, libacl). Sie laufen als Ausnahme bis 2027-01-08 in
+JanuaPort/januaport#1059, eingeordnet von SEC: fremde Eingabe nur vom Git-Server
+über ssh und aus dem Pin-Python in der Sandbox ohne Netz; curl/gnutls nicht
+erreichbar. Mit Fix nur 3 UNKNOWN.
 
 - LEAD-Nachtrag zu #1085: Der vermittler veröffentlicht `repo_url` atomar
   vor neuen `wanted/<sha>`-Dateien und legt bei einem Schreib- oder
