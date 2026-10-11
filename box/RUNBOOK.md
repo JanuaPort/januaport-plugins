@@ -1106,9 +1106,21 @@ Auf der Box kommen drei Dinge dazu:
         com.docker.network.bridge.name: jnpt-ebics0
   ```
 
-- **Bauen mit `docker build --network=host`** — der Build-Container hängt sonst
-  an `docker0`, die die Firewall bewusst zu hält; `docker compose build` kennt
-  kein `--network`.
+- **Image per Digest, nicht bauen.** In die `.env` neben der Abholer-Compose
+  kommt `JNPT_EBICS_IMAGE=ghcr.io/januaport/ebics@sha256:…` (Digest aus dem
+  Katalog-Eintrag `ebics` bzw. aus `../ebics-abholer/CHANGELOG.md`), dann
+  `docker compose -f docker-compose.ebics-abholer.yml pull`. Das Compose-Projekt
+  heißt `jnpt-plugin-ebics`, das Netz damit `jnpt-plugin-ebics_default`; die
+  Bridge bleibt `jnpt-ebics0`. Wer von einem älteren Stand mit Projekt
+  `jnpt-ebics` umstellt, entfernt zuerst das alte Netz `jnpt-ebics_default`,
+  sonst kollidiert der Bridge-Name. Das neue Image läuft als `65532:65532`, neue
+  Kontoauszüge gehören `jnpt:jnpt` (`0644`); der Leser ist das Gateway (65532).
+  Einmal-Läufe mit Schreibbedarf (`hpb.php`) nehmen dasselbe Image aus der
+  `.env` und dieses Netz.
+- **Selbst bauen nur als Rückweg:** `docker build --network=host` (der
+  Build-Container hängt sonst an `docker0`, die die Firewall bewusst zu hält;
+  `docker compose build` kennt kein `--network`), dann
+  `JNPT_EBICS_IMAGE=jnpt-ebics-abholer:local`.
 - **Dasselbe Verzeichnis** (`/var/lib/jnpt/ebics-eingang`, uid 65532) als
   Ablage des Abholers und, schreibgeschützt, als Quelle der Datei-Integration —
   die vorbereitete Zeile in der Compose einkommentieren, **nachdem** der Ordner
