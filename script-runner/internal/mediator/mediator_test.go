@@ -445,18 +445,26 @@ func TestFramesAfterTimeoutAreDiscarded(t *testing.T) {
 func TestOversizedFrameLimitAndMediatorSurvives(t *testing.T) {
 	e := newEnv(t, nil)
 	e.writePins(e.quickPin())
-	done := e.oneRun("i1", func(g *fakeGuard, _ frame.Job) {
+	g := dialGuard(t, e.sock, "i1", 2)
+	done := make(chan error, 1)
+	go func() {
+		g.job()
 		big := frame.Output{Type: frame.TypeOutput, Data: strings.Repeat("x", frame.MaxFromSandbox)}
 		g.send(big)
-		_ = g.waitEOF()
-	})
+		done <- g.waitEOF()
+	}()
 	e.waitReady("quick")
 	assertEnd(t, e.mustCall("quick", map[string]any{}), contract.EndLimit, contract.DetailFrame)
-	<-done
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	// Der übergroße Rahmen beendet den Lauf, die Verbindung bleibt aber bis
+	// zum gelesenen EOF belegt. Erst nach der Slot-Freigabe neu verbinden.
+	e.closeGuardAndWaitEOF(g)
 
-	done = e.oneRun("i2", func(g *fakeGuard, _ frame.Job) { g.exited(0) })
+	nextDone := e.oneRun("i2", func(g *fakeGuard, _ frame.Job) { g.exited(0) })
 	assertEnd(t, e.mustCall("quick", map[string]any{}), contract.EndOK, "")
-	<-done
+	<-nextDone
 }
 
 func TestOutputLimit(t *testing.T) {
