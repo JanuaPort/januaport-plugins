@@ -318,15 +318,18 @@ func TestV1SecondConnectionLosesRunAndNextJobGoesToFreshInstance(t *testing.T) {
 		_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
 		_, err = frame.Read(c, 64<<20)
 		secondClosed <- err != nil && !isTimeout(err)
-		// Der echte Wächter sieht das Ende und schließt erst danach.
-		_ = g1.waitEOF()
-		_ = g1.conn.Close()
 	}()
 	res := e.mustCall("quick", map[string]any{})
 	assertEnd(t, res, contract.EndLimit, contract.DetailSandboxLost)
 	if !<-secondClosed {
 		t.Fatal("zweite Verbindung nicht sofort geschlossen")
 	}
+	// Der echte Wächter sieht das Ende und schließt erst danach. Die nächste
+	// Instanz darf erst nach gelesenem EOF und Freigabe des Slots verbinden.
+	if err := g1.waitEOF(); err != nil {
+		t.Fatal(err)
+	}
+	e.closeGuardAndWaitEOF(g1)
 
 	got := make(chan string, 1)
 	go func() {
