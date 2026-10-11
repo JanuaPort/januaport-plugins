@@ -150,6 +150,13 @@ func newFixture(t *testing.T) *fixture {
 	f.commit = f.git(f.work, "rev-parse", "HEAD")
 	f.git(f.store, "init", "-q", "--bare", "store.git")
 	f.git(f.work, "push", "-q", filepath.Join(f.store, "store.git"), "HEAD:refs/heads/main")
+	// Unit fixtures represent a commit already checked by the fetcher.
+	if err := os.MkdirAll(filepath.Join(f.store, "approved"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(f.store, "approved", f.commit), []byte("ssh://git@git.example.com/org/scripts.git"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	return f
 }
 

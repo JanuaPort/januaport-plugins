@@ -53,6 +53,21 @@ func (g *fakeGit) Run(_ context.Context, env []string, args ...string) error {
 	return nil
 }
 
+func (g *fakeGit) Output(ctx context.Context, env []string, args ...string) ([]byte, error) {
+	if err := g.Run(ctx, env, args...); err != nil {
+		return nil, err
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	head := sha40
+	for _, call := range g.calls {
+		if contains(call, "--object-format=sha256") {
+			head = sha64
+		}
+	}
+	return []byte("ref: refs/heads/main\tHEAD\n" + head + "\tHEAD\n"), nil
+}
+
 func (g *fakeGit) fetches() [][]string {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -191,7 +206,13 @@ func TestDeployKeyCopiedWithNewlineAndRemoved(t *testing.T) {
 		t.Fatalf("Schlüsselkopie ohne abschließenden Zeilenumbruch: %q", s.git.keyBody[0])
 	}
 	var ssh string
-	for _, e := range s.git.envs[len(s.git.envs)-1] {
+	var keyEnv []string
+	for _, env := range s.git.envs {
+		if strings.Contains(strings.Join(env, "\n"), "GIT_SSH_COMMAND=") {
+			keyEnv = env
+		}
+	}
+	for _, e := range keyEnv {
 		if strings.HasPrefix(e, "GIT_SSH_COMMAND=") {
 			ssh = e
 		}
@@ -207,7 +228,7 @@ func TestDeployKeyCopiedWithNewlineAndRemoved(t *testing.T) {
 	}
 }
 
-func TestFetchFailureWritesMarkerAndWaitsBeforeRetry(t *testing.T) {
+func TestHeadFetchFailureWritesMarkerAndRetriesFreshly(t *testing.T) {
 	s := newSetup(t, goodURL, sha40)
 	s.git.failFetch = true
 	s.f.Once(context.Background())
@@ -215,8 +236,8 @@ func TestFetchFailureWritesMarkerAndWaitsBeforeRetry(t *testing.T) {
 		t.Fatalf("failed-Marke fehlt: %v", err)
 	}
 	s.f.Once(context.Background())
-	if n := len(s.git.fetches()); n != 1 {
-		t.Fatalf("%d fetches, want 1 (RetryAfter nicht abgelaufen)", n)
+	if n := len(s.git.fetches()); n != 2 {
+		t.Fatalf("%d fetches, want 2 (Zweigkopf muss bei jedem Durchlauf frisch geprüft werden)", n)
 	}
 }
 
