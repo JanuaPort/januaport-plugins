@@ -1,6 +1,11 @@
 # Changelog — script-runner
 
-## 0.1.2 — 2026-10-11 (unveröffentlicht; JanuaPort/januaport#1083, P2)
+## 0.1.2 — 2026-10-11 (JanuaPort/januaport#1083, P2)
+
+Getaggt als `script-runner-v0.1.2`. Funde ohne Fix (openssh-client CVE-2026-60002
+CRITICAL und 60 HIGH aus 0.1.1, unverändert) laufen als Ausnahme bis 2027-01-08 in
+JanuaPort/januaport#1059. Der Kuratierungs-Nachweis mit dem Digest folgt nach dem
+Release-Lauf.
 
 - SEC L3 / LEAD Delta v2: Jeder Pin muss Vorfahr (oder gleich) dem Kopf des
   Remote-Standard-Zweigs sein, unabhängig davon, wer pinnt. Jeder Durchlauf
