@@ -1,5 +1,40 @@
 # Changelog — script-runner
 
+## Unveröffentlicht
+
+- Abholer (#1085): `-c gc.auto=0` und `-c maintenance.auto=false` gehören
+  zur Härtung jedes Git-Aufrufs, einschließlich `init`, `config`, `fetch`,
+  `ls-remote`, `cat-file` und `merge-base`. Damit startet Fetch keine
+  automatische GC oder abgelöste Maintenance, die nach dem Git-Aufruf noch
+  in `objects/` arbeitet und mit dem Entfernen des Stores konkurriert.
+  Keine eigene GC und keine Store-Pflege im Abholer.
+- Tests zuerst im eigenen Commit `5194fb0`: Literal-Prüfung beider Optionen
+  vor jedem Unterbefehl über den Git-Runner-Fake, für SHA-1 und SHA-256;
+  die vorhandene Härtungsprüfung zieht beide Optionen nach. Der Ausfall-Test
+  und sein Cleanup bleiben unverändert.
+
+**Lokale Verifikation am 11.10.2026 (#1085):** Container
+`jnpt1085-validation`, Image `golang:1.25.13`, Git 2.47.3;
+`GOTOOLCHAIN=auto` lädt wegen `go.mod` Go 1.26.9. Die Literal-Tests waren
+vor dem Fix rot und danach grün. Stabilitätsprüfung jeweils dreimal
+`go test -count=30 -run TestOutagePreservesOnlyApprovalsForSameRepository ./internal/fetcher/`:
+vorher **90 Wiederholungen, 0 Fehlschläge**, nachher **90 Wiederholungen,
+0 Fehlschläge** (je 810 Unterfälle). Der gemeldete Cleanup-Fehler wurde
+lokal nicht reproduziert.
+
+Ein zusätzlicher Prozess-Trace je Zustand bestätigt den verdächtigten
+Mechanismus, nicht die konkrete CI-Fehlerursache: Vorher startet Fetch
+`git maintenance run --auto --no-quiet --detach`, mit `setsid()` und
+15 Anlageversuchen für `store.git/objects/maintenance.lock`; nachher gibt
+es im Store weder Maintenance-Prozesse noch solche Zugriffe. Fünf weitere
+automatische Maintenance-Aufrufe betreffen in beiden Traces nur den Aufbau
+des Test-Remotes, vor den Ausfall-Unterfällen. Der lokale Runner-Adapter
+startet echtes Git und reicht die Härtung weiter. Beide Trace-Läufe sind grün.
+
+`go build ./...`, `go test -count=1 -v ./...` (alle zehn internen Pakete
+grün, Root ohne Tests) und `golangci-lint run` v2.9.0 (mit Go 1.26.9 gebaut,
+0 Befunde) erfolgreich. Keine `--- SKIP`-Zeile im ausführlichen Testlog.
+
 ## 0.1.2 — 2026-10-11 (JanuaPort/januaport#1083, P2)
 
 Getaggt als `script-runner-v0.1.2`. Funde ohne Fix (openssh-client CVE-2026-60002

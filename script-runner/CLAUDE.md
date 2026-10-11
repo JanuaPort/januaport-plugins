@@ -172,8 +172,16 @@ und `vendor/` darin (reines Python, R12).
    `repo_url` leert die Freigaben weiterhin. Der Mediator verlangt
    die Freigabe vor seinem Cache und vor jeder Codeübergabe. Die gesamte
    `hardening`-Liste gilt für jeden Git-Aufruf: nur das erlaubte SSH-Protokoll,
-   Objektprüfung, keine Hooks und Submodule. Fetches ohne Tags und ohne
-   Schreiben von `FETCH_HEAD`; kein Checkout.
+   Objektprüfung, keine Hooks und Submodule, `-c gc.auto=0` und
+   `-c maintenance.auto=false`. Die beiden Optionen verhindern automatische
+   GC und Maintenance: Fetch darf keinen abgelösten Schreiber starten, der
+   nach dem Git-Aufruf noch in `objects/` arbeitet und mit dem Entfernen des
+   Stores (auch beim Test-Cleanup) konkurriert (#1085). Der abholer führt
+   selbst keine GC oder Store-Pflege aus. Fetches ohne Tags und ohne
+   Schreiben von `FETCH_HEAD`; kein Checkout. Der Literal-Test
+   `TestEveryGitCallDisablesAutomaticMaintenance` prüft die Optionen vor dem
+   Unterbefehl für `init`, `config`, `fetch`, `ls-remote`, `cat-file` und
+   `merge-base` über den Runner, für SHA-1 und SHA-256.
 8. **R8 — kein Weg zurück.** Kein `push`, kein `receive-pack` im Code
    (Wächter `TestNoPushPathInSource`). Der Deploy-Key hängt nur im abholer.
 9. **Compose ist Vertrag §6, der Wächter prüft deny by default.**
