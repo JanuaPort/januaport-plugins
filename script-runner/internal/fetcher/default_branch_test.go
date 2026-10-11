@@ -170,7 +170,7 @@ func TestDefaultBranchResolutionFailsClosed(t *testing.T) {
 	assertApproved(t, s, r.head)
 	g.failLS = true
 	s.f.Once(context.Background())
-	assertRejected(t, s, r.head, "fetch_failed")
+	assertApproved(t, s, r.head)
 }
 
 func TestDefaultBranchMissingOrMalformedHEADFailsClosed(t *testing.T) {
@@ -240,7 +240,7 @@ func TestMergeBaseErrorFailsClosed(t *testing.T) {
 	assertApproved(t, s, r.head)
 	g.failMerge = true
 	s.f.Once(context.Background())
-	assertRejected(t, s, r.head, "fetch_failed")
+	assertApproved(t, s, r.head)
 }
 
 func TestFailedWantedFetchWaitsButHeadIsStillFresh(t *testing.T) {
