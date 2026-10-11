@@ -1,6 +1,11 @@
 # Changelog — script-runner
 
-## Unveröffentlicht
+## 0.1.3 — 2026-10-11 (JanuaPort/januaport#1085; enthält 0.1.2)
+
+Getaggt als `script-runner-v0.1.3`. Enthält alles aus 0.1.2 (#1083 P2, nur
+Vorfahren des Standard-Zweigs) und die folgenden Korrekturen. Funde ohne Fix wie
+in 0.1.2: Ausnahme bis 2027-01-08 in JanuaPort/januaport#1059. Der
+Kuratierungs-Nachweis mit dem Digest folgt nach dem Release-Lauf.
 
 - LEAD-Nachtrag zu #1085: Der vermittler veröffentlicht `repo_url` atomar
   vor neuen `wanted/<sha>`-Dateien und legt bei einem Schreib- oder
@@ -92,9 +97,12 @@ startet echtes Git und reicht die Härtung weiter. Beide Trace-Läufe sind grün
 grün, Root ohne Tests) und `golangci-lint run` v2.9.0 (mit Go 1.26.9 gebaut,
 0 Befunde) erfolgreich. Keine `--- SKIP`-Zeile im ausführlichen Testlog.
 
-## 0.1.2 — 2026-10-11 (JanuaPort/januaport#1083, P2)
+## 0.1.2 — 2026-10-11 (JanuaPort/januaport#1083, P2) — getaggt, nicht veröffentlicht
 
-Getaggt als `script-runner-v0.1.2`. Funde ohne Fix (openssh-client CVE-2026-60002
+Getaggt als `script-runner-v0.1.2`, **nicht veröffentlicht:** Die Unit-Tests der
+Release-Strecke (Lauf `38121476095`, zwei Versuche) scheiterten am Test-Rennen
+nach `git gc --auto`/Maintenance (#1085). Es wurde kein Image gebaut. Ausgeliefert
+wird 0.1.3. Funde ohne Fix (openssh-client CVE-2026-60002
 CRITICAL und 60 HIGH aus 0.1.1, unverändert) laufen als Ausnahme bis 2027-01-08 in
 JanuaPort/januaport#1059. Der Kuratierungs-Nachweis mit dem Digest folgt nach dem
 Release-Lauf.
@@ -167,7 +175,7 @@ Docker-Image-ID des geprüften und gescannten Images:
 `sha256:4691ea16a8eb5cee49887c1b157b1ef3ba486f7a6f4e99934582c819d9369dcc`.
 Fassung bleibt 0.1.2, unveröffentlicht; kein Nachweis aus der Release-Strecke.
 
-## Unveröffentlicht
+## Nur Test nach 0.1.1, ohne eigenes Release (JanuaPort/januaport#1056)
 
 - Nur Test: `TestNewConnectionOnlyAfterEOF` wartet nach dem Schließen des
   Fake-Wächters auf das vom Mediator gelesene EOF und die Freigabe des Slots.
