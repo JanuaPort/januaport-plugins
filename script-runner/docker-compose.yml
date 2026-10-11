@@ -6,7 +6,7 @@
 #                          Host-Loopback (8091)
 #   script-runner-sandbox  Wächter + Python: kein Netz, kein Schlüssel, genau
 #                          ein Lauf je Instanz, danach Neustart mit leerem tmpfs
-#   script-runner-fetcher  abholer: holt gepinnte Commits per ssh, eigenes Netz
+#   script-runner-fetcher  abholer: prüft Pins gegen den Standard-Zweig und holt Objekte per ssh, eigenes Netz
 #
 # Ablage auf der Anlage: /opt/jnpt/plugins/script-runner/ (diese Datei, das
 # Seccomp-Profil unter seccomp/ und die .env mit JNPT_SCRIPT_RUNNER_IMAGE).

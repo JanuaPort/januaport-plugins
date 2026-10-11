@@ -19,14 +19,15 @@ Kommentaren und Tests verweisen darauf.
 |---|---|---|
 | `mediator` | `script-runner` | vermittler: MCP-Server für das Gateway (Weg A, `:8090` im Netz `jnpt_default`), prüft `runtime-key` (R13), liest `pins.json`, einzige Senke für Code (R6, M5), hält den einen Slot, misst Wandzeit und Größen selbst (M2, M4), ruft innere Werkzeuge mit dem Lauf-Token (Weg B), `/healthz` auf `:8091` |
 | `guard` | `script-runner-sandbox` | Wächter: PID 1 der Sandbox, `PR_SET_DUMPABLE 0`, meldet `hello`, nimmt **genau einen** job, startet `python -I`, räumt den Prozessbaum ab (V1/V3), hält die Instanz 10,5 s (B1) |
-| `fetcher` | `script-runner-fetcher` | abholer: holt gepinnte Commits per ssh in den Bare-Store, prüft `wanted/` und `repo_url` selbst (V2, M7) |
+| `fetcher` | `script-runner-fetcher` | abholer: prüft Pins gegen den Standard-Zweig und holt Objekte per ssh in den Bare-Store, prüft `wanted/` und `repo_url` selbst (V2, M7) |
 
 **Nicht hier, mit Absicht:** Katalogeintrag und Signatur (die liegt auf dem
 Katalog), Host-Units/tmpfiles (P4b, Gateway-Repo — hier nur Beispiele unter
 `deploy/`),
 Pin-Speicher, Lauf-Token, Relay, Audit, `scan` (P1/P3, Gateway), Rezept (P5).
 Kein pip im Lauf, keine zweite Sprache, keine Netzfreigabe je Skript, kein
-Webhook, keine GUI. Es gibt keinen Weg zurück zum Git-Anbieter außer `fetch`.
+Webhook, keine GUI. Der Git-Anbieter wird ausschließlich mit `ls-remote`
+und `fetch` gelesen.
 
 ## Aufbau
 
@@ -77,7 +78,21 @@ Webhook, keine GUI. Es gibt keinen Weg zurück zum Git-Anbieter außer `fetch`.
   `job{files:[{path,data_b64}],entry,input}`, `tool_result{id,result}`.
 - **Weg D** (plugin-intern): Volume `/var/lib/script-runner` mit `wanted/<sha>`
   und `repo_url` (schreibt der vermittler), `store.git`, `store.url`,
-  `failed/<sha>`, `known_hosts` (schreibt der abholer).
+  `approved/<sha>` (Inhalt: geprüfte Repository-URL), `failed/<sha>` (Inhalt:
+  Grund-Code), `known_hosts` (schreibt der abholer). Marken werden atomar ersetzt;
+  Fehler haben Vorrang vor Freigaben. Alte leere Fehler-Marken bleiben
+  `fetch_failed`; alte Store-Objekte ohne Freigabe bleiben bis zur Prüfung `pending`.
+- **LEAD Delta v2 / SEC L3 (#1083):** Ein Pin außerhalb der Abstammung des
+  Remote-Standard-Zweigs meldet `invalid/not_on_default_branch`.
+  Auflösungs-, Fetch- und Git-Prüffehler melden bei noch nicht freigegebenen
+  Commits `invalid/fetch_failed`. Freigaben für dieselbe `repo_url` bleiben
+  bei einem Ausfall erhalten, mit einer Warnung ohne URL oder Fehlertext.
+  Nur ein negativer Vorfahren-Befund (Exit 1) widerruft die Zweigfreigabe;
+  andere Git-Prüffehler liefern keine neue Erkenntnis. Ein Wechsel der
+  `repo_url` leert die Freigaben weiterhin.
+  Der Draht-Vertrag bleibt Fassung 1; nur der Grund-Wert
+  `not_on_default_branch` kommt hinzu (`ReasonNotOnDefaultBranch`). Das Gateway
+  reicht Gründe als Text durch und hat keine geschlossene Liste.
 
 ## Manifest `jnpt-script.yaml` (Vertrag §10: P2 legt die Felder fest)
 
@@ -139,10 +154,26 @@ und `vendor/` darin (reines Python, R12).
    oder ENOSYS = kein bzw. fremder Filter). Es ist der eine Syscall, den unser
    Profil über den Standard hinaus sperrt (Messung S1). Modus 2 allein beweist
    nur irgendeinen Filter.
-7. **V2 / M7 — der abholer vertraut niemandem.** Jede `wanted/`-Zeile und die
-   `repo_url` prüft er selbst (Allowlist), bevor git läuft; git nur mit
-   `protocol.allow=never`, `protocol.ssh.allow=always`, `transfer.fsckObjects`,
-   ohne Hooks und Submodule; Aufruf `git fetch origin -- <sha>`.
+7. **V2 / M7 / L3 — der abholer vertraut niemandem.** Jede `wanted/`-Zeile
+   und die `repo_url` prüft er selbst (Allowlist), bevor Git läuft. Jeder
+   gewünschte Commit muss Vorfahr (oder gleich) dem Kopf des
+   Remote-Standard-Zweigs sein, für Pins von Menschen und KI gleichermaßen.
+   Bei jedem Durchlauf mit gewünschten Commits:
+   `git ls-remote --symref origin HEAD` mit Deploy-Key frisch auflösen,
+   exakt den angekündigten Kopf-Hash holen und
+   `git merge-base --is-ancestor <sha> <kopf>` prüfen. Auch bereits gespeicherte
+   und zuvor freigegebene Commits werden geprüft. Kein konfigurierbarer Zweig.
+   Kein Vorfahr (Exit 1) → `invalid/not_on_default_branch`, Freigabe widerrufen.
+   Ausfall widerruft nicht, nur ein negativer Vorfahren-Befund widerruft.
+   Auflösungs-, Fetch- oder Prüffehler (einschließlich Timeout und zu großer
+   HEAD-Antwort) → neue Commits `invalid/fetch_failed`, keine neue Freigabe;
+   bereits geprüfte Freigaben für dieselbe `repo_url` bleiben erhalten.
+   Warnungen tragen weder URLs noch Git-Fehlertexte. Ein Wechsel der
+   `repo_url` leert die Freigaben weiterhin. Der Mediator verlangt
+   die Freigabe vor seinem Cache und vor jeder Codeübergabe. Die gesamte
+   `hardening`-Liste gilt für jeden Git-Aufruf: nur das erlaubte SSH-Protokoll,
+   Objektprüfung, keine Hooks und Submodule. Fetches ohne Tags und ohne
+   Schreiben von `FETCH_HEAD`; kein Checkout.
 8. **R8 — kein Weg zurück.** Kein `push`, kein `receive-pack` im Code
    (Wächter `TestNoPushPathInSource`). Der Deploy-Key hängt nur im abholer.
 9. **Compose ist Vertrag §6, der Wächter prüft deny by default.**
@@ -195,6 +226,16 @@ Diese Auslegungen aus dem Bau von P2 hat LEAD in Fassung 3 bestätigt —
   jeder Änderung“ und „alle 60 s“ ab und macht einen Neustart nach einem
   Schlüsselwechsel überflüssig. Die Prüfung an der Senke wird je
   (Name, Pfad, Commit) gecacht; vor jedem Lauf wird trotzdem neu gerechnet.
+  Die Standard-Zweigfreigabe wird vor dem Cache und vor jeder Codeübergabe
+  erneut gelesen, auch nach dem Warten auf eine Sandbox. Der Abholer prüft
+  alle gewünschten Commits alle 5 s gegen einen frisch aufgelösten Kopf;
+  ein Force-Push wird im nächsten erfolgreichen Prüfdurchlauf erkannt.
+  Ein Ausfall erhält bisherige Freigaben für dieselbe Repository-URL;
+  ausschließlich Exit 1 der Vorfahren-Prüfung widerruft diese Freigabe.
+  Ein bereits laufendes Skript wird dadurch nicht nachträglich abgebrochen.
+  `RetryAfter` verzögert
+  nur fehlgeschlagene Downloads fehlender Wunsch-Objekte, nie die Auflösung
+  oder den Fetch des Standard-Zweigkopfs oder die Prüfung gespeicherter Commits.
 - **Eigene stdout-Pipe im Wächter** statt `StdoutPipe`: `cmd.Wait` schlösse
   sonst das Leseende, bevor die Ausgabe gelesen ist.
 - **OOM = SIGKILL ohne Zutun.** Der vermittler sieht die cgroup der Sandbox
@@ -300,8 +341,10 @@ Diese Auslegungen aus dem Bau von P2 hat LEAD in Fassung 3 bestätigt —
 # aus dem Repo-Root: der Release-Wächter liest .github/workflows/
 docker run --rm -v "$PWD":/repo -w /repo/script-runner golang:1.26.9 go test ./...
 python3 script-runner/seccomp/derive.py --check
-# Docker-Sonden gegen den echten Stack (Präfix p2-928-, räumt selbst auf)
+# Docker-Sonden gegen den echten Stack (P2_PREFIX, Standard p2-928, räumt Stacks auf)
 sh script-runner/probe/run.sh
+# mit eigenen Container- und Netznamen für parallele Prüfaufträge
+P2_PREFIX=jnpt1083p2 sh script-runner/probe/run.sh
 # gegen ein fertiges Image (so fährt es die Release-Strecke)
 P2_IMAGE=ghcr.io/januaport/script-runner@sha256:… sh script-runner/probe/run.sh
 # Workflows

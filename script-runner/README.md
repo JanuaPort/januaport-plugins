@@ -20,12 +20,17 @@ Drei Dienste aus einem Image, neben dem Gateway:
 |---|---|---|
 | `script-runner` | nimmt Aufrufe vom Gateway an, hält die Pins, übergibt den Code an die Sandbox, leitet Werkzeugaufrufe des Skripts an JanuaPort weiter | nur `jnpt_default`, kein Host-Port für MCP |
 | `script-runner-sandbox` | führt **einen** Lauf aus und wird danach mit leerem Arbeitsspeicher neu gestartet | **kein Netz** |
-| `script-runner-fetcher` | holt gepinnte Commits per ssh mit einem Nur-Lese-Deploy-Key | eigenes Netz mit Ausgang, kein Weg zum Gateway |
+| `script-runner-fetcher` | prüft Pins gegen den Standard-Zweig und holt Objekte per ssh mit einem Nur-Lese-Deploy-Key | eigenes Netz mit Ausgang, kein Weg zum Gateway |
 
 - **Nur gepinnter Code läuft.** Ein Pin ist Name, Pfad im Repository und voller
-  Commit-Hash; gepinnt wird nur von einem Menschen in JanuaPort. Vor jedem Lauf
-  rechnet der Läufer jeden Hash des Pfads nach; Symlinks und Submodule weist er
-  ab.
+  Commit-Hash. Pinbar sind ausschließlich Commits, die Vorfahr des aktuellen
+  Kopfes des Remote-Standard-Zweigs sind, einschließlich des Kopfes selbst.
+  Das gilt für jeden Pin, von Menschen und über das Admin-MCP. Der Läufer löst
+  den Standard-Zweig bei jeder Prüfung frisch auf; der Name ist nicht
+  konfigurierbar und muss nicht `main` sein. Commits ausschließlich auf einem
+  Seitenzweig oder in einem nicht gemergten PR werden als
+  `invalid/not_on_default_branch` abgewiesen. Vor jedem Lauf rechnet der
+  Läufer jeden Hash des Pfads nach; Symlinks und Submodule weist er ab.
 - **Die Sandbox hat nichts:** kein Netz, keinen Schlüssel, kein Repository,
   keine Ablage, schreibgeschütztes Dateisystem außer zwei kleinen,
   nicht ausführbaren Arbeitsordnern, eigene Seccomp-Sperrliste, keine
@@ -90,6 +95,17 @@ strukturiert.
 
 ## Betrieb
 
+- **Standard-Zweig:** Nur dessen Kopf und Vorfahren sind pinbar. Der Abholer
+  prüft auch schon gespeicherte Pins im nächsten Durchlauf erneut (normal
+  alle 5 s). Entfernt ein Force-Push einen gepinnten Commit aus der Abstammung,
+  wird der Pin ungültig; neue Läufe werden verweigert. Laufende Skripte enden
+  regulär. Ist der Standard-Zweig nicht auflösbar oder nicht abholbar, bleiben
+  bereits geprüfte Pins für dieselbe Repository-URL freigegeben. Neue Pins
+  werden mit `fetch_failed` abgewiesen; der Läufer loggt eine Warnung.
+  Auch andere Prüffehler entziehen keine bestehende Zweigfreigabe: Nur ein
+  negativer Vorfahren-Befund (Exit 1) widerruft. Ein Wechsel der Repository-URL
+  leert weiterhin alle Freigaben. Alte Stores brauchen
+  nach dem Update zunächst eine erfolgreiche Zweigprüfung.
 - **Image:** `ghcr.io/januaport/script-runner`, gebaut von der
   Release-Strecke dieses Repos (Tag `script-runner-vX.Y.Z`, nur `linux/amd64`,
   mit SBOM und Provenance). Die Anlage bezieht es nur per Digest aus dem

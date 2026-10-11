@@ -88,6 +88,11 @@ func (m *Mediator) evaluate(ctx context.Context, p pins.Pin, cache map[cacheKey]
 	if p.Invalid != "" {
 		return verdict{state: contract.StateInvalid, reason: p.Invalid}
 	}
+	// L3 gilt vor dem Cache: ein vorhandenes Objekt und ein früheres ready
+	// überleben weder eine abgewiesene Vorfahr-Prüfung noch eine fehlende Freigabe.
+	if v := m.fetchVerdict(p.Commit); v.state != contract.StateReady {
+		return v
+	}
 	k := cacheKey{p.Name, p.Path, p.Commit}
 	m.mu.Lock()
 	v, hit := cache[k]
@@ -97,9 +102,6 @@ func (m *Mediator) evaluate(ctx context.Context, p pins.Pin, cache map[cacheKey]
 	}
 	has, err := m.store.HasCommit(ctx, p.Commit)
 	if err != nil || !has {
-		if _, err := os.Stat(filepath.Join(m.cfg.StoreDir, "failed", p.Commit)); err == nil {
-			return verdict{state: contract.StateInvalid, reason: contract.ReasonFetchFailed}
-		}
 		return verdict{state: contract.StatePending}
 	}
 	v = m.verify(ctx, p)
@@ -109,6 +111,28 @@ func (m *Mediator) evaluate(ctx context.Context, p pins.Pin, cache map[cacheKey]
 		m.mu.Unlock()
 	}
 	return v
+}
+
+// fetchVerdict liest die Freigabe des abholers ohne Cache. Fehler gehen
+// vor Freigaben; leere alte failed-Marken bedeuten weiterhin fetch_failed.
+// Die repo_url-Bindung verhindert Freigaben aus dem vorherigen Repository.
+func (m *Mediator) fetchVerdict(sha string) verdict {
+	b, err := os.ReadFile(filepath.Join(m.cfg.StoreDir, "failed", sha))
+	if err == nil || !errors.Is(err, os.ErrNotExist) {
+		reason := contract.ReasonFetchFailed
+		if string(b) == contract.ReasonNotOnDefaultBranch {
+			reason = contract.ReasonNotOnDefaultBranch
+		}
+		return verdict{state: contract.StateInvalid, reason: reason}
+	}
+	b, err = os.ReadFile(filepath.Join(m.cfg.StoreDir, "approved", sha))
+	m.mu.Lock()
+	url := m.repoURL
+	m.mu.Unlock()
+	if err != nil || url == "" || string(b) != url {
+		return verdict{state: contract.StatePending}
+	}
+	return verdict{state: contract.StateReady}
 }
 
 // verify prüft den Pin an der Senke: Baum, Manifest, Einstieg.
