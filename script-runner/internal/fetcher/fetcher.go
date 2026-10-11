@@ -294,6 +294,9 @@ func writeMarker(dir, sha, content string) error {
 // hardening gilt für jeden Git-Aufruf: nur ssh, jedes Objekt geprüft, keine
 // Hooks, keine Submodule. Der Store ist bare; es gibt keinen Checkout und
 // damit weder LFS-Filter noch Arbeitsbaum.
+// Keine automatische GC oder Maintenance: Fetch darf keinen abgelösten
+// Schreiber starten, der nach dem Aufruf noch in objects/ arbeitet (#1085).
+// Der abholer führt selbst keine GC oder Store-Pflege aus.
 // Diese Liste wird auch allen lokalen Prüfungen und ls-remote mitgegeben.
 var hardening = []string{
 	"-c", "protocol.allow=never",
@@ -303,6 +306,8 @@ var hardening = []string{
 	"-c", "core.hooksPath=/dev/null",
 	"-c", "submodule.recurse=false",
 	"-c", "fetch.recurseSubmodules=false",
+	"-c", "gc.auto=0",
+	"-c", "maintenance.auto=false",
 }
 
 func (f *Fetcher) gitArgs(args ...string) []string {

@@ -186,6 +186,7 @@ func TestFetchArgsHardening(t *testing.T) {
 	for _, want := range []string{
 		"protocol.allow=never", "protocol.ssh.allow=always", "transfer.fsckObjects=true",
 		"core.hooksPath=/dev/null", "submodule.recurse=false", "--no-recurse-submodules", "--no-tags",
+		"gc.auto=0", "maintenance.auto=false",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("fetch ohne %q: %s", want, joined)

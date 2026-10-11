@@ -82,6 +82,12 @@ und `fetch` gelesen.
   Grund-Code), `known_hosts` (schreibt der abholer). Marken werden atomar ersetzt;
   Fehler haben Vorrang vor Freigaben. Alte leere Fehler-Marken bleiben
   `fetch_failed`; alte Store-Objekte ohne Freigabe bleiben bis zur Prüfung `pending`.
+  Der vermittler veröffentlicht `repo_url` atomar, bevor er neue
+  `wanted/<sha>`-Dateien anlegt. Scheitert das Schreiben oder Umbenennen der
+  URL, legt dieser Abgleich keine neuen Wunschdateien an. Der abholer kann
+  bereits auf die erste sichtbare Wunschdatei reagieren; eine noch leere
+  oder alte URL würde sonst die Prüfung vor jedem Git-Aufruf scheitern lassen
+  (#1085, `TestWantedWaitsForRepositoryURLPublication`).
 - **LEAD Delta v2 / SEC L3 (#1083):** Ein Pin außerhalb der Abstammung des
   Remote-Standard-Zweigs meldet `invalid/not_on_default_branch`.
   Auflösungs-, Fetch- und Git-Prüffehler melden bei noch nicht freigegebenen
@@ -124,10 +130,14 @@ und `vendor/` darin (reines Python, R12).
    exited → kill(-1) → waitpid → Restprozesse? → close → Frist). **Nie** eine
    Zeitgrenze einbauen, nach der der vermittler ohne EOF neu annimmt — das wäre
    genau das V1-Fenster.
-   `TestNewConnectionOnlyAfterEOF` prüft die Ablehnung vor EOF. Danach wartet
+   `TestNewConnectionOnlyAfterEOF` und
+   `TestV1SecondConnectionLosesRunAndNextJobGoesToFreshInstance` prüfen die
+   Ablehnung einer weiteren Verbindung. Vor der nächsten Instanz wartet
    die Testhilfe auf den EOF-Kanal und die Freigabe von `sandboxes.current`
    unter dessen Mutex, bevor sie die nächste Verbindung öffnet; das lokale
    Schließen des Fake-Wächters allein bestätigt die Freigabe noch nicht.
+   `TestOversizedFrameLimitAndMediatorSurvives` wartet ebenso auf EOF und
+   Slot-Freigabe, bevor er nach dem Rahmenfehler die nächste Instanz verbindet.
 2. **M2 — der vermittler misst selbst.** Wandzeit mit eigener Uhr ab dem
    Senden des jobs; `exited` zählt nur für ok/error innerhalb der Wandzeit.
    Der Wächter setzt `PR_SET_DUMPABLE 0` als erste Handlung und bedient nur
@@ -172,8 +182,16 @@ und `vendor/` darin (reines Python, R12).
    `repo_url` leert die Freigaben weiterhin. Der Mediator verlangt
    die Freigabe vor seinem Cache und vor jeder Codeübergabe. Die gesamte
    `hardening`-Liste gilt für jeden Git-Aufruf: nur das erlaubte SSH-Protokoll,
-   Objektprüfung, keine Hooks und Submodule. Fetches ohne Tags und ohne
-   Schreiben von `FETCH_HEAD`; kein Checkout.
+   Objektprüfung, keine Hooks und Submodule, `-c gc.auto=0` und
+   `-c maintenance.auto=false`. Die beiden Optionen verhindern automatische
+   GC und Maintenance: Fetch darf keinen abgelösten Schreiber starten, der
+   nach dem Git-Aufruf noch in `objects/` arbeitet und mit dem Entfernen des
+   Stores (auch beim Test-Cleanup) konkurriert (#1085). Der abholer führt
+   selbst keine GC oder Store-Pflege aus. Fetches ohne Tags und ohne
+   Schreiben von `FETCH_HEAD`; kein Checkout. Der Literal-Test
+   `TestEveryGitCallDisablesAutomaticMaintenance` prüft die Optionen vor dem
+   Unterbefehl für `init`, `config`, `fetch`, `ls-remote`, `cat-file` und
+   `merge-base` über den Runner, für SHA-1 und SHA-256.
 8. **R8 — kein Weg zurück.** Kein `push`, kein `receive-pack` im Code
    (Wächter `TestNoPushPathInSource`). Der Deploy-Key hängt nur im abholer.
 9. **Compose ist Vertrag §6, der Wächter prüft deny by default.**

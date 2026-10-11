@@ -318,15 +318,18 @@ func TestV1SecondConnectionLosesRunAndNextJobGoesToFreshInstance(t *testing.T) {
 		_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
 		_, err = frame.Read(c, 64<<20)
 		secondClosed <- err != nil && !isTimeout(err)
-		// Der echte Wächter sieht das Ende und schließt erst danach.
-		_ = g1.waitEOF()
-		_ = g1.conn.Close()
 	}()
 	res := e.mustCall("quick", map[string]any{})
 	assertEnd(t, res, contract.EndLimit, contract.DetailSandboxLost)
 	if !<-secondClosed {
 		t.Fatal("zweite Verbindung nicht sofort geschlossen")
 	}
+	// Der echte Wächter sieht das Ende und schließt erst danach. Die nächste
+	// Instanz darf erst nach gelesenem EOF und Freigabe des Slots verbinden.
+	if err := g1.waitEOF(); err != nil {
+		t.Fatal(err)
+	}
+	e.closeGuardAndWaitEOF(g1)
 
 	got := make(chan string, 1)
 	go func() {
@@ -442,18 +445,26 @@ func TestFramesAfterTimeoutAreDiscarded(t *testing.T) {
 func TestOversizedFrameLimitAndMediatorSurvives(t *testing.T) {
 	e := newEnv(t, nil)
 	e.writePins(e.quickPin())
-	done := e.oneRun("i1", func(g *fakeGuard, _ frame.Job) {
+	g := dialGuard(t, e.sock, "i1", 2)
+	done := make(chan error, 1)
+	go func() {
+		g.job()
 		big := frame.Output{Type: frame.TypeOutput, Data: strings.Repeat("x", frame.MaxFromSandbox)}
 		g.send(big)
-		_ = g.waitEOF()
-	})
+		done <- g.waitEOF()
+	}()
 	e.waitReady("quick")
 	assertEnd(t, e.mustCall("quick", map[string]any{}), contract.EndLimit, contract.DetailFrame)
-	<-done
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	// Der übergroße Rahmen beendet den Lauf, die Verbindung bleibt aber bis
+	// zum gelesenen EOF belegt. Erst nach der Slot-Freigabe neu verbinden.
+	e.closeGuardAndWaitEOF(g)
 
-	done = e.oneRun("i2", func(g *fakeGuard, _ frame.Job) { g.exited(0) })
+	nextDone := e.oneRun("i2", func(g *fakeGuard, _ frame.Job) { g.exited(0) })
 	assertEnd(t, e.mustCall("quick", map[string]any{}), contract.EndOK, "")
-	<-done
+	<-nextDone
 }
 
 func TestOutputLimit(t *testing.T) {

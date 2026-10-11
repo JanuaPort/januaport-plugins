@@ -321,6 +321,7 @@ func TestNewGitCallsHaveLiteralHardeningAndLSUsesDeployKey(t *testing.T) {
 				"protocol.allow=never", "protocol.ssh.allow=always",
 				"transfer.fsckObjects=true", "fetch.fsckObjects=true",
 				"core.hooksPath=/dev/null", "submodule.recurse=false", "fetch.recurseSubmodules=false",
+				"gc.auto=0", "maintenance.auto=false",
 			} {
 				j := slices.Index(call, config)
 				if j < 1 || call[j-1] != "-c" {
@@ -344,5 +345,45 @@ func TestNewGitCallsHaveLiteralHardeningAndLSUsesDeployKey(t *testing.T) {
 		if !seen[name] {
 			t.Errorf("missing %s call", name)
 		}
+	}
+}
+
+// Every Runner call, including local operations and Output, must suppress
+// automatic background writers before the Git subcommand is reached.
+func TestEveryGitCallDisablesAutomaticMaintenance(t *testing.T) {
+	for _, sha := range []string{sha40, sha64} {
+		t.Run(sha, func(t *testing.T) {
+			// A second wanted commit exercises cat-file and the missing-object fetch.
+			s := newSetup(t, goodURL, sha, strings.Repeat("c", len(sha)))
+			s.f.Once(context.Background())
+			seen := map[string]bool{}
+			for _, call := range s.git.calls {
+				commandIndex := -1
+				for _, name := range []string{"init", "config", "fetch", "ls-remote", "cat-file", "merge-base"} {
+					if i := slices.Index(call, name); i >= 0 {
+						seen[name] = true
+						commandIndex = i
+						break
+					}
+				}
+				if commandIndex < 0 {
+					t.Fatalf("unexpected Git call: %v", call)
+				}
+				for _, config := range []string{"gc.auto=0", "maintenance.auto=false"} {
+					i := slices.Index(call, config)
+					if i < 1 || i >= commandIndex || call[i-1] != "-c" {
+						t.Errorf("Git call lacks literal -c %s before subcommand: %v", config, call)
+					}
+				}
+				if slices.Contains(call, "gc") || slices.Contains(call, "maintenance") {
+					t.Errorf("fetcher must not maintain the store: %v", call)
+				}
+			}
+			for _, name := range []string{"init", "config", "fetch", "ls-remote", "cat-file", "merge-base"} {
+				if !seen[name] {
+					t.Errorf("missing %s call", name)
+				}
+			}
+		})
 	}
 }
