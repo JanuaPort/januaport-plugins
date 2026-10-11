@@ -2,6 +2,28 @@
 
 ## Unveröffentlicht
 
+- LEAD-Nachtrag zu #1085: Der vermittler veröffentlicht `repo_url` atomar
+  vor neuen `wanted/<sha>`-Dateien und legt bei einem Schreib- oder
+  Rename-Fehler der URL keine neuen Wunschdateien an. Zuvor konnte der
+  Abholer bereits die Wunschdatei sehen, aber noch eine leere URL lesen:
+  `TestPRCommitNeverExecutable` meldete dann `fetch_failed`, ohne dass Git
+  oder die Vorfahren-Prüfung überhaupt liefen. `Once` war bereits synchron;
+  kein Rennen in der Zustandsabfrage und kein negativer Git-Befund, der
+  falsch zugeordnet wurde. Die Zusicherung `not_on_default_branch` bleibt
+  unverändert, ohne zusätzliche Sleeps oder Zusicherungs-Retries.
+- Tests zuerst im eigenen Commit `ec7653b`: Zwei deterministische Unterfälle
+  verhindern die Veröffentlichung einer Wunschdatei bei Schreib- bzw.
+  Rename-Fehlern der URL und prüfen die Veröffentlichung nach Behebung des
+  Dateifehlers. Die vollständige Basismessung fand außerdem ein bestehendes
+  Test-Rennen in `TestV1SecondConnectionLosesRunAndNextJobGoesToFreshInstance`:
+  Die nächste Fake-Sandbox verband vor gelesenem EOF und Slot-Freigabe der
+  vorigen. Auch dieser Test nutzt jetzt die vorhandene EOF-Testhilfe; V1
+  und alle Zusicherungen bleiben unverändert.
+- Die Basismessung mit `-cpu 1` zeigte dasselbe Test-Rennen nach übergroßen
+  Rahmen in `TestOversizedFrameLimitAndMediatorSurvives`. Test-Commit
+  `3c3c538` wartet auch dort auf EOF und Slot-Freigabe, bevor die nächste
+  Fake-Sandbox verbindet. Die Rahmen-Limit- und Folgejob-Zusicherungen
+  bleiben unverändert.
 - Abholer (#1085): `-c gc.auto=0` und `-c maintenance.auto=false` gehören
   zur Härtung jedes Git-Aufrufs, einschließlich `init`, `config`, `fetch`,
   `ls-remote`, `cat-file` und `merge-base`. Damit startet Fetch keine
@@ -12,6 +34,41 @@
   vor jedem Unterbefehl über den Git-Runner-Fake, für SHA-1 und SHA-256;
   die vorhandene Härtungsprüfung zieht beide Optionen nach. Der Ausfall-Test
   und sein Cleanup bleiben unverändert.
+
+**Verifikation des LEAD-Nachtrags am 11.10.2026:** Container
+`jnpt1085-followup`, Image `golang:1.25.13`, Git 2.47.3, über
+`GOTOOLCHAIN=auto` Go 1.26.9. Der unveränderte PR-Test wurde mit
+`GOMAXPROCS=1` und per strace um 100 ms verzögertem `renameat` gezielt rot:
+Der Trace zeigt die sichtbare Wunschdatei, das Lesen von `repo_url = "\n"`
+vor deren Umbenennung und das Schreiben von `fetch_failed`, ohne Git-Aufruf.
+Mit dem Fix ist dieselbe Probe grün und erreicht die Vorfahren-Prüfung.
+Die neue Veröffentlichungsregression war vor dem Fix in beiden Unterfällen
+rot und ist danach grün.
+
+Vollständige Paketserien, jeweils `go test -count=50 -v` auf
+`./internal/mediator/ ./internal/fetcher/`, zusätzlich mit `-cpu 1`.
+Zahlen sind fehlgeschlagene **Testausführungen**; jeder Tabellenlauf enthält
+50 Wiederholungen je Paket:
+
+| Stand | CPU | Mediator-Fehler | Fetcher-Fehler |
+|---|---|---|---|
+| Vorher (`9d75462`) | Standard | 1 (V1-Test) | 0 |
+| Vorher (`9d75462`) | `-cpu 1` | 89 (48 V1, 41 übergroße Rahmen) | 0 |
+| Zwischenstand: Produkt-Fix und V1-Testhilfe | Standard | 0 | 0 |
+| Zwischenstand: Produkt-Fix und V1-Testhilfe | `-cpu 1` | 34 (übergroße Rahmen) | 0 |
+| Endstand: beide Sandbox-Übergänge synchronisiert | Standard | 0 | 0 |
+| Endstand: beide Sandbox-Übergänge synchronisiert | `-cpu 1` | 0 | 0 |
+
+Die 89 Fehler der CPU-Basismessung verteilen sich auf 49 von 50
+Paketwiederholungen. Der PR-Test selbst war in allen regulären Serien grün;
+sein Fehler wurde gezielt durch die verzögerte Veröffentlichung reproduziert.
+Fetcher: in allen sechs Serien grün. Keine Cleanup-Fehler und keine
+`--- SKIP`-Zeile. Zusätzlich jeweils 50 grüne Wiederholungen mit `-race`
+und `-cpu 1` für PR-/Veröffentlichungsregression, beide V1-Tests und den
+Test für übergroße Rahmen. `go build ./...`, `go test -count=1 -v ./...`
+(alle zehn internen Pakete grün, Root ohne Tests) und `golangci-lint run`
+v2.9.0 erfolgreich, 0 Befunde. `CLAUDE.md` und Codekommentar beschreiben
+die Veröffentlichungsreihenfolge; die V1-Testhilfe ist ebenfalls nachgezogen.
 
 **Lokale Verifikation am 11.10.2026 (#1085):** Container
 `jnpt1085-validation`, Image `golang:1.25.13`, Git 2.47.3;

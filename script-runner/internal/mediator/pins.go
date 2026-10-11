@@ -170,6 +170,8 @@ func invalidVerdict(err error) verdict {
 
 // writeWanted meldet dem abholer repo_url und die gewünschten Commits
 // (Nachtrag 2a). Nur gültige Zeilen; alles andere in wanted/ wird entfernt.
+// Neue Wunschdateien erst nach der atomaren Veröffentlichung von repo_url:
+// Der abholer kann bereits auf die erste sichtbare Wunschdatei reagieren.
 func (m *Mediator) writeWanted(f pins.File) {
 	dir := filepath.Join(m.cfg.StoreDir, "wanted")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -188,23 +190,26 @@ func (m *Mediator) writeWanted(f pins.File) {
 			}
 		}
 	}
+	if err := writeIfChanged(filepath.Join(m.cfg.StoreDir, "repo_url"), f.RepoURL+"\n"); err != nil {
+		return
+	}
 	for sha := range want {
 		p := filepath.Join(dir, sha)
 		if _, err := os.Stat(p); err != nil {
 			_ = os.WriteFile(p, nil, 0o644)
 		}
 	}
-	writeIfChanged(filepath.Join(m.cfg.StoreDir, "repo_url"), f.RepoURL+"\n")
 }
 
-func writeIfChanged(path, content string) {
+func writeIfChanged(path, content string) error {
 	if b, err := os.ReadFile(path); err == nil && string(b) == content {
-		return
+		return nil
 	}
 	tmp := path + ".tmp"
-	if os.WriteFile(tmp, []byte(content), 0o644) == nil {
-		_ = os.Rename(tmp, path)
+	if err := os.WriteFile(tmp, []byte(content), 0o644); err != nil {
+		return err
 	}
+	return os.Rename(tmp, path)
 }
 
 // readyPin liefert einen Pin für einen Lauf.
