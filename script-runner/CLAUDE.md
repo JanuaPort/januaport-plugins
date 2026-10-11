@@ -84,7 +84,12 @@ und `fetch` gelesen.
   `fetch_failed`; alte Store-Objekte ohne Freigabe bleiben bis zur Prüfung `pending`.
 - **LEAD Delta v2 / SEC L3 (#1083):** Ein Pin außerhalb der Abstammung des
   Remote-Standard-Zweigs meldet `invalid/not_on_default_branch`.
-  Auflösungs-, Fetch- und Git-Prüffehler melden `invalid/fetch_failed`.
+  Auflösungs-, Fetch- und Git-Prüffehler melden bei noch nicht freigegebenen
+  Commits `invalid/fetch_failed`. Freigaben für dieselbe `repo_url` bleiben
+  bei einem Ausfall erhalten, mit einer Warnung ohne URL oder Fehlertext.
+  Nur ein negativer Vorfahren-Befund (Exit 1) widerruft die Zweigfreigabe;
+  andere Git-Prüffehler liefern keine neue Erkenntnis. Ein Wechsel der
+  `repo_url` leert die Freigaben weiterhin.
   Der Draht-Vertrag bleibt Fassung 1; nur der Grund-Wert
   `not_on_default_branch` kommt hinzu (`ReasonNotOnDefaultBranch`). Das Gateway
   reicht Gründe als Text durch und hat keine geschlossene Liste.
@@ -158,8 +163,13 @@ und `vendor/` darin (reines Python, R12).
    exakt den angekündigten Kopf-Hash holen und
    `git merge-base --is-ancestor <sha> <kopf>` prüfen. Auch bereits gespeicherte
    und zuvor freigegebene Commits werden geprüft. Kein konfigurierbarer Zweig.
-   Kein Vorfahr → `invalid/not_on_default_branch`; Auflösungs-, Fetch- oder
-   Prüffehler → `invalid/fetch_failed`, keine Freigabe. Der Mediator verlangt
+   Kein Vorfahr (Exit 1) → `invalid/not_on_default_branch`, Freigabe widerrufen.
+   Ausfall widerruft nicht, nur ein negativer Vorfahren-Befund widerruft.
+   Auflösungs-, Fetch- oder Prüffehler (einschließlich Timeout und zu großer
+   HEAD-Antwort) → neue Commits `invalid/fetch_failed`, keine neue Freigabe;
+   bereits geprüfte Freigaben für dieselbe `repo_url` bleiben erhalten.
+   Warnungen tragen weder URLs noch Git-Fehlertexte. Ein Wechsel der
+   `repo_url` leert die Freigaben weiterhin. Der Mediator verlangt
    die Freigabe vor seinem Cache und vor jeder Codeübergabe. Die gesamte
    `hardening`-Liste gilt für jeden Git-Aufruf: nur das erlaubte SSH-Protokoll,
    Objektprüfung, keine Hooks und Submodule. Fetches ohne Tags und ohne
@@ -219,8 +229,11 @@ Diese Auslegungen aus dem Bau von P2 hat LEAD in Fassung 3 bestätigt —
   Die Standard-Zweigfreigabe wird vor dem Cache und vor jeder Codeübergabe
   erneut gelesen, auch nach dem Warten auf eine Sandbox. Der Abholer prüft
   alle gewünschten Commits alle 5 s gegen einen frisch aufgelösten Kopf;
-  ein Force-Push wird im nächsten Durchlauf erkannt. Ein bereits laufendes
-  Skript wird dadurch nicht nachträglich abgebrochen. `RetryAfter` verzögert
+  ein Force-Push wird im nächsten erfolgreichen Prüfdurchlauf erkannt.
+  Ein Ausfall erhält bisherige Freigaben für dieselbe Repository-URL;
+  ausschließlich Exit 1 der Vorfahren-Prüfung widerruft diese Freigabe.
+  Ein bereits laufendes Skript wird dadurch nicht nachträglich abgebrochen.
+  `RetryAfter` verzögert
   nur fehlgeschlagene Downloads fehlender Wunsch-Objekte, nie die Auflösung
   oder den Fetch des Standard-Zweigkopfs oder die Prüfung gespeicherter Commits.
 - **Eigene stdout-Pipe im Wächter** statt `StdoutPipe`: `cmd.Wait` schlösse

@@ -99,8 +99,12 @@ strukturiert.
   prüft auch schon gespeicherte Pins im nächsten Durchlauf erneut (normal
   alle 5 s). Entfernt ein Force-Push einen gepinnten Commit aus der Abstammung,
   wird der Pin ungültig; neue Läufe werden verweigert. Laufende Skripte enden
-  regulär. Ist der Standard-Zweig nicht auflösbar oder nicht abholbar, sperrt
-  der Läufer die betroffenen Pins mit `fetch_failed`. Alte Stores brauchen
+  regulär. Ist der Standard-Zweig nicht auflösbar oder nicht abholbar, bleiben
+  bereits geprüfte Pins für dieselbe Repository-URL freigegeben. Neue Pins
+  werden mit `fetch_failed` abgewiesen; der Läufer loggt eine Warnung.
+  Auch andere Prüffehler entziehen keine bestehende Zweigfreigabe: Nur ein
+  negativer Vorfahren-Befund (Exit 1) widerruft. Ein Wechsel der Repository-URL
+  leert weiterhin alle Freigaben. Alte Stores brauchen
   nach dem Update zunächst eine erfolgreiche Zweigprüfung.
 - **Image:** `ghcr.io/januaport/script-runner`, gebaut von der
   Release-Strecke dieses Repos (Tag `script-runner-vX.Y.Z`, nur `linux/amd64`,

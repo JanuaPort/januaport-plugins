@@ -133,12 +133,12 @@ func (f *Fetcher) Once(ctx context.Context) {
 	}
 	if err := f.ensureStore(ctx, url, wanted[0]); err != nil {
 		f.cfg.Logger.Warn("Store nicht bereit")
-		f.failAll(wanted)
+		f.failUnverified(wanted, url)
 		return
 	}
 	key, err := f.copyKey()
 	if err != nil {
-		f.failAll(wanted)
+		f.failUnverified(wanted, url)
 		return
 	}
 	defer func() { _ = os.Remove(key) }()
@@ -147,7 +147,7 @@ func (f *Fetcher) Once(ctx context.Context) {
 	// schon weitergezogen ist.
 	head, err := f.defaultHead(ctx, key)
 	if err != nil || f.fetchWithKey(ctx, head, key) != nil {
-		f.failAll(wanted)
+		f.failUnverified(wanted, url)
 		return
 	}
 	var fetched, failed int
@@ -157,23 +157,23 @@ func (f *Fetcher) Once(ctx context.Context) {
 				continue
 			}
 			if err := f.fetchWithKey(ctx, sha, key); err != nil {
-				f.markFailed(sha, contract.ReasonFetchFailed)
+				f.failUnverified([]string{sha}, url)
 				failed++
 				continue
 			}
 		}
 		if err := f.isAncestor(ctx, sha, head); err != nil {
-			reason := contract.ReasonFetchFailed
 			var exit *exec.ExitError
 			if errors.As(err, &exit) && exit.ExitCode() == 1 {
-				reason = contract.ReasonNotOnDefaultBranch
+				f.markFailed(sha, contract.ReasonNotOnDefaultBranch)
+			} else {
+				f.failUnverified([]string{sha}, url)
 			}
-			f.markFailed(sha, reason)
 			failed++
 			continue
 		}
 		if err := f.markApproved(sha, url); err != nil {
-			f.markFailed(sha, contract.ReasonFetchFailed)
+			f.failUnverified([]string{sha}, url)
 			failed++
 			continue
 		}
@@ -252,8 +252,16 @@ func (f *Fetcher) recentlyFailed(sha string) bool {
 	return err == nil && time.Since(st.ModTime()) < f.cfg.RetryAfter
 }
 
-func (f *Fetcher) failAll(wanted []string) {
+// Ein Ausfall liefert keinen negativen Vorfahren-Befund. Bereits geprüfte
+// Freigaben für dieselbe Repository-URL bleiben erhalten; neue Pins nicht.
+func (f *Fetcher) failUnverified(wanted []string, url string) {
+	// Keine Fehlertexte oder URLs loggen: Git kann Zugangsdaten darin tragen.
+	f.cfg.Logger.Warn("Prüfung nicht abgeschlossen", "wanted", len(wanted))
 	for _, sha := range wanted {
+		approved, err := os.ReadFile(filepath.Join(f.cfg.StoreDir, "approved", sha))
+		if err == nil && string(approved) == url {
+			continue
+		}
 		f.markFailed(sha, contract.ReasonFetchFailed)
 	}
 }

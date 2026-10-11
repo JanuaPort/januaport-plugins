@@ -10,7 +10,16 @@
 - Commits nur auf Seitenzweigen oder unter `refs/pull/*` werden als
   `invalid/not_on_default_branch` abgewiesen. Das ist der einzige zusätzliche
   Grund-Wert im Gateway-Vertrag; Auflösungs-, Fetch- und Git-Prüffehler
-  verwenden `fetch_failed` und erteilen keine Freigabe.
+  verwenden bei noch nicht freigegebenen Commits `fetch_failed` und erteilen
+  keine neue Freigabe.
+- LEAD-Nachbesserung: Ausfall widerruft nicht, nur ein negativer
+  Vorfahren-Befund widerruft. Bereits geprüfte Freigaben für dieselbe
+  `repo_url` bleiben bei Auflösungs-/Fetch-Fehlern, Timeout, zu großer
+  HEAD-Antwort und anderen Git-Prüffehlern erhalten; eine Warnung enthält
+  weder URL noch Git-Fehlertext. Nur Exit 1 der Vorfahren-Prüfung widerruft
+  mit `not_on_default_branch`. Ein Repository-Wechsel leert weiter alle
+  Freigaben. Regressionstests zuerst im eigenen Commit `f2ece44`, einschließlich
+  Fetcher → Mediator → weiterhin `ready` und angebotener Werkzeuge.
 - Gespeicherte und früher gültige Commits werden erneut geprüft: Entfernt
   ein Force-Push einen Pin aus der Abstammung, verliert er seine Freigabe.
   Der Mediator prüft die an die Repository-URL gebundene Freigabe vor seinem
@@ -30,7 +39,7 @@
 - Keine Veröffentlichung, kein Tag und kein Release- oder Scan-Nachweis
   aus der Release-Strecke.
 
-**Lokale Verifikation am 11.10.2026:** Test-Commit `6aaa745` vor der Umsetzung.
+**Lokale Erstverifikation am 11.10.2026:** Test-Commit `6aaa745` vor der Umsetzung.
 `go build ./...`, `go test -count=1 -v ./...` (alle zehn internen Pakete grün,
 Root ohne Tests) und `golangci-lint run` 2.9.0 (0 Befunde) im Container
 `golang:1.25.13`. Wegen `go.mod` lädt `GOTOOLCHAIN=auto` darin Go 1.26.9;
@@ -38,13 +47,28 @@ der Linter wurde mit dieser Toolchain gebaut. 20 Docker-Sonden unter runc
 gegen das endgültige lokale Image grün (219,485 s, Exit 0). Keine
 `--- SKIP`-Zeile in Unit-Tests oder Sonden.
 
-**Lokaler Scan:** Trivy 0.74.0, Image als Datei, Scanner `vuln`:
+**Lokaler Erstscan:** Trivy 0.74.0, Image als Datei, Scanner `vuln`:
 1 CRITICAL, 60 HIGH, 94 MEDIUM, 117 LOW, 15 UNKNOWN.
 Kein HIGH/CRITICAL mit verfügbarer Fix-Fassung. Der CRITICAL-Fund bleibt
 `openssh-client` / CVE-2026-60002 ohne Fix (siehe 0.1.1). Config-Digest des
 gescannten und durch die Sonden geprüften Images:
 `sha256:524836bb1baa5ca1d0483eba0b24b85d0f1dc17e24c063997c728b28683cb089`.
 Dies ist kein Kuratierungs-Nachweis aus der Release-Strecke.
+
+**LEAD-Nachbesserung, erneut verifiziert am 11.10.2026:** Test-Commit
+`f2ece44` enthält ausschließlich Tests; die Ausfall-Regressionen scheiterten
+vor der Umsetzung gezielt. Danach `go build ./...` und
+`go test -count=1 -v ./...` im Container `golang:1.25.13` mit
+`GOTOOLCHAIN=auto` (effektiv Go 1.26.9): alle zehn internen Pakete grün,
+Root ohne Tests. `golangci-lint run` 2.9.0: 0 Befunde;
+`seccomp/derive.py --check`: unverändert. Alle 20 Docker-Sonden unter runc
+gegen das neu gebaute Image grün (218,700 s, Exit 0). Keine
+`--- SKIP`-Zeile in Unit-Tests oder Sonden. Trivy 0.74.0, Scanner `vuln`,
+erneut gegen dieses Image: unverändert 1 CRITICAL, 60 HIGH, 94 MEDIUM,
+117 LOW, 15 UNKNOWN; kein HIGH/CRITICAL mit verfügbarer Fix-Fassung.
+Docker-Image-ID des geprüften und gescannten Images:
+`sha256:4691ea16a8eb5cee49887c1b157b1ef3ba486f7a6f4e99934582c819d9369dcc`.
+Fassung bleibt 0.1.2, unveröffentlicht; kein Nachweis aus der Release-Strecke.
 
 ## Unveröffentlicht
 
