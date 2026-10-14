@@ -2,6 +2,15 @@
 
 ## Unveröffentlicht
 
+- **Abbruch durch das Gateway gibt den Platz frei (JanuaPort/januaport#1040, SEC L1).**
+  Bricht das Gateway einen laufenden Lauf ab (Entzug beim Aufrufer), endet er
+  jetzt sofort mit `end=internal`; die Sandbox räumt ab und meldet nach
+  `MinLifetime` eine neue Instanz. Vorher lief ein abgebrochener Lauf bis zu
+  seiner Wandzeit weiter und hielt den einzigen Platz. Gemessen mit der neuen
+  Docker-Sonde `TestL1AbbruchGibtPlatzFrei`: Platz frei nach 3,0 s bzw. 10,1 s,
+  zweiter Lauf fertig nach 3,1 s bzw. 10,6 s (Schranken 18 s / 22 s).
+  **Neues Image nötig**, keine Compose-Änderung.
+
 - **Python-Bibliotheken als Wheels im Skript-Repo (JanuaPort/januaport#1041,
   P0 + P1; Variante A, kein Download, kein pip).** Ein Pin-Ordner kann
   `requirements.lock` (pip-Format, `--hash=sha256:`, nur Wheels) und
