@@ -155,8 +155,14 @@ func (m *Mediator) Handler() http.Handler {
 	server := mcp.NewServer(&mcp.Implementation{Name: "januaport-script-runner", Version: "1"},
 		&mcp.ServerOptions{Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}}})
 	server.AddReceivingMiddleware(m.middleware)
+	// PropagateRequestCancellation (JanuaPort/januaport#1040, SEC L1): Endet
+	// die POST-Anfrage des Gateways (Entzug beim Aufrufer, Relay
+	// abgebrochen), endet auch der Lauf — sonst liefe er bis zur Wandzeit und
+	// hielte den einzigen Platz. Ohne die Option koppelt der zustandslose
+	// Server den Handler-Kontext von der Anfrage ab; ein
+	// notifications/cancelled erreicht ihn zustandslos nicht.
 	h := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server },
-		&mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+		&mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true, PropagateRequestCancellation: true})
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", m.auth(h))
 	return mux
