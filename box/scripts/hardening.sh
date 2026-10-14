@@ -310,6 +310,12 @@ table inet filter {
     # Egress lautlos tot (DNS geht trotzdem).
     iifname "jnpt-ebics0" tcp dport 443 accept
 
+    # Internes Plugin-Netz (../script-runner): nur Verkehr INNERHALB der
+    # gepinnten Bridge jnpt-plug0 (jnpt <-> vermittler). Ohne br_netfilter
+    # kommt er hier nie an; mit dem Modul waere er ohne diese Zeile stumm tot.
+    # Einen Ausgang hat das Netz ohnehin nicht (internal: true).
+    iifname "jnpt-plug0" oifname "jnpt-plug0" accept
+
     # Eingehend ZU den Containern gilt dieselbe 443-Politik wie der Modus:
 $https_regeln
 

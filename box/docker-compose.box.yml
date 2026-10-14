@@ -158,6 +158,14 @@ services:
       #- /var/lib/jnpt/ebics-eingang:/data/ebics-eingang:ro
     secrets:
       - jnpt_master_key
+    # Plugin-Netz: jnpt hängt zusätzlich am internen Netz jnpt_plugins. Dort
+    # hängt sonst nur der vermittler des Skript-Läufers (../script-runner): Er
+    # erreicht jnpt:8484, das Gateway ihn unter script-runner:8090, und einen
+    # Weg ins Internet oder ins LAN hat er nicht. default bleibt: Proxys,
+    # Tunnel-Client und Ausgang des Gateways hängen dort.
+    networks:
+      default: {}
+      plugins: {}
     restart: unless-stopped
     # Bewusst KEIN docker-healthcheck: Das distroless-Image hat weder Shell noch
     # curl/wget. Liveness wird von außen über /healthz geprüft — und das
@@ -318,6 +326,21 @@ networks:
       config:
         - subnet: 10.201.44.0/24
           ip_range: 10.201.44.128/25
+  # Internes Netz für Beisteller ohne Ausgang. `internal: true`: kein Weg
+  # hinaus, und ein veröffentlichter Host-Port eines Containers, der nur hier
+  # hängt, ist nicht erreichbar. Der feste Name ist der Vertrag mit der
+  # Plugin-Compose (dort `external`). Ein neues Netz lässt den default-Block
+  # oben unberührt; jnpt wird beim nächsten `up -d` neu erzeugt.
+  # Fester Bridge-Name jnpt-plug0: Die forward-Kette in scripts/hardening.sh
+  # gibt Verkehr INNERHALB dieser Bridge frei. Ohne br_netfilter (Stand der
+  # Pilot-Box) erreicht er die Kette gar nicht; lädt ein späteres Docker das
+  # Modul, wäre der Skript-Läufer ohne Freigabe stumm tot. Der Name steht VOR
+  # dem ersten Anlegen fest, ein späteres Pinnen legte das Netz neu an.
+  plugins:
+    name: jnpt_plugins
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: jnpt-plug0
 
 volumes:
   # Der volle Volume-Name ist `<projekt>_<vol>`, hier also `jnpt_jnpt-data`. An
