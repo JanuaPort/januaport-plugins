@@ -3,8 +3,33 @@
 ## 0.1.4 — 2026-10-14 (JanuaPort/januaport#1039 S1, #1057)
 
 Getaggt als `script-runner-v0.1.4`. Taktgeber für Zeitpläne (S1) und
-Sicherheitsfixes der Basisschicht. Der Kuratierungs-Nachweis folgt nach dem
-Release-Lauf.
+Sicherheitsfixes der Basisschicht. Funde ohne Fix: Ausnahme bis 2027-01-08 in
+JanuaPort/januaport#1059. Der Kuratierungs-Nachweis:
+
+| Feld | Wert |
+|---|---|
+| Image | `ghcr.io/januaport/script-runner` |
+| Tag | `script-runner-v0.1.4` (Image-Tag `0.1.4`) |
+| Digest (OCI-Index) | `sha256:c7bdbaa80b806dd300f1f5ae2fc578e674914b1dec799718c02fab0eeeb3b7ba` |
+| Plattform | `linux/amd64` (`sha256:2d9d19e1d6f5bceeab556e98079823c651b70251ee14caa8003cc8d12a81b44f`), sonst keine (der zweite Eintrag ist die Attestation) |
+| Art | `service`, eigener Build (Plugins-Repo) |
+| Geprüft mit | Sonden der Release-Strecke; der Zeitplan-Lauf gegen JanuaPort folgt mit dem Live-Durchstich JanuaPort/januaport#1039 |
+| Benötigter Commit von Compose und Profil | `d3dca37` (`docker-compose.yml`, `seccomp/jnpt-sandbox-seccomp.json`); die Compose mit internem Netz aus JanuaPort/januaport#1069 setzt das Netz `jnpt_plugins` der Kern-Compose voraus und ist ein eigener Schritt |
+| Lauf der Sonden | Release-Lauf `38641095822`: hat genau diesen Digest geprüft (SEC C1) |
+
+**Digest** zweimal gemessen am 2026-10-14: Log des Release-Laufs
+(`exporting manifest list sha256:c7bdbaa8…`, `digest.txt` im Trivy-Artefakt)
+und `docker buildx imagetools inspect`. Beide stimmen überein.
+
+**Sonden:** grün im Lauf `38641095822` gegen genau diesen Digest.
+
+**Scan:** Trivy 0.74.0 (Artefakt `trivy-script-runner-v0.1.4`, erstellt
+2026-10-14T21:34Z), Scanner `vuln`: **1 critical · 59 high** · 94 medium ·
+138 low · 6 unknown. **Kein Fund mit Fix-Fassung, gleich welcher Schwere**
+(0.1.3: 3 UNKNOWN mit Fix; vor #1057 lokal 7 mit Fix, darunter 2 HIGH). Die
+60 hohen Funde ohne Fix sind die aus 0.1.3 ohne die zwei, die #1057 behoben
+hat (darunter openssh-client CVE-2026-60002 CRITICAL, weiter ohne Fix), und
+laufen als Ausnahme in JanuaPort/januaport#1059.
 
 - **Taktgeber für Zeitpläne (JanuaPort/januaport#1039, Paket S1):** Der
   vermittler liest `schedules.json` aus dem Plugin-Ordner (streng, fail-closed,
