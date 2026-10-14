@@ -26,10 +26,9 @@ und `docker buildx imagetools inspect`. Beide stimmen überein.
 **Scan:** Trivy 0.74.0 (Artefakt `trivy-script-runner-v0.1.4`, erstellt
 2026-10-14T21:34Z), Scanner `vuln`: **1 critical · 59 high** · 94 medium ·
 138 low · 6 unknown. **Kein Fund mit Fix-Fassung, gleich welcher Schwere**
-(0.1.3: 3 UNKNOWN mit Fix; vor #1057 lokal 7 mit Fix, darunter 2 HIGH). Die
-60 hohen Funde ohne Fix sind die aus 0.1.3 ohne die zwei, die #1057 behoben
-hat (darunter openssh-client CVE-2026-60002 CRITICAL, weiter ohne Fix), und
-laufen als Ausnahme in JanuaPort/januaport#1059.
+(0.1.3: 3 UNKNOWN mit Fix; vor #1057 lokal 7 mit Fix, darunter 2 HIGH). Alle
+60 hohen Funde (1 CRITICAL, openssh-client CVE-2026-60002, und 59 HIGH) sind
+ohne Fix und laufen als Ausnahme in JanuaPort/januaport#1059.
 
 - **Taktgeber für Zeitpläne (JanuaPort/januaport#1039, Paket S1):** Der
   vermittler liest `schedules.json` aus dem Plugin-Ordner (streng, fail-closed,
