@@ -1,6 +1,10 @@
 # Changelog — script-runner
 
-## Unveröffentlicht
+## 0.1.4 — 2026-10-14 (JanuaPort/januaport#1039 S1, #1057)
+
+Getaggt als `script-runner-v0.1.4`. Taktgeber für Zeitpläne (S1) und
+Sicherheitsfixes der Basisschicht. Der Kuratierungs-Nachweis folgt nach dem
+Release-Lauf.
 
 - **Taktgeber für Zeitpläne (JanuaPort/januaport#1039, Paket S1):** Der
   vermittler liest `schedules.json` aus dem Plugin-Ordner (streng, fail-closed,
