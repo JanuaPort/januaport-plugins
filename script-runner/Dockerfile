@@ -19,7 +19,11 @@ FROM python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0
 # pip und ensurepip werden entfernt: im Lauf gibt es keine Installation (R12).
 # Zwei Nutzer ohne Login: 65532 für vermittler und abholer (Eigentümer der
 # Plugin-Ordner auf dem Host), 65533 für die Sandbox.
+# `upgrade` zieht Debian-Sicherheitsfixes auch für Pakete der Basisschicht
+# (liblzma5, gnutls, …): Der gepinnte Digest friert sie sonst ein, und ein
+# Neubau nach einem Trivy-Fund mit Fix änderte nichts (JanuaPort/januaport#1057).
 RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
  && apt-get install -y --no-install-recommends git openssh-client \
  && rm -rf /var/lib/apt/lists/* \
  && rm -rf /usr/local/lib/python3.12/ensurepip \

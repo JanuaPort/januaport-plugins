@@ -1,5 +1,22 @@
 # Changelog — script-runner
 
+## Unveröffentlicht
+
+- **Sicherheitsfixes der Basisschicht (JanuaPort/januaport#1057, SEC):** Der
+  Build ruft nach `apt-get update` jetzt `apt-get upgrade` auf. Der gepinnte
+  Digest von `python:3.12-slim` fror bisher alle Pakete der Basisschicht ein.
+  Ein Neubau nach einem Trivy-Fund mit Fix holte deshalb weder liblzma5
+  (DSA-6549-1, 5.8.1-1+deb13u2) noch libcurl3t64-gnutls (8.14.1-2+deb13u7,
+  darunter zwei HIGH). Die Regel „Fund mit Fix erzwingt Neubau“ greift damit
+  erst jetzt auch für diese Pakete.
+- `golang.org/x/sys` v0.41.0 → v0.49.0 (CVE-2026-39824 / GO-2026-5024).
+  Hygiene: Die Lücke liegt nur in `x/sys/windows`, der Läufer baut nur für
+  Linux.
+- **Beleg (SEC, 14.10.2026, Trivy 0.74.0, lokal gebaut):** vorher 7 Funde mit
+  Fix (2 HIGH, 1 MEDIUM, 4 UNKNOWN), nachher **keiner**. HIGH 61 → 59,
+  CRITICAL bleibt 1 (openssh CVE-2026-60002 ohne Fix, Ausnahme #1059). Tests
+  und `go vet` grün in `golang:1.26.9`.
+
 ## 0.1.3 — 2026-10-11 (JanuaPort/januaport#1085; enthält 0.1.2)
 
 Getaggt als `script-runner-v0.1.3`. Enthält alles aus 0.1.2 (#1083 P2, nur
