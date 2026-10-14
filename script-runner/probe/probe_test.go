@@ -60,8 +60,10 @@ func envOr(k, d string) string {
 
 type stubGateway struct {
 	calls atomic.Int64
-	mu    sync.Mutex
-	auth  []string
+	// entered meldet jeden Werkzeugaufruf mit Namen (L1, #1040).
+	entered chan string
+	mu      sync.Mutex
+	auth    []string
 }
 
 func (g *stubGateway) authHeaders() []string {
@@ -70,16 +72,36 @@ func (g *stubGateway) authHeaders() []string {
 	return append([]string(nil), g.auth...)
 }
 
+func (g *stubGateway) notify(name string) {
+	select {
+	case g.entered <- name:
+	default:
+	}
+}
+
 func startStubGateway() *stubGateway {
-	g := &stubGateway{}
+	g := &stubGateway{entered: make(chan string, 64)}
 	server := mcp.NewServer(&mcp.Implementation{Name: "stub-gateway", Version: "0"}, nil)
 	server.AddTool(&mcp.Tool{Name: "kartei_find", InputSchema: map[string]any{"type": "object"}},
 		func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			g.calls.Add(1)
+			g.notify("kartei_find")
 			return &mcp.CallToolResult{
 				Content:           []mcp.Content{&mcp.TextContent{Text: `{"found":2}`}},
 				StructuredContent: map[string]any{"found": 2},
 			}, nil
+		})
+	// kartei_hang hängt, bis der Aufruf abgebrochen wird (höchstens 60 s):
+	// ein innerer Aufruf, während dessen das Gateway den Lauf abbricht (L1).
+	server.AddTool(&mcp.Tool{Name: "kartei_hang", InputSchema: map[string]any{"type": "object"}},
+		func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			g.calls.Add(1)
+			g.notify("kartei_hang")
+			select {
+			case <-ctx.Done():
+			case <-time.After(60 * time.Second):
+			}
+			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: `{}`}}}, nil
 		})
 	h := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 	go func() {
@@ -234,7 +256,7 @@ func setup() error {
 }
 
 var pinNames = []string{"ok_echo", "proc_probe", "sleeper", "residue", "seccomp_probe", "net_probe",
-	"socket_dir", "second_conn", "forkbomb", "raise_canary", "memhog", "quick",
+	"socket_dir", "second_conn", "forkbomb", "raise_canary", "memhog", "quick", "abbruch",
 	"numpy_ok", "libs_readonly", "no_pip"}
 
 // invalidPinNames sind Pins, die ungültig bleiben müssen (#1041).
