@@ -21,18 +21,21 @@ import (
 
 	"github.com/januaport/januaport-plugins/script-runner/internal/contract"
 	"github.com/januaport/januaport-plugins/script-runner/internal/store"
+	"github.com/januaport/januaport-plugins/script-runner/internal/ticker"
 )
 
 // Config des vermittlers. Leere Dauern bekommen die Standards aus dem
 // Vertrag.
 type Config struct {
-	SocketPath   string // Unix-Socket für den Wächter (Weg C)
-	KeyDir       string // Plugin-Ordner mit runtime-key und pins.json
-	StoreDir     string // gemeinsames Volume mit dem abholer (Weg D)
-	GatewayURL   string // Basis für Weg B, ohne /mcp
-	Logger       *slog.Logger
-	BusyWait     time.Duration // Vertrag §5: 3 s
-	PollInterval time.Duration // Abstand für pins.json, runtime-key, Store
+	SocketPath     string // Unix-Socket für den Wächter (Weg C)
+	KeyDir         string // Plugin-Ordner mit runtime-key und pins.json
+	StoreDir       string // gemeinsames Volume mit dem abholer (Weg D)
+	GatewayURL     string // Basis für Weg B, ohne /mcp
+	Logger         *slog.Logger
+	BusyWait       time.Duration    // Vertrag §5: 3 s
+	PollInterval   time.Duration    // Abstand für pins.json, runtime-key, Store
+	Now            func() time.Time // Uhr des Taktgebers (#1039); Standard time.Now
+	TriggerTimeout time.Duration    // HTTP-Frist des Auslöse-Aufrufs; Standard 35 s
 }
 
 // Mediator ist der vermittler.
@@ -48,6 +51,10 @@ type Mediator struct {
 	repoURL   string
 	isolation string
 	cache     map[cacheKey]verdict
+
+	ticker     *ticker.Ticker
+	trigger    *gatewayTrigger
+	schedState string // zuletzt geloggter Zustand von schedules.json
 }
 
 // New prüft die Konfiguration.
@@ -64,12 +71,20 @@ func New(cfg Config) (*Mediator, error) {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
+	if cfg.Now == nil {
+		cfg.Now = time.Now
+	}
+	if cfg.TriggerTimeout == 0 {
+		cfg.TriggerTimeout = triggerTimeout
+	}
 	m := &Mediator{
 		cfg:       cfg,
 		store:     store.Open(filepath.Join(cfg.StoreDir, "store.git")),
 		log:       cfg.Logger,
 		isolation: contract.IsolationInvalid,
 		cache:     map[cacheKey]verdict{},
+		ticker:    ticker.New(cfg.Logger),
+		trigger:   newGatewayTrigger(cfg.GatewayURL, filepath.Join(cfg.KeyDir, "runtime-key"), cfg.TriggerTimeout),
 	}
 	m.sb = newSandboxes(m.onHello, m.log)
 	// Erster Abgleich vor dem ersten Request: kein Fenster, in dem ein
@@ -102,6 +117,7 @@ func (m *Mediator) pollLoop(ctx context.Context) {
 	defer t.Stop()
 	for {
 		m.refresh(ctx)
+		m.tickSchedules(ctx)
 		select {
 		case <-ctx.Done():
 			return
@@ -185,11 +201,13 @@ func (m *Mediator) middleware(next mcp.MethodHandler) mcp.MethodHandler {
 }
 
 func (m *Mediator) toolsList() *mcp.ListToolsResult {
+	// Außerhalb von m.mu: Taktgeber und m.mu werden nie verschachtelt gesperrt.
+	sched := m.ticker.Report()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	listed := make([]contract.ListedPin, 0, len(m.pins))
 	for _, p := range m.pins {
 		listed = append(listed, p.listed())
 	}
-	return contract.ToolsList(listed, m.isolation)
+	return contract.ToolsList(listed, m.isolation, sched)
 }

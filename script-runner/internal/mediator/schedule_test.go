@@ -280,14 +280,9 @@ func TestTriggerRequestNoBodyBearerRuntimeKeyNeverLogged(t *testing.T) {
 	if r.bodyLen != 0 || r.contentLength != 0 {
 		t.Fatalf("Body %d Bytes, Content-Length %d", r.bodyLen, r.contentLength)
 	}
-	waitUntil(t, 5*time.Second, "Ergebnis", func() bool {
-		s, _ := e.schedule("q")
-		return s.LastEnd == "ok"
-	})
+	// tools/list ginge jetzt nur noch mit dem neuen Schlüssel: auf den Code warten.
+	waitUntil(t, 5*time.Second, "fester Code im Log", func() bool { return strings.Contains(e.logs.String(), ticker.CodeFired) })
 	logs := e.logs.String()
-	if !strings.Contains(logs, ticker.CodeFired) {
-		t.Fatalf("fester Code fehlt im Log: %s", logs)
-	}
 	for _, secret := range []string{testKey, rotated} {
 		if strings.Contains(logs, secret) {
 			t.Fatalf("runtime-key im Log: %s", logs)

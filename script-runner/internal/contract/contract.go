@@ -187,11 +187,40 @@ type PinStatus struct {
 	Reason string `json:"reason,omitempty"`
 }
 
+// Zeitpläne (#1039, Kernvertrag docs/skript-zeitplaene.md). Zustände und
+// Gründe sind die feste Menge, die der Kernparser annimmt.
+const (
+	MaxSchedules = 20
+
+	ScheduleReady    = "ready"
+	SchedulePaused   = "paused"
+	ScheduleDisabled = "disabled"
+
+	ScheduleReasonToken = "token"
+	ScheduleReasonPin   = "pin"
+)
+
+// ScheduleStatus ist ein Eintrag in `_meta["januaport.ai/runner"].schedules`:
+// nur Systemzustand, keine Person, kein Freitext. Alle Felder stehen immer
+// da; Zeiten RFC3339 in UTC oder leer.
+type ScheduleStatus struct {
+	Name        string `json:"name"`
+	State       string `json:"state"`
+	Reason      string `json:"reason"`
+	NextRun     string `json:"next_run"`
+	LastRun     string `json:"last_run"`
+	LastEnd     string `json:"last_end"`
+	Missed      uint64 `json:"missed"`
+	SkippedBusy uint64 `json:"skipped_busy"`
+}
+
 // RunnerMeta ist `_meta["januaport.ai/runner"]` auf dem tools/list-Ergebnis.
+// `schedules` fehlt ohne Zeitpläne; tools/list bleibt dann wie in Fassung 1.
 type RunnerMeta struct {
-	Contract  int         `json:"contract"`
-	Isolation string      `json:"isolation"`
-	Pins      []PinStatus `json:"pins"`
+	Contract  int              `json:"contract"`
+	Isolation string           `json:"isolation"`
+	Pins      []PinStatus      `json:"pins"`
+	Schedules []ScheduleStatus `json:"schedules,omitempty"`
 }
 
 // ListedPin ist ein Pin, wie ihn tools/list braucht. Script, Description
@@ -207,9 +236,10 @@ type ListedPin struct {
 }
 
 // ToolsList baut das tools/list-Ergebnis (Vertrag §2). Werkzeuge gibt es
-// nur für Pins im Zustand `ready` und nie bei isolation `invalid`.
-func ToolsList(pins []ListedPin, isolation string) *mcp.ListToolsResult {
-	meta := RunnerMeta{Contract: Version, Isolation: isolation, Pins: []PinStatus{}}
+// nur für Pins im Zustand `ready` und nie bei isolation `invalid`. Die
+// Zeitpläne meldet der Taktgeber (#1039), höchstens MaxSchedules.
+func ToolsList(pins []ListedPin, isolation string, schedules []ScheduleStatus) *mcp.ListToolsResult {
+	meta := RunnerMeta{Contract: Version, Isolation: isolation, Pins: []PinStatus{}, Schedules: schedules[:min(len(schedules), MaxSchedules)]}
 	tools := []*mcp.Tool{}
 	for _, p := range pins {
 		state := p.State

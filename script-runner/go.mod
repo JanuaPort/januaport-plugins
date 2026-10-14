@@ -4,6 +4,7 @@ go 1.26.9
 
 require (
 	github.com/modelcontextprotocol/go-sdk v1.7.0
+	github.com/robfig/cron/v3 v3.0.1
 	golang.org/x/sys v0.49.0
 	gopkg.in/yaml.v3 v3.0.1
 )

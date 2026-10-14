@@ -150,7 +150,7 @@ func TestNotEnabledOrPinNotReadyNeverFires(t *testing.T) {
 		{"deaktiviert", false, readyAll, contract.ScheduleDisabled},
 		{"Pin nicht bereit", true, func(string, string) bool { return false }, contract.SchedulePaused},
 		{"anderer Commit", true, func(pin, c string) bool { return pin == "invoice_check" && c == strings.Repeat("4", 40) }, contract.SchedulePaused},
-		{"anderer Pin", true, func(pin, string) bool { return pin == "other" }, contract.SchedulePaused},
+		{"anderer Pin", true, func(pin, _ string) bool { return pin == "other" }, contract.SchedulePaused},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
