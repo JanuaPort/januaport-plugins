@@ -18,7 +18,7 @@ Drei Dienste aus einem Image, neben dem Gateway:
 
 | Dienst | Aufgabe | Netz |
 |---|---|---|
-| `script-runner` | nimmt Aufrufe vom Gateway an, hält die Pins, übergibt den Code an die Sandbox, leitet Werkzeugaufrufe des Skripts an JanuaPort weiter | nur `jnpt_default`, kein Host-Port für MCP |
+| `script-runner` | nimmt Aufrufe vom Gateway an, hält die Pins, übergibt den Code an die Sandbox, leitet Werkzeugaufrufe des Skripts an JanuaPort weiter | nur das interne Netz `jnpt_plugins` (kein Ausgang, nur das Gateway daneben), kein Host-Port |
 | `script-runner-sandbox` | führt **einen** Lauf aus und wird danach mit leerem Arbeitsspeicher neu gestartet | **kein Netz** |
 | `script-runner-fetcher` | prüft Pins gegen den Standard-Zweig und holt Objekte per ssh mit einem Nur-Lese-Deploy-Key | eigenes Netz mit Ausgang, kein Weg zum Gateway |
 
@@ -135,10 +135,18 @@ strukturiert.
   nicht. `open` (nicht `all`) erlaubt nur das Öffnen von Unix-Sockets, die in
   die Sandbox eingehängt sind, kein Anlegen; eingehängt ist nur der
   Socket-Ordner des Läufers, read-only — die Grenze ist die Mount-Liste.
-- **Gesundheit:** `curl -s http://127.0.0.1:8091/healthz` → `ok`, sobald der
-  Schlüssel da ist und sich eine Sandbox mit unserem Profil gemeldet hat, sonst
-  `not ready` (503); jeder andere Pfad 404. Auf dem Host nur Loopback; aus dem
-  Netz `jnpt_default` ist der Port ebenfalls erreichbar und verrät dort nur
+- **Netz:** Der Läufer hängt nur am Netz `jnpt_plugins`, das die Kern-Compose
+  von JanuaPort mit `internal: true` anlegt; dort hängt sonst nur das Gateway.
+  Er erreicht `jnpt:8484`, das Gateway ihn unter `script-runner:8090`, ins
+  Internet und ins LAN kommt er nicht. Fehlt das Netz auf der Anlage, startet
+  die Compose nicht; der Aktuator (ab Fassung 3) bucht dann `unprovisioned`.
+- **Gesundheit:** ein Docker-Healthcheck im Container fragt
+  `http://127.0.0.1:8091/healthz`: `ok`, sobald der Schlüssel da ist und sich
+  eine Sandbox mit unserem Profil gemeldet hat, sonst `not ready` (503); jeder
+  andere Pfad 404. Der Aktuator liest den Status (`HEALTH_DOCKER=1` im
+  Deskriptor): `docker inspect -f '{{.State.Health.Status}}'
+  jnpt-plugin-script-runner-script-runner-1` → `healthy`. Aus dem Netz
+  `jnpt_plugins` ist der Port ebenfalls erreichbar und verrät dort nur
   bereit/nicht bereit.
 - **Deploy-Key:** nur Leserecht auf das eine Skript-Repository. Der Läufer hat
   keinen Weg, zu schreiben.

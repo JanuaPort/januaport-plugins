@@ -384,13 +384,13 @@ func readKeyValues(t *testing.T, path string) (map[string]string, []string) {
 func TestDeployDescriptor(t *testing.T) {
 	kv, _ := readKeyValues(t, "../../deploy/script-runner.conf.example")
 	want := map[string]string{
-		"IMAGE_REPO":   imageRepo,
-		"COMPOSE_FILE": "/opt/jnpt/plugins/script-runner/docker-compose.yml",
-		"SERVICE":      "script-runner",
-		"ENV_FILE":     "/opt/jnpt/plugins/script-runner/.env",
-		"ENV_KEY":      "JNPT_SCRIPT_RUNNER_IMAGE",
-		"HEALTH_URL":   "http://127.0.0.1:8091/healthz",
-		"REQUIRE":      "/opt/jnpt/plugins/script-runner/seccomp/jnpt-sandbox-seccomp.json:/run/jnpt/plugins/script-runner/runtime-key",
+		"IMAGE_REPO":    imageRepo,
+		"COMPOSE_FILE":  "/opt/jnpt/plugins/script-runner/docker-compose.yml",
+		"SERVICE":       "script-runner",
+		"ENV_FILE":      "/opt/jnpt/plugins/script-runner/.env",
+		"ENV_KEY":       "JNPT_SCRIPT_RUNNER_IMAGE",
+		"HEALTH_DOCKER": "1",
+		"REQUIRE":       "/opt/jnpt/plugins/script-runner/seccomp/jnpt-sandbox-seccomp.json:/run/jnpt/plugins/script-runner/runtime-key",
 	}
 	for k, v := range want {
 		if kv[k] != v {

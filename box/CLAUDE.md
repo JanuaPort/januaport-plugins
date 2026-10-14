@@ -40,7 +40,8 @@ Pfad kennen `boot/jnpt-stack-nachstart.service`, `smb/jnpt-backup.sh`,
 
 **Compose (`docker-compose.box.yml`):** Projekt `jnpt` (Top-Level `name:`),
 Dienste `jnpt`, `caddy`, `caddy-admin`, `tailscale` (Profil `wartung`), Netz
-`jnpt_default` mit Bridge `jnpt0`, Volumes `jnpt_jnpt-data`, `jnpt_caddy-data`,
+`jnpt_default` mit Bridge `jnpt0`, internes Netz `jnpt_plugins` mit Bridge
+`jnpt-plug0` (nur `jnpt` und der vermittler des Skript-Läufers), Volumes `jnpt_jnpt-data`, `jnpt_caddy-data`,
 `jnpt_caddy-admin-data`, `jnpt_tailscale-state` (+ `*-config`), Secrets
 `jnpt_master_key`, `tailscale_authkey`.
 
@@ -164,6 +165,11 @@ drei.
   eigene Kette; Dockers Freigaben ersetzen die `jnpt0`-Ausnahmen in unserer
   forward-Kette nicht. Die 443-Politik lebt in **forward** (DNAT vor dem
   Routing), nicht in input.
+- **br_netfilter ist auf der Pilot-Box nicht geladen** (gemessen 14.10.2026,
+  Docker 29.7.2). Verkehr innerhalb einer Bridge (jnpt ↔ vermittler auf
+  `jnpt-plug0`) erreicht die forward-Kette deshalb nicht. Die Freigabe
+  `iifname "jnpt-plug0" oifname "jnpt-plug0"` ist Versicherung für den Fall,
+  dass ein späteres Docker das Modul lädt. Beleg: `lsmod | grep br_netfilter`.
 - **`flush ruleset` räumt Dockers Regeln ab.** `hardening.sh` startet Docker
   nach einem Ruleset-Wechsel neu; bleibt „No chain … DOCKER-FORWARD", hilft
   `systemctl restart docker`.
