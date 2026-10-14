@@ -1,5 +1,18 @@
 # Changelog — script-runner
 
+## Unveröffentlicht
+
+- **vermittler nur im internen Netz `jnpt_plugins` (JanuaPort/januaport#1069).**
+  Der Dienst `script-runner` hängt nur noch am externen Netz `jnpt_plugins`, das
+  die Kern-Compose mit `internal: true` anlegt (statt `jnpt_default`): kein Weg
+  ins Internet oder ins LAN, Weg A und Weg B bleiben. Kein Host-Port mehr (vorher
+  `127.0.0.1:8091`); Gesundheit über einen Docker-Healthcheck (`python3` des
+  Images gegen `/healthz`, alle 10 s). Deskriptor-Vorlage `HEALTH_DOCKER=1`.
+  Hygiene: keine Host-Ports, kein Dienst außer dem abholer mit Ausgang. Neue
+  Sonden `probe/network_test.go`. **Neue Compose, kein neues Image nötig.**
+  Voraussetzung auf der Anlage, in dieser Reihenfolge: Netz `jnpt_plugins` in
+  der Kern-Compose, Aktuator-Fassung 3, dann diese Compose und der Deskriptor.
+
 ## 0.1.3 — 2026-10-11 (JanuaPort/januaport#1085; enthält 0.1.2)
 
 Getaggt als `script-runner-v0.1.3`. Enthält alles aus 0.1.2 (#1083 P2, nur

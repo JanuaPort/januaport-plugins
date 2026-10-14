@@ -1,9 +1,9 @@
 # Skript-Läufer (JanuaPort/januaport#928) — Beisteller neben dem Gateway.
 #
 # Drei Dienste aus einem Image:
-#   script-runner          vermittler: MCP für das Gateway (nur im Netz
-#                          jnpt_default, Port 8090), /healthz nur auf dem
-#                          Host-Loopback (8091)
+#   script-runner          vermittler: MCP für das Gateway (nur im internen
+#                          Netz jnpt_plugins, Port 8090), kein Host-Port,
+#                          Gesundheit über den Docker-Healthcheck (8091)
 #   script-runner-sandbox  Wächter + Python: kein Netz, kein Schlüssel, genau
 #                          ein Lauf je Instanz, danach Neustart mit leerem tmpfs
 #   script-runner-fetcher  abholer: prüft Pins gegen den Standard-Zweig und holt Objekte per ssh, eigenes Netz
@@ -35,11 +35,19 @@ services:
       - /run/jnpt/plugins/script-runner:/run/jnpt/plugins/script-runner:ro
       - sockets:/run/script-runner
       - store:/var/lib/script-runner
-    networks: [default]
-    ports:
-      # Nur /healthz, nur Host-Loopback (HEALTH_URL des Deskriptors). MCP hat
-      # keinen Host-Port.
-      - "127.0.0.1:8091:8091"
+    # Nur das interne Netz der Kern-Compose (JanuaPort/januaport#1069): Weg A
+    # (Gateway → script-runner:8090) und Weg B (→ jnpt:8484) laufen darüber,
+    # ins Internet und ins LAN gibt es keinen Weg. Kein Host-Port: Aus einem
+    # internen Netz wäre er ohnehin nicht erreichbar.
+    networks: [plugins]
+    # Der Aktuator liest diesen Status (HEALTH_DOCKER=1 im Deskriptor). Kein
+    # neuer Code: Python des Images gegen /healthz im Container; 503 oder kein
+    # Server heißen Exit ≠ 0.
+    healthcheck:
+      test: ["CMD", "python3", "-I", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     # Der Deskriptor kennt genau einen SERVICE; `up -d script-runner` startet
     # so auch Sandbox und abholer.
     depends_on: [script-runner-sandbox, script-runner-fetcher]
@@ -102,8 +110,9 @@ volumes:
   store: {}
 
 networks:
-  default:
+  plugins:
     external: true
-    # Das Netz des Gateway-Stacks; es existiert erst, wenn das Gateway läuft.
-    name: jnpt_default
+    name: jnpt_plugins
+    # Das interne Netz legt die Kern-Compose an (internal: true). Fehlt es,
+    # bucht der Aktuator (ab Fassung 3) unprovisioned, bevor er etwas zieht.
   egress: {}

@@ -17,7 +17,7 @@ Kommentaren und Tests verweisen darauf.
 
 | Unterbefehl | Dienst | Verantwortung |
 |---|---|---|
-| `mediator` | `script-runner` | vermittler: MCP-Server für das Gateway (Weg A, `:8090` im Netz `jnpt_default`), prüft `runtime-key` (R13), liest `pins.json`, einzige Senke für Code (R6, M5), hält den einen Slot, misst Wandzeit und Größen selbst (M2, M4), ruft innere Werkzeuge mit dem Lauf-Token (Weg B), `/healthz` auf `:8091` |
+| `mediator` | `script-runner` | vermittler: MCP-Server für das Gateway (Weg A, `:8090` im internen Netz `jnpt_plugins`), prüft `runtime-key` (R13), liest `pins.json`, einzige Senke für Code (R6, M5), hält den einen Slot, misst Wandzeit und Größen selbst (M2, M4), ruft innere Werkzeuge mit dem Lauf-Token (Weg B), `/healthz` auf `:8091` |
 | `guard` | `script-runner-sandbox` | Wächter: PID 1 der Sandbox, `PR_SET_DUMPABLE 0`, meldet `hello`, nimmt **genau einen** job, startet `python -I`, räumt den Prozessbaum ab (V1/V3), hält die Instanz 10,5 s (B1) |
 | `fetcher` | `script-runner-fetcher` | abholer: prüft Pins gegen den Standard-Zweig und holt Objekte per ssh in den Bare-Store, prüft `wanted/` und `repo_url` selbst (V2, M7) |
 
@@ -206,6 +206,29 @@ und `vendor/` darin (reines Python, R12).
    `TestComposeUnknownAndForbiddenKeysPerService`. Wer der Compose einen
    neuen Schlüssel gibt, nimmt ihn bewusst ins Struct auf — das ist eine
    Vertragsfrage.
+10. **Der vermittler hat keinen Netzweg außer zum Gateway** (JanuaPort/januaport#1069).
+    Er hängt genau am Netz `plugins` = external `jnpt_plugins`, das die
+    Kern-Compose mit `internal: true` anlegt und an dem sonst nur `jnpt` hängt.
+    Weg A (`script-runner:8090`) und Weg B (`jnpt:8484`) laufen darüber; ins
+    Internet und ins LAN gibt es keinen Weg, auch keine Namensauflösung nach
+    außen. **Keine Host-Ports**, für keinen Dienst: Ein veröffentlichter Port
+    eines Containers, der nur im internen Netz hängt, ist nicht erreichbar
+    (SEC-Messung 14.10.), jeder andere wäre ein Weg hinein. Gesundheit deshalb
+    über den Docker-Healthcheck (`python3 -I -c …urlopen('http://127.0.0.1:8091/healthz')`,
+    alle 10 s, kein neuer Code), den der Aktuator mit `HEALTH_DOCKER=1` liest.
+    **Ausgang hat nur der abholer** (eigenes Netz `egress`, git über ssh); er
+    hängt nie an `jnpt_plugins` oder `jnpt_default`. Die Sandbox hat
+    `network_mode: none`. Jeder andere Dienst hat kein Netz oder nur
+    `jnpt_plugins`; ohne Netzliste hinge er am Projekt-Default mit Ausgang.
+    Mechanik: `internal/hygiene` (`checkNoEgress`, `checkMediator`,
+    `checkFetcher`, Proben in `TestComposeMutationsAreCaught`,
+    `TestNoServiceButFetcherHasEgress`), im Kern-Repo der Vorlagen-Wächter
+    `cmd/jnpt/compose_plugin_netz_test.go`, und die Sonden
+    `probe/network_test.go` (kein Ausgang mit Gegenprobe aus dem abholer,
+    `jnpt:8484` erreichbar, genau ein Netz, kein Port, healthy).
+    **Reihenfolge auf einer Anlage:** erst das Netz in der Kern-Compose, dann
+    Aktuator-Fassung 3, dann diese Compose und der Deskriptor mit
+    `HEALTH_DOCKER=1` (JanuaPort `docs/skript-laeufer.md`, „Vor der Einrichtung“).
 
 ## Ratifizierte Auslegungen (Vertrag Fassung 3)
 
@@ -230,7 +253,9 @@ Diese Auslegungen aus dem Bau von P2 hat LEAD in Fassung 3 bestätigt —
   setzt `resultType` und die Server-Info in `_meta`; P3 ignoriert sie im
   Abgleich wie der Draht-Test hier. — ratifiziert (F3)
 - `/healthz` auf `0.0.0.0:8091` im Container, Host nur `127.0.0.1` — von SEC
-  als Grenze angenommen (F3, SEC 5911712051).
+  als Grenze angenommen (F3, SEC 5911712051). **Abgelöst durch
+  JanuaPort/januaport#1069:** kein Host-Port mehr, `/healthz` nur im Container
+  (Healthcheck) und aus dem internen Netz `jnpt_plugins`.
 
 ## Bewusste Design-Entscheidungen
 
@@ -261,12 +286,17 @@ Diese Auslegungen aus dem Bau von P2 hat LEAD in Fassung 3 bestätigt —
   endet als `limit/memory`.
 - **`error_at` repo-relativ** (`<pin-pfad>/<datei>:<zeile>`), damit die KI die
   Stelle im Repository direkt findet.
-- **Health-Port 8091 im Container auf allen Adressen, auf dem Host nur
-  Loopback** (Muster Tunnel-Client). Der Aktuator braucht eine Host-URL.
-  **Grenze (von SEC angenommen, F3):** Aus `jnpt_default` ist `/healthz`
-  erreichbar und verrät nur bereit/nicht bereit — Antwort ausschließlich
-  `ok` (200) oder `not ready` (503), jeder andere Pfad 404 (Test
-  `TestHealthBodiesAndOtherPaths404`).
+- **Health-Port 8091 im Container auf allen Adressen, ohne Host-Port**
+  (seit JanuaPort/januaport#1069; vorher Host-Loopback nach dem Muster des
+  Tunnel-Clients). Der Aktuator liest den Docker-Healthcheck statt einer
+  Host-URL. **Grenze (von SEC angenommen, F3):** Aus `jnpt_plugins` (also vom
+  Gateway) ist `/healthz` erreichbar und verrät nur bereit/nicht bereit —
+  Antwort ausschließlich `ok` (200) oder `not ready` (503), jeder andere Pfad
+  404 (Test `TestHealthBodiesAndOtherPaths404`).
+- **Healthcheck mit `python3` aus dem Image** statt eines Health-Unterbefehls:
+  kein neuer Code im vermittler, und das Image hat Python ohnehin (Sandbox).
+  `-I` hält Umgebung und Arbeitsverzeichnis heraus. Er läuft als 65532 im
+  read-only-Container; dass er kein `.pyc` ablegen kann, stört Python nicht.
 - **Nutzer 65532 für vermittler und abholer:** Die Plugin-Ordner auf dem Host
   gehören 65532 mit 0750; `cap_drop: ALL` nimmt root die Leserechte. Die
   Sandbox läuft als 65533.
@@ -342,6 +372,12 @@ Diese Auslegungen aus dem Bau von P2 hat LEAD in Fassung 3 bestätigt —
   „neu gestartet mit leerem tmpfs“.
 - **CRLF:** `.gitattributes` erzwingt LF; `run.sh`, Dockerfiles und Golden-Dateien
   brechen sonst in einem Windows-Checkout.
+- **Das Netz `jnpt_plugins` muss vor `up` existieren.** Es gehört der
+  Kern-Compose (external hier). Fehlt es, scheitert `up`; der Aktuator prüft
+  deshalb vor dem Pull jedes externe Netz und bucht `unprovisioned` (ab
+  Fassung 3). Die Sonden legen ein eigenes `<prefix>-plugins` mit
+  `--internal` an (`probe/run.sh`); der Test-Läufer hängt dort mit Alias
+  `jnpt` und für den Modul-Download zusätzlich an `<prefix>-out`.
 - **E1 — relativer Profilpfad:** Der Aktuator ruft
   `docker compose --env-file … -f /opt/jnpt/plugins/script-runner/docker-compose.yml`
   ohne `cd` auf, systemd mit cwd `/`. Compose (gemessen v2.33.0 und v5.5.1)

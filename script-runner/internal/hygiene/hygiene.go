@@ -28,7 +28,18 @@ const (
 	socketMount = "sockets:/run/script-runner"
 	keyDir      = "/run/jnpt/plugins/script-runner"
 	gitKeyDir   = "/run/jnpt/plugins/script-runner-git"
+
+	// pluginNet ist das interne Netz der Kern-Compose (internal: true,
+	// JanuaPort/januaport#1069): dort hängen nur Gateway und vermittler.
+	pluginNet  = "jnpt_plugins"
+	gatewayNet = "jnpt_default"
 )
+
+// mediatorHealthcheck ist der Healthcheck des vermittlers ohne neuen Code:
+// Python des Images gegen /healthz im Container. Der Aktuator liest ihn mit
+// HEALTH_DOCKER=1, weil es keinen Host-Port mehr gibt.
+var mediatorHealthcheck = []string{"CMD", "python3", "-I", "-c",
+	"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/healthz', timeout=3)"}
 
 type compose struct {
 	Name     string             `yaml:"name"`
@@ -64,6 +75,7 @@ type service struct {
 	Tmpfs       []string          `yaml:"tmpfs"`
 	Volumes     []string          `yaml:"volumes"`
 	Ports       []string          `yaml:"ports"`
+	Healthcheck *healthcheck      `yaml:"healthcheck"`
 	Devices     []string          `yaml:"devices"`
 	VolumesFrom []string          `yaml:"volumes_from"`
 	UsernsMode  string            `yaml:"userns_mode"`
@@ -71,6 +83,13 @@ type service struct {
 	Cgroup      string            `yaml:"cgroup"`
 	Sysctls     any               `yaml:"sysctls"`
 	ExtraHosts  any               `yaml:"extra_hosts"`
+}
+
+type healthcheck struct {
+	Test     []string `yaml:"test"`
+	Interval string   `yaml:"interval"`
+	Timeout  string   `yaml:"timeout"`
+	Retries  int      `yaml:"retries"`
 }
 
 type volume struct {
@@ -101,8 +120,8 @@ func CheckCompose(src []byte) []string {
 			add("Volume %s mit eigenem Namen oder external", name)
 		}
 	}
-	if n := c.Networks["default"]; !n.External || n.Name != "jnpt_default" {
-		add("Netz default ist nicht das externe jnpt_default")
+	if n := c.Networks["plugins"]; !n.External || n.Name != pluginNet {
+		add("Netz plugins ist nicht das externe %s", pluginNet)
 	}
 	for _, want := range []string{mediator, sandbox, fetcher} {
 		if _, ok := c.Services[want]; !ok {
@@ -111,10 +130,40 @@ func CheckCompose(src []byte) []string {
 	}
 	for name, s := range c.Services {
 		v = append(v, checkCommon(name, s)...)
+		if name != fetcher {
+			v = append(v, checkNoEgress(name, s, c.Networks)...)
+		}
 	}
-	v = append(v, checkMediator(c.Services[mediator])...)
+	v = append(v, checkMediator(c.Services[mediator], c.Networks)...)
 	v = append(v, checkSandbox(c.Services[sandbox])...)
-	v = append(v, checkFetcher(c.Services[fetcher])...)
+	v = append(v, checkFetcher(c.Services[fetcher], c.Networks)...)
+	return v
+}
+
+// isPluginNet: Nur das externe jnpt_plugins ist ein Netz ohne Ausgang. Ein
+// eigenes Netz des Projekts, das implizite Projekt-Default und jedes andere
+// externe Netz gelten als Netz mit Ausgang (#1069).
+func isPluginNet(key string, nets map[string]network) bool {
+	n, ok := nets[key]
+	return ok && n.External && n.Name == pluginNet
+}
+
+// checkNoEgress: Ausgang hat nur der abholer. Jeder andere Dienst hat kein Netz
+// (network_mode: none) oder hängt ausschließlich an jnpt_plugins. Ohne
+// Netzliste hinge er am Projekt-Default — mit Ausgang.
+func checkNoEgress(name string, s service, nets map[string]network) []string {
+	if s.NetworkMode == "none" && len(s.Networks) == 0 {
+		return nil
+	}
+	if s.NetworkMode != "" || len(s.Networks) == 0 {
+		return []string{name + ": hängt an einem Netz mit Ausgang (nur der abholer darf das)"}
+	}
+	var v []string
+	for _, key := range s.Networks {
+		if !isPluginNet(key, nets) {
+			v = append(v, fmt.Sprintf("%s: Netz %s hat Ausgang (nur der abholer darf das)", name, key))
+		}
+	}
 	return v
 }
 
@@ -179,21 +228,25 @@ func checkCommon(name string, s service) []string {
 			add("Deploy-Key eingehängt")
 		}
 	}
+	// #1069: Ein veröffentlichter Port eines Containers, der nur im internen
+	// Netz hängt, ist nicht erreichbar, und jeder andere Port wäre ein Weg
+	// von außen hinein. Deshalb keiner.
 	for _, p := range s.Ports {
-		if name != mediator || p != "127.0.0.1:8091:8091" {
-			add("Host-Port %q (nur /healthz auf 127.0.0.1:8091 erlaubt)", p)
-		}
+		add("Host-Port %q (keine Host-Ports erlaubt)", p)
 	}
 	return v
 }
 
-func checkMediator(s service) []string {
+func checkMediator(s service, nets map[string]network) []string {
 	var v []string
-	if !slices.Equal(s.Networks, []string{"default"}) {
-		v = append(v, "script-runner: nicht genau im Netz default (jnpt_default)")
+	if len(s.Networks) != 1 || !isPluginNet(s.Networks[0], nets) {
+		v = append(v, "script-runner: nicht genau im externen Netz "+pluginNet)
 	}
 	if !slices.Contains(s.Volumes, keyDir+":"+keyDir+":ro") {
 		v = append(v, "script-runner: Schlüsselordner nicht read-only eingehängt")
+	}
+	if h := s.Healthcheck; h == nil || !slices.Equal(h.Test, mediatorHealthcheck) || h.Interval != "10s" {
+		v = append(v, "script-runner: Healthcheck nicht python3 gegen 127.0.0.1:8091/healthz alle 10s")
 	}
 	return v
 }
@@ -236,10 +289,17 @@ func checkSandbox(s service) []string {
 	return v
 }
 
-func checkFetcher(s service) []string {
+// checkFetcher: Der abholer braucht Ausgang zum Git-Anbieter, aber keinen Weg
+// zum Gateway — weder über jnpt_plugins noch über jnpt_default.
+func checkFetcher(s service, nets map[string]network) []string {
 	var v []string
-	if slices.Contains(s.Networks, "default") || s.NetworkMode != "" {
-		v = append(v, "script-runner-fetcher: im Netz jnpt_default oder eigener network_mode")
+	if s.NetworkMode != "" {
+		v = append(v, "script-runner-fetcher: eigener network_mode")
+	}
+	for _, key := range s.Networks {
+		if n, ok := nets[key]; ok && n.External && (n.Name == pluginNet || n.Name == gatewayNet) {
+			v = append(v, "script-runner-fetcher: im Netz "+n.Name+" (Weg zum Gateway)")
+		}
 	}
 	if !slices.Contains(s.Volumes, gitKeyDir+":"+gitKeyDir+":ro") {
 		v = append(v, "script-runner-fetcher: Deploy-Key-Ordner nicht read-only eingehängt")
