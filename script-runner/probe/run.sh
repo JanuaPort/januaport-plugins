@@ -2,9 +2,11 @@
 # Docker-Sonden des Skript-Läufers (JanuaPort/januaport#928, P2).
 #
 # Baut das Image, einen SSH-Git-Anbieter und einen Test-Läufer und startet
-# die Sonden in einem Go-Container am Netz p2-928-mcp (Stellvertreter für
-# jnpt_default, Alias „jnpt“ = Stub-Gateway). Alle Container, Netze und
-# Volumes tragen P2_PREFIX (Standard p2-928); Teststacks werden am Ende entfernt.
+# die Sonden in einem Go-Container. Er hängt am internen Netz p2-928-plugins
+# (--internal, Stellvertreter für jnpt_plugins, Alias „jnpt“ = Stub-Gateway,
+# JanuaPort/januaport#1069) und für den Modul-Download am Netz p2-928-out.
+# Alle Container, Netze und Volumes tragen P2_PREFIX (Standard p2-928);
+# Teststacks werden am Ende entfernt.
 #
 # Aufruf aus beliebigem Ordner:  sh script-runner/probe/run.sh [go-test-Argumente]
 # Mit P2_PREFIX=jnpt1083p2 werden Container und Netz für den Auftrag isoliert.
@@ -27,16 +29,21 @@ else
 fi
 docker build -q -t "$prefix-sshd:test" "$src/probe/sshd" >/dev/null
 docker build -q -t "$prefix-probe-runner:test" -f "$src/probe/runner.Dockerfile" "$src/probe" >/dev/null
-docker network create "$prefix-mcp" >/dev/null 2>&1 || true
+docker network create "$prefix-out" >/dev/null 2>&1 || true
+docker network create --internal "$prefix-plugins" >/dev/null 2>&1 || true
 
+# Anlegen, ans interne Netz hängen, dann starten: Der Alias „jnpt“ gilt nur im
+# internen Netz, wie das Gateway in jnpt_plugins.
 rc=0
-docker run --rm --name "$prefix-probe-runner" --network "$prefix-mcp" --network-alias jnpt \
+docker create --rm --name "$prefix-probe-runner" --network "$prefix-out" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$src":/src -w /src \
   -v "$prefix-gomod":/go/pkg/mod \
   -e P2_PREFIX="$prefix" -e P2_IMAGE="$img" -e P2_SSHD_IMAGE="$prefix-sshd:test" \
   "$prefix-probe-runner:test" \
-  go test -tags docker -count=1 -v -timeout 30m "$@" ./probe/ || rc=$?
+  go test -tags docker -count=1 -v -timeout 30m "$@" ./probe/ >/dev/null
+docker network connect --alias jnpt "$prefix-plugins" "$prefix-probe-runner"
+docker start -a "$prefix-probe-runner" || rc=$?
 
-docker network rm "$prefix-mcp" >/dev/null 2>&1 || true
+docker network rm "$prefix-plugins" "$prefix-out" >/dev/null 2>&1 || true
 exit "$rc"

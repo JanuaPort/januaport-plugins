@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -41,8 +42,21 @@ func TestComposeMutationsAreCaught(t *testing.T) {
 		{"privileged", "    read_only: true\n", "    read_only: true\n    privileged: true\n"},
 		{"cap_add", "    cap_drop: [ALL]\n", "    cap_drop: [ALL]\n    cap_add: [SYS_ADMIN]\n"},
 		{"docker.sock", "      - sockets:/run/script-runner:ro\n", "      - sockets:/run/script-runner:ro\n      - /var/run/docker.sock:/var/run/docker.sock\n"},
-		{"MCP-Host-Port", "      - \"127.0.0.1:8091:8091\"\n", "      - \"127.0.0.1:8091:8091\"\n      - \"8090:8090\"\n"},
-		{"Health-Port nicht auf Loopback", "      - \"127.0.0.1:8091:8091\"\n", "      - \"8091:8091\"\n"},
+		{"MCP-Host-Port", mediatorNetze, mediatorNetze + "    ports:\n      - \"8090:8090\"\n"},
+		{"Health-Port auf Loopback", mediatorNetze, mediatorNetze + "    ports:\n      - \"127.0.0.1:8091:8091\"\n"},
+		{"Host-Port am abholer", "    networks: [egress]\n", "    networks: [egress]\n    ports: [\"2222:22\"]\n"},
+		{"vermittler zusätzlich mit Ausgang", mediatorNetze, "    networks: [plugins, egress]\n"},
+		{"vermittler im Projekt-Default", mediatorNetze, "    networks: [default]\n"},
+		{"vermittler ohne Netzliste", mediatorNetze, ""},
+		{"vermittler network_mode bridge", mediatorNetze, "    network_mode: bridge\n"},
+		{"Plugin-Netz nicht external", "    external: true\n    name: jnpt_plugins\n", "    external: false\n    name: jnpt_plugins\n"},
+		{"Plugin-Netz anderer Name", "    name: jnpt_plugins\n", "    name: jnpt_default\n"},
+		{"abholer am Plugin-Netz", "    networks: [egress]\n", "    networks: [egress, plugins]\n"},
+		{"Sandbox am Plugin-Netz", "    network_mode: none\n", "    networks: [plugins]\n"},
+		{"Healthcheck fehlt", healthcheckBlock, ""},
+		{"Healthcheck gegen das Gateway", "http://127.0.0.1:8091/healthz", "http://jnpt:8484/healthz"},
+		{"Healthcheck-Intervall", "      interval: 10s\n", "      interval: 1h\n"},
+		{"Healthcheck per Shell", "[\"CMD\", \"python3\"", "[\"CMD-SHELL\", \"python3\""},
 		{"network_mode host", "    network_mode: none\n", "    network_mode: host\n"},
 		{"festes Image", "image: ${JNPT_SCRIPT_RUNNER_IMAGE:?", "image: ghcr.io/example/x:latest #"},
 		{"falscher Projektname", "name: jnpt-plugin-script-runner", "name: jnpt"},
@@ -53,7 +67,7 @@ func TestComposeMutationsAreCaught(t *testing.T) {
 		{"tmpfs ohne mode", "/work:size=64m,noexec,nosuid,nodev,uid=65533,gid=65533,mode=0700", "/work:size=64m,noexec,nosuid,nodev"},
 		{"Socket-Ordner rw", "      - sockets:/run/script-runner:ro\n", "      - sockets:/run/script-runner\n"},
 		{"Deploy-Key im mediator", "      - /run/jnpt/plugins/script-runner:/run/jnpt/plugins/script-runner:ro\n", "      - /run/jnpt/plugins/script-runner:/run/jnpt/plugins/script-runner:ro\n      - /run/jnpt/plugins/script-runner-git:/k:ro\n"},
-		{"abholer im jnpt_default", "    networks: [egress]\n", "    networks: [default]\n"},
+		{"abholer im jnpt_default", "  egress: {}\n", "  egress:\n    external: true\n    name: jnpt_default\n"},
 		{"read_only fehlt", "    read_only: true\n", "    read_only: false\n"},
 	}
 	for _, tt := range tests {
@@ -64,6 +78,70 @@ func TestComposeMutationsAreCaught(t *testing.T) {
 			mutated := strings.Replace(base, tt.from, tt.to, 1)
 			if v := CheckCompose([]byte(mutated)); len(v) == 0 {
 				t.Fatal("Mutation nicht erkannt")
+			}
+		})
+	}
+}
+
+// Anker in der ausgelieferten Compose für die Netz- und Healthcheck-Proben
+// (#1069). Sie stehen genau so in docker-compose.yml.
+const (
+	mediatorNetze    = "    networks: [plugins]\n"
+	healthcheckBlock = "    healthcheck:\n" +
+		"      test: [\"CMD\", \"python3\", \"-I\", \"-c\", \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/healthz', timeout=3)\"]\n" +
+		"      interval: 10s\n" +
+		"      timeout: 5s\n" +
+		"      retries: 3\n"
+)
+
+// #1069: Der vermittler hängt genau am externen Netz jnpt_plugins, das die
+// Kern-Compose als internal anlegt, hat keinen Host-Port und meldet seine
+// Gesundheit über den Docker-Healthcheck (HEALTH_DOCKER=1 im Deskriptor).
+func TestMediatorOnlyOnPluginNetwork(t *testing.T) {
+	base := readCompose(t)
+	for _, anchor := range []string{mediatorNetze, healthcheckBlock} {
+		if !strings.Contains(base, anchor) {
+			t.Fatalf("Testfehler: %q nicht in der Compose", anchor)
+		}
+	}
+	if strings.Contains(base, "ports:") {
+		t.Error("die Compose veröffentlicht einen Host-Port")
+	}
+}
+
+// #1069: Ein zusätzlicher, sonst sauberer Dienst mit Ausgang ist ein Verstoß —
+// nur der abholer darf an einem Netz mit Ausgang hängen.
+func TestNoServiceButFetcherHasEgress(t *testing.T) {
+	base := readCompose(t)
+	helper := "  script-runner-helper:\n" +
+		"    image: ${JNPT_SCRIPT_RUNNER_IMAGE:?x}\n" +
+		"    security_opt:\n      - no-new-privileges:true\n" +
+		"    read_only: true\n    cap_drop: [ALL]\n"
+	insert := func(netz string) string {
+		return strings.Replace(base, "  script-runner-sandbox:\n", helper+netz+"\n  script-runner-sandbox:\n", 1)
+	}
+	for name, netz := range map[string]string{
+		"eigenes Netz":    "    networks: [egress]\n",
+		"Projekt-Default": "",
+		"network_mode":    "    network_mode: bridge\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			v := CheckCompose([]byte(insert(netz)))
+			if !slices.ContainsFunc(v, func(s string) bool {
+				return strings.HasPrefix(s, "script-runner-helper:") && strings.Contains(s, "Ausgang")
+			}) {
+				t.Fatalf("Dienst mit Ausgang nicht erkannt: %v", v)
+			}
+		})
+	}
+	// Gegenprobe: am Plugin-Netz oder ohne Netz ist der Helfer sauber.
+	for name, netz := range map[string]string{
+		"Plugin-Netz": "    networks: [plugins]\n",
+		"kein Netz":   "    network_mode: none\n",
+	} {
+		t.Run("sauber/"+name, func(t *testing.T) {
+			if v := CheckCompose([]byte(insert(netz))); len(v) != 0 {
+				t.Fatalf("Verstöße: %v", v)
 			}
 		})
 	}
