@@ -461,3 +461,63 @@ func TestAnswerFreeTextNeverMirrored(t *testing.T) {
 		t.Fatalf("Status = %+v", s)
 	}
 }
+
+// SEC R4 H1: schedules.json wird höchstens mit 64 KiB gelesen. Eine größere
+// Datei — hier gültiges JSON, mit Leerzeichen auf 64 KiB + 1 Byte gebracht —
+// ergibt fail-closed keine Zeitpläne und den festen Code; genau 64 KiB gehen.
+func TestSchedulesFileOverSixtyFourKiBFailsClosed(t *testing.T) {
+	core := newFakeCore(t, answer("ok"))
+	e, clk, _ := scheduled(t, core)
+	valid := `{"version":1,"schedules":[` + scheduleRow("q", "quick", e.fx.commit, "0 8 * * *", "UTC", true) + `]}`
+	const limit = 64 << 10
+	e.writeSchedulesRaw(valid + strings.Repeat(" ", limit+1-len(valid)))
+	waitUntil(t, 5*time.Second, "Zeitpläne entfernt", func() bool {
+		_, ok := e.schedules()
+		return !ok
+	})
+	if !strings.Contains(e.logs.String(), codeSchedulesInvalid) {
+		t.Fatalf("Code fehlt: %s", e.logs.String())
+	}
+	clk.Set(clockAt(8, 0, 1))
+	time.Sleep(200 * time.Millisecond)
+	if n := len(core.requests()); n != 0 {
+		t.Fatalf("%d Auslösungen aus übergroßer Datei", n)
+	}
+	// Genau an der Grenze wird gelesen.
+	e.writeSchedulesRaw(valid + strings.Repeat(" ", limit-len(valid)))
+	waitUntil(t, 5*time.Second, "Zeitplan an der Grenze gelesen", func() bool {
+		_, ok := e.schedule("q")
+		return ok
+	})
+}
+
+// SEC R4 H2: Der Auslöse-Aufruf folgt keiner Umleitung. Das zweite Ziel sieht
+// weder einen Aufruf noch den runtime-key; der Taktgeber verbucht einen Fehler.
+func TestTriggerFollowsNoRedirect(t *testing.T) {
+	var mu sync.Mutex
+	var second []string
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		second = append(second, r.Header.Get("Authorization"))
+		mu.Unlock()
+		answer("ok")(w, r)
+	}))
+	t.Cleanup(other.Close)
+	core := newFakeCore(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+"/api/plugin/script-runner/schedules/q/run", http.StatusTemporaryRedirect)
+	})
+	e, clk, _ := scheduled(t, core)
+	clk.Set(clockAt(8, 0, 1))
+	waitUntil(t, 5*time.Second, "Fehler-Code nach 307", func() bool { return strings.Contains(e.logs.String(), ticker.CodeFailed) })
+	mu.Lock()
+	defer mu.Unlock()
+	if len(second) != 0 {
+		t.Fatalf("Umleitung gefolgt: %d Aufrufe am zweiten Ziel, Authorization %q", len(second), second)
+	}
+	if n := len(core.requests()); n != 1 {
+		t.Fatalf("%d Aufrufe am Gateway", n)
+	}
+	if s, _ := e.schedule("q"); s.LastRun != "" || !strings.Contains(e.logs.String(), "status=307") {
+		t.Fatalf("Status = %+v, Log = %s", s, e.logs.String())
+	}
+}
