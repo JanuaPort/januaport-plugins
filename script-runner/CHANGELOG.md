@@ -2,6 +2,20 @@
 
 ## Unveröffentlicht
 
+- **Taktgeber für Zeitpläne (JanuaPort/januaport#1039, Paket S1):** Der
+  vermittler liest `schedules.json` aus dem Plugin-Ordner (streng, fail-closed,
+  höchstens 20) und meldet fällige Termine per
+  `POST /api/plugin/script-runner/schedules/{name}/run` an das Gateway — ohne
+  Body, mit dem runtime-key, Frist 35 s, ohne Wiederholung. Den Lauf startet
+  das Gateway über Weg A; der Taktgeber hält keinen Slot (V1). Kein Nachholen;
+  verpasste und in die Sommerzeit-Lücke fallende Termine zählen in `missed`,
+  belegte in `skipped_busy`. Zustand je Zeitplan in `tools/list` unter
+  `_meta["januaport.ai/runner"].schedules` (Golden
+  `contract/golden/tools_list_schedules.json`); ohne Zeitpläne bleibt
+  `tools/list` unverändert. Neue Abhängigkeit `github.com/robfig/cron/v3`
+  v3.0.1 (MIT, derselbe Parser wie im Gateway), `time/tzdata` eingebettet.
+  Das Golden `script-runner-schedules.golden.json` ist unverändert aus dem
+  Gateway-Repo übernommen.
 - **Sicherheitsfixes der Basisschicht (JanuaPort/januaport#1057, SEC):** Der
   Build ruft nach `apt-get update` jetzt `apt-get upgrade` auf. Der gepinnte
   Digest von `python:3.12-slim` fror bisher alle Pakete der Basisschicht ein.

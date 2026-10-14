@@ -142,6 +142,20 @@ strukturiert.
   bereit/nicht bereit.
 - **Deploy-Key:** nur Leserecht auf das eine Skript-Repository. Der Läufer hat
   keinen Weg, zu schreiben.
+- **Zeitpläne** (JanuaPort/januaport#1039, im Bau): Angelegt und verwaltet
+  werden sie in JanuaPort (Einstellungen › Plugins › Skript-Läufer, REST oder
+  Admin-MCP), nicht hier. JanuaPort legt sie als `schedules.json` neben
+  `pins.json` ab — ohne Token, ohne Eingabe, ohne Secret. Der Läufer meldet
+  einen fälligen Termin an JanuaPort; JanuaPort prüft Fälligkeit, Identity und
+  Rechte und startet den Lauf auf dem normalen Weg. Ist der Läufer gerade
+  belegt, wird der Termin übersprungen und gezählt. **Kein Nachholen:** Ein
+  Termin, der wegen eines Neustarts, einer Pause oder einer Störung verpasst
+  wurde, läuft nicht später; er wird gezählt. Jeder Zeitplan hat eine eigene
+  Zeitzone (IANA, z. B. `Europe/Berlin`); ein Termin in der Sommerzeit-Lücke
+  (letzter Sonntag im März, 02:00–03:00) entfällt und wird gezählt, einer in
+  der doppelten Stunde im Oktober läuft zweimal. Höchstens 20 Zeitpläne,
+  Mindestabstand fünf Minuten. Ein Neustart des Läufers setzt seine Zähler
+  zurück; den letzten Lauf kennt JanuaPort.
 
 ## Verantwortung
 
