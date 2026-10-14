@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "schedules": [
+    {
+      "name": "daily",
+      "pin": "invoice_check",
+      "commit": "3333333333333333333333333333333333333333",
+      "cron": "0 8 * * 1-5",
+      "timezone": "Europe/Berlin",
+      "enabled": true
+    }
+  ]
+}

@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 // -update schreibt die Golden-Dateien neu. Sie sind Vertragsgegenstand
@@ -152,14 +154,14 @@ func TestToolsListGolden(t *testing.T) {
 		{Name: "waiting", Commit: strings.Repeat("5", 64), State: StatePending},
 		{Name: "broken", Commit: strings.Repeat("6", 40), State: StateInvalid, Reason: ReasonSymlink},
 	}
-	golden(t, "tools_list.json", ToolsList(listed, IsolationGVisor))
+	golden(t, "tools_list.json", ToolsList(listed, IsolationGVisor, nil))
 }
 
 func TestToolsListInvalidIsolationListsNoTool(t *testing.T) {
 	listed := []ListedPin{{Name: "a", Commit: strings.Repeat("3", 40), State: StateReady,
 		Script:      &ScriptMeta{Path: "a", TimeoutS: 1, ManifestSHA: strings.Repeat("4", 40)},
 		InputSchema: map[string]any{"type": "object"}}}
-	res := ToolsList(listed, IsolationInvalid)
+	res := ToolsList(listed, IsolationInvalid, nil)
 	if len(res.Tools) != 0 {
 		t.Fatalf("Werkzeuge trotz isolation invalid: %d", len(res.Tools))
 	}
@@ -220,5 +222,104 @@ func TestParseRunHeadersRejects(t *testing.T) {
 				t.Fatalf("err = %v, want Fehler=%v", err, tt.isErr)
 			}
 		})
+	}
+}
+
+// #1039 S1: tools/list mit `_meta["januaport.ai/runner"].schedules`. Das
+// Golden ist die Form, die der Kernparser (cmd/jnpt parseRunnerMeta,
+// scheduleObservations) liest; LEAD/B spiegelt es ins Gateway-Repo.
+func TestToolsListSchedulesGolden(t *testing.T) {
+	commit := strings.Repeat("3", 40)
+	listed := []ListedPin{{
+		Name: "invoice_check", Commit: commit, State: StateReady,
+		Script: &ScriptMeta{
+			Path: "invoice-check", DeclaredTools: []string{"kartei_find"},
+			TimeoutS: 20, ManifestSHA: strings.Repeat("4", 40),
+		},
+		Description: "Prüft offene Rechnungen gegen die Kartei.",
+		InputSchema: map[string]any{"type": "object"},
+	}}
+	sched := []ScheduleStatus{
+		{Name: "daily", State: ScheduleReady, NextRun: "2026-10-13T06:00:00Z", LastRun: "2026-10-12T06:00:00Z", LastEnd: "ok"},
+		{Name: "nachts", State: SchedulePaused, Reason: ScheduleReasonToken, LastRun: "2026-10-12T00:30:00Z", LastEnd: "paused/token", Missed: 2, SkippedBusy: 1},
+		{Name: "wochenende", State: ScheduleDisabled},
+	}
+	golden(t, "tools_list_schedules.json", ToolsList(listed, IsolationGVisor, sched))
+}
+
+// Ohne Zeitpläne bleibt tools/list wie in Fassung 1 (kein Schlüssel
+// `schedules`): Das Golden tools_list.json ändert sich nicht.
+func TestToolsListWithoutSchedulesHasNoKey(t *testing.T) {
+	for _, s := range [][]ScheduleStatus{nil, {}} {
+		b, _ := json.Marshal(ToolsList(nil, IsolationGVisor, s))
+		if strings.Contains(string(b), "schedules") {
+			t.Fatalf("schedules ohne Zeitpläne: %s", b)
+		}
+	}
+}
+
+// Invariante 8: _meta.schedules passt zum Kernparser — genau die acht Felder
+// von scriptschedule.Observation (ohne das kerninterne `reported`), Zustände
+// und Gründe aus der festen Menge, Zeiten RFC3339 in UTC, höchstens 20.
+func TestSchedulesGoldenMatchesCoreParser(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(goldenDir, "tools_list_schedules.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire struct {
+		Meta map[string]json.RawMessage `json:"_meta"`
+	}
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatal(err)
+	}
+	var runner struct {
+		Schedules json.RawMessage `json:"schedules"`
+	}
+	if err := json.Unmarshal(wire.Meta[MetaRunner], &runner); err != nil {
+		t.Fatal(err)
+	}
+	type coreObservation struct {
+		Name        string `json:"name"`
+		State       string `json:"state"`
+		Reason      string `json:"reason"`
+		NextRun     string `json:"next_run"`
+		LastRun     string `json:"last_run"`
+		LastEnd     string `json:"last_end"`
+		Missed      uint64 `json:"missed"`
+		SkippedBusy uint64 `json:"skipped_busy"`
+	}
+	dec := json.NewDecoder(bytes.NewReader(runner.Schedules))
+	dec.DisallowUnknownFields()
+	var obs []coreObservation
+	if err := dec.Decode(&obs); err != nil {
+		t.Fatalf("Kernform: %v", err)
+	}
+	if len(obs) == 0 || len(obs) > MaxSchedules {
+		t.Fatalf("%d Einträge", len(obs))
+	}
+	var objs []map[string]any
+	_ = json.Unmarshal(runner.Schedules, &objs)
+	for i, o := range obs {
+		if len(objs[i]) != 8 {
+			t.Errorf("%s: %d Felder, want 8", o.Name, len(objs[i]))
+		}
+		if !regexp.MustCompile(`^[a-z0-9_]{1,48}$`).MatchString(o.Name) {
+			t.Errorf("Name %q", o.Name)
+		}
+		if o.State != ScheduleReady && o.State != SchedulePaused && o.State != ScheduleDisabled {
+			t.Errorf("%s: state %q", o.Name, o.State)
+		}
+		if o.Reason != "" && o.Reason != ScheduleReasonToken && o.Reason != ScheduleReasonPin {
+			t.Errorf("%s: reason %q", o.Name, o.Reason)
+		}
+		for _, ts := range []string{o.NextRun, o.LastRun} {
+			if ts == "" {
+				continue
+			}
+			p, err := time.Parse(time.RFC3339, ts)
+			if err != nil || p.UTC().Format(time.RFC3339) != ts {
+				t.Errorf("%s: Zeit %q nicht RFC3339 in UTC", o.Name, ts)
+			}
+		}
 	}
 }
