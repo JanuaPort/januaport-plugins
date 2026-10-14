@@ -17,7 +17,7 @@ Kommentaren und Tests verweisen darauf.
 
 | Unterbefehl | Dienst | Verantwortung |
 |---|---|---|
-| `mediator` | `script-runner` | vermittler: MCP-Server für das Gateway (Weg A, `:8090` im Netz `jnpt_default`), prüft `runtime-key` (R13), liest `pins.json`, einzige Senke für Code (R6, M5), hält den einen Slot, misst Wandzeit und Größen selbst (M2, M4), ruft innere Werkzeuge mit dem Lauf-Token (Weg B), `/healthz` auf `:8091` |
+| `mediator` | `script-runner` | vermittler: MCP-Server für das Gateway (Weg A, `:8090` im Netz `jnpt_default`), prüft `runtime-key` (R13), liest `pins.json`, einzige Senke für Code (R6, M5), hält den einen Slot, misst Wandzeit und Größen selbst (M2, M4), ruft innere Werkzeuge mit dem Lauf-Token (Weg B), `/healthz` auf `:8091`; Taktgeber für Zeitpläne (#1039 S1, liest `schedules.json`, löst über das Gateway aus) |
 | `guard` | `script-runner-sandbox` | Wächter: PID 1 der Sandbox, `PR_SET_DUMPABLE 0`, meldet `hello`, nimmt **genau einen** job, startet `python -I`, räumt den Prozessbaum ab (V1/V3), hält die Instanz 10,5 s (B1) |
 | `fetcher` | `script-runner-fetcher` | abholer: prüft Pins gegen den Standard-Zweig und holt Objekte per ssh in den Bare-Store, prüft `wanted/` und `repo_url` selbst (V2, M7) |
 
@@ -25,6 +25,8 @@ Kommentaren und Tests verweisen darauf.
 Katalog), Host-Units/tmpfiles (P4b, Gateway-Repo — hier nur Beispiele unter
 `deploy/`),
 Pin-Speicher, Lauf-Token, Relay, Audit, `scan` (P1/P3, Gateway), Rezept (P5).
+Zeitplan-Verwaltung, Fälligkeit, Eingabe und Identity eines Zeitplans
+(#1039, Kern); hier nur der Taktgeber.
 Kein pip im Lauf, keine zweite Sprache, keine Netzfreigabe je Skript, kein
 Webhook, keine GUI. Der Git-Anbieter wird ausschließlich mit `ls-remote`
 und `fetch` gelesen.
@@ -38,6 +40,8 @@ und `fetch` gelesen.
 | `internal/frame` | Rahmenprotokoll (Weg C): 4 Byte Länge BE + JSON |
 | `internal/gitref` | Allowlist-Prüfer: Commit (40/64 Hex), ssh-URL (M7), Pin-Pfad, Pin-Name |
 | `internal/pins` | Leser für `pins.json` (Nachtrag 2a) |
+| `internal/schedules` | Leser für `schedules.json` (#1039): streng, fail-closed, höchstens 20, Cron wie der Kern (`robfig/cron/v3`), `time/tzdata`, Sommerzeit-Lücken |
+| `internal/ticker` | Taktgeber (#1039 S1): reine Logik — fällige Termine, Merker, `missed`/`skipped_busy`, gespiegelte Pausen, `_meta.schedules` |
 | `internal/manifest` | Leser für `jnpt-script.yaml` |
 | `internal/store` | Senke: Tree-Walk mit Hash-Nachrechnung jedes Objekts (M5) |
 | `internal/mediator` | vermittler: MCP, Auth, Pins, Slot/V1, Lauf, Weg B |
@@ -46,7 +50,7 @@ und `fetch` gelesen.
 | `internal/hygiene` | Wächter-Tests für Compose (Vertrag §6, SEC-Zeile 3), Seccomp-Profil, Dockerfile |
 | `sandbox/bootstrap.py` | Python-Seite: Modul `januaport`, Fehlermeldung ohne Text |
 | `seccomp/` | Profil, Quelle (moby) und Herleitung `derive.py` |
-| `contract/golden/` | Golden-JSON für §2–§4 — P3 kopiert sie unverändert ins Gateway-Repo |
+| `contract/golden/` | Golden-JSON für §2–§4 — P3 kopiert sie unverändert ins Gateway-Repo; dazu `tools_list_schedules.json` (S1 → Gateway-Repo) und `script-runner-schedules.golden.json` (unverändert aus dem Gateway-Repo) |
 | `probe/` | Docker-Sonden (Build-Tag `docker`), Test-Überlagerung, SSH-Git-Anbieter |
 | `deploy/` | Beispiele: tmpfiles-Zeilen, Host-Deskriptor (echtes `IMAGE_REPO`, runtime-key in `REQUIRE`), `.env.example`, `daemon.json.example` |
 
@@ -61,6 +65,8 @@ und `fetch` gelesen.
   `_meta["januaport.ai/runner"]` mit `contract: 1`, `isolation` und **allen**
   Pins samt Zustand. Ist `isolation` `invalid`, erscheint kein Werkzeug und
   jeder sonst bereite Pin als `pending` (§5: „dann ist kein Pin ready“).
+  Mit Zeitplänen trägt `_meta["januaport.ai/runner"]` zusätzlich `schedules`
+  (#1039, siehe „Taktgeber“); ohne Zeitpläne fehlt der Schlüssel.
 - **`tools/call`:** Header `X-Jnpt-Run-Token` (`jnptrun_` + 43 base64url),
   `X-Jnpt-Run-Id` (UUIDv4), `X-Jnpt-Pin-Commit`. Fehlen Token oder ID oder sind
   sie falsch geformt → JSON-RPC-Fehler (Protokollverstoß). Alles Fachliche als
@@ -206,6 +212,103 @@ und `vendor/` darin (reines Python, R12).
    `TestComposeUnknownAndForbiddenKeysPerService`. Wer der Compose einen
    neuen Schlüssel gibt, nimmt ihn bewusst ins Struct auf — das ist eine
    Vertragsfrage.
+
+## Taktgeber (#1039 Paket S1)
+
+Verbindlich ist der Kernvertrag `docs/skript-zeitplaene.md` im Gateway-Repo
+(Abschnitt „Vertrag zum S1-Beisteller“), dazu Plan v1, Delta v3 und SEC A1–A5
+in JanuaPort/januaport#1039. Der Kern hält Zeitpläne, feste Eingabe und die
+gewählte Identity; er entscheidet über Fälligkeit (eigene Uhr, 30 s Toleranz,
+`last_fired_slot`) und pausiert selbst. Der Taktgeber im vermittler sagt nur
+„Zeitplan X ist fällig, bitte prüfen“.
+
+- **Eingang:** `schedules.json` neben `pins.json`, bei jedem Abgleich (2 s) neu
+  gelesen: `{"version":1,"schedules":[{name,pin,commit,cron,timezone,enabled}]}`
+  (Golden `contract/golden/script-runner-schedules.golden.json`, unverändert aus
+  `cmd/jnpt/testdata/` des Gateway-Repos). Kein Token, keine Eingabe, kein
+  Secret. Gelesen werden höchstens 64 KiB (`io.LimitReader`, SEC R4 H1).
+  Fehlt die Datei → keine Zeitpläne. Ungültig (größer als 64 KiB, kaputtes JSON,
+  unbekanntes oder fehlendes Feld, falsche Version, Daten danach, doppelter
+  Name, eine ungültige Zeile) → **keine** Zeitpläne und einmal je Wechsel der
+  Code `schedules_invalid`. Mehr als 20 → die ersten 20, Code
+  `schedules_over_limit` mit `ignored=<n>`.
+- **Cron:** derselbe Parser wie der Kern (`robfig/cron/v3`, fünf Felder,
+  Wochentags- und Monatsnamen), Pflicht-Zeitzone (IANA, nie `Local`),
+  Mindestabstand fünf Minuten — dieselben Regeln wie `scriptschedule.parse`.
+  `time/tzdata` ist eingebettet; das Image bringt keine Zonendateien mit.
+- **Auslösen:** nur `enabled:true` und Pin `ready` (wie in `tools/list`, also
+  nie bei `isolation: invalid`) mit genau dem Commit des Zeitplans.
+  `POST <JNPT_GATEWAY_URL>/api/plugin/script-runner/schedules/{name}/run`,
+  kein Body, `Authorization: Bearer <runtime-key>` frisch aus der Datei
+  (ohne Schlüssel kein Aufruf), Frist 35 s, keine Umleitung. Jeder Termin in
+  einer eigenen Goroutine: Der Abgleich wartet nie auf das Gateway.
+- **Antworten:** `200 {"end":…}` → `last_run` (der Termin, UTC) und `last_end`
+  (feste Klasse, sonst `unknown`); `busy` zählt `skipped_busy`;
+  `paused/token|pin` und `refused/pin|commit|state` spiegeln die Pause des
+  Kerns (`state: paused`, `reason`). `409` → nur Code `schedule_refused` mit
+  Zähler; Netzfehler, Frist, anderer Status → Code `schedule_failed`. Nie
+  eine Wiederholung; der nächste Versuch ist der nächste Termin.
+- **Ausgang:** `_meta["januaport.ai/runner"].schedules`, je Zeitplan genau
+  `name`, `state` (`ready|paused|disabled`), `reason` (`token|pin|""`),
+  `next_run` (nur bei `ready`), `last_run`, `last_end`, `missed`,
+  `skipped_busy` — Golden `contract/golden/tools_list_schedules.json`, Form wie
+  `scriptschedule.Observation` im Kern ohne das kerninterne `reported`.
+
+**Invarianten (je eine Testzeile):**
+
+1. **V1 bleibt.** Der Taktgeber öffnet keine Sandbox-Verbindung, nimmt keinen
+   Slot und schickt nie einen Job; `internal/ticker` kennt weder Netz noch
+   Sandbox. Tests: `TestTickerHoldsNoSlotWhileGatewayRunsViaPathA` (der Kern
+   ruft während des offenen Aufrufs Weg A — hielte der Taktgeber den Slot,
+   käme `busy`), `TestTickerNeverSendsJobToSandbox` (wahrscheinlichste
+   Verletzung: Job direkt über Weg C), `TestTriggerWithBusySlotDoesNotBlock`.
+2. **Kein Nachholen.** Ausgelöst wird nur der jüngste Termin und nur in den
+   ersten 25 s (unter der Kern-Toleranz von 30 s). Ältere zählen in `missed`.
+   Termine vor dem ersten Abgleich eines Zeitplans (Neustart) kennt der
+   Taktgeber nicht: weder Lauf noch Zählung. `TestNoCatchUpAfterGap`,
+   `TestNoCatchUpAfterStart`.
+3. **Je Termin höchstens ein Versuch.** Cursor (bis wohin bewertet) plus
+   Merker `lastFired`; läuft die Uhr rückwärts, bleibt der Cursor stehen.
+   `TestAtMostOneAttemptPerTermin`, `TestClockBackwardsDoesNotRefire`.
+4. **Request ohne Body, Bearer = runtime-key, Schlüssel nie im Log.** Der
+   Auslöser loggt gar nichts (Fehlertexte von `net/http` tragen die URL);
+   geloggt werden nur feste Codes mit Zählern im Taktgeber. Keine Umleitung:
+   `CheckRedirect` gibt die erste Antwort zurück, ein 307 ist ein Fehler, der
+   Schlüssel erreicht kein zweites Ziel (SEC R4 H2).
+   `TestTriggerRequestNoBodyBearerRuntimeKeyNeverLogged`, `TestTriggerFollowsNoRedirect`.
+5. **fail-closed beim Lesen** (oben), auch über 64 KiB. `TestParseInvalidFailsClosed`,
+   `TestInvalidSchedulesFileFailsClosedWithFixedCode`,
+   `TestSchedulesFileOverSixtyFourKiBFailsClosed`.
+6. **Nur bereit und aktiv löst aus.** `TestNotEnabledOrPinNotReadyNeverFires`,
+   `TestCommitMismatchOrDisabledNeverTriggers`.
+7. **Sommerzeit-Lücke:** Termine, die es an diesem Tag nicht gibt (Europe/Berlin,
+   letzter Sonntag im März, 02:30), laufen nicht und zählen in `missed`.
+   `TestDSTGapNoRunCounted`, `TestDSTGapEuropeBerlin`.
+8. **`_meta.schedules` = Kernform, ≤ 20, keine weiteren Felder.**
+   `TestSchedulesGoldenMatchesCoreParser`, `TestReportAtMostTwentyAndOnlyContractFields`.
+9. **Frist 35 s, kein Wiederholen.** `TestTriggerDeadlineThirtyFiveSecondsNoRetry`.
+
+**Bewusste Entscheidungen und Stolperfallen:**
+
+- **Zustand nur im Speicher.** Kein Zeitplan-Zustand auf dem Volume: Nach einem
+  Neustart beginnen `missed`, `skipped_busy`, `last_run` bei null; die
+  Wahrheit über den letzten Lauf hält der Kern (`last_fired_slot`).
+- **`reason` nur aus Antworten.** Ein Pin, der lokal nicht bereit ist oder
+  einen anderen Commit trägt, ergibt `paused` mit leerem Grund — den
+  Pausengrund bestimmt der Kern. Eine gespiegelte Pause bleibt, bis der Kern
+  den Zeitplan deaktiviert und wieder aktiviert hat (Bestätigung); die
+  Auslösung sperrt sie nicht (sonst bliebe sie nach einer schnellen
+  Bestätigung hängen) — der Kern antwortet dann 409.
+- **Sperr-Reihenfolge:** `toolsList` liest den Bericht des Taktgebers vor
+  `m.mu`, `tickSchedules` liest die bereiten Pins vor `Tick`. Taktgeber-Mutex
+  und `m.mu` werden nie verschachtelt.
+- **Herbst-Rückstellung:** Ein Termin in der doppelten Stunde (02:30 am
+  letzten Sonntag im Oktober) ist nach robfig zweimal fällig (00:30 und
+  01:30 UTC), beim Kern ebenso. Der Taktgeber löst beide aus, jeden
+  höchstens einmal (gemessen, kein eigener Test).
+- **Uhr injizierbar** (`Config.Now`), Frist konfigurierbar
+  (`Config.TriggerTimeout`, Standard 35 s); die Tests schlafen nicht auf
+  Termine, sie setzen die Uhr.
 
 ## Ratifizierte Auslegungen (Vertrag Fassung 3)
 
