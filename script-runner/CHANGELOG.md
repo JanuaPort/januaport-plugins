@@ -4,9 +4,9 @@
 
 - **Taktgeber für Zeitpläne (JanuaPort/januaport#1039, Paket S1):** Der
   vermittler liest `schedules.json` aus dem Plugin-Ordner (streng, fail-closed,
-  höchstens 20) und meldet fällige Termine per
+  höchstens 64 KiB und 20 Zeitpläne) und meldet fällige Termine per
   `POST /api/plugin/script-runner/schedules/{name}/run` an das Gateway — ohne
-  Body, mit dem runtime-key, Frist 35 s, ohne Wiederholung. Den Lauf startet
+  Body, mit dem runtime-key, Frist 35 s, ohne Umleitung, ohne Wiederholung. Den Lauf startet
   das Gateway über Weg A; der Taktgeber hält keinen Slot (V1). Kein Nachholen;
   verpasste und in die Sommerzeit-Lücke fallende Termine zählen in `missed`,
   belegte in `skipped_busy`. Zustand je Zeitplan in `tools/list` unter

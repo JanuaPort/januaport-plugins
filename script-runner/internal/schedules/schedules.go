@@ -25,6 +25,10 @@ import (
 // Max ist die Grenze v1; weitere Zeitpläne werden ignoriert und gezählt.
 const Max = contract.MaxSchedules
 
+// MaxFileBytes ist die Lesegrenze für schedules.json (SEC R4 H1). 20 Zeitpläne
+// brauchen weniger als 5 KiB; eine größere Datei gilt als ungültig.
+const MaxFileBytes = 64 << 10
+
 // ErrInvalid sagt nur „ungültig“ — nie, was in der Datei stand.
 var ErrInvalid = errors.New("schedules.json ungültig")
 

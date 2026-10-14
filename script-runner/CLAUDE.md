@@ -226,7 +226,8 @@ gewählte Identity; er entscheidet über Fälligkeit (eigene Uhr, 30 s Toleranz,
   gelesen: `{"version":1,"schedules":[{name,pin,commit,cron,timezone,enabled}]}`
   (Golden `contract/golden/script-runner-schedules.golden.json`, unverändert aus
   `cmd/jnpt/testdata/` des Gateway-Repos). Kein Token, keine Eingabe, kein
-  Secret. Fehlt die Datei → keine Zeitpläne. Ungültig (kaputtes JSON,
+  Secret. Gelesen werden höchstens 64 KiB (`io.LimitReader`, SEC R4 H1).
+  Fehlt die Datei → keine Zeitpläne. Ungültig (größer als 64 KiB, kaputtes JSON,
   unbekanntes oder fehlendes Feld, falsche Version, Daten danach, doppelter
   Name, eine ungültige Zeile) → **keine** Zeitpläne und einmal je Wechsel der
   Code `schedules_invalid`. Mehr als 20 → die ersten 20, Code
@@ -271,10 +272,13 @@ gewählte Identity; er entscheidet über Fälligkeit (eigene Uhr, 30 s Toleranz,
    `TestAtMostOneAttemptPerTermin`, `TestClockBackwardsDoesNotRefire`.
 4. **Request ohne Body, Bearer = runtime-key, Schlüssel nie im Log.** Der
    Auslöser loggt gar nichts (Fehlertexte von `net/http` tragen die URL);
-   geloggt werden nur feste Codes mit Zählern im Taktgeber.
-   `TestTriggerRequestNoBodyBearerRuntimeKeyNeverLogged`.
-5. **fail-closed beim Lesen** (oben). `TestParseInvalidFailsClosed`,
-   `TestInvalidSchedulesFileFailsClosedWithFixedCode`.
+   geloggt werden nur feste Codes mit Zählern im Taktgeber. Keine Umleitung:
+   `CheckRedirect` gibt die erste Antwort zurück, ein 307 ist ein Fehler, der
+   Schlüssel erreicht kein zweites Ziel (SEC R4 H2).
+   `TestTriggerRequestNoBodyBearerRuntimeKeyNeverLogged`, `TestTriggerFollowsNoRedirect`.
+5. **fail-closed beim Lesen** (oben), auch über 64 KiB. `TestParseInvalidFailsClosed`,
+   `TestInvalidSchedulesFileFailsClosedWithFixedCode`,
+   `TestSchedulesFileOverSixtyFourKiBFailsClosed`.
 6. **Nur bereit und aktiv löst aus.** `TestNotEnabledOrPinNotReadyNeverFires`,
    `TestCommitMismatchOrDisabledNeverTriggers`.
 7. **Sommerzeit-Lücke:** Termine, die es an diesem Tag nicht gibt (Europe/Berlin,

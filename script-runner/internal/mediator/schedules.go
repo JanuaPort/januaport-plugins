@@ -44,7 +44,7 @@ func (m *Mediator) tickSchedules(ctx context.Context) {
 // readSchedules liefert die Zeitpläne; fehlt die Datei oder ist sie
 // ungültig, gibt es keine (fail-closed). Geloggt wird nur ein Wechsel.
 func (m *Mediator) readSchedules() []schedules.Entry {
-	b, err := os.ReadFile(filepath.Join(m.cfg.KeyDir, "schedules.json"))
+	b, err := readLimited(filepath.Join(m.cfg.KeyDir, "schedules.json"), schedules.MaxFileBytes)
 	if errors.Is(err, os.ErrNotExist) {
 		m.noteSchedules("", 0)
 		return nil
@@ -64,6 +64,26 @@ func (m *Mediator) readSchedules() []schedules.Entry {
 	}
 	return f.Entries
 }
+
+// readLimited liest höchstens limit Bytes; eine größere Datei ist ein Fehler
+// (fail-closed, SEC R4 H1), nie ein abgeschnittener Inhalt.
+func readLimited(path string, limit int64) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	b, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > limit {
+		return nil, errSchedulesTooLarge
+	}
+	return b, nil
+}
+
+var errSchedulesTooLarge = errors.New("schedules.json zu groß")
 
 func (m *Mediator) noteSchedules(code string, ignored int) {
 	state := fmt.Sprintf("%s/%d", code, ignored)
