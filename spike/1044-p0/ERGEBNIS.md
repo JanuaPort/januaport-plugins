@@ -49,3 +49,106 @@ braucht, ist hier nicht gemessen:
    keinen Desktop und wäre für Sonde 2 ungeeignet. In der VM bestätigen.
 9. **SHA256 der Embeddable** wurde beim ersten Abruf selbst berechnet (python.org nennt nur MD5), danach fest verdrahtet.
    Für das Release gegen die Sigstore-/GPG-Signatur der Python-Release prüfen.
+
+---
+
+## Teil 2 (EC2): Messung mit echter Sitzung auf Windows Server 2025
+
+Umgebung: EC2 `t3.medium` (eu-central-1a), Windows Server 2025 Datacenter 10.0.26100 aus dem offiziellen Amazon-AMI, Konto
+stellwerk. Testnutzer `spikeuser` (Standardnutzer) mit **Autologon**; alle Sitzungsprogramme laufen als Aufgabe
+"nur bei Anmeldung" in dessen interaktiver Konsolensitzung 1 (Embeddable-Python 3.12.10 mit dem add_dll_directory-Kniff
+aus Teil 1, pywinauto 0.6.9). Gesteuert wurde per WinRM von außen. Skripte, Rohdaten und Screenshots liegen unter
+`spike/1044-p0/vm/` (Rohdaten: `vm/ergebnisse/`). Jede Sonde gibt `PROBE <name> PASS|FAIL <detail>` aus. Bei den
+Zustandssonden heißt PASS "das Urteil des Läufers stimmt mit der Wirklichkeit überein", nicht "Programm arbeitet".
+
+### Ergebnis je Sonde
+
+| Sonde | Ergebnis | Befund |
+|---|---|---|
+| 1 `session-check` | PASS mit Planänderung | **Nur `OpenInputDesktop` reicht nicht, `WTSConnectState` auch nicht.** In der Sperre meldet `OpenInputDesktop` weiter `Default/ok` und `WTSConnectState` weiter `Active`; der Sperrbildschirm (`LockApp.exe`) läuft auf dem Desktop Default. Das Urteil v1 ("Active und Desktop Default") lag dort **falsch** (`session-check-lock FAIL`). Zuverlässig ist der Dreiklang v2: `WTSConnectState==Active` **und** Sperrflag aus `WTSQuerySessionInformation(WTSSessionInfoEx)` `entsperrt` **und** der Name des Eingabedesktops `Default` (über `OpenInputDesktop(DESKTOP_SWITCHDESKTOP)` und `GetUserObjectInformation(UOI_NAME)`). v2 stimmt in allen fünf Zuständen (Tabelle unten). `GetForegroundWindow` taugt nur als Zusatz: gesperrt `LockApp.exe`, getrennt und im Schoner keines. |
+| 2 `uia-in-states` | PASS mit Einschränkung | Beide Backends **finden** das Fenster und **setzen Text ohne Eingabe** (`set_edit_text`, WM_SETTEXT bzw. ValuePattern) in **allen** Zuständen, auch gesperrt und getrennt. **Tippen** (`type_keys`, SendInput) und `set_focus` gehen nur im entsperrten Zustand (und bei ausgeschalteter Anzeige, siehe Grenze). Fehlertexte: Schoner und getrennt, win32: `RuntimeError: There is no active desktop required for moving mouse cursor!`; uia: `RuntimeError: SendInput() inserted only 0 out of 2 keyboard events`. **Gesperrt: win32 `error: (0, 'SetForegroundWindow', ...)`, uia dagegen ohne Ausnahme, der Text kommt nur nicht an (`gelesen=''`).** Ein leiser Fehlschlag, kein Fehlertext. Das Notepad von Server 2025 ist das klassische (win32: 2 Steuerelemente, uia: 26). |
+| 3 `jobobject-real-app` | PASS für klassische Apps, **FAIL für Paket-Apps und Einzelinstanz** | Mit `CREATE_SUSPENDED`, Job-Zuweisung, dann Resume. **Klassisch:** `notepad.exe` und `mspaint.exe` bleiben im Job und sterben mit `CloseHandle`. **Einzelinstanz:** `explorer.exe C:\spike` übergibt an die laufende Shell, der neue `explorer.exe` ist nicht im Job und lebt weiter. **MSIX (Windows Terminal, Feedback Hub):** Aktivierung über `explorer shell:AppsFolder\...` entkommt komplett (App-Prozess nicht im Job, überlebt). Über den Alias `wt.exe` per `CreateProcess` bleiben `WindowsTerminal.exe` und `OpenConsole.exe` im Job, die darin gestartete Shell `powershell.exe` ist **nicht** im Job und überlebte in 2 von 3 sauberen Läufen den `CloseHandle` (nicht deterministisch, nur der letzte Lauf ist als Datei erhalten). Beim Messen mit Konsole (`cmd /c`) hängt sich das Terminal als Standardterminal an die Messung und verfälscht sie; die Sonde läuft deshalb ohne Konsole (`-H=windowsgui`). Ergebnis siehe `vm/ergebnisse/jobobject.txt`, der Verfälschungslauf ist als `jobobject-lauf1-mit-konsole.txt` erhalten. |
+| 4 `motw-smartscreen` | PASS (Läufer-Weg), **FAIL (Doppelklick-Weg)** | **Kein** Download-Weg setzt Mark-of-the-Web: `Invoke-WebRequest`, `WebClient`, `curl.exe` und BITS (Windows PowerShell 5.1) lassen die Zone weg. **Kein** Entpacker vererbt sie: ein ZIP mit `ZoneId=3` (Browser-Download simuliert) ergibt mit `Expand-Archive`, .NET `ZipFile` und `tar.exe` Dateien ohne Zone.Identifier. Eine unsignierte Go-Exe mit `ZoneId=3` **startet aus dem Aufgabenplaner und per `CreateProcess` ohne Dialog**. Über ShellExecute und `explorer.exe <exe>` (wie Doppelklick) erscheint **"Windows protected your PC"** (Microsoft Defender SmartScreen), die Exe läuft nicht (ShellExecute meldet 1223); Screenshot `vm/ergebnisse/smartscreen-dialog.jpg`. Die **signierte** `python.exe` aus der Embeddable löst mit `ZoneId=3` keinen Dialog aus und läuft auch per Explorer. Defender (Echtzeitschutz an, Cloud-Schutz "erweitert"): **keine Erkennung** der unsignierten Go-Exe, aber Ereignis 2050: Defender hat die Datei `hello-zone3.exe` (mit Zone) zur Analyse **in die Cloud hochgeladen**. |
+| 5 `logon-task` | PASS | Autologon und die Aufgabe "bei Anmeldung" funktionierten in **3 von 3** Neustarts: Aufgabe startete 18 bis 44 s nach dem Systemstart (44 s beim ersten Boot, danach 19 und 18 s), `LastTaskResult=0`, Prozess in **Sitzung 1** (nicht 0), `WTSConnectState=Active`, Eingabedesktop `Default`, Vordergrund `explorer.exe`. Autologon erzeugt auch ohne Monitor und ohne RDP eine Konsolensitzung. Dafür steht das Passwort im Klartext in der Registry (`DefaultPassword`); im Produkt ist das keine Lösung (siehe Planänderungen). |
+
+### Rohsignale je Zustand (Sonde 1, Urteil v2 stimmt überall)
+
+| Zustand | WTSConnectState | Sperrflag | Eingabedesktop (SWITCHDESKTOP) | Vordergrund | Urteil v2 | Tippen (type_keys) |
+|---|---|---|---|---|---|---|
+| entsperrt | Active | entsperrt | Default/ok | Notepad | nutzbar | geht (beide Backends) |
+| Anzeige aus (`SC_MONITORPOWER`) | Active | entsperrt | Default/ok | Notepad | nutzbar | geht (nicht verifiziert, siehe Grenze) |
+| Bildschirmschoner läuft | Active | entsperrt | **Screen-saver**/ok | keins | nicht nutzbar | schlägt fehl (siehe oben) |
+| Sitzung getrennt (`tsdiscon`) | **Disconnected** | **gesperrt** | **err5 (Zugriff verweigert)** | keins | nicht nutzbar | schlägt fehl |
+| gesperrt (`LockWorkStation`) | Active | **gesperrt** | **Default/ok** | **LockApp.exe** | nicht nutzbar | **leiser Fehlschlag** (uia), Fehler (win32) |
+| getrennt, dann `tscon 1 /dest:console` als SYSTEM | Active | entsperrt | Default/ok | keins (kurz) | nutzbar | geht |
+
+Zusätzlich gemessen: **Ein Bildschirmschoner mit `ScreenSaverIsSecure=1` sperrt die Sitzung, sobald er endet**
+(Prozessende: danach `gesperrt`, `LockApp.exe`; `vm/ergebnisse/vor-reboot.txt`). Das Beenden über simulierte Mausbewegung
+(`mouse_event` aus der Sitzung) hat den Schoner nicht beendet: nicht verifiziert, ob echte Eingabe dasselbe auslöst.
+`tsdiscon` trennt die Sitzung, auf der Konsole erscheint eine neue Sitzung 2 mit Anmeldebildschirm (`konsole=2`), die
+getrennte Sitzung 1 behält ihre Prozesse (Notepad lebt, UIA findet es, `set_edit_text` geht). `tscon` als SYSTEM holt sie
+**ohne Passwort** auf die Konsole zurück, entsperrt (sie war nur getrennt, nicht gesperrt). Ein Neustart (Autologon)
+beendet die Sperre; aus der Sperre selbst gibt es ohne Passwort keinen Weg.
+
+### Was das am Plan v1 ändert
+
+1. **Bereitschaftsprüfung des Läufers:** Dreiklang v2 (Active, entsperrt, Eingabedesktop `Default`). `OpenInputDesktop`
+   allein reicht nicht, `WTSConnectState` allein auch nicht. Den Namen des Eingabedesktops mitlesen: `Screen-saver` ist ein
+   eigener Zustand.
+2. **Fehlertexte sind kein Signal.** In der Sperre wirft uia-`type_keys` nichts. Der Läufer prüft vor jedem Schritt die
+   Bereitschaft und liest nach jedem Tippen den Inhalt zurück. Wo die Anwendung es zulässt, bevorzugt er den eingabefreien
+   Weg (`set_edit_text`/ValuePattern), der in allen gemessenen Zuständen arbeitet.
+3. **"Sitzung nicht bereit" ist ein eigener Auftragszustand** (wartet, Meldung in Kartei und Betreiber), kein Fehler. Eine
+   Sperre kann der Läufer nicht lösen. Eine bloß getrennte Sitzung kann ein Hilfsdienst als SYSTEM per `tscon` zurückholen
+   (nur im Pilot mit Betreiber-Zustimmung, es umgeht keine Sperre). Für den Pilotkunden gehört Schoner-Sperre und
+   Leerlaufsperre per Richtlinie ausgeschaltet, sonst ist der Rechner nach einer Pause für den Läufer tot.
+4. **Job Object schützt nur klassische Programme.** Paket-Apps (MSIX) und Einzelinstanz-Programme (`explorer.exe`)
+   entkommen. Der Läufer braucht für solche Zielanwendungen eine zweite Aufräumstufe (Prozesse nach Image-Pfad bzw.
+   Package-Family beenden) und die Lückenliste führt das als Bedingung. Erst die echte Fachanwendung klärt, welche Stufe
+   gilt.
+5. **Läufer-Exe:** Der Start per Aufgabenplaner oder `CreateProcess` stört MOTW und SmartScreen nicht; die Exe sollte
+   nie per Doppelklick oder `Start-Process` (ShellExecute) gestartet werden. Beim Selbstladen setzt der Läufer die Zone
+   nicht, beim ZIP-Download im Browser **kann** der Explorer-Entpacker sie vererben (nicht gemessen, siehe offene Punkte);
+   der Installer entpackt deshalb selbst. Authenticode-Signatur bleibt Empfehlung (signierte Dateien lösten keinen Dialog
+   aus, die unsignierte Exe wird von Defender als Probe in die Cloud geladen).
+6. **Autologon im Produkt:** Klartext in `DefaultPassword` ist für Kunden nicht vertretbar. Entweder Betreiberentscheid
+   mit dem Sysinternals-Werkzeug "Autologon" (LSA-Geheimnis) oder der Kunde meldet das Konto selbst an. Das Verhalten der
+   Aufgabe "bei Anmeldung" (zuverlässig, Sitzung 1) gilt unabhängig davon.
+
+### Grenze: was sich von Server 2025 nicht auf Windows 11 überträgt
+
+* **Smart App Control** gibt es nur auf Windows 11 (Neuinstallation). Es kann eine unsignierte Exe auch aus dem
+  Aufgabenplaner blockieren. Hier **nicht gemessen**; der Pilotrechner muss das klären.
+* **SmartScreen-Reputation und Dialog** (Wortlaut, "Trotzdem ausführen") sind auf dem Client anders verdrahtet als auf dem
+  Server (hier: Dialog nur mit "Nicht ausführen" auf der ersten Seite).
+* **IE Enhanced Security Configuration** ist nur auf dem Server aktiv; Zonenrichtlinie `1806` stand hier für die
+  Internetzone auf "Nachfragen" (1). Ob ESC das Ergebnis der Sonde 4 beeinflusst hat, wurde nicht getrennt gemessen.
+* **Anzeige aus und Energiesparen:** `SC_MONITORPOWER` auf einer virtuellen Anzeige ohne Monitor ändert nichts; ein echter
+  Monitor, "Modern Standby" und die Anmeldepflicht nach dem Ausschalten der Anzeige sind **nicht verifiziert**.
+* **Echtes RDP:** `tsdiscon` erzeugt denselben Sitzungszustand (`Disconnected`) wie das Schließen eines RDP-Fensters,
+  eine echte RDP-Verbindung wurde nicht aufgebaut. Gruppenrichtlinien eines Kunden-AD (Sperre bei Trennung, Zeitlimit für
+  getrennte Sitzungen) sind nicht abgebildet.
+* **Store-Notepad:** Server 2025 hat das klassische Notepad; der Entkommen-Befund aus Teil 1 für das Store-Notepad von
+  Windows 11 ist durch die Paket-Apps (Terminal, Feedback Hub) bestätigt, das Store-Notepad selbst nicht gemessen.
+* **Zielanwendungstyp:** Gemessen wurde nur Win32 (Notepad). WPF, Java, Electron und Citrix bleiben offen.
+
+### Offene Punkte (nicht verifiziert)
+
+1. Ob der Explorer-Entpacker (`Shell.Application`, Doppelklick auf das ZIP) die Zone an die Dateien vererbt, ist nicht
+   gemessen (die drei gemessenen Entpacker tun es nicht).
+2. Ende des Schoners durch echte Eingabe (statt Prozessende) und Sperre danach.
+3. Die Windows-11-Punkte oben auf dem Pilotrechner.
+
+### Ablauf, Abweichung und Kosten
+
+* **Abweichung vom Auftrag:** Die temporäre IAM-Rolle für SSM ließ sich nicht anlegen (`iam:CreateRole` und
+  `iam:AttachRolePolicy` sind für den Benutzer `win_claude` ausdrücklich verweigert; der dabei angelegte leere
+  Instance-Profile wurde sofort gelöscht). Ersatz war der im Auftrag vorgesehene Weg über WinRM: HTTPS-Listener (5986),
+  Security Group und Windows-Firewall nur für die öffentliche IPv4 dieses Rechners als /32, Anmeldung mit dem
+  Administratorpasswort aus `get-password-data` (nie ausgegeben, Schlüsseldatei nach der Messung gelöscht). Nichts war für
+  0.0.0.0/0 offen. Statt `t3.large` lief `t3.medium` (kleiner, erlaubt).
+* **Laufzeit:** Start 15:06:09 UTC, Beenden 15:51:01 UTC, also 44 min 52 s (0,75 h). Preis laut AWS-Preisliste
+  Windows `t3.medium` in eu-central-1 etwa 0,05 bis 0,10 USD je Stunde, dazu öffentliche IPv4 (0,005 USD/h) und 30 GB
+  EBS (unter 0,01 USD): **rund 0,10 USD insgesamt**, sicher unter 0,15 USD.
+* **Aufgeräumt:** Instanz terminiert, Security Group, Key Pair gelöscht, Volume mit der Instanz gelöscht; es wurde keine
+  IAM-Rolle und kein Instance Profile (mehr) angelegt. Belege im Abschlussbericht der Messung.
