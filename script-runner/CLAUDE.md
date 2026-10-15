@@ -442,6 +442,67 @@ Diese Auslegungen aus dem Bau von P2 hat LEAD in Fassung 3 bestätigt —
 - **Kuratierung:** Vorlage am Ende von `CHANGELOG.md`; je Image der benötigte
   Commit von Compose und Profil (E3) und die Lauf-ID der Sonden (C1).
 
+## Messung #1041 P0 (Python-Bibliotheken: numpy und pandas)
+
+Gemessen am 15.10.2026 mit `probe/measure-libs.sh` (Messkörper
+`probe/p0/measure.py`; bleibt als Werkzeug im Repo, die Wheels werden zur
+Laufzeit per `pip download` geladen und nie committet). Aufbau: das echte
+Sandbox-Image (`python:3.12-slim` per Digest, Debian 13), die Grenzen der
+Compose (512 MiB, 128 PIDs, 1 CPU, `read_only`, ohne Netz, unser Seccomp-Profil,
+`/work` und `/tmp` `noexec`), die Bibliotheken als **Nur-Lese-Volume**. Wheels:
+numpy 2.5.4, pandas 3.0.6, python-dateutil 2.9.0, six 1.17.0 (zusammen
+27,8 MB als Wheels). Messhost: Docker Desktop/WSL2, Kernel 5.15, 32 CPUs, cgroup v1.
+
+| Messwert | runc | runsc |
+|---|---|---|
+| glibc des Images | **2.41** (Debian 13) | nicht gemessen (kein gVisor lokal; `P0_RUNTIME=runsc-jnpt sh probe/measure-libs.sh` auf einem Host mit der Runtime) |
+| Größe installiert (ohne pyc) | 95,8 MB (91,4 MiB), 2478 Dateien | nicht gemessen |
+| Größe installiert (mit pyc) | 136,7 MB (130,4 MiB), 4325 Dateien | nicht gemessen |
+| Import numpy, ohne pyc (5 Läufe) | Median 0,58 s (0,51–0,62) | nicht gemessen |
+| Import numpy, mit pyc | Median 0,49 s | nicht gemessen |
+| Import pandas, ohne pyc (5 Läufe) | Median 1,33 s (1,16–1,37) | nicht gemessen |
+| Import pandas, mit pyc | Median 0,62 s (0,60–0,82) | nicht gemessen |
+| `compileall` (65532) für alles | 5,5 s inkl. Container-Start | nicht gemessen |
+| Maximaler RSS, Import pandas | 82 MiB ohne pyc, 71 MiB mit pyc | nicht gemessen |
+| Maximaler RSS, Arbeitslast | 80 MiB (ohne pyc), 72–74 MiB (mit pyc) | nicht gemessen |
+| Threads = cgroup-PIDs nach Import, ohne Deckel | **32** (= CPUs des Hosts: `cpus: 1` ist eine Quote, keine Zuordnung, OpenBLAS startet je Host-CPU einen Thread) | nicht gemessen |
+| Threads = cgroup-PIDs mit `OPENBLAS_NUM_THREADS=1`, `OMP_NUM_THREADS=1` | **1** | nicht gemessen |
+| Arbeitslast: 10 000 Zeilen, `groupby` (50 Gruppen), JSON | 6–8 ms; Lauf gesamt 0,91–0,96 s ohne pyc, 0,35 s mit pyc | nicht gemessen |
+
+Messung im Prozess (`time.perf_counter`), ohne Interpreter-Start und
+Container-Start. Der Seiten-Cache des Hosts wurde nicht geleert; „kalt“ heißt
+hier: neuer Prozess, keine pyc-Datei (das Volume ist read-only, `sys.dont_write_bytecode`
+gilt ohnehin), jeder Lauf übersetzt die Module neu. Der erste Lauf einer Reihe
+unterscheidet sich nicht auffällig vom Median.
+
+**Entscheidungen aus P0:**
+
+- **Kein pyc vorab (B7 entfällt).** Der Import von pandas ohne pyc liegt bei
+  1,2–1,4 s, weit unter der Schwelle von 3 s, und der Lauf gesamt bei unter
+  1 s. Der 25-s-Rahmen ist nicht berührt. Ein `compileall` im vermittler wäre
+  eine zusätzliche Ausführung von Python auf fremdem Archivinhalt und 41 MB
+  mehr Platte für 0,7 s Gewinn. **Wiedervorlage:** Messen auf der Referenz-VM
+  (langsamere CPU als der Messhost) und unter runsc; liegt dort pandas ohne pyc
+  über 3 s, kommt B7 nachträglich (SEC-Auflage B7, `libs/<hash>.tmp`, Timeout,
+  Nutzer 65532, danach `.jnpt-manifest` auch über die pyc).
+- **`childEnv` setzt `OPENBLAS_NUM_THREADS=1` und `OMP_NUM_THREADS=1`.**
+  Ohne Deckel startet schon `import numpy` so viele Threads wie der Host CPUs
+  hat (hier 32 von 128 erlaubten PIDs); auf einem Host mit ≥ 120 CPUs ginge die
+  Sandbox am `pids_limit` zugrunde. Mit Deckel ist es ein Thread.
+- **glibc-Obergrenze für die Tags: 2.41** (`libs.MaxGlibcMinor`). Die
+  manylinux-Tags der Wheels (`manylinux_2_28`, numpy 2.x: `2_27`/`2_28`) liegen
+  darunter. Ein Wechsel des Basis-Images verlangt eine neue Messung; die Sonde
+  `TestLibsGlibcCeilingMatchesImage` vergleicht die Konstante mit dem Image.
+- **Grenzen v1 unverändert** (300 MiB und 30 000 Dateien je Lock, 2 GiB gesamt):
+  numpy plus pandas belegen 91 MiB und 2478 Dateien, also rund ein Drittel
+  der Größe und ein Zwölftel der Dateizahl. **Nicht nahe an einer Grenze.**
+- **`libs` ohne `noexec`:** Native `.so`-Dateien werden mit `mmap(PROT_EXEC)`
+  geladen; das geht nicht von einem `noexec`-Mount. `/work` und `/tmp` bleiben
+  `noexec`. Das Volume ist read-only und für die Sandbox nicht beschreibbar.
+- **Nicht gemessen:** runsc (kein gVisor lokal), Seccomp-Abweisungen unter
+  Last (der Import löste keine Abweisung mit Folgen aus, ein Fehler wäre als
+  `ImportError` aufgefallen), Messung auf der Referenz-VM.
+
 ## Stolperfallen (aus der Messung P0 und dieser Umsetzung)
 
 - **S2:** runsc ignoriert das Seccomp-Profil ohne `--oci-seccomp` (Modus 0).
