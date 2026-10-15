@@ -2,6 +2,8 @@
 
 ## Unveröffentlicht
 
+- **Unit-Test für unsichtbares Staging (#1041, SEC H1):** Prüft leeres `ready` während `build` und Veröffentlichung des fertigen Locks per atomarem Rename.
+
 - **Kaltstart des Bibliotheks-Volumes abgesichert (JanuaPort/januaport#1041,
   #1096, LEAD-Review).** Der kurze Dienst `script-runner-init` führt als
   65532 ohne Netz ausschließlich `init-libs` aus. Die Sandbox wartet auf

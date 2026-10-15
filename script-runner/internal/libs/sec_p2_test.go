@@ -31,9 +31,13 @@ type observingSource struct {
 	Source
 	entered chan struct{}
 	gate    chan struct{}
+	file    string // empty: block every fetch; otherwise only this wheel
 }
 
 func (s observingSource) Fetch(ctx context.Context, file string, dst io.Writer, max int64) error {
+	if s.file != "" && s.file != file {
+		return s.Source.Fetch(ctx, file, dst, max)
+	}
 	close(s.entered)
 	select {
 	case <-s.gate:
@@ -112,6 +116,63 @@ func TestStagingNeverVisibleInLibsDuringFetch(t *testing.T) {
 	waitState(t, f.m, plan.Lock.Hash, StatusReady)
 	if err := verifyDir(f.m.Path(plan.Lock.Hash), plan.Lock.Hash); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// SEC 6199344582 H1: block the second wheel, after build has really extracted
+// the first. Blocking the first fetch alone cannot expose a misplaced .tmp,
+// since the extractor creates its directory lazily.
+func TestStagingNeverVisibleInReadyDuringBuild(t *testing.T) {
+	f := newLibFixture(t, nil)
+	hash := f.plan.Lock.Hash
+	src := observingSource{
+		Source: f.src, entered: make(chan struct{}), gate: make(chan struct{}),
+		file: "helper-2.1-py3-none-any.whl",
+	}
+	// Release even on assertion failure, before the fixture closes the manager.
+	t.Cleanup(func() { close(src.gate) })
+	if got := listDir(t, f.dir); len(got) != 0 {
+		t.Fatalf("ready before build = %v, want empty", got)
+	}
+	f.m.Ensure(f.plan, src)
+	select {
+	case <-src.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("build did not reach the second wheel")
+	}
+	if got := listDir(t, f.dir); len(got) != 0 {
+		t.Fatalf("ready during build = %v, want empty (no hash, .tmp, .wheel or other new entry)", got)
+	}
+	tmp := filepath.Join(f.m.staging, hash+".tmp")
+	b, err := os.ReadFile(filepath.Join(tmp, "demo", "__init__.py"))
+	if err != nil || string(b) != "A = 1\n" {
+		t.Fatalf("first wheel not extracted in private staging: %q, %v", b, err)
+	}
+	before, err := os.Stat(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := f.m.State(hash); s.Status != StatusPreparing {
+		t.Fatalf("state during build = %+v, want preparing", s)
+	}
+	// Let the actual build finish; the visible tree must be the renamed tree.
+	src.gate <- struct{}{}
+	waitState(t, f.m, hash, StatusReady)
+	if got := listDir(t, f.dir); len(got) != 1 || got[0] != hash {
+		t.Fatalf("ready after build = %v, want only %s", got, hash)
+	}
+	after, err := os.Stat(f.m.Path(hash))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(before, after) {
+		t.Fatal("publication did not preserve the staging directory inode (atomic rename)")
+	}
+	if err := verifyDir(f.m.Path(hash), hash); err != nil {
+		t.Fatal(err)
+	}
+	if got := listDir(t, f.m.staging); len(got) != 0 {
+		t.Fatalf("staging after build = %v, want empty", got)
 	}
 }
 
