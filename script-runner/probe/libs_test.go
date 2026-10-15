@@ -225,17 +225,19 @@ func TestLibsNumpyPandasUnderLimits(t *testing.T) {
 // im Wheel wird nie ausgeführt.
 func TestLibsReadOnlyEROFS(t *testing.T) {
 	out := okJSON(t, "libs_readonly", nil)
-	for _, op := range []string{"create", "overwrite", "mkdir", "unlink", "rename", "chmod", "symlink", "truncate"} {
+	for _, op := range []string{"create", "overwrite", "mkdir", "unlink", "rename", "chmod", "symlink"} {
 		if out[op] != "EROFS" {
 			t.Errorf("%s = %v, want EROFS", op, out[op])
 		}
 	}
-	// Das Öffnen einer vorhandenen 0444-Datei zum Anhängen scheitert schon an
-	// den Rechten (EACCES), bevor das Dateisystem EROFS meldet; beides heißt
-	// „nicht beschreibbar“. Dass der Mount selbst read-only ist, belegen die
-	// anderen Zeilen.
-	if out["append"] != "EROFS" && out["append"] != "EACCES" {
-		t.Errorf("append = %v, want EROFS oder EACCES", out["append"])
+	// Das Öffnen einer vorhandenen 0444-Datei zum Anhängen oder Kürzen scheitert
+	// je nach Kernel schon an den Rechten (EACCES), bevor das Dateisystem EROFS
+	// meldet (CI-Runner: truncate = EACCES); beides heißt „nicht beschreibbar“.
+	// Dass der Mount selbst read-only ist, belegen die anderen Zeilen.
+	for _, op := range []string{"append", "truncate"} {
+		if out[op] != "EROFS" && out[op] != "EACCES" {
+			t.Errorf("%s = %v, want EROFS oder EACCES", op, out[op])
+		}
 	}
 	if out["import"] != "ok" || out["intact"] != true {
 		t.Errorf("import/intact: %v / %v", out["import"], out["intact"])
