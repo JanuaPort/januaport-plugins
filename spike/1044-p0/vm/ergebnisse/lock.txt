@@ -1,0 +1,19 @@
+PROBE setzen-prestart-notepad PASS pid=812
+PROBE setzen-lock PASS LockWorkStation=True
+PROBE session-check-lock FAIL urteil=nutzbar erwartet=nicht-nutzbar sitzung=1 konsole=1 wts=Active sperrflag=gesperrt eingabedesktop_switch=Default/ok eingabedesktop_read=Default/ok eigener_desktop=Default vordergrund=LockApp.exe:'Windows Default Lock Screen'
+PROBE uia-lock-win32-bestehend-finden PASS titel='Untitled - Notepad' descendants=2 edit=ja
+PROBE uia-lock-win32-bestehend-setzen PASS gelesen='setzen-lock'
+PROBE uia-lock-win32-bestehend-tippen FAIL error: (0, 'SetForegroundWindow', 'No error message is available')
+PROBE uia-lock-win32-bestehend-fokus FAIL error: (0, 'SetForegroundWindow', 'No error message is available')
+PROBE uia-lock-win32-neu-finden PASS titel='Untitled - Notepad' descendants=2 edit=ja
+PROBE uia-lock-win32-neu-setzen PASS gelesen='setzen-lock'
+PROBE uia-lock-win32-neu-tippen FAIL error: (0, 'SetForegroundWindow', 'No error message is available')
+PROBE uia-lock-win32-neu-fokus FAIL error: (0, 'SetForegroundWindow', 'No error message is available')
+PROBE uia-lock-uia-bestehend-finden PASS titel='Untitled - Notepad' descendants=26 edit=ja
+PROBE uia-lock-uia-bestehend-setzen PASS gelesen='setzen-lock'
+PROBE uia-lock-uia-bestehend-tippen FAIL gelesen=''
+PROBE uia-lock-uia-bestehend-fokus PASS set_focus ohne Fehler
+PROBE uia-lock-uia-neu-finden PASS titel='Untitled - Notepad' descendants=26 edit=ja
+PROBE uia-lock-uia-neu-setzen PASS gelesen='setzen-lock'
+PROBE uia-lock-uia-neu-tippen FAIL gelesen=''
+PROBE uia-lock-uia-neu-fokus PASS set_focus ohne Fehler

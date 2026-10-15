@@ -1,0 +1,19 @@
+PROBE setzen-prestart-notepad PASS pid=5116
+PROBE setzen-disconnect PASS tsdiscon exit=0
+PROBE session-check-disconnect PASS urteil=nicht-nutzbar erwartet=nicht-nutzbar sitzung=1 konsole=2 wts=Disconnected sperrflag=gesperrt eingabedesktop_switch=-/err5 eingabedesktop_read=-/err5 eigener_desktop=Default vordergrund=keins
+PROBE uia-disconnect-win32-bestehend-finden PASS titel='Untitled - Notepad' descendants=2 edit=ja
+PROBE uia-disconnect-win32-bestehend-setzen PASS gelesen='setzen-disconnect'
+PROBE uia-disconnect-win32-bestehend-tippen FAIL RuntimeError: There is no active desktop required for moving mouse cursor!
+PROBE uia-disconnect-win32-bestehend-fokus FAIL RuntimeError: There is no active desktop required for moving mouse cursor!
+PROBE uia-disconnect-win32-neu-finden PASS titel='Untitled - Notepad' descendants=2 edit=ja
+PROBE uia-disconnect-win32-neu-setzen PASS gelesen='setzen-disconnect'
+PROBE uia-disconnect-win32-neu-tippen FAIL RuntimeError: There is no active desktop required for moving mouse cursor!
+PROBE uia-disconnect-win32-neu-fokus FAIL RuntimeError: There is no active desktop required for moving mouse cursor!
+PROBE uia-disconnect-uia-bestehend-finden PASS titel='Untitled - Notepad' descendants=26 edit=ja
+PROBE uia-disconnect-uia-bestehend-setzen PASS gelesen='setzen-disconnect'
+PROBE uia-disconnect-uia-bestehend-tippen FAIL RuntimeError: SendInput() inserted only 0 out of 2 keyboard events
+PROBE uia-disconnect-uia-bestehend-fokus PASS set_focus ohne Fehler
+PROBE uia-disconnect-uia-neu-finden PASS titel='Untitled - Notepad' descendants=26 edit=ja
+PROBE uia-disconnect-uia-neu-setzen PASS gelesen='setzen-disconnect'
+PROBE uia-disconnect-uia-neu-tippen FAIL RuntimeError: SendInput() inserted only 0 out of 2 keyboard events
+PROBE uia-disconnect-uia-neu-fokus PASS set_focus ohne Fehler

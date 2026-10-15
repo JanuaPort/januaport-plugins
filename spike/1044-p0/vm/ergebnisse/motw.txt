@@ -1,0 +1,9 @@
+﻿PROBE motw-download-zone PASS Zone.Identifier nach Download: iwr=keine ; webclient=keine ; curl=keine ; bits=keine (PowerShell 5.1.26100.33451)
+PROBE motw-vererbung-beim-entpacken PASS ZIP traegt ZoneId=3; nach dem Entpacken: expand-archive[hello.exe]=keine expand-archive[python.exe]=keine ; dotnet[hello.exe]=keine dotnet[python.exe]=keine ; tar[hello.exe]=keine tar[python.exe]=keine
+PROBE motw-ohne-zone-createprocess PASS gelaufen=ja neue-fenster=[] fehler=-
+PROBE motw-ohne-zone-shellexecute PASS gelaufen=ja neue-fenster=[] fehler=-
+PROBE motw-zone3-createprocess PASS gelaufen=ja neue-fenster=[] fehler=-
+PROBE motw-zone3-shellexecute FAIL gelaufen=nein neue-fenster=[] fehler=OSError: [WinError 1223] The operation was canceled by the user: 'C:\\spike\\motw\\hello-zone3.exe'
+PROBE motw-python-zone3-aufgabenplaner PASS signierte python.exe mit ZoneId=3 aus Aufgabe: Ergebnis=0x0 gelaufen=1
+PROBE motw-zone3-aufgabenplaner PASS Aufgabe Ergebnis=0x0 gelaufen=1 Zeile(n)
+PROBE defender-smartscreen PASS Echtzeitschutz=True AMService=True Cloud(MAPS)=2 Signaturen=1.461.40.0 Erkennungen= Defender-Ereignisse(1116/1117=Fund)=5007@15:40:34,5007@15:39:43,5007@15:39:41,5007@15:39:34,5007@15:39:34,5007@15:39:34,5007@15:39:28,5007@15:39:27,5007@15:39:27,5007@15:39:11,5007@15:34:48,5007@15:34:00,5007@15:34:00,5007@15:34:00,5007@15:34:00,5007@15:33:48,5007@15:33:48,5007@15:33:48,5007@15:33:45,5007@15:33:45 SmartScreenEnabled= Richtlinie= smartscreen.exe-Prozesse=1

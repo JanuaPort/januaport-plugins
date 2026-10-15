@@ -1,0 +1,5 @@
+PROBE setzen-screensaver PASS scrnsave.scr vorhanden=True post=1 scr-prozesse=['scrnsave.scr']
+PROBE session-check-screensaver-secure PASS urteil=nicht-nutzbar erwartet=nicht-nutzbar sitzung=1 konsole=1 wts=Active sperrflag=entsperrt eingabedesktop_switch=Screen-saver/ok eingabedesktop_read=Screen-saver/ok eigener_desktop=Default vordergrund=keins
+PROBE setzen-resume PASS Mausbewegung gesendet
+PROBE session-check-screensaver-secure-nach-ende PASS urteil=nicht-nutzbar erwartet=nicht-nutzbar sitzung=1 konsole=1 wts=Active sperrflag=entsperrt eingabedesktop_switch=Screen-saver/ok eingabedesktop_read=Screen-saver/ok eigener_desktop=Default vordergrund=keins
+PROBE session-check-screensaver-secure-nach-prozessende PASS urteil=nicht-nutzbar erwartet=nicht-nutzbar sitzung=1 konsole=1 wts=Active sperrflag=gesperrt eingabedesktop_switch=Default/ok eingabedesktop_read=Default/ok eigener_desktop=Default vordergrund=LockApp.exe:'Windows Default Lock Screen'

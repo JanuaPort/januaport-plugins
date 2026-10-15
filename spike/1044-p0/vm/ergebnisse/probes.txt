@@ -1,0 +1,2 @@
+﻿PROBE setup-nutzer PASS spikeuser angelegt, Autologon gesetzt
+PROBE setup-werkzeuge PASS python=3.12.10 embeddable, go=go1.27.2

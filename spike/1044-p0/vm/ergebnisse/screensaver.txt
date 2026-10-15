@@ -1,0 +1,19 @@
+PROBE setzen-prestart-notepad PASS pid=6404
+PROBE setzen-screensaver PASS scrnsave.scr vorhanden=True post=1 scr-prozesse=['scrnsave.scr']
+PROBE session-check-screensaver PASS urteil=nicht-nutzbar erwartet=nicht-nutzbar sitzung=1 konsole=1 wts=Active sperrflag=entsperrt eingabedesktop_switch=Screen-saver/ok eingabedesktop_read=Screen-saver/ok eigener_desktop=Default vordergrund=keins
+PROBE uia-screensaver-win32-bestehend-finden PASS titel='Untitled - Notepad' descendants=2 edit=ja
+PROBE uia-screensaver-win32-bestehend-setzen PASS gelesen='setzen-screensaver'
+PROBE uia-screensaver-win32-bestehend-tippen FAIL RuntimeError: There is no active desktop required for moving mouse cursor!
+PROBE uia-screensaver-win32-bestehend-fokus FAIL RuntimeError: There is no active desktop required for moving mouse cursor!
+PROBE uia-screensaver-win32-neu-finden PASS titel='Untitled - Notepad' descendants=2 edit=ja
+PROBE uia-screensaver-win32-neu-setzen PASS gelesen='setzen-screensaver'
+PROBE uia-screensaver-win32-neu-tippen FAIL RuntimeError: There is no active desktop required for moving mouse cursor!
+PROBE uia-screensaver-win32-neu-fokus FAIL RuntimeError: There is no active desktop required for moving mouse cursor!
+PROBE uia-screensaver-uia-bestehend-finden PASS titel='Untitled - Notepad' descendants=26 edit=ja
+PROBE uia-screensaver-uia-bestehend-setzen PASS gelesen='setzen-screensaver'
+PROBE uia-screensaver-uia-bestehend-tippen FAIL RuntimeError: SendInput() inserted only 0 out of 2 keyboard events
+PROBE uia-screensaver-uia-bestehend-fokus PASS set_focus ohne Fehler
+PROBE uia-screensaver-uia-neu-finden PASS titel='Untitled - Notepad' descendants=26 edit=ja
+PROBE uia-screensaver-uia-neu-setzen PASS gelesen='setzen-screensaver'
+PROBE uia-screensaver-uia-neu-tippen FAIL RuntimeError: SendInput() inserted only 0 out of 2 keyboard events
+PROBE uia-screensaver-uia-neu-fokus PASS set_focus ohne Fehler

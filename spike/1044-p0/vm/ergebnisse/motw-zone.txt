@@ -1,0 +1,4 @@
+﻿PROBE motw-zonenrichtlinie-server PASS spikeuser Wert 1806 (Anwendungen/unsichere Dateien starten; 0=an 1=nachfragen 3=aus): Zone1= Zone2= Zone3=1 Zone4= ; IE-ESC fuer Nutzer IsInstalled=1
+PROBE motw-ohne-zone-explorer PASS gelaufen=ja neue-fenster=[] fehler=-
+PROBE motw-zone3-explorer FAIL gelaufen=nein neue-fenster=["Static:'Window Dialog'"] fehler=-
+PROBE motw-python-zone3-signiert-explorer FAIL gelaufen=nein neue-fenster=["CASCADIA_HOSTING_WINDOW_CLASS:'C:\\\\spike\\\\motw\\\\py-zone3\\\\python.exe'"] fehler=-

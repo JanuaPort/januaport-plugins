@@ -1,0 +1,9 @@
+PROBE session-check-disconnect-tscon PASS urteil=nutzbar erwartet=nutzbar sitzung=1 konsole=1 wts=Active sperrflag=entsperrt eingabedesktop_switch=Default/ok eingabedesktop_read=Default/ok eigener_desktop=Default vordergrund=keins
+PROBE uia-disconnect-tscon-win32-neu-finden PASS titel='Untitled - Notepad' descendants=2 edit=ja
+PROBE uia-disconnect-tscon-win32-neu-setzen PASS gelesen='setzen-disconnect-tscon'
+PROBE uia-disconnect-tscon-win32-neu-tippen PASS gelesen='januaport'
+PROBE uia-disconnect-tscon-win32-neu-fokus PASS set_focus ohne Fehler
+PROBE uia-disconnect-tscon-uia-neu-finden PASS titel='*Untitled - Notepad' descendants=26 edit=ja
+PROBE uia-disconnect-tscon-uia-neu-setzen PASS gelesen='setzen-disconnect-tscon'
+PROBE uia-disconnect-tscon-uia-neu-tippen PASS gelesen='januaport'
+PROBE uia-disconnect-tscon-uia-neu-fokus PASS set_focus ohne Fehler

@@ -1,0 +1,19 @@
+PROBE setzen-prestart-notepad PASS pid=4764
+PROBE setzen-monitor-off PASS SC_MONITORPOWER=2 gesendet, Rueckgabe=1
+PROBE session-check-monitor-off PASS urteil=nutzbar erwartet=nutzbar sitzung=1 konsole=1 wts=Active sperrflag=entsperrt eingabedesktop_switch=Default/ok eingabedesktop_read=Default/ok eigener_desktop=Default vordergrund=notepad.exe:'Untitled - Notepad'
+PROBE uia-monitor-off-win32-bestehend-finden PASS titel='Untitled - Notepad' descendants=2 edit=ja
+PROBE uia-monitor-off-win32-bestehend-setzen PASS gelesen='setzen-monitor-off'
+PROBE uia-monitor-off-win32-bestehend-tippen PASS gelesen='januaport'
+PROBE uia-monitor-off-win32-bestehend-fokus PASS set_focus ohne Fehler
+PROBE uia-monitor-off-win32-neu-finden PASS titel='Untitled - Notepad' descendants=2 edit=ja
+PROBE uia-monitor-off-win32-neu-setzen PASS gelesen='setzen-monitor-off'
+PROBE uia-monitor-off-win32-neu-tippen PASS gelesen='januaport'
+PROBE uia-monitor-off-win32-neu-fokus PASS set_focus ohne Fehler
+PROBE uia-monitor-off-uia-bestehend-finden PASS titel='*Untitled - Notepad' descendants=26 edit=ja
+PROBE uia-monitor-off-uia-bestehend-setzen PASS gelesen='setzen-monitor-off'
+PROBE uia-monitor-off-uia-bestehend-tippen PASS gelesen='januaport'
+PROBE uia-monitor-off-uia-bestehend-fokus PASS set_focus ohne Fehler
+PROBE uia-monitor-off-uia-neu-finden PASS titel='*Untitled - Notepad' descendants=26 edit=ja
+PROBE uia-monitor-off-uia-neu-setzen PASS gelesen='setzen-monitor-off'
+PROBE uia-monitor-off-uia-neu-tippen PASS gelesen='januaport'
+PROBE uia-monitor-off-uia-neu-fokus PASS set_focus ohne Fehler

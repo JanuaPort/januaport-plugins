@@ -1,0 +1,1 @@
+PROBE session-check-vor-reboot FAIL urteil=nicht-nutzbar erwartet=nutzbar sitzung=1 konsole=1 wts=Active sperrflag=gesperrt eingabedesktop_switch=Default/ok eingabedesktop_read=Default/ok eigener_desktop=Default vordergrund=LockApp.exe:'Windows Default Lock Screen'

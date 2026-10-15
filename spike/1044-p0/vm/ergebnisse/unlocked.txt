@@ -1,0 +1,18 @@
+PROBE setzen-prestart-notepad PASS pid=7152
+PROBE session-check-unlocked PASS urteil=nutzbar erwartet=nutzbar sitzung=1 konsole=1 wts=Active sperrflag=entsperrt eingabedesktop_switch=Default/ok eingabedesktop_read=Default/ok eigener_desktop=Default vordergrund=notepad.exe:'Untitled - Notepad'
+PROBE uia-unlocked-win32-bestehend-finden PASS titel='Untitled - Notepad' descendants=2 edit=ja
+PROBE uia-unlocked-win32-bestehend-setzen PASS gelesen='setzen-unlocked'
+PROBE uia-unlocked-win32-bestehend-tippen PASS gelesen='januaport'
+PROBE uia-unlocked-win32-bestehend-fokus PASS set_focus ohne Fehler
+PROBE uia-unlocked-win32-neu-finden PASS titel='Untitled - Notepad' descendants=2 edit=ja
+PROBE uia-unlocked-win32-neu-setzen PASS gelesen='setzen-unlocked'
+PROBE uia-unlocked-win32-neu-tippen PASS gelesen='januaport'
+PROBE uia-unlocked-win32-neu-fokus PASS set_focus ohne Fehler
+PROBE uia-unlocked-uia-bestehend-finden PASS titel='*Untitled - Notepad' descendants=26 edit=ja
+PROBE uia-unlocked-uia-bestehend-setzen PASS gelesen='setzen-unlocked'
+PROBE uia-unlocked-uia-bestehend-tippen PASS gelesen='januaport'
+PROBE uia-unlocked-uia-bestehend-fokus PASS set_focus ohne Fehler
+PROBE uia-unlocked-uia-neu-finden PASS titel='*Untitled - Notepad' descendants=26 edit=ja
+PROBE uia-unlocked-uia-neu-setzen PASS gelesen='setzen-unlocked'
+PROBE uia-unlocked-uia-neu-tippen PASS gelesen='januaport'
+PROBE uia-unlocked-uia-neu-fokus PASS set_focus ohne Fehler

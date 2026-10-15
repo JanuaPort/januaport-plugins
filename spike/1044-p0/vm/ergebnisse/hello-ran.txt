@@ -1,0 +1,19 @@
+15:35:51 hello gelaufen pid=3488 args=ohne-zone
+15:36:02 hello gelaufen pid=4104 args=
+15:36:14 hello gelaufen pid=4092 args=zone3
+15:36:46 hello gelaufen pid=1040 args=aufgabe
+15:41:04 hello gelaufen pid=2592 args=ohne-zone
+15:41:15 hello gelaufen pid=3160 args=
+15:41:24 hello gelaufen pid=6064 args=zone3
+15:41:48 hello gelaufen pid=856 args=aufgabe
+15:42:33 hello gelaufen pid=4728 args=
+15:43:52 hello gelaufen pid=4976 args=ohne-zone
+15:44:03 hello gelaufen pid=2412 args=
+15:44:13 hello gelaufen pid=5396 args=zone3
+15:44:37 hello gelaufen pid=1984 args=aufgabe
+15:45:25 hello gelaufen pid=1028 args=ohne-zone
+15:45:36 hello gelaufen pid=5556 args=
+15:45:46 hello gelaufen pid=4728 args=zone3
+python-zone3 gelaufen
+15:46:09 hello gelaufen pid=3252 args=aufgabe
+15:46:14 hello gelaufen pid=5392 args=
