@@ -133,6 +133,12 @@ func (r *runState) send(v any) error {
 
 func (r *runState) run(cfg Config, job frame.Job) {
 	pinDir := filepath.Join(cfg.WorkDir, "pin")
+	// Zuerst prüfen: ein ungültiges libs startet nichts.
+	args, err := pythonArgs(cfg, pinDir, job)
+	if err != nil {
+		r.exited = &frame.Exited{Type: frame.TypeExited, Code: 1}
+		return
+	}
 	if err := writeFiles(pinDir, job.Files); err != nil {
 		r.exited = &frame.Exited{Type: frame.TypeExited, Code: 1}
 		return
@@ -146,7 +152,7 @@ func (r *runState) run(cfg Config, job frame.Job) {
 	theirs := os.NewFile(uintptr(fds[1]), "bootstrap-child")
 	defer func() { _ = ours.Close() }()
 
-	cmd := exec.Command(cfg.Python, "-I", cfg.Bootstrap, pinDir, job.Entry)
+	cmd := exec.Command(cfg.Python, args...) //nolint:gosec // feste Argumente; libs ist als Hex geprüft
 	cmd.Dir = pinDir
 	cmd.Env = childEnv()
 	cmd.ExtraFiles = []*os.File{theirs}

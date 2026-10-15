@@ -12,6 +12,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -110,6 +111,10 @@ func childEnv() []string {
 		"HOME=/work",
 		"TMPDIR=/tmp",
 		"LANG=C.UTF-8",
+		// Messung P0 (#1041): ohne Deckel startet numpy so viele Threads, wie der
+		// Host CPUs hat; pids_limit (128) zählt Threads.
+		"OPENBLAS_NUM_THREADS=1",
+		"OMP_NUM_THREADS=1",
 	}
 }
 
@@ -156,4 +161,33 @@ func finish(o finishOps, start time.Time, min time.Duration) bool {
 	o.Close()
 	o.SleepUntil(start.Add(min))
 	return false
+}
+
+var libsRe = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+// libsArg prüft das Feld `libs` des jobs (#1041): leer heißt keine
+// Bibliotheken, sonst genau der Lock-Hash aus 64 kleinen Hexzeichen. Mehr
+// kommt nie in argv; der Pfad /libs/<hash> entsteht im Bootstrap.
+func libsArg(libs string) (string, error) {
+	if libs == "" {
+		return "", nil
+	}
+	if !libsRe.MatchString(libs) {
+		return "", errors.New("guard: libs ist kein Lock-Hash")
+	}
+	return libs, nil
+}
+
+// pythonArgs sind die Argumente für `python`: -I, der Bootstrap, der
+// Pin-Ordner, der Einstieg und, mit Bibliotheken, der Lock-Hash.
+func pythonArgs(cfg Config, pinDir string, job frame.Job) ([]string, error) {
+	libs, err := libsArg(job.Libs)
+	if err != nil {
+		return nil, err
+	}
+	args := []string{"-I", cfg.Bootstrap, pinDir, job.Entry}
+	if libs != "" {
+		args = append(args, libs)
+	}
+	return args, nil
 }

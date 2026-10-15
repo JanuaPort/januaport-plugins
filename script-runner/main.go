@@ -28,6 +28,7 @@ const (
 	gitKeyPath = "/run/jnpt/plugins/script-runner-git/runtime-key"
 	socketPath = "/run/script-runner/sandbox.sock"
 	storeDir   = "/var/lib/script-runner"
+	libsDir    = "/libs"
 	mcpAddr    = ":8090"
 	healthAddr = ":8091"
 )
@@ -60,7 +61,7 @@ func runMediator() int {
 		gateway = "http://jnpt:8484"
 	}
 	m, err := mediator.New(mediator.Config{
-		SocketPath: socketPath, KeyDir: keyDir, StoreDir: storeDir, GatewayURL: gateway, Logger: log,
+		SocketPath: socketPath, KeyDir: keyDir, StoreDir: storeDir, LibsDir: libsDir, GatewayURL: gateway, Logger: log,
 	})
 	if err != nil {
 		log.Error("Start gescheitert")

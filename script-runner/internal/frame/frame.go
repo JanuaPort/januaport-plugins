@@ -58,6 +58,9 @@ type Job struct {
 	Files []File          `json:"files"`
 	Entry string          `json:"entry"`
 	Input json.RawMessage `json:"input"`
+	// Libs ist der Lock-Hash (64 Hex) der Bibliotheken des Pins (#1041);
+	// ohne Bibliotheken fehlt das Feld, der job ist dann byte-gleich zu vorher.
+	Libs string `json:"libs,omitempty"`
 }
 
 // ToolCall ist ein innerer Werkzeugaufruf des Skripts.

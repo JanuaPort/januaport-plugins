@@ -1,0 +1,8 @@
+name: numpy_ok
+description: Sonde numpy_ok (JanuaPort/januaport#1041) - numpy und pandas aus dem Nur-Lese-Volume.
+entry: main.py
+input_schema:
+  type: object
+tools: []
+timeout_s: 25
+requirements: requirements.lock

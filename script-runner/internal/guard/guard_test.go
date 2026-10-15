@@ -160,3 +160,74 @@ func TestChildEnvHasNoJnpt(t *testing.T) {
 		}
 	}
 }
+
+// #1041: `libs` im job ist der Lock-Hash. Der Wächter prüft ihn als Hex
+// (64 kleine Hexzeichen), bevor er ihn als argv weitergibt; alles andere
+// bricht den Lauf ab, ohne dass Python startet.
+func TestLibsArg(t *testing.T) {
+	valid := strings.Repeat("0123456789abcdef", 4)
+	if got, err := libsArg(valid); err != nil || got != valid {
+		t.Fatalf("libsArg(gültig) = %q, %v", got, err)
+	}
+	if got, err := libsArg(""); err != nil || got != "" {
+		t.Fatalf("libsArg(leer) = %q, %v (ohne Bibliotheken kein Argument)", got, err)
+	}
+	for name, in := range map[string]string{
+		"zu kurz":           valid[:63],
+		"zu lang":           valid + "0",
+		"Großbuchstaben":    strings.ToUpper(valid),
+		"kein Hex":          strings.Repeat("g", 64),
+		"Pfadausbruch":      "../../etc/passwd" + strings.Repeat("0", 48),
+		"Schrägstrich":      valid[:32] + "/" + valid[33:],
+		"Backslash":         valid[:32] + "\\" + valid[33:],
+		"mit Leerzeichen":   valid[:63] + " ",
+		"mit Zeilenumbruch": valid[:63] + "\n",
+		"mit NUL":           valid[:63] + "\x00",
+		"Option":            "--" + valid[2:],
+		"Unicode":           valid[:63] + "é",
+		"Staging .tmp":      valid + ".tmp",
+		"Staging .wheel":    valid + ".wheel",
+		"Unterordner":       valid + "/demo",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got, err := libsArg(in); err == nil {
+				t.Fatalf("libsArg(%q) = %q, nil", in, got)
+			}
+		})
+	}
+}
+
+func TestPythonArgs(t *testing.T) {
+	cfg := DefaultConfig()
+	libs := strings.Repeat("ab", 32)
+	got, err := pythonArgs(cfg, "/work/pin", frame.Job{Entry: "main.py"})
+	want := []string{"-I", cfg.Bootstrap, "/work/pin", "main.py"}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("ohne libs: %v, %v; want %v (unverändert zu vorher)", got, err, want)
+	}
+	got, err = pythonArgs(cfg, "/work/pin", frame.Job{Entry: "main.py", Libs: libs})
+	want = []string{"-I", cfg.Bootstrap, "/work/pin", "main.py", libs}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("mit libs: %v, %v; want %v", got, err, want)
+	}
+	if _, err := pythonArgs(cfg, "/work/pin", frame.Job{Entry: "main.py", Libs: "../x"}); err == nil {
+		t.Fatal("ungültiges libs angenommen")
+	}
+}
+
+// Messung P0: ohne Deckel startet numpy so viele Threads wie der Host CPUs
+// hat (gegen pids_limit 128); der Wächter setzt beide Deckel.
+func TestChildEnvCapsBlasThreads(t *testing.T) {
+	env := childEnv()
+	for _, want := range []string{"OPENBLAS_NUM_THREADS=1", "OMP_NUM_THREADS=1"} {
+		found := 0
+		for _, kv := range env {
+			if kv == want {
+				found++
+			}
+		}
+		if found != 1 {
+			t.Errorf("%s %d-mal in der Umgebung %v", want, found, env)
+		}
+	}
+}

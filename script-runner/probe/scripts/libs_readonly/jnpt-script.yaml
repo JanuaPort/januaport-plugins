@@ -1,0 +1,8 @@
+name: libs_readonly
+description: Sonde libs_readonly (JanuaPort/januaport#1041) - Schreibversuche auf die Bibliotheken.
+entry: main.py
+input_schema:
+  type: object
+tools: []
+timeout_s: 10
+requirements: requirements.lock

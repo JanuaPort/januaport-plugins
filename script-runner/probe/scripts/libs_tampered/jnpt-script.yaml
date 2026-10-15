@@ -1,0 +1,8 @@
+name: libs_tampered
+description: Sonde libs_tampered (JanuaPort/januaport#1041) - Wheel passt nicht zum Lock, der Pin ist invalid.
+entry: main.py
+input_schema:
+  type: object
+tools: []
+timeout_s: 10
+requirements: requirements.lock

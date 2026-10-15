@@ -68,10 +68,26 @@ func (m *Mediator) run(ctx context.Context, p pinState, input json.RawMessage, r
 		return contract.Run{End: contract.EndRefused, Detail: contract.DetailState}, nil
 	}
 	// Die Senke rechnet vor jeder Übergabe nach (R6, M5).
-	tree, err := m.store.Load(ctx, p.pin.Commit, p.pin.Path)
+	tree, err := m.loadTree(ctx, p)
 	if err != nil {
 		m.forget(p.pin)
 		return contract.Run{End: contract.EndRefused, Detail: contract.DetailState}, nil
+	}
+	// Mit Bibliotheken: das Lock im Baum ist das geprüfte und libs/<hash> ist
+	// fertig; sonst gibt es keinen Lauf (refused/state, nie still neu bauen).
+	if !m.libsReady(p, tree) {
+		m.forget(p.pin)
+		return contract.Run{End: contract.EndRefused, Detail: contract.DetailState}, nil
+	}
+	if p.libs != "" {
+		// Leihe auf libs/<hash> für die Dauer des Laufs: Aufräumen und Reset
+		// warten darauf (SEC R4). Ohne Leihe startet der Lauf nicht.
+		release, ok := m.libs.Acquire(p.libs)
+		if !ok {
+			m.forget(p.pin)
+			return contract.Run{End: contract.EndRefused, Detail: contract.DetailState}, nil
+		}
+		defer release()
 	}
 	sc, ok := m.sb.acquire(ctx.Done(), m.cfg.BusyWait)
 	if !ok {
@@ -93,7 +109,7 @@ func (m *Mediator) run(ctx context.Context, p pinState, input json.RawMessage, r
 		m.forget(p.pin)
 		return contract.Run{End: contract.EndRefused, Detail: contract.DetailState}, nil
 	}
-	if err := frame.Write(sc.c, frame.Job{Type: frame.TypeJob, Files: jobFiles(tree), Entry: p.manifest.Entry, Input: input}); err != nil {
+	if err := frame.Write(sc.c, frame.Job{Type: frame.TypeJob, Files: jobFiles(tree), Entry: p.manifest.Entry, Input: input, Libs: p.libs}); err != nil {
 		return contract.Run{End: contract.EndLimit, Detail: contract.DetailSandboxLost, Isolation: sc.isolation}, nil
 	}
 	wall := min(time.Duration(p.manifest.TimeoutS)*time.Second, maxWall)

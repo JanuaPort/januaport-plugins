@@ -126,7 +126,10 @@ tools:
 timeout_s: 1
 `
 
-func newFixture(t *testing.T) *fixture {
+func newFixture(t *testing.T) *fixture { return newFixtureWith(t, nil) }
+
+// newFixtureWith legt vor dem Commit zusätzliche Dateien an (#1041: Wheels).
+func newFixtureWith(t *testing.T, extra func(f *fixture)) *fixture {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git fehlt")
@@ -144,6 +147,9 @@ func newFixture(t *testing.T) *fixture {
 	f.write("broken/main.py", "x\n")
 	if err := os.Symlink("/etc/passwd", filepath.Join(f.work, "broken", "passwd")); err != nil {
 		t.Fatal(err)
+	}
+	if extra != nil {
+		extra(f)
 	}
 	f.git(f.work, "add", "-A")
 	f.git(f.work, "commit", "-q", "-m", "c")
@@ -201,6 +207,7 @@ type env struct {
 	sock string
 	keys string
 	logs *syncBuffer
+	libs string // libs-Ordner (#1041)
 }
 
 type envOpt func(*Config)
@@ -209,14 +216,19 @@ func withBusyWait(d time.Duration) envOpt { return func(c *Config) { c.BusyWait 
 
 func newEnv(t *testing.T, pins []pinRow, opts ...envOpt) *env {
 	t.Helper()
-	fx := newFixture(t)
+	return newEnvFx(t, newFixture(t), pins, opts...)
+}
+
+// newEnvFx startet den vermittler auf einer fertigen Fixture.
+func newEnvFx(t *testing.T, fx *fixture, pins []pinRow, opts ...envOpt) *env {
+	t.Helper()
 	gw := newStubGateway(t)
 	sockDir, err := os.MkdirTemp("", "sr")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(sockDir) })
-	e := &env{t: t, fx: fx, gw: gw, sock: filepath.Join(sockDir, "sandbox.sock"), keys: t.TempDir(), logs: &syncBuffer{}}
+	e := &env{t: t, fx: fx, gw: gw, sock: filepath.Join(sockDir, "sandbox.sock"), keys: t.TempDir(), logs: &syncBuffer{}, libs: libsTempDir(t)}
 	e.writeKey(testKey)
 	if pins != nil {
 		e.writePins(pins)
@@ -225,6 +237,7 @@ func newEnv(t *testing.T, pins []pinRow, opts ...envOpt) *env {
 		SocketPath:   e.sock,
 		KeyDir:       e.keys,
 		StoreDir:     fx.store,
+		LibsDir:      e.libs,
 		GatewayURL:   gw.srv.URL,
 		Logger:       slog.New(slog.NewTextHandler(e.logs, nil)),
 		BusyWait:     3 * time.Second,

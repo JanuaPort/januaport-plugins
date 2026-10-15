@@ -18,7 +18,9 @@ FROM python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0
 # git (Debian-Build, SHA-1 über sha1dc) und der ssh-Client für den abholer.
 # pip und ensurepip werden entfernt: im Lauf gibt es keine Installation (R12).
 # Zwei Nutzer ohne Login: 65532 für vermittler und abholer (Eigentümer der
-# Plugin-Ordner auf dem Host), 65533 für die Sandbox.
+# Plugin-Ordner auf dem Host), 65533 für die Sandbox. /libs ist der
+# Einhängepunkt des Volumes mit den entpackten Python-Bibliotheken
+# (JanuaPort/januaport#1041); ein neues Volume erbt den Eigentümer 65532.
 # `upgrade` zieht Debian-Sicherheitsfixes auch für Pakete der Basisschicht
 # (liblzma5, gnutls, …): Der gepinnte Digest friert sie sonst ein, und ein
 # Neubau nach einem Trivy-Fund mit Fix änderte nichts (JanuaPort/januaport#1057).
@@ -32,7 +34,7 @@ RUN apt-get update \
            /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.12 \
  && groupadd -g 65532 scriptrunner && useradd -u 65532 -g 65532 -M -d /nonexistent -s /usr/sbin/nologin scriptrunner \
  && groupadd -g 65533 sandbox && useradd -u 65533 -g 65533 -M -d /work -s /usr/sbin/nologin sandbox \
- && install -d -o 65532 -g 65532 -m 0755 /run/script-runner /var/lib/script-runner
+ && install -d -o 65532 -g 65532 -m 0755 /run/script-runner /var/lib/script-runner /libs
 COPY --from=build /out/script-runner /usr/local/bin/script-runner
 COPY sandbox/bootstrap.py /usr/local/lib/script-runner/bootstrap.py
 ENTRYPOINT ["/usr/local/bin/script-runner"]

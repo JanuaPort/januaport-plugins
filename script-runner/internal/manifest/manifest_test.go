@@ -114,3 +114,56 @@ func repl(old, new string) func(string) string {
 		return strings.Replace(s, old, new, 1)
 	}
 }
+
+// #1041: das Feld `requirements` ist optional. Ohne Feld verhält sich das
+// Manifest wie bisher; mit ungültigem Inhalt ist es `manifest_invalid`.
+func TestRequirementsFieldOptional(t *testing.T) {
+	m, err := Parse([]byte(valid), "invoice_check")
+	if err != nil || m.UsesLibs() {
+		t.Fatalf("ohne Feld: UsesLibs = %v, err = %v", m.UsesLibs(), err)
+	}
+	m, err = Parse([]byte(valid+"requirements: requirements.lock\n"), "invoice_check")
+	if err != nil || !m.UsesLibs() {
+		t.Fatalf("mit Feld: UsesLibs = %v, err = %v", m.UsesLibs(), err)
+	}
+}
+
+func TestRequirementsFieldInvalidContent(t *testing.T) {
+	for name, line := range map[string]string{
+		"andere Datei":       "requirements: other.lock",
+		"Unterordner":        "requirements: sub/requirements.lock",
+		"Elternordner":       "requirements: ../requirements.lock",
+		"absolut":            "requirements: /requirements.lock",
+		"leere Zeichenkette": "requirements: ''",
+		"null":               "requirements:",
+		"null explizit":      "requirements: null",
+		"Zahl":               "requirements: 123",
+		"Wahrheitswert":      "requirements: true",
+		"Liste":              "requirements: [requirements.lock]",
+		"Objekt":             "requirements: {file: requirements.lock}",
+		"requirements.txt":   "requirements: requirements.txt",
+		"Großschreibung":     "requirements: Requirements.lock",
+		"mit Leerzeichen":    "requirements: 'requirements.lock '",
+		"doppelt":            "requirements: requirements.lock\nrequirements: requirements.lock",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Parse([]byte(valid+line+"\n"), "invoice_check")
+			var inv *Invalid
+			if !errors.As(err, &inv) || inv.Reason != contract.ReasonManifestInvalid {
+				t.Fatalf("err = %v, want manifest_invalid", err)
+			}
+		})
+	}
+}
+
+// Altbestand: ein Manifest ohne `requirements` wird byte-gleich zu vorher
+// gelesen — dieselben Felder, kein neuer Zustand.
+func TestManifestWithoutRequirementsUnchanged(t *testing.T) {
+	m, err := Parse([]byte(valid), "invoice_check")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Name != "invoice_check" || m.Entry != "main.py" || m.TimeoutS != 20 || len(m.Tools) != 2 || m.Requirements.Kind != 0 {
+		t.Fatalf("Manifest = %+v", m)
+	}
+}

@@ -20,6 +20,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/januaport/januaport-plugins/script-runner/internal/contract"
+	"github.com/januaport/januaport-plugins/script-runner/internal/libs"
 	"github.com/januaport/januaport-plugins/script-runner/internal/store"
 	"github.com/januaport/januaport-plugins/script-runner/internal/ticker"
 )
@@ -27,10 +28,12 @@ import (
 // Config des vermittlers. Leere Dauern bekommen die Standards aus dem
 // Vertrag.
 type Config struct {
-	SocketPath     string // Unix-Socket für den Wächter (Weg C)
-	KeyDir         string // Plugin-Ordner mit runtime-key und pins.json
-	StoreDir       string // gemeinsames Volume mit dem abholer (Weg D)
-	GatewayURL     string // Basis für Weg B, ohne /mcp
+	SocketPath     string       // Unix-Socket für den Wächter (Weg C)
+	KeyDir         string       // Plugin-Ordner mit runtime-key und pins.json
+	StoreDir       string       // gemeinsames Volume mit dem abholer (Weg D)
+	LibsDir        string       // Volume mit den entpackten Python-Bibliotheken (#1041); leer = keine Bibliotheken
+	LibsLimits     *libs.Limits // Grenzen des Entpackens; nil = libs.DefaultLimits
+	GatewayURL     string       // Basis für Weg B, ohne /mcp
 	Logger         *slog.Logger
 	BusyWait       time.Duration    // Vertrag §5: 3 s
 	PollInterval   time.Duration    // Abstand für pins.json, runtime-key, Store
@@ -44,6 +47,7 @@ type Mediator struct {
 	store *store.Store
 	log   *slog.Logger
 	sb    *sandboxes
+	libs  *libs.Manager // nil ohne LibsDir
 
 	mu        sync.Mutex
 	key       string
@@ -51,6 +55,7 @@ type Mediator struct {
 	repoURL   string
 	isolation string
 	cache     map[cacheKey]verdict
+	libsURL   string // zuletzt gelesene Repository-URL einer gültigen pins.json (#1041)
 
 	ticker     *ticker.Ticker
 	trigger    *gatewayTrigger
@@ -87,6 +92,7 @@ func New(cfg Config) (*Mediator, error) {
 		trigger:   newGatewayTrigger(cfg.GatewayURL, filepath.Join(cfg.KeyDir, "runtime-key"), cfg.TriggerTimeout),
 	}
 	m.sb = newSandboxes(m.onHello, m.log)
+	m.libs = openLibs(cfg)
 	// Erster Abgleich vor dem ersten Request: kein Fenster, in dem ein
 	// vorhandener Schlüssel noch nicht gilt.
 	m.refresh(context.Background())
@@ -108,6 +114,9 @@ func (m *Mediator) Serve(ctx context.Context) error {
 		return err
 	}
 	go func() { <-ctx.Done(); _ = ln.Close() }()
+	if m.libs != nil {
+		defer m.libs.Close()
+	}
 	go m.pollLoop(ctx)
 	return m.sb.accept(ln)
 }
@@ -210,4 +219,24 @@ func (m *Mediator) toolsList() *mcp.ListToolsResult {
 		listed = append(listed, p.listed())
 	}
 	return contract.ToolsList(listed, m.isolation, sched)
+}
+
+// openLibs öffnet libs/ und prüft dabei jedes Verzeichnis gegen sein Manifest
+// (SEC B3). Ohne LibsDir oder bei einem Fehler gibt es keine Bibliotheken:
+// Pins mit `requirements` sind dann libs_invalid, alle anderen laufen wie
+// bisher.
+func openLibs(cfg Config) *libs.Manager {
+	if cfg.LibsDir == "" {
+		return nil
+	}
+	lim := libs.DefaultLimits
+	if cfg.LibsLimits != nil {
+		lim = *cfg.LibsLimits
+	}
+	lm, err := libs.Open(cfg.LibsDir, lim, cfg.Logger)
+	if err != nil {
+		cfg.Logger.Error("libs nicht verfügbar", "code", "libs_unavailable")
+		return nil
+	}
+	return lm
 }
