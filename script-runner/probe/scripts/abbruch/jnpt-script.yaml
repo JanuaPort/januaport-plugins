@@ -1,0 +1,9 @@
+name: abbruch
+description: Sonde abbruch (JanuaPort/januaport#1040, SEC L1).
+entry: main.py
+input_schema:
+  type: object
+tools:
+  - kartei_find
+  - kartei_hang
+timeout_s: 25

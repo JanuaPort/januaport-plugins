@@ -158,6 +158,25 @@ angehängt `/libs/<lockhash>` (Wheels, auch native; nur lesend).
    4 KiB, Ausgabe ≤ 1 MiB, ≤ 50 Werkzeugaufrufe. Nach dem Ende hängt der Lauf
    ab (`detach`), jeder weitere Rahmen wird verworfen, der Wächter bekommt EOF.
    Socket-Ordner in der Sandbox read-only.
+3a. **L1 — Abbruch heißt Platz frei (JanuaPort/januaport#1040, SEC L1).** Endet
+   die POST-Anfrage des Gateways (es bricht den Relay ab, weil der Aufrufer
+   seinen Zugang verloren hat), endet der Lauf sofort: `end=internal`,
+   `detach`, der Wächter bekommt EOF, tötet alle Prozesse, die Instanz endet
+   nach `MinLifetime` (10,5 s ab ihrem Start), eine neue meldet sich. Tragend
+   ist `PropagateRequestCancellation` im zustandslosen Handler
+   (`mediator.Handler`): Ohne die Option koppelt das SDK den Handler-Kontext
+   von der Anfrage ab, und ein `notifications/cancelled` erreicht einen
+   zustandslosen Server nicht — der Lauf liefe bis zur Wandzeit. Die Option
+   wirkt nur ab Protokoll 2026-07-28 (das Gateway und die Sonden sprechen
+   es). Ein innerer Aufruf (`toolCall`) erbt den Lauf-Kontext und endet mit
+   ihm, ein eigenes `ctx.Done` im select ist nicht nötig (Sonde „haengen“:
+   Lauf beendet nach 0,0 s). Belege: `TestAbbruchDesRelaysBeendetDenLauf`
+   (Unit), Docker-Sonde `TestL1AbbruchGibtPlatzFrei` mit Schranken 18 s
+   (Platz frei) und 22 s (zweiter Lauf fertig). Gemessen unter Docker Desktop
+   (runc): Lauf beendet 0,0 s; Platz frei 3,0 s (schlafen) bzw. 10,1 s
+   (haengen, Instanz gerade erst gestartet); zweiter Lauf fertig 3,0–3,1 s
+   bzw. 10,6 s. Ohne die Option (rot): Platz frei erst nach 19,2 s bzw.
+   24,7 s, der Lauf endete regulär bzw. an der Wandzeit.
 4. **M5 / R6 — eine Senke.** Code kommt nur aus `store.Load` (bzw.
    `LoadSkippingWheels`): Tree-Walk aus der Objekt-DB, jeder Hash (Commit,
    Bäume, Blobs) selbst nachgerechnet, 120000 / 160000 / unzulässige Namen
