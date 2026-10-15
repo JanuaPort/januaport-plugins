@@ -26,6 +26,13 @@ type verdict struct {
 	reason      string
 	manifest    *manifest.Manifest
 	manifestSHA string
+	// libs ist der Lock-Hash der Bibliotheken (#1041), solange sie der Pin
+	// verlangt und das Lock lesbar ist. verified: das Manifest wurde gelesen,
+	// libs ist also bekannt. transient: nicht cachen, der nächste Abgleich
+	// fragt neu (Vorbereitung läuft oder Lesefehler).
+	libs      string
+	verified  bool
+	transient bool
 }
 
 type cacheKey struct{ name, path, commit string }
@@ -50,9 +57,10 @@ func (p pinState) listed() contract.ListedPin {
 func (m *Mediator) refresh(ctx context.Context) {
 	key := readKey(filepath.Join(m.cfg.KeyDir, "runtime-key"))
 	var f pins.File
+	parsedOK := false
 	if b, err := os.ReadFile(filepath.Join(m.cfg.KeyDir, "pins.json")); err == nil {
 		if parsed, err := pins.Parse(b); err == nil {
-			f = parsed
+			f, parsedOK = parsed, true
 		}
 	}
 	m.writeWanted(f)
@@ -64,6 +72,7 @@ func (m *Mediator) refresh(ctx context.Context) {
 	}
 	cache := m.cache
 	m.mu.Unlock()
+	m.resetLibsOnURLChange(f, parsedOK)
 
 	states := make([]pinState, 0, len(f.Pins))
 	for _, p := range f.Pins {
@@ -74,6 +83,9 @@ func (m *Mediator) refresh(ctx context.Context) {
 	m.key = key
 	m.pins = states
 	m.mu.Unlock()
+	if parsedOK {
+		m.pruneLibs(states)
+	}
 }
 
 func readKey(path string) string {
@@ -97,7 +109,7 @@ func (m *Mediator) evaluate(ctx context.Context, p pins.Pin, cache map[cacheKey]
 	m.mu.Lock()
 	v, hit := cache[k]
 	m.mu.Unlock()
-	if hit {
+	if hit && m.libsStillReady(v) {
 		return v
 	}
 	has, err := m.store.HasCommit(ctx, p.Commit)
@@ -105,7 +117,7 @@ func (m *Mediator) evaluate(ctx context.Context, p pins.Pin, cache map[cacheKey]
 		return verdict{state: contract.StatePending}
 	}
 	v = m.verify(ctx, p)
-	if ctx.Err() == nil {
+	if ctx.Err() == nil && !v.transient {
 		m.mu.Lock()
 		cache[k] = v
 		m.mu.Unlock()
@@ -135,11 +147,19 @@ func (m *Mediator) fetchVerdict(sha string) verdict {
 	return verdict{state: contract.StateReady}
 }
 
-// verify prüft den Pin an der Senke: Baum, Manifest, Einstieg.
+// verify prüft den Pin an der Senke: Baum, Manifest, Einstieg und, mit
+// `requirements`, die Bibliotheken. Ein Ordner wheels/ gehört nur dann nicht
+// zum Baum, wenn das Manifest `requirements` trägt; sonst verhält sich der Pin
+// wie bisher (Altbestand).
 func (m *Mediator) verify(ctx context.Context, p pins.Pin) verdict {
-	tree, err := m.store.Load(ctx, p.Commit, p.Path)
+	tree, err := m.store.LoadSkippingWheels(ctx, p.Commit, p.Path)
 	if err != nil {
 		return invalidVerdict(err)
+	}
+	if tree.HasWheelsDir && !wantsLibs(tree, p.Name) {
+		if tree, err = m.store.Load(ctx, p.Commit, p.Path); err != nil {
+			return invalidVerdict(err)
+		}
 	}
 	mf := tree.File(manifest.FileName)
 	if mf == nil {
@@ -152,7 +172,20 @@ func (m *Mediator) verify(ctx context.Context, p pins.Pin) verdict {
 	if tree.File(man.Entry) == nil {
 		return verdict{state: contract.StateInvalid, reason: contract.ReasonManifestInvalid}
 	}
-	return verdict{state: contract.StateReady, manifest: &man, manifestSHA: mf.BlobID}
+	if man.UsesLibs() {
+		return m.libsVerdict(ctx, p, tree, man, mf.BlobID)
+	}
+	return verdict{state: contract.StateReady, manifest: &man, manifestSHA: mf.BlobID, verified: true}
+}
+
+// wantsLibs sagt, ob das Manifest im Baum gültig ist und `requirements` trägt.
+func wantsLibs(tree store.Tree, pinName string) bool {
+	mf := tree.File(manifest.FileName)
+	if mf == nil {
+		return false
+	}
+	man, err := manifest.Parse(mf.Data, pinName)
+	return err == nil && man.UsesLibs()
 }
 
 func invalidVerdict(err error) verdict {

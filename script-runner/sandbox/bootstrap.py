@@ -1,5 +1,5 @@
 # Bootstrap des Skript-Läufers (JanuaPort/januaport#928). Der Wächter startet
-#   python -I bootstrap.py <pin-ordner> <einstieg>
+#   python -I bootstrap.py <pin-ordner> <einstieg> [<lock-hash>]
 # Das Skript liest seine Eingabe als JSON von stdin (auch als
 # januaport.input), schreibt seine Ausgabe nach stdout und ruft Werkzeuge mit
 # januaport.call(name, arguments). stderr geht nirgendwohin: Tracebacks
@@ -16,6 +16,11 @@ import types
 
 PIN = os.path.realpath(sys.argv[1])
 ENTRY = sys.argv[2]
+# Bibliotheken (#1041): Lock-Hash aus dem job, vom Wächter als 64 Hex geprüft.
+# Das Nur-Lese-Volume liegt unter /libs/<hash>. Es kommt per sys.path.append
+# in den Suchpfad, nie über site: keine .pth-Dateien, keine Entry-Points.
+LIBS_ROOT = "/libs"
+LIBS = sys.argv[3] if len(sys.argv) > 3 else None
 
 _chan = socket.socket(fileno=3)
 _next_id = 0
@@ -80,6 +85,10 @@ def _main():
     mod.ToolError = ToolError
     sys.modules["januaport"] = mod
     sys.path[:0] = [PIN, os.path.join(PIN, "vendor")]
+    if LIBS is not None:
+        if len(LIBS) != 64 or any(c not in "0123456789abcdef" for c in LIBS):
+            os._exit(1)
+        sys.path.append(os.path.join(LIBS_ROOT, LIBS))
     code = 0
     try:
         runpy.run_path(os.path.join(PIN, ENTRY), run_name="__main__")

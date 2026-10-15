@@ -61,6 +61,8 @@ func (m *Mediator) callTool(ctx context.Context, req *mcp.CallToolRequest) (*mcp
 // der vermittler selbst (M2); die Angaben des Wächters zählen nur für
 // ok/error innerhalb der Wandzeit.
 func (m *Mediator) run(ctx context.Context, p pinState, input json.RawMessage, runToken string) (contract.Run, []byte) {
+	m.activeRuns.Add(1)
+	defer m.activeRuns.Add(-1)
 	// Der Zustand aus tools/list darf eine inzwischen widerrufene Freigabe
 	// nicht ausführbar halten (L3); die Zweigprüfung selbst macht der abholer.
 	if m.fetchVerdict(p.pin.Commit).state != contract.StateReady {
@@ -68,8 +70,14 @@ func (m *Mediator) run(ctx context.Context, p pinState, input json.RawMessage, r
 		return contract.Run{End: contract.EndRefused, Detail: contract.DetailState}, nil
 	}
 	// Die Senke rechnet vor jeder Übergabe nach (R6, M5).
-	tree, err := m.store.Load(ctx, p.pin.Commit, p.pin.Path)
+	tree, err := m.loadTree(ctx, p)
 	if err != nil {
+		m.forget(p.pin)
+		return contract.Run{End: contract.EndRefused, Detail: contract.DetailState}, nil
+	}
+	// Mit Bibliotheken: das Lock im Baum ist das geprüfte und libs/<hash> ist
+	// fertig; sonst gibt es keinen Lauf (refused/state, nie still neu bauen).
+	if !m.libsReady(p, tree) {
 		m.forget(p.pin)
 		return contract.Run{End: contract.EndRefused, Detail: contract.DetailState}, nil
 	}
@@ -93,7 +101,7 @@ func (m *Mediator) run(ctx context.Context, p pinState, input json.RawMessage, r
 		m.forget(p.pin)
 		return contract.Run{End: contract.EndRefused, Detail: contract.DetailState}, nil
 	}
-	if err := frame.Write(sc.c, frame.Job{Type: frame.TypeJob, Files: jobFiles(tree), Entry: p.manifest.Entry, Input: input}); err != nil {
+	if err := frame.Write(sc.c, frame.Job{Type: frame.TypeJob, Files: jobFiles(tree), Entry: p.manifest.Entry, Input: input, Libs: p.libs}); err != nil {
 		return contract.Run{End: contract.EndLimit, Detail: contract.DetailSandboxLost, Isolation: sc.isolation}, nil
 	}
 	wall := min(time.Duration(p.manifest.TimeoutS)*time.Second, maxWall)

@@ -91,6 +91,13 @@ const (
 	ReasonManifestMissing    = "manifest_missing"
 	ReasonManifestInvalid    = "manifest_invalid"
 	ReasonToolNotQualified   = "tool_not_qualified"
+
+	// Python-Bibliotheken (#1041). Das Gateway reicht Gründe als Text durch,
+	// im Kern ist dafür kein Code nötig.
+	ReasonLibsInvalid      = "libs_invalid"
+	ReasonLibsHashMismatch = "libs_hash_mismatch"
+	ReasonLibsPlatform     = "libs_platform"
+	ReasonLibsTooLarge     = "libs_too_large"
 )
 
 // Grenzen v1, soweit der vermittler sie durchsetzt.

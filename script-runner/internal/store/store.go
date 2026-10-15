@@ -38,7 +38,12 @@ type File struct {
 }
 
 // Tree ist der geprüfte Inhalt eines Pin-Ordners.
-type Tree struct{ Files []File }
+type Tree struct {
+	Files []File
+	// HasWheelsDir ist gesetzt, wenn LoadSkippingWheels einen Ordner wheels/
+	// direkt im Pin-Ordner übersprungen hat (#1041).
+	HasWheelsDir bool
+}
 
 // File sucht eine Datei nach relativem Pfad.
 func (t Tree) File(p string) *File {
@@ -86,29 +91,24 @@ func (s *Store) HasCommit(ctx context.Context, commit string) (bool, error) {
 
 // Load liest den Pin-Ordner path aus commit und prüft jedes Objekt.
 func (s *Store) Load(ctx context.Context, commit, path string) (Tree, error) {
-	if !gitref.ValidCommit(commit) || !gitref.ValidPinPath(path) {
-		return Tree{}, &Invalid{Reason: contract.ReasonBadPath, Msg: "Commit oder Pfad ungültig"}
-	}
-	b, err := s.batch(ctx)
+	return s.load(ctx, commit, path, false)
+}
+
+// LoadSkippingWheels liest wie Load, überspringt aber einen Ordner wheels/
+// direkt im Pin-Ordner (#1041): die Wheels haben eigene Grenzen und werden
+// über ListWheels und CopyBlob gelesen. Alles andere, auch ein tieferer Ordner
+// namens wheels, bleibt im Baum.
+func (s *Store) LoadSkippingWheels(ctx context.Context, commit, path string) (Tree, error) {
+	return s.load(ctx, commit, path, true)
+}
+
+func (s *Store) load(ctx context.Context, commit, path string, skipWheels bool) (Tree, error) {
+	b, w, treeID, err := s.openPin(ctx, commit, path)
 	if err != nil {
 		return Tree{}, err
 	}
 	defer b.close()
-	w := &walker{b: b, hashLen: len(commit) / 2}
-	raw, err := w.read(commit, "commit")
-	if err != nil {
-		return Tree{}, err
-	}
-	treeID, err := commitTree(raw, len(commit))
-	if err != nil {
-		return Tree{}, err
-	}
-	for _, seg := range strings.Split(path, "/") {
-		treeID, err = w.child(treeID, seg)
-		if err != nil {
-			return Tree{}, err
-		}
-	}
+	w.skipWheels = skipWheels
 	var t Tree
 	if err := w.walk(treeID, "", &t); err != nil {
 		return Tree{}, err
@@ -116,10 +116,48 @@ func (s *Store) Load(ctx context.Context, commit, path string) (Tree, error) {
 	return t, nil
 }
 
+// openPin öffnet eine Sitzung und löst den Pin-Ordner bis zu seinem Baum
+// auf; jedes Objekt auf dem Weg ist nachgerechnet.
+func (s *Store) openPin(ctx context.Context, commit, path string) (*batch, *walker, string, error) {
+	if !gitref.ValidCommit(commit) || !gitref.ValidPinPath(path) {
+		return nil, nil, "", &Invalid{Reason: contract.ReasonBadPath, Msg: "Commit oder Pfad ungültig"}
+	}
+	b, err := s.batch(ctx)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	w := &walker{b: b, hashLen: len(commit) / 2}
+	treeID, err := w.pinTree(commit, path)
+	if err != nil {
+		b.close()
+		return nil, nil, "", err
+	}
+	return b, w, treeID, nil
+}
+
+func (w *walker) pinTree(commit, path string) (string, error) {
+	raw, err := w.read(commit, "commit")
+	if err != nil {
+		return "", err
+	}
+	treeID, err := commitTree(raw, len(commit))
+	if err != nil {
+		return "", err
+	}
+	for _, seg := range strings.Split(path, "/") {
+		treeID, err = w.child(treeID, seg)
+		if err != nil {
+			return "", err
+		}
+	}
+	return treeID, nil
+}
+
 type walker struct {
-	b       *batch
-	hashLen int
-	total   int
+	b          *batch
+	hashLen    int
+	total      int
+	skipWheels bool
 }
 
 func (w *walker) read(id, wantType string) ([]byte, error) {
@@ -177,6 +215,10 @@ func (w *walker) walk(treeID, prefix string, t *Tree) error {
 			return &Invalid{Reason: contract.ReasonBadPath, Msg: "unzulässiger Name im Baum"}
 		}
 		rel := prefix + e.name
+		if w.skipWheels && prefix == "" && e.name == wheelsDir && e.mode == "40000" {
+			t.HasWheelsDir = true
+			continue
+		}
 		switch e.mode {
 		case "100644", "100755":
 			if err := w.addBlob(e.id, rel, t); err != nil {
@@ -263,9 +305,10 @@ var errMissing = errors.New("store: Objekt fehlt")
 // System- und Nutzer-Konfiguration und Ersatz-Objekte ab: gelesen wird genau
 // die Objekt-DB, sonst nichts.
 type batch struct {
-	cmd *exec.Cmd
-	in  io.WriteCloser
-	out *bufio.Reader
+	cmd  *exec.Cmd
+	in   io.WriteCloser
+	out  *bufio.Reader
+	pipe io.Closer // Lesende der Standardausgabe; close() schließt es zuerst
 }
 
 func (s *Store) batch(ctx context.Context) (*batch, error) {
@@ -282,7 +325,7 @@ func (s *Store) batch(ctx context.Context) (*batch, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	return &batch{cmd: cmd, in: in, out: bufio.NewReader(out)}, nil
+	return &batch{cmd: cmd, in: in, out: bufio.NewReader(out), pipe: out}, nil
 }
 
 func (b *batch) get(id string) (string, []byte, error) {
@@ -311,7 +354,11 @@ func (b *batch) get(id string) (string, []byte, error) {
 	return fields[1], data[:size], nil
 }
 
+// close beendet die Sitzung. Die Standardausgabe wird zuerst geschlossen: ein
+// nicht gelesenes großes Objekt (Wheel über der Grenze) ließe git sonst auf
+// einer vollen Pipe hängen und Wait nie zurückkehren.
 func (b *batch) close() {
+	_ = b.pipe.Close()
 	_ = b.in.Close()
 	_ = b.cmd.Wait()
 }

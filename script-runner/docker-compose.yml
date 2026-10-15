@@ -35,6 +35,8 @@ services:
       - /run/jnpt/plugins/script-runner:/run/jnpt/plugins/script-runner:ro
       - sockets:/run/script-runner
       - store:/var/lib/script-runner
+      # Entpackte Bibliotheken (#1041): nur der vermittler schreibt hierhin.
+      - libs:/libs
     # Nur das interne Netz der Kern-Compose (JanuaPort/januaport#1069): Weg A
     # (Gateway → script-runner:8090) und Weg B (→ jnpt:8484) laufen darüber,
     # ins Internet und ins LAN gibt es keinen Weg. Kein Host-Port: Aus einem
@@ -84,8 +86,12 @@ services:
       - /work:size=64m,noexec,nosuid,nodev,uid=65533,gid=65533,mode=0700
       - /tmp:size=16m,noexec,nosuid,nodev,uid=65533,gid=65533,mode=0700
     volumes:
-      # Der einzige Mount: der Socket-Ordner, read-only (M4).
+      # Der Socket-Ordner, read-only (M4).
       - sockets:/run/script-runner:ro
+      # Der EINE zusätzliche Mount (#1041): die entpackten Bibliotheken, nur
+      # lesend und ohne noexec (native .so brauchen mmap mit PROT_EXEC). /work
+      # und /tmp bleiben noexec; geladen wird per sys.path.append, nie über site.
+      - libs:/libs:ro
 
   script-runner-fetcher:
     image: ${JNPT_SCRIPT_RUNNER_IMAGE:?JNPT_SCRIPT_RUNNER_IMAGE fehlt in /opt/jnpt/plugins/script-runner/.env}
@@ -108,6 +114,9 @@ services:
 volumes:
   sockets: {}
   store: {}
+  # Entpackte Python-Bibliotheken (#1041): der vermittler schreibt, die Sandbox
+  # liest nur. Eigentümer 65532 erbt das Volume vom Einhängepunkt /libs im Image.
+  libs: {}
 
 networks:
   plugins:

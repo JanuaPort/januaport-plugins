@@ -26,8 +26,12 @@ const (
 	sandbox     = "script-runner-sandbox"
 	fetcher     = "script-runner-fetcher"
 	socketMount = "sockets:/run/script-runner"
-	keyDir      = "/run/jnpt/plugins/script-runner"
-	gitKeyDir   = "/run/jnpt/plugins/script-runner-git"
+	// libsMount ist der Volume mit den entpackten Python-Bibliotheken (#1041):
+	// beim vermittler beschreibbar, in der Sandbox read-only — der EINE
+	// zusätzliche Mount der Sandbox, sonst bei niemandem.
+	libsMount = "libs:/libs"
+	keyDir    = "/run/jnpt/plugins/script-runner"
+	gitKeyDir = "/run/jnpt/plugins/script-runner-git"
 
 	// pluginNet ist das interne Netz der Kern-Compose (internal: true,
 	// JanuaPort/januaport#1069): dort hängen nur Gateway und vermittler.
@@ -122,6 +126,9 @@ func CheckCompose(src []byte) []string {
 	}
 	if n := c.Networks["plugins"]; !n.External || n.Name != pluginNet {
 		add("Netz plugins ist nicht das externe %s", pluginNet)
+	}
+	if _, ok := c.Volumes["libs"]; !ok {
+		add("Volume libs fehlt")
 	}
 	for _, want := range []string{mediator, sandbox, fetcher} {
 		if _, ok := c.Services[want]; !ok {
@@ -224,6 +231,9 @@ func checkCommon(name string, s service) []string {
 		if name != mediator && strings.HasPrefix(m, keyDir+":") {
 			add("Schlüsselordner des vermittlers eingehängt")
 		}
+		if name != mediator && name != sandbox && (strings.HasPrefix(m, "libs:") || strings.Contains(m, ":/libs")) {
+			add("libs eingehängt (nur vermittler und Sandbox)")
+		}
 		if name != fetcher && strings.HasPrefix(m, gitKeyDir) {
 			add("Deploy-Key eingehängt")
 		}
@@ -241,6 +251,9 @@ func checkMediator(s service, nets map[string]network) []string {
 	var v []string
 	if len(s.Networks) != 1 || !isPluginNet(s.Networks[0], nets) {
 		v = append(v, "script-runner: nicht genau im externen Netz "+pluginNet)
+	}
+	if !slices.Contains(s.Volumes, libsMount) {
+		v = append(v, "script-runner: libs nicht beschreibbar als "+libsMount)
 	}
 	if !slices.Contains(s.Volumes, keyDir+":"+keyDir+":ro") {
 		v = append(v, "script-runner: Schlüsselordner nicht read-only eingehängt")
@@ -283,8 +296,8 @@ func checkSandbox(s service) []string {
 	if !slices.Equal(s.Tmpfs, []string{"/work:size=64m," + opts, "/tmp:size=16m," + opts}) {
 		add("tmpfs nicht nach Vertrag §6")
 	}
-	if !slices.Equal(s.Volumes, []string{socketMount + ":ro"}) {
-		add("Mounts %v, want nur den Socket-Ordner read-only", s.Volumes)
+	if !slices.Equal(s.Volumes, []string{socketMount + ":ro", libsMount + ":ro"}) {
+		add("Mounts %v, want genau den Socket-Ordner und libs, beide read-only", s.Volumes)
 	}
 	return v
 }

@@ -19,6 +19,11 @@ import (
 // FileName ist der feste Name des Manifests im Skriptordner.
 const FileName = "jnpt-script.yaml"
 
+// RequirementsFile ist der feste Name des Locks im Skriptordner (#1041). Das
+// optionale Manifest-Feld `requirements` darf nur diesen Wert tragen; die
+// Wheels liegen in `wheels/` daneben.
+const RequirementsFile = "requirements.lock"
+
 // MaxTimeoutS ist die Wandzeit-Obergrenze (Grenzen v1, unter dem
 // 30-s-Relay des Gateways).
 const MaxTimeoutS = 25
@@ -31,6 +36,10 @@ type Manifest struct {
 	InputSchema map[string]any `yaml:"input_schema"`
 	Tools       []string       `yaml:"tools"`
 	TimeoutS    int            `yaml:"timeout_s"`
+	// Requirements ist der Knoten des optionalen Felds; Kind 0 heißt: nicht
+	// vorhanden. Ein Knoten statt eines Strings, damit ein leeres oder null-Feld
+	// von einem fehlenden unterscheidbar bleibt.
+	Requirements yaml.Node `yaml:"requirements"`
 }
 
 // Invalid ist ein abgewiesenes Manifest mit Grund aus Vertrag §2.
@@ -76,6 +85,8 @@ func check(m Manifest, pinName string) error {
 		return invalid("entry ist kein relativer .py-Pfad")
 	case m.InputSchema == nil || m.InputSchema["type"] != "object":
 		return invalid("input_schema ist kein Objekt-Schema")
+	case !validRequirements(m.Requirements):
+		return invalid("requirements ist nicht \"" + RequirementsFile + "\"")
 	case m.TimeoutS < 1 || m.TimeoutS > MaxTimeoutS:
 		return invalid(fmt.Sprintf("timeout_s nicht in 1..%d", MaxTimeoutS))
 	}
@@ -98,4 +109,16 @@ func validEntry(e string) bool {
 
 func invalid(msg string) error {
 	return &Invalid{Reason: contract.ReasonManifestInvalid, Msg: msg}
+}
+
+// UsesLibs sagt, ob das Manifest Python-Bibliotheken verlangt (#1041).
+func (m Manifest) UsesLibs() bool { return m.Requirements.Kind != 0 }
+
+// validRequirements: fehlt das Feld, ist alles wie bisher; sonst muss es
+// genau die Zeichenkette requirements.lock sein.
+func validRequirements(n yaml.Node) bool {
+	if n.Kind == 0 {
+		return true
+	}
+	return n.Kind == yaml.ScalarNode && n.Tag == "!!str" && n.Value == RequirementsFile
 }
