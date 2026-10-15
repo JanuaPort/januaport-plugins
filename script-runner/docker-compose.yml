@@ -98,8 +98,8 @@ services:
       # staging bleibt außerhalb der Mount-Sicht. Beide liegen im selben Volume
       # für einen atomaren Rename. Init legt ready vor diesem Mount an; nocopy
       # verhindert das Kopieren des Image-/libs-Inhalts IN ready.
-      # Engine >= 26, Compose >= 2.35.
-      # Die entpackten Bibliotheken, nur
+      # Voraussetzung: Docker Engine >= 26, Compose >= 2.35 (volume.subpath).
+      # Die entpackten Bibliotheken sind nur
       # lesend und ohne noexec (native .so brauchen mmap mit PROT_EXEC). /work
       # und /tmp bleiben noexec; geladen wird per sys.path.append, nie über site.
       - type: volume
