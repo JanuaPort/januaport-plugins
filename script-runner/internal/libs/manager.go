@@ -62,7 +62,7 @@ const maxKnownSums = 8192
 // Manager hält das Verzeichnis libs/: pro Lock-Hash ein fertiges,
 // schreibgeschütztes Verzeichnis. Nur der vermittler schreibt dort; die
 // Sandbox sieht es nur lesend. Ein Entpacken läuft asynchron und höchstens
-// eines zugleich; es entsteht in <hash>.tmp, wird mit fsync gesichert und
+// eines zugleich; es entsteht im privaten Staging als <hash>.tmp, wird mit fsync gesichert und
 // dann atomar umbenannt, nie halb sichtbar.
 //
 // Fertige Verzeichnisse gehören zum Lock-Hash, Vorbereitungen und Fehler zum
@@ -71,6 +71,7 @@ const maxKnownSums = 8192
 // und guten Wheels Schaden nimmt.
 type Manager struct {
 	dir        string
+	staging    string // outside the sandbox mount, same filesystem as dir (#1096)
 	lim        Limits
 	log        *slog.Logger
 	retryAfter time.Duration
@@ -101,11 +102,15 @@ type job struct {
 	cancel   context.CancelFunc
 }
 
-// Open übernimmt dir (muss existieren). Beim Start wird aufgeräumt: alles,
+// Open übernimmt dir (muss existieren) und privates staging (gleicher Mount,
+// außerhalb der Sandbox-Sicht). Beim Start werden Staging-Reste entfernt: alles,
 // was kein fertiges <hash>-Verzeichnis ist (.tmp, Reste, Fremdes), wird
 // entfernt, und jedes Verzeichnis wird einmal gegen sein Manifest geprüft
 // (SEC B3); Abweichungen werden verworfen.
-func Open(dir string, lim Limits, log *slog.Logger) (*Manager, error) {
+func Open(dir, staging string, lim Limits, log *slog.Logger) (*Manager, error) {
+	if dir == "" || staging == "" {
+		return nil, errors.New("libs: Bibliotheken und Staging erforderlich")
+	}
 	info, err := os.Stat(dir)
 	if err != nil {
 		return nil, err
@@ -113,9 +118,34 @@ func Open(dir string, lim Limits, log *slog.Logger) (*Manager, error) {
 	if !info.IsDir() {
 		return nil, errors.New("libs: kein Ordner")
 	}
+	// Staging must be outside the visible library tree. Deployment places both
+	// under one volume, so publication is a same-filesystem atomic rename.
+	dir, err = filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
+	staging, err = filepath.Abs(staging)
+	if err != nil {
+		return nil, err
+	}
+	if within(dir, staging) || within(staging, dir) {
+		return nil, errors.New("libs: Staging und Bibliotheken überlappen")
+	}
+	if err := os.MkdirAll(staging, 0o700); err != nil {
+		return nil, err
+	}
+	staged, err := os.ReadDir(staging)
+	if err != nil {
+		return nil, err
+	}
+	for _, de := range staged {
+		if err := removeAll(filepath.Join(staging, de.Name())); err != nil {
+			return nil, err
+		}
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	m := &Manager{
-		dir: dir, lim: lim, log: log, retryAfter: 30 * time.Second,
+		dir: dir, staging: staging, lim: lim, log: log, retryAfter: 30 * time.Second,
 		ctx: ctx, cancel: cancel, sem: make(chan struct{}, 1),
 		dirs: map[string]*dirEntry{}, jobs: map[string]*job{}, sums: map[string]string{}, leases: map[string]int{},
 	}
@@ -392,12 +422,16 @@ func (m *Manager) verifyWheels(ctx context.Context, plan Plan, src Source) error
 // zurück.
 func (m *Manager) build(ctx context.Context, plan Plan, src Source) (installed int64, files int, err error) {
 	hash := plan.Lock.Hash
-	tmp := filepath.Join(m.dir, hash+".tmp")
-	wheelTmp := filepath.Join(m.dir, hash+".wheel")
+	tmp := filepath.Join(m.staging, hash+".tmp")
+	wheelTmp := filepath.Join(m.staging, hash+".wheel")
+	published := false
 	defer func() {
 		_ = os.Remove(wheelTmp)
 		if err != nil {
 			_ = removeAll(tmp)
+			if published {
+				_ = removeAll(m.Path(hash))
+			}
 		}
 	}()
 	if err := removeAll(tmp); err != nil {
@@ -417,7 +451,27 @@ func (m *Manager) build(ctx context.Context, plan Plan, src Source) (installed i
 	if err := ex.seal(hash); err != nil {
 		return 0, 0, err
 	}
+	if err := verifyDir(tmp, hash); err != nil {
+		return 0, 0, err
+	}
+	// Moving a directory across parents needs owner-write permission on it
+	// to update '..' (also on the same filesystem). Keep it private, 0700,
+	// until the already verified tree has reached its final name. The sandbox
+	// UID cannot open it during this interval; readiness follows chmod+fsync.
+	if err := os.Chmod(tmp, 0o700); err != nil {
+		return 0, 0, err
+	}
 	if err := os.Rename(tmp, m.Path(hash)); err != nil {
+		return 0, 0, err
+	}
+	published = true
+	if err := os.Chmod(m.Path(hash), 0o555); err != nil {
+		return 0, 0, err
+	}
+	if err := syncDir(m.Path(hash)); err != nil {
+		return 0, 0, err
+	}
+	if err := syncDir(m.staging); err != nil {
 		return 0, 0, err
 	}
 	if err := syncDir(m.dir); err != nil {

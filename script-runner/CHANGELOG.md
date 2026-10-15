@@ -2,6 +2,19 @@
 
 ## Unveröffentlicht
 
+- **Lauf-Protokoll (JanuaPort/januaport#1041 P2).** `januaport.log(*teile)`
+  liefert Text ausschließlich als additives `_meta["januaport.ai/run"].log`,
+  auch bei Fehler, Wandzeit, Speicher und Abbruch nach dem Start; leer fehlt
+  das Feld, Contract bleibt 1 und 2. Fester 64-KiB-Puffer bereits im Wächter,
+  UTF-8-Ersatz und einmalige Kürzungsmarke innerhalb der Grenze; nie im
+  Dienstlog. Golden-Dateien, Docker-Pin `log_canary` und Mutationsprüfungen.
+- **Privates Wheel-Staging (JanuaPort/januaport#1096).** Ein Volume, zwei
+  Unterordner: nur der vermittler sieht `staging`; die Sandbox mountet nur
+  `ready` (weiter genau ein Zusatzmount). Veröffentlichung nach Manifestprüfung
+  durch atomaren Rename im selben Mount. Bestehende P1-Caches brauchen eine
+  Migration im Wartungsfenster (README); Engine ≥ 26, Compose ≥ 2.35.
+  SEC H1/H2: Tests gegen Zentralverzeichnis-Anhang und Ensure während Reset.
+
 - **Abbruch durch das Gateway gibt den Platz frei (JanuaPort/januaport#1040, SEC L1).**
   Bricht das Gateway einen laufenden Lauf ab (Entzug beim Aufrufer), endet er
   jetzt sofort mit `end=internal`; die Sandbox räumt ab und meldet nach

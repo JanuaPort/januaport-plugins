@@ -1,0 +1,19 @@
+{
+  "_meta": {
+    "januaport.ai/run": {
+      "end": "error",
+      "detail": "exit",
+      "bytes_out": 0,
+      "tool_calls": 0,
+      "isolation": "standard",
+      "log": "vor dem Fehler\n"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "Das Skript hat mit einem Fehlercode geendet."
+    }
+  ],
+  "isError": true
+}

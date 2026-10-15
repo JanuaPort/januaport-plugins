@@ -117,6 +117,7 @@ type Run struct {
 	BytesOut  int    `json:"bytes_out"`
 	ToolCalls int    `json:"tool_calls"`
 	Isolation string `json:"isolation"`
+	Log       string `json:"log,omitempty"` // M6: explicit run log, only in _meta
 }
 
 var messages = map[string]string{

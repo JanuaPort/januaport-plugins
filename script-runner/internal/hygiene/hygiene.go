@@ -77,7 +77,7 @@ type service struct {
 	Runtime     string            `yaml:"runtime"`
 	Restart     string            `yaml:"restart"`
 	Tmpfs       []string          `yaml:"tmpfs"`
-	Volumes     []string          `yaml:"volumes"`
+	Volumes     mounts            `yaml:"volumes"`
 	Ports       []string          `yaml:"ports"`
 	Healthcheck *healthcheck      `yaml:"healthcheck"`
 	Devices     []string          `yaml:"devices"`
@@ -87,6 +87,50 @@ type service struct {
 	Cgroup      string            `yaml:"cgroup"`
 	Sysctls     any               `yaml:"sysctls"`
 	ExtraHosts  any               `yaml:"extra_hosts"`
+}
+
+// mounts accepts the one long-form mount needed to hide staging (#1096).
+// Its own decoder keeps KnownFields: node.Decode would silently accept keys.
+type mounts []string
+
+func (ms *mounts) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.SequenceNode {
+		return fmt.Errorf("mounts: keine Liste")
+	}
+	for _, n := range node.Content {
+		if n.Kind == yaml.ScalarNode && n.Tag == "!!str" {
+			*ms = append(*ms, n.Value)
+			continue
+		}
+		var m struct {
+			Type     string `yaml:"type"`
+			Source   string `yaml:"source"`
+			Target   string `yaml:"target"`
+			ReadOnly bool   `yaml:"read_only"`
+			Volume   struct {
+				Subpath string `yaml:"subpath"`
+			} `yaml:"volume"`
+		}
+		b, err := yaml.Marshal(n)
+		if err != nil {
+			return err
+		}
+		d := yaml.NewDecoder(bytes.NewReader(b))
+		d.KnownFields(true)
+		if err := d.Decode(&m); err != nil {
+			return err
+		}
+		if m.Type != "volume" {
+			return fmt.Errorf("mounts: nur Volume-Langform erlaubt")
+		}
+		v := m.Source + ":" + m.Target
+		if m.ReadOnly {
+			v += ":ro"
+		}
+		v += ":subpath=" + m.Volume.Subpath
+		*ms = append(*ms, v)
+	}
+	return nil
 }
 
 type healthcheck struct {
@@ -296,7 +340,7 @@ func checkSandbox(s service) []string {
 	if !slices.Equal(s.Tmpfs, []string{"/work:size=64m," + opts, "/tmp:size=16m," + opts}) {
 		add("tmpfs nicht nach Vertrag §6")
 	}
-	if !slices.Equal(s.Volumes, []string{socketMount + ":ro", libsMount + ":ro"}) {
+	if !slices.Equal(s.Volumes, []string{socketMount + ":ro", libsMount + ":ro:subpath=ready"}) {
 		add("Mounts %v, want genau den Socket-Ordner und libs, beide read-only", s.Volumes)
 	}
 	return v

@@ -24,7 +24,7 @@ var (
 )
 
 // Rahmentypen. Richtung Wächter → vermittler: hello, tool_call, output,
-// exited. Richtung vermittler → Wächter: job, tool_result. Nur zwischen
+// log, exited. Richtung vermittler → Wächter: job, tool_result. Nur zwischen
 // Wächter und Bootstrap: error.
 const (
 	TypeHello      = "hello"
@@ -32,6 +32,7 @@ const (
 	TypeToolCall   = "tool_call"
 	TypeToolResult = "tool_result"
 	TypeOutput     = "output"
+	TypeLog        = "log"
 	TypeExited     = "exited"
 	TypeError      = "error"
 )
@@ -80,6 +81,12 @@ type ToolResult struct {
 
 // Output trägt einen Abschnitt der Standardausgabe des Skripts.
 type Output struct {
+	Type string `json:"type"`
+	Data string `json:"data"`
+}
+
+// Log is an incremental section of the explicit run log, never a daemon log.
+type Log struct {
 	Type string `json:"type"`
 	Data string `json:"data"`
 }

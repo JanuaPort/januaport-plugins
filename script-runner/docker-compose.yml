@@ -88,10 +88,18 @@ services:
     volumes:
       # Der Socket-Ordner, read-only (M4).
       - sockets:/run/script-runner:ro
-      # Der EINE zusätzliche Mount (#1041): die entpackten Bibliotheken, nur
+      # Der EINE zusätzliche Mount (#1041/#1096): nur fertige Bibliotheken;
+      # staging bleibt außerhalb der Mount-Sicht. Beide liegen im selben Volume
+      # für einen atomaren Rename. Engine >= 26, Compose >= 2.35.
+      # Die entpackten Bibliotheken, nur
       # lesend und ohne noexec (native .so brauchen mmap mit PROT_EXEC). /work
       # und /tmp bleiben noexec; geladen wird per sys.path.append, nie über site.
-      - libs:/libs:ro
+      - type: volume
+        source: libs
+        target: /libs
+        read_only: true
+        volume:
+          subpath: ready
 
   script-runner-fetcher:
     image: ${JNPT_SCRIPT_RUNNER_IMAGE:?JNPT_SCRIPT_RUNNER_IMAGE fehlt in /opt/jnpt/plugins/script-runner/.env}

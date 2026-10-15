@@ -15,6 +15,7 @@ import (
 
 	"github.com/januaport/januaport-plugins/script-runner/internal/contract"
 	"github.com/januaport/januaport-plugins/script-runner/internal/frame"
+	"github.com/januaport/januaport-plugins/script-runner/internal/runlog"
 	"github.com/januaport/januaport-plugins/script-runner/internal/store"
 )
 
@@ -132,11 +133,13 @@ type runner struct {
 	tree store.Tree
 	run  contract.Run
 	out  []byte
+	log  runlog.Buffer
 	gw   *gatewayClient
 }
 
 func (r *runner) end(end, detail string) (contract.Run, []byte) {
 	r.run.End, r.run.Detail = end, detail
+	r.run.Log = r.log.String() // every end after job: never pass this to slog
 	if end != contract.EndOK {
 		return r.run, nil
 	}
@@ -177,6 +180,13 @@ func (r *runner) handle(ctx context.Context, f inFrame, wall *time.Timer) (contr
 		return contract.Run{}, nil, false
 	}
 	switch typ {
+	case frame.TypeLog:
+		if !r.log.Truncated() {
+			var msg frame.Log
+			if json.Unmarshal(f.payload, &msg) == nil {
+				r.log.Collect(msg.Data) // defense against an untrusted guard, M4
+			}
+		}
 	case frame.TypeOutput:
 		var o frame.Output
 		if json.Unmarshal(f.payload, &o) != nil {

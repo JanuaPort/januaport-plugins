@@ -80,7 +80,7 @@ und `fetch` gelesen.
   Richtung Sandbox.
 - **Weg C** (plugin-intern): Unix-Socket `/run/script-runner/sandbox.sock`.
   Wächter → vermittler: `hello{instance,isolation,seccomp}`,
-  `tool_call{id,name,arguments}`, `output{data}`,
+  `tool_call{id,name,arguments}`, `output{data}`, `log{data}`,
   `exited{code,signal?,error_type?,error_at?}`. `hello` trägt seit Fassung 3
   `profile` (`jnpt`|`other`, Golden `contract/golden/frame_hello.json`). vermittler → Wächter:
   `job{files:[{path,data_b64}],entry,input,libs?}`, `tool_result{id,result}`.
@@ -188,11 +188,16 @@ angehängt `/libs/<lockhash>` (Wheels, auch native; nur lesend).
    beim Entpacken und einmal beim Start (SEC B3, Abschnitt „Python-Bibliotheken“);
    je Lauf prüft der vermittler nur, dass das Lock im Baum das bereite ist und
    `libs/<hash>` noch da ist.
-5. **M6 — nie Text aus der Sandbox.** stderr des Skripts geht nach
-   `/dev/null`. Die KI bekommt nur feste Sätze, `error_type` (Regex-geprüft)
-   und `error_at` (nur `<Datei im Pin>:<Zeile>`, sonst weg). Ausgabe nur bei
-   `ok`. Der vermittler loggt nur Zählwerte und feste Codes — nie Argumente,
-   Ausgabe, Fehlertexte oder git-stderr. Auch bei den Bibliotheken (#1041):
+5. **M6 — Sandbox-Text nur über die festgelegten Ergebniskanäle.** stderr des
+   Skripts geht nach `/dev/null`. Fehler liefern feste Sätze, `error_type`
+   (Regex-geprüft) und `error_at` (nur `<Datei im Pin>:<Zeile>`, sonst weg).
+   stdout erscheint nur bei `ok`. Der einzige zusätzliche Textkanal ist
+   `januaport.log`: begrenzt im Wächter auf 64 KiB, ausschließlich als `log`
+   in `_meta["januaport.ai/run"]`, auch bei Fehlern nach dem Start. Er endet
+   dort, nie in `content`, `structuredContent`, slog oder Fehlermeldungen des
+   vermittlers. Dieser loggt nur Zählwerte und feste Codes — nie Argumente,
+   Ausgabe, Lauf-Protokoll, Fehlertexte oder git-stderr; vom Lauf-Protokoll
+   wäre ausschließlich die Länge zulässig (hier kein neuer Zähler). Auch bei den Bibliotheken (#1041):
    nur Zahlen (Wheels, Dateien, Bytes, Dauer) und feste Codes
    (`libs_hash_mismatch` …, `libs_io`, `libs_cleanup_failed`), nie
    Paketnamen, Hashes oder Pfade (`TestLibsPinBecomesReadyAndJobCarriesLockHash`).
@@ -247,9 +252,10 @@ angehängt `/libs/<lockhash>` (Wheels, auch native; nur lesend).
    `TestComposeUnknownAndForbiddenKeysPerService`. Wer der Compose einen
    neuen Schlüssel gibt, nimmt ihn bewusst ins Struct auf — das ist eine
    Vertragsfrage. **Mounts der Sandbox (#1041):** genau der Socket-Ordner und
-   **ein** zusätzlicher Mount, `libs:/libs:ro` (Volume, ohne `noexec`); der
-   vermittler hängt `libs:/libs` beschreibbar ein, kein anderer Dienst sieht
-   `libs`. `/work` und `/tmp` bleiben `noexec`
+   **ein** zusätzlicher Mount, Volume `libs` mit `subpath: ready` unter `/libs`
+   (read-only, ohne `noexec`); der vermittler hängt `libs:/libs` vollständig
+   beschreibbar ein. Nur er sieht `/libs/staging`; kein anderer Dienst sieht
+   das ganze Volume. `/work` und `/tmp` bleiben `noexec`
    (`TestSandboxLibsMountIsTheOnlyExtraMount`, Mutationen in
    `TestComposeMutationsAreCaught`, Sonde `TestLibsExactlyOneExtraMountReadOnly`).
 10. **Der vermittler hat keinen Netzweg außer zum Gateway** (JanuaPort/januaport#1069).
@@ -302,7 +308,36 @@ angehängt `/libs/<lockhash>` (Wheels, auch native; nur lesend).
       `TestLibsLegacyPinWithOversizedWheelsDirectoryStaysInvalid`,
       `TestJobLibsFieldOnlyWhenSet`, `TestRequirementsFieldInvalidContent`.
 
-## Python-Bibliotheken (#1041 P1)
+## Lauf-Protokoll (#1041 P2)
+
+`januaport.log(*teile)` übernimmt Strings und wandelt andere Werte mit `str()`
+um, trennt Teile durch ein Leerzeichen und hängt immer `\n` an (ohne Teile:
+Leerzeile). Der Bootstrap zerlegt lange Texte in Rahmen `log{data}`; beide
+Leser prüfen die Rahmenlänge vor der Allokation (M4). Der Wächter repariert
+ungültiges UTF-8 mit U+FFFD und puffert **vor** dem Weiterreichen nur erlaubte
+Bytes in einem festen 64-KiB-Array. Platz für `\n[gekürzt]\n` ist reserviert:
+Bei Überschreitung der Nutztextkapazität erscheint die Marke genau einmal,
+inklusive Marke bleibt der Puffer ≤ 64 KiB. Ein UTF-8-Zeichen wird nie geteilt.
+Weitere Log-Rahmen werden gelesen und verworfen, ohne den Puffer zu erweitern.
+Der vermittler begrenzt denselben Kanal nochmals, da er dem Wächter nicht vertraut.
+
+Die akzeptierten Abschnitte werden sofort weitergereicht, nicht erst bei
+`exited`. Deshalb bleibt das empfangene Protokoll bei **jedem** Ende nach dem
+job erhalten: `ok`, Skriptfehler, Wandzeit, Speicher, Sandbox-Abbruch,
+Größen-/Aufrufgrenzen und `internal` (abgebrochener Kontext). Es steht nur als
+additives String-Feld `log` in `_meta["januaport.ai/run"]`; leer fehlt es
+(`omitempty`), vor dem Start ebenso. Contract bleibt 1 und 2; ein altes
+Gateway verwirft das unbekannte Feld in `takeRunMeta` (P3 ergänzt den Kern).
+M6 gilt unverändert für stdout bei Fehlern und stderr. Das Lauf-Protokoll
+erscheint nie im Dienstlog oder in dessen Fehlertexten. Nach `detach` wird
+auch `log` verworfen (M4).
+
+Belege: `TestLogBufferBoundedAtBootstrapAdapter` (1 MiB Rahmen, Speicher und
+Weiterleitung), `TestLogInvalidUTF8AndBoundary`, `TestRunLogOnlyInMetaNeverInSlog`
+(echter MCP-Adapter und slog-Senke), `TestRunLogInternalCancellation`,
+`TestRunLogAbsentBeforeStart`, `TestRunLogGolden`, Docker-Pin `log_canary`.
+
+## Python-Bibliotheken (#1041 P1 + #1096 Staging)
 
 Verbindlich: Plan-First v1 (JanuaPort/januaport#1041, Kommentar 6176737741),
 SEC-Auflagen B1–B7 (6176765349) und die PO-Entscheide vom 15.10.2026
@@ -318,6 +353,9 @@ vorher — auch ein Ordner `wheels/` bleibt dann Teil des gepinnten Baums.
 
 **Ablauf (alles im vermittler, `internal/libs`, ohne Python):**
 
+`libs/<hash>` bezeichnet im Folgenden den fertigen Cache aus Sandbox-Sicht;
+im vermittler ist das seit #1096 `/libs/ready/<hash>`.
+
 1. `store.LoadSkippingWheels` liest den Code ohne `wheels/` (4-MiB-Grenze nur
    für den Code); `store.ListWheels` liest die Namen in `wheels/` aus dem
    nachgerechneten Baum.
@@ -326,10 +364,11 @@ vorher — auch ein Ordner `wheels/` bleibt dann Teil des gepinnten Baums.
    genau 1:1. Fehler sind endgültige Pin-Gründe, nie ein Werkzeug.
 3. `Manager.Ensure` holt und entpackt **asynchron**, höchstens ein Lock zugleich;
    der Pin bleibt bis dahin `pending`. Je Wheel: `store.CopyBlob` streamt den
-   Blob in eine Zwischendatei `libs/<hash>.wheel` und rechnet die Git-ID nach
+   Blob in eine private Zwischendatei `/libs/staging/<hash>.wheel` und rechnet die Git-ID nach
    (M5), dann SHA-256 gegen das Lock (`libs_hash_mismatch`), dann
    `extractor.addWheel`. Am Ende `seal` (Manifest, Modi, fsync) und
-   Umbenennen `libs/<hash>.tmp` → `libs/<hash>`; dann erst `ready`.
+   Manifestprüfung und atomarer Rename `/libs/staging/<hash>.tmp` →
+   `/libs/ready/<hash>`; dann erst `ready`. Beide Pfade sind im selben Mount.
 4. Der job trägt `libs` (Lock-Hash, 64 Hex). Der Wächter prüft es als Hex und
    gibt es als vierten Wert (nach Bootstrap, Pin-Ordner und Einstieg) in argv weiter; der Bootstrap hängt
    `/libs/<hash>` per `sys.path.append` **hinter** Pin-Ordner und `vendor/`
@@ -422,16 +461,39 @@ Baum (`TestAcquireHoldsDirectoryAgainstPruneAndReset`,
 `TestLibsRunStartingDuringRemovalIsFailClosed`). Der Importpfad zeigt nur auf
 ein fertig umbenanntes `libs/<64 Hex>` mit Manifest, nie auf `.tmp`: `libs`
 im job ist ein geprüfter Lock-Hash, `<hash>.tmp`/`.wheel` sind keine gültigen
-Werte (`TestLibsArg`), und `.tmp` und `<hash>.wheel` sind in der Sandbox ebenso
-read-only (Sonde `TestLibsStagingReadOnlyAndImportPathOnlyFinished`).
+Werte (`TestLibsArg`). `.tmp` und `<hash>.wheel` liegen außerhalb ihrer
+Mount-Sicht und sind weder sichtbar noch lesbar (Sonde
+`TestLibsStagingInvisibleAndImportPathOnlyFinished`). Ein Reset sperrt auch
+neue `Ensure`-Aufträge (`TestEnsureDuringResetStartsNoJob`, SEC H2).
 
-**Compose und Sandbox:** Volume `libs` — beim vermittler `libs:/libs`
-beschreibbar, in der Sandbox `libs:/libs:ro` als der **eine** zusätzliche
-Mount (`internal/hygiene` kennt genau diesen), ohne `noexec`, weil native
-`.so` mit `mmap(PROT_EXEC)` geladen werden. `/work` und `/tmp` bleiben
-`noexec`. Das Image legt `/libs` für 65532 an; ein neues Volume erbt den
-Eigentümer. Die Compose ist damit ein Wartungsschritt (neues Volume), kein
-Image-Wechsel allein.
+**Compose und Sandbox (#1096):** Der vermittler mountet Volume `libs` als
+`/libs` vollständig. Darin liegen `staging` (0700, nur vermittler) und
+`ready` (fertige, geprüfte Locks). Die Sandbox mountet **ausschließlich**
+`ready` desselben Volumes unter `/libs` (Compose-Langform `volume.subpath`).
+Damit bleibt es bei genau **einem** zusätzlichen Sandbox-Mount, ohne
+`noexec`, weil native `.so` mit `mmap(PROT_EXEC)` geladen werden. `/work` und
+`/tmp` bleiben `noexec`. Die Bibliothekspfade des Skripts bleiben `/libs/<hash>`.
+`internal/hygiene` prüft Subpath, read-only und unbekannte Mount-Schlüssel
+fail-closed; die Sonde prüft auch einen Rename mit identischer Inode.
+Beim Verschieben zwischen Elternordnern benötigt Linux Schreibrecht am
+Wurzelordner (Änderung von `..`). Nach der Manifestprüfung wird daher nur
+dieser Ordner vorübergehend 0700, atomar umbenannt, am Ziel 0555 gesetzt und
+mit beiden Elternordnern per fsync gesichert. Währenddessen ist der fertige
+Inhalt für Sandbox-UID 65533 unzugänglich; `ready` folgt erst danach. Bei
+einem Fehler wird auch das bereits umbenannte Verzeichnis entfernt.
+
+Das Image legt `/libs/ready` für 65532 und `/libs/staging` mit 0700 an. Neue
+Volumes übernehmen die Ordner aus dem Image, auch wenn die Sandbox zuerst
+startet. Benötigt werden Docker mit Volume-Subpaths (Engine ≥ 26) und Compose
+mit `volume.subpath` (≥ 2.35). Bei bestehenden P1-Volumes: Stack anhalten,
+die neuen Unterordner mit Eigentümer 65532 anlegen und die fertigen
+64-Hex-Verzeichnisse nach `ready` verschieben; alte `.tmp`/`.wheel` verwerfen.
+Alternativ das ableitbare Cache-Volume im Wartungsfenster neu anlegen.
+Ein Image-Wechsel allein genügt nicht. `Open` entfernt beim Start private
+Staging-Reste und prüft die fertigen Verzeichnisse wie bisher gegen ihr Manifest.
+Es gibt keinen Kopierpfad zwischen Dateisystemen: Die ausgelieferte Compose
+garantiert denselben Mount für Quelle und Ziel. Ein abweichender eigener
+Aufbau mit EXDEV scheitert vor `ready`; niemals teilweise veröffentlichen.
 
 **Bewusste Entscheidungen:**
 
@@ -707,7 +769,7 @@ unterscheidet sich nicht auffällig vom Median.
   eine zusätzliche Ausführung von Python auf fremdem Archivinhalt und 41 MB
   mehr Platte für 0,7 s Gewinn. **Wiedervorlage:** Messen auf der Referenz-VM
   (langsamere CPU als der Messhost) und unter runsc; liegt dort pandas ohne pyc
-  über 3 s, kommt B7 nachträglich (SEC-Auflage B7, `libs/<hash>.tmp`, Timeout,
+  über 3 s, kommt B7 nachträglich (SEC-Auflage B7, privates `/libs/staging/<hash>.tmp`, Timeout,
   Nutzer 65532, danach `.jnpt-manifest` auch über die pyc).
 - **`childEnv` setzt `OPENBLAS_NUM_THREADS=1` und `OMP_NUM_THREADS=1`.**
   Ohne Deckel startet schon `import numpy` so viele Threads wie der Host CPUs

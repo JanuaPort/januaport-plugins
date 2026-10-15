@@ -1,0 +1,17 @@
+{
+  "_meta": {
+    "januaport.ai/run": {
+      "end": "ok",
+      "bytes_out": 0,
+      "tool_calls": 0,
+      "isolation": "standard",
+      "log": "Prüfung 12\n"
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": ""
+    }
+  ]
+}

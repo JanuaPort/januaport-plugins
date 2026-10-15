@@ -36,10 +36,11 @@ Drei Dienste aus einem Image, neben dem Gateway:
   nicht ausführbaren Arbeitsordnern, eigene Seccomp-Sperrliste, keine
   Capabilities. Das Einzige, was sie zusätzlich sieht: die geprüften
   Python-Bibliotheken, nur lesend (siehe „Python-Bibliotheken“).
-- **Fehler bleiben drinnen.** Die KI sieht bei einem Fehler nur die Art der
-  Ausnahme und die Zeile im Skript — nie einen Traceback, nie Daten.
-- **Protokolliert wird nur Zählbares** (Ende, Dauer, Bytes, Zahl der
-  Werkzeugaufrufe). Das Audit schreibt JanuaPort.
+- **Fehlertexte bleiben drinnen.** Bei einem Fehler erscheinen die Art der
+  Ausnahme und die Zeile im Skript; stdout und stderr werden nicht ausgegeben.
+  Explizites `januaport.log` geht zusätzlich ausschließlich in die Lauf-Metadaten.
+- **Das Dienstlog enthält nur Zählbares** (Ende, Dauer, Bytes, Zahl der
+  Werkzeugaufrufe), nie das Lauf-Protokoll. Das Audit schreibt JanuaPort.
 
 ## Grenzen v1
 
@@ -51,6 +52,7 @@ Die Werte sind Grenzen dieser Fassung, keine Zusagen.
 | CPU / RAM / Prozesse | 1 / 512 MiB / 128 |
 | Arbeitsordner | 64 MiB `/work`, 16 MiB `/tmp` |
 | Eingabe / Ausgabe | ≤ 256 KiB / ≤ 1 MiB |
+| Lauf-Protokoll | ≤ 64 KiB einschließlich `\n[gekürzt]\n`; Platz für die Marke wird reserviert |
 | Werkzeugaufrufe je Lauf | ≤ 50 |
 | Gleichzeitige Läufe | 1 |
 | Läufe in Folge | etwa 6 je Minute; dazwischen antwortet der Läufer „belegt, in etwa 10 Sekunden erneut versuchen“ |
@@ -95,6 +97,16 @@ json.dump({"offen": found.get("structuredContent")}, sys.stdout)
 Die Eingabe steht als JSON auf stdin und in `januaport.input`, die Ausgabe
 geht nach stdout. Ist sie ein JSON-Objekt, bekommt die KI sie zusätzlich
 strukturiert.
+
+Mit `januaport.log("geprüft", 12)` hängt das Skript `geprüft 12\n` an sein
+Lauf-Protokoll an. Andere Werte werden mit `str()` umgewandelt, Teile mit
+Leerzeichen getrennt; auch `januaport.log()` erzeugt eine Zeile. Das Ergebnis
+steht ausschließlich in `_meta["januaport.ai/run"].log`, auch bei Skriptfehler,
+Wandzeit, Speichergrenze oder Abbruch nach dem Start. Leer oder vor dem Start
+fehlt das Feld. Ungültiges UTF-8 wird ersetzt. Der Wächter begrenzt bereits
+seinen Speicher auf 64 KiB inklusive einmaliger Kürzungsmarke und verwirft
+weiteren Text. Das Dienstlog enthält diese Texte nie. Das Gateway muss das
+additive Feld übernehmen, damit Nutzer es sehen (Kern-Paket P3).
 
 ## Python-Bibliotheken (Wheels im Repository)
 
@@ -161,8 +173,19 @@ Typosquatting liegen beim Betreiber, ebenso die Lizenzen der Pakete.
 mit allen Skripten der Anlage: Jede Sandbox sieht alle Locks unter `/libs`,
 auch die eines anderen Pins.
 
-**Wartung.** Die Compose bekommt ein neues Volume `libs`. Das ist ein
-Wartungsschritt: neue Compose ablegen, `up -d`. Ein Neustart prüft jedes
+**Wartung (#1096).** Der vermittler sieht das ganze Volume `libs`, bereitet
+Wheels unter `/libs/staging` vor und veröffentlicht erst geprüfte Verzeichnisse
+atomar unter `/libs/ready`. Die Sandbox mountet nur den Unterordner `ready`
+unter `/libs`, read-only. Sie sieht weder `.tmp` noch `.wheel`; ihr Importpfad
+bleibt gleich. Quelle und Ziel des Rename liegen im selben Mount, ein
+Kopieren zwischen Dateisystemen ist nicht erforderlich.
+
+Die neue Compose verlangt Docker Engine ≥ 26 und Compose ≥ 2.35 mit
+Volume-Subpaths. Neue Volumes übernehmen beide Unterordner aus dem Image.
+Bei bestehenden P1-Volumes im Wartungsfenster den Stack anhalten, `ready` und
+`staging` für Nutzer 65532 anlegen (staging 0700) und fertige
+64-Hex-Verzeichnisse nach `ready` verschieben; Zwischenreste verwerfen.
+Alternativ das ableitbare Cache-Volume neu anlegen. Ein Neustart prüft jedes
 fertige Verzeichnis einmal gegen sein Manifest und verwirft Abweichungen.
 
 ## Betrieb

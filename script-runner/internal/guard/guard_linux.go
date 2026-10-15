@@ -22,6 +22,7 @@ import (
 
 	"github.com/januaport/januaport-plugins/script-runner/internal/contract"
 	"github.com/januaport/januaport-plugins/script-runner/internal/frame"
+	"github.com/januaport/januaport-plugins/script-runner/internal/runlog"
 )
 
 // Run ist der Wächter als PID 1. Rückgabe ist der Exit-Code des Containers.
@@ -123,6 +124,7 @@ type runState struct {
 	exited   *frame.Exited
 	errMu    sync.Mutex
 	scriptEr *frame.ScriptError
+	log      runlog.Buffer // only pumpBootstrap owns this fixed 64-KiB storage
 }
 
 func (r *runState) send(v any) error {
@@ -170,7 +172,8 @@ func (r *runState) run(cfg Config, job frame.Job) {
 	}
 	defer func() { _ = stdout.Close() }()
 	cmd.Stdout = stdoutW
-	// stderr bleibt leer (/dev/null): Tracebacks verlassen die Sandbox nie (M6).
+	// stderr bleibt leer (/dev/null): automatische stderr-Tracebacks bleiben
+	// drinnen (M6). Explizites januaport.log nutzt separat nur Lauf-_meta.
 	err = cmd.Start()
 	_ = stdoutW.Close()
 	_ = theirs.Close()
@@ -250,8 +253,8 @@ func (r *runState) pumpOutput(stdout io.Reader) {
 	}
 }
 
-// pumpBootstrap reicht tool_call an den vermittler durch und merkt sich die
-// Fehlermeldung des Bootstraps. Andere Rahmentypen verwirft er.
+// pumpBootstrap forwards tool_call and bounded log, and retains the sanitized
+// error metadata. The explicit log is the only extra text channel (M6).
 func (r *runState) pumpBootstrap(ch io.Reader) {
 	for {
 		payload, err := frame.Read(ch, MaxJobFrame)
@@ -263,6 +266,19 @@ func (r *runState) pumpBootstrap(ch io.Reader) {
 			continue
 		}
 		switch typ {
+		case frame.TypeLog:
+			if r.log.Truncated() {
+				continue
+			}
+			var msg frame.Log
+			if json.Unmarshal(payload, &msg) == nil {
+				// Cap and repair UTF-8 BEFORE retaining/forwarding (SEC B2).
+				if data := r.log.Append(msg.Data); data != "" {
+					if r.send(frame.Log{Type: frame.TypeLog, Data: data}) != nil {
+						return
+					}
+				}
+			}
 		case frame.TypeToolCall:
 			r.writeMu.Lock()
 			err := writeRaw(r.conn, payload)

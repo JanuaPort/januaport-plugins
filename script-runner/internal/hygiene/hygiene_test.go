@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 const composePath = "../../docker-compose.yml"
@@ -71,12 +73,18 @@ func TestComposeMutationsAreCaught(t *testing.T) {
 		{"read_only fehlt", "    read_only: true\n", "    read_only: false\n"},
 		// #1041: genau ein zusätzlicher Mount in der Sandbox, read-only; der
 		// vermittler schreibt ihn, sonst niemand.
-		{"libs rw in der Sandbox", "      - libs:/libs:ro\n", "      - libs:/libs\n"},
-		{"zweiter Zusatzmount in der Sandbox", "      - libs:/libs:ro\n", "      - libs:/libs:ro\n      - store:/var/lib/script-runner:ro\n"},
-		{"libs fehlt in der Sandbox", "      - libs:/libs:ro\n", ""},
-		{"libs an anderem Ort in der Sandbox", "libs:/libs:ro", "libs:/opt/libs:ro"},
-		{"Bind-Mount statt Volume als libs", "      - libs:/libs:ro\n", "      - /srv/libs:/libs:ro\n"},
-		{"libs im vermittler nur lesend", "      - libs:/libs\n", "      - libs:/libs:ro\n"},
+		{"libs rw in der Sandbox", "      - type: volume\n        source: libs\n        target: /libs\n        read_only: true\n        volume:\n          subpath: ready\n", "      - libs:/libs\n"},
+		{"zweiter Zusatzmount in der Sandbox", "      - type: volume\n        source: libs\n        target: /libs\n        read_only: true\n        volume:\n          subpath: ready\n", "      - type: volume\n        source: libs\n        target: /libs\n        read_only: true\n        volume:\n          subpath: ready\n      - store:/var/lib/script-runner:ro\n"},
+		{"libs fehlt in der Sandbox", "      - type: volume\n        source: libs\n        target: /libs\n        read_only: true\n        volume:\n          subpath: ready\n", ""},
+		{"libs an anderem Ort in der Sandbox", "        target: /libs\n", "        target: /opt/libs\n"},
+		{"Sandbox sieht ganzes Volume", "          subpath: ready\n", "          subpath: .\n"},
+		{"Sandbox sieht Staging", "          subpath: ready\n", "          subpath: staging\n"},
+		{"Sandbox Subpath fehlt", "          subpath: ready\n", ""},
+		{"Sandbox Langform beschreibbar", "        read_only: true\n", "        read_only: false\n"},
+		{"Unbekannter Mount-Schlüssel", "        source: libs\n", "        source: libs\n        surprise: true\n"},
+		{"Unbekannte Volume-Option", "          subpath: ready\n", "          subpath: ready\n          surprise: true\n"},
+		{"Bind-Mount statt Volume als libs", "      - type: volume\n        source: libs\n        target: /libs\n        read_only: true\n        volume:\n          subpath: ready\n", "      - /srv/libs:/libs:ro\n"},
+		{"libs im vermittler nur lesend", "      - libs:/libs\n", "      - type: volume\n        source: libs\n        target: /libs\n        read_only: true\n        volume:\n          subpath: ready\n"},
 		{"libs fehlt im vermittler", "      - libs:/libs\n", ""},
 		{"libs im abholer", "      - /run/jnpt/plugins/script-runner-git:/run/jnpt/plugins/script-runner-git:ro\n", "      - /run/jnpt/plugins/script-runner-git:/run/jnpt/plugins/script-runner-git:ro\n      - libs:/libs\n"},
 		{"libs benannt", "  libs: {}\n", "  libs:\n    name: jnpt_libs\n"},
@@ -435,34 +443,18 @@ func TestServicePrefixForbiddenPerService(t *testing.T) {
 // (native .so brauchen mmap mit PROT_EXEC).
 func TestSandboxLibsMountIsTheOnlyExtraMount(t *testing.T) {
 	base := readCompose(t)
-	i := strings.Index(base, "  script-runner-sandbox:")
-	j := strings.Index(base, "  script-runner-fetcher:")
-	if i < 0 || j < i {
-		t.Fatal("Testfehler: Sandbox-Block nicht gefunden")
+	var c compose
+	if err := yaml.Unmarshal([]byte(base), &c); err != nil {
+		t.Fatal(err)
 	}
-	var mounts, tmpfs []string
-	section := ""
-	for _, line := range strings.Split(base[i:j], "\n") {
-		switch {
-		case strings.HasPrefix(line, "    volumes:"):
-			section = "volumes"
-		case strings.HasPrefix(line, "    tmpfs:"):
-			section = "tmpfs"
-		case strings.HasPrefix(line, "      - ") && section == "volumes":
-			mounts = append(mounts, strings.TrimPrefix(line, "      - "))
-		case strings.HasPrefix(line, "      - ") && section == "tmpfs":
-			tmpfs = append(tmpfs, strings.TrimPrefix(line, "      - "))
-		case strings.HasPrefix(line, "    ") && !strings.HasPrefix(line, "     "):
-			section = ""
-		}
+	s := c.Services[sandbox]
+	if want := []string{"sockets:/run/script-runner:ro", "libs:/libs:ro:subpath=ready"}; !slices.Equal(s.Volumes, want) {
+		t.Fatalf("Mounts der Sandbox = %v, want %v", s.Volumes, want)
 	}
-	if want := []string{"sockets:/run/script-runner:ro", "libs:/libs:ro"}; !slices.Equal(mounts, want) {
-		t.Fatalf("Mounts der Sandbox = %v, want %v", mounts, want)
+	if len(s.Tmpfs) != 2 {
+		t.Fatalf("tmpfs = %v", s.Tmpfs)
 	}
-	if len(tmpfs) != 2 {
-		t.Fatalf("tmpfs = %v", tmpfs)
-	}
-	for _, line := range tmpfs {
+	for _, line := range s.Tmpfs {
 		if !strings.Contains(line, "noexec") {
 			t.Errorf("tmpfs ohne noexec: %s", line)
 		}
@@ -479,5 +471,8 @@ func TestDockerfilePreparesLibsMountPoint(t *testing.T) {
 	}
 	if !regexp.MustCompile(`install -d -o 65532 -g 65532 -m 0755 [^\n]*\s/libs(\s|$)`).Match(b) {
 		t.Error("Dockerfile legt /libs nicht für 65532 an")
+	}
+	if !strings.Contains(string(b), "/libs /libs/ready") || !strings.Contains(string(b), "install -d -o 65532 -g 65532 -m 0700 /libs/staging") {
+		t.Error("Dockerfile muss ready und privates staging schon beim Volume-Populieren anlegen")
 	}
 }
