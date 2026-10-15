@@ -61,8 +61,6 @@ func (m *Mediator) callTool(ctx context.Context, req *mcp.CallToolRequest) (*mcp
 // der vermittler selbst (M2); die Angaben des Wächters zählen nur für
 // ok/error innerhalb der Wandzeit.
 func (m *Mediator) run(ctx context.Context, p pinState, input json.RawMessage, runToken string) (contract.Run, []byte) {
-	m.activeRuns.Add(1)
-	defer m.activeRuns.Add(-1)
 	// Der Zustand aus tools/list darf eine inzwischen widerrufene Freigabe
 	// nicht ausführbar halten (L3); die Zweigprüfung selbst macht der abholer.
 	if m.fetchVerdict(p.pin.Commit).state != contract.StateReady {
@@ -80,6 +78,16 @@ func (m *Mediator) run(ctx context.Context, p pinState, input json.RawMessage, r
 	if !m.libsReady(p, tree) {
 		m.forget(p.pin)
 		return contract.Run{End: contract.EndRefused, Detail: contract.DetailState}, nil
+	}
+	if p.libs != "" {
+		// Leihe auf libs/<hash> für die Dauer des Laufs: Aufräumen und Reset
+		// warten darauf (SEC R4). Ohne Leihe startet der Lauf nicht.
+		release, ok := m.libs.Acquire(p.libs)
+		if !ok {
+			m.forget(p.pin)
+			return contract.Run{End: contract.EndRefused, Detail: contract.DetailState}, nil
+		}
+		defer release()
 	}
 	sc, ok := m.sb.acquire(ctx.Done(), m.cfg.BusyWait)
 	if !ok {

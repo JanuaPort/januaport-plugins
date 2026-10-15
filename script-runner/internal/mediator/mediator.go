@@ -15,7 +15,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -49,8 +48,6 @@ type Mediator struct {
 	log   *slog.Logger
 	sb    *sandboxes
 	libs  *libs.Manager // nil ohne LibsDir
-
-	activeRuns atomic.Int32 // laufende Läufe: solange gibt es kein Aufräumen von libs
 
 	mu        sync.Mutex
 	key       string

@@ -85,6 +85,9 @@ type Manager struct {
 	jobs     map[string]*job      // Vorbereitungen und Fehler je Plan
 	sums     map[string]string    // Identität → SHA-256 gelesener Wheels
 	prepared int
+	leases   map[string]int // laufende Läufe je Lock-Hash
+	draining bool           // Reset läuft: keine neuen Leihen
+	leaseCh  *sync.Cond
 }
 
 type dirEntry struct {
@@ -114,7 +117,7 @@ func Open(dir string, lim Limits, log *slog.Logger) (*Manager, error) {
 	m := &Manager{
 		dir: dir, lim: lim, log: log, retryAfter: 30 * time.Second,
 		ctx: ctx, cancel: cancel, sem: make(chan struct{}, 1),
-		dirs: map[string]*dirEntry{}, jobs: map[string]*job{}, sums: map[string]string{},
+		dirs: map[string]*dirEntry{}, jobs: map[string]*job{}, sums: map[string]string{}, leases: map[string]int{},
 	}
 	kept, dropped := 0, 0
 	des, err := os.ReadDir(dir)
@@ -134,6 +137,7 @@ func Open(dir string, lim Limits, log *slog.Logger) (*Manager, error) {
 		}
 		dropped++
 	}
+	m.leaseCh = sync.NewCond(&m.mu)
 	m.log.Info("libs geprüft", "bereit", kept, "verworfen", dropped)
 	return m, nil
 }
@@ -250,6 +254,9 @@ func (m *Manager) Ensure(plan Plan, src Source) State {
 				return mismatch()
 			}
 		}
+	}
+	if m.draining {
+		return State{Status: StatusPreparing}
 	}
 	haveDir := m.dirReady(hash)
 	if haveDir && known {
@@ -474,7 +481,7 @@ func (m *Manager) Prune(keep map[string]bool) {
 		}
 	}
 	for hash := range m.dirs {
-		if keep[hash] || busy[hash] {
+		if keep[hash] || busy[hash] || m.leases[hash] > 0 || m.draining {
 			continue
 		}
 		if err := removeAll(m.Path(hash)); err != nil {
@@ -486,9 +493,11 @@ func (m *Manager) Prune(keep map[string]bool) {
 }
 
 // Reset leert libs: Laufende Vorbereitungen werden abgebrochen, alles wird
-// entfernt (Wechsel der Repository-URL).
+// entfernt (Wechsel der Repository-URL). Verliehene Verzeichnisse (Acquire) bleiben,
+// bis ihr Lauf endet; bis dahin gibt es keine neue Leihe.
 func (m *Manager) Reset() {
 	m.mu.Lock()
+	m.draining = true // ab jetzt keine neue Leihe
 	for _, j := range m.jobs {
 		j.cancel()
 	}
@@ -496,16 +505,20 @@ func (m *Manager) Reset() {
 	m.wg.Wait()
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	// Läufe, die ihr Verzeichnis halten, enden zuerst (höchstens ihre Wandzeit).
+	for len(m.leases) > 0 {
+		m.leaseCh.Wait()
+	}
 	m.dirs, m.jobs, m.sums = map[string]*dirEntry{}, map[string]*job{}, map[string]string{}
 	des, err := os.ReadDir(m.dir)
-	if err != nil {
-		return
-	}
-	for _, de := range des {
-		if err := removeAll(filepath.Join(m.dir, de.Name())); err != nil {
-			m.log.Warn("libs: Aufräumen gescheitert", "code", "libs_cleanup_failed")
+	if err == nil {
+		for _, de := range des {
+			if err := removeAll(filepath.Join(m.dir, de.Name())); err != nil {
+				m.log.Warn("libs: Aufräumen gescheitert", "code", "libs_cleanup_failed")
+			}
 		}
 	}
+	m.draining = false
 }
 
 // Close bricht laufende Vorbereitungen ab und wartet auf sie. Mehrfaches
@@ -513,4 +526,30 @@ func (m *Manager) Reset() {
 func (m *Manager) Close() {
 	m.cancel()
 	m.wg.Wait()
+}
+
+// Acquire leiht libs/<hash> für einen Lauf aus (SEC R4, fail-closed beim
+// Entfernen): Solange die Leihe besteht, fasst weder Aufräumen noch Reset das
+// Verzeichnis an. Gibt es das fertige Verzeichnis nicht (mehr) oder läuft ein
+// Reset, gibt es keine Leihe — der Lauf startet dann nicht, statt mit einem
+// teilweisen Baum zu laufen. Prüfung und Eintragen sind ein Schritt unter dem
+// Schloss, das auch das Entfernen hält.
+func (m *Manager) Acquire(hash string) (release func(), ok bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.draining || !m.dirReady(hash) {
+		return nil, false
+	}
+	m.leases[hash]++
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			if m.leases[hash]--; m.leases[hash] <= 0 {
+				delete(m.leases, hash)
+			}
+			m.leaseCh.Broadcast()
+		})
+	}, true
 }

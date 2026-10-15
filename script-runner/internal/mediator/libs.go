@@ -82,8 +82,8 @@ func (m *Mediator) libsStillReady(v verdict) bool {
 	return m.libs != nil && m.libs.State(v.libs).Status == libs.StatusReady
 }
 
-// libsReady sagt, ob für den Lauf alles bereit ist: Das Lock im Baum ist das
-// geprüfte, und libs/<hash> ist fertig.
+// libsReady sagt, ob das Lock im Baum das geprüfte ist (das Verzeichnis selbst
+// leiht der Lauf mit Manager.Acquire).
 func (m *Mediator) libsReady(p pinState, tree store.Tree) bool {
 	if p.libs == "" {
 		return true
@@ -93,7 +93,7 @@ func (m *Mediator) libsReady(p pinState, tree store.Tree) bool {
 		return false
 	}
 	sum := sha256.Sum256(lock.Data)
-	return hex.EncodeToString(sum[:]) == p.libs && m.libs.State(p.libs).Status == libs.StatusReady
+	return hex.EncodeToString(sum[:]) == p.libs
 }
 
 // loadTree liest den Pin-Ordner für einen Lauf: mit Bibliotheken ohne
@@ -124,9 +124,9 @@ func (m *Mediator) resetLibsOnURLChange(f pins.File, parsedOK bool) {
 
 // pruneLibs räumt auf, was kein Pin mehr referenziert — aber nur, wenn die
 // Lage vollständig bekannt ist: jeder Pin hat sein Manifest gelesen oder ist
-// ungültig, pins.json war lesbar, und es läuft gerade kein Skript.
+// ungültig, pins.json war lesbar; Verzeichnisse, die ein Lauf hält, bleiben.
 func (m *Mediator) pruneLibs(states []pinState) {
-	if m.libs == nil || m.activeRuns.Load() > 0 {
+	if m.libs == nil {
 		return
 	}
 	keep := map[string]bool{}

@@ -394,6 +394,18 @@ einer gültigen `pins.json`; der erste Abgleich nach dem Start ist kein Wechsel,
 `libs` überlebt einen Neustart). Ein Fehler beim Lesen (kein Grund) gilt als
 vorübergehend und wird nach 30 s erneut versucht; Gründe sind endgültig.
 
+**Entfernen ist fail-closed (SEC R4):** Jeder Lauf mit Bibliotheken leiht sich
+`libs/<hash>` für seine Dauer (`Manager.Acquire`, unter demselben Schloss wie
+Aufräumen und Reset). Aufräumen überspringt Verliehenes; ein Reset (URL-Wechsel)
+sperrt neue Leihen und wartet auf laufende Läufe (höchstens ihre Wandzeit); wer
+dabei oder danach startet, bekommt `refused/state` — nie ein `ok` mit teilweisem
+Baum (`TestAcquireHoldsDirectoryAgainstPruneAndReset`,
+`TestLibsRunStartingDuringRemovalIsFailClosed`). Der Importpfad zeigt nur auf
+ein fertig umbenanntes `libs/<64 Hex>` mit Manifest, nie auf `.tmp`: `libs`
+im job ist ein geprüfter Lock-Hash, `<hash>.tmp`/`.wheel` sind keine gültigen
+Werte (`TestLibsArg`), und `.tmp` und `<hash>.wheel` sind in der Sandbox ebenso
+read-only (Sonde `TestLibsStagingReadOnlyAndImportPathOnlyFinished`).
+
 **Compose und Sandbox:** Volume `libs` — beim vermittler `libs:/libs`
 beschreibbar, in der Sandbox `libs:/libs:ro` als der **eine** zusätzliche
 Mount (`internal/hygiene` kennt genau diesen), ohne `noexec`, weil native
