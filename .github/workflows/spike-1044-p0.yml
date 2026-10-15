@@ -1,0 +1,55 @@
+# Spike JanuaPort/januaport#1044 P0: headless Messung fuer den Desktop-Laeufer (Windows).
+# Kein Produktcode, kein Merge. Jede Sonde gibt "PROBE <name> PASS|FAIL <detail>" aus;
+# ein FAIL bricht den Job nicht ab, wir wollen alle Messwerte.
+name: spike-1044-p0
+
+on:
+  push:
+    branches: ['spike/1044-p0-messung']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  messung:
+    name: Sonden (windows-latest, headless)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: spike/1044-p0/jobprobe/go.mod
+          cache: false
+      - name: Umgebung
+        continue-on-error: true
+        run: ./spike/1044-p0/00-umgebung.ps1
+      - name: Sonde 1 embeddable-pywinauto
+        if: always()
+        continue-on-error: true
+        run: ./spike/1044-p0/01-embeddable.ps1
+      - name: Sonde 2 pywinauto-backends-headless
+        if: always()
+        continue-on-error: true
+        run: ./spike/1044-p0/02-backends.ps1
+      - name: Sonde 3 jobobject-kill
+        if: always()
+        continue-on-error: true
+        run: ./spike/1044-p0/03-jobobject.ps1
+      - name: Sonde 4 go-tls-box-ca
+        if: always()
+        continue-on-error: true
+        run: ./spike/1044-p0/04-tls.ps1
+      - name: Sonde 5 git-openssh-acl
+        if: always()
+        continue-on-error: true
+        run: ./spike/1044-p0/05-ssh.ps1
+      - name: Zusammenfassung
+        if: always()
+        run: ./spike/1044-p0/99-summary.ps1
