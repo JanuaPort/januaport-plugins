@@ -1,4 +1,5 @@
-# M6: die Ausnahme trägt eine Kanarie. Weder die Antwort noch ein Log darf
+# M6: die Ausnahme trägt eine Kanarie, ohne explizites januaport.log.
+# Weder die Antwort noch ein Dienstlog darf
 # sie enthalten; die KI sieht nur error_type und error_at.
 import sys
 

@@ -68,7 +68,7 @@ func newManager(t *testing.T, dir string, mut func(*Limits)) *Manager {
 	if mut != nil {
 		mut(&lim)
 	}
-	m, err := Open(dir, lim, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	m, err := Open(dir, tempDir(t), lim, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}

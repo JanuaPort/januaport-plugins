@@ -1,9 +1,11 @@
 // Command script-runner ist der Beisteller „Skript-Läufer“ für JanuaPort
-// (JanuaPort/januaport#928): ein Binary, drei Dienste.
+// (JanuaPort/januaport#928): ein Binary, drei dauerhafte Dienste und Volume-Init.
 //
 //	script-runner mediator   vermittler: MCP-Server für das Gateway, Senke, Slot
 //	script-runner guard      Wächter: PID 1 der Sandbox, genau ein Lauf je Instanz
 //	script-runner fetcher    abholer: prüft Pins gegen den Standard-Zweig und holt Objekte per ssh in den Store
+//
+//	script-runner init-libs  bereitet das Bibliotheks-Volume vor dem Sandbox-Start vor
 package main
 
 import (
@@ -14,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -28,14 +31,14 @@ const (
 	gitKeyPath = "/run/jnpt/plugins/script-runner-git/runtime-key"
 	socketPath = "/run/script-runner/sandbox.sock"
 	storeDir   = "/var/lib/script-runner"
-	libsDir    = "/libs"
+	libsDir    = "/libs/ready"
 	mcpAddr    = ":8090"
 	healthAddr = ":8091"
 )
 
 func main() {
 	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "Aufruf: script-runner mediator|guard|fetcher")
+		fmt.Fprintln(os.Stderr, "Aufruf: script-runner mediator|guard|fetcher|init-libs")
 		os.Exit(2)
 	}
 	switch os.Args[1] {
@@ -45,9 +48,33 @@ func main() {
 		os.Exit(guard.Run(guard.DefaultConfig()))
 	case "fetcher":
 		os.Exit(runFetcher())
+	case "init-libs":
+		if err := initLibs("/libs"); err != nil {
+			fmt.Fprintln(os.Stderr, "Bibliotheksordner nicht vorbereitet")
+			os.Exit(1)
+		}
+		return
 	}
 	fmt.Fprintln(os.Stderr, "unbekannter Unterbefehl")
 	os.Exit(2)
+}
+
+// initLibs runs as 65532 on the full libs mount, before a subpath mount can
+// resolve ready. It is idempotent and preserves existing prepared libraries.
+func initLibs(root string) error {
+	for _, dir := range []struct {
+		name string
+		mode os.FileMode
+	}{{"ready", 0o755}, {"staging", 0o700}} {
+		path := filepath.Join(root, dir.name)
+		if err := os.MkdirAll(path, dir.mode); err != nil {
+			return err
+		}
+		if err := os.Chmod(path, dir.mode); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func logger() *slog.Logger {
@@ -61,7 +88,7 @@ func runMediator() int {
 		gateway = "http://jnpt:8484"
 	}
 	m, err := mediator.New(mediator.Config{
-		SocketPath: socketPath, KeyDir: keyDir, StoreDir: storeDir, LibsDir: libsDir, GatewayURL: gateway, Logger: log,
+		SocketPath: socketPath, KeyDir: keyDir, StoreDir: storeDir, LibsDir: libsDir, LibsStagingDir: "/libs/staging", GatewayURL: gateway, Logger: log,
 	})
 	if err != nil {
 		log.Error("Start gescheitert")

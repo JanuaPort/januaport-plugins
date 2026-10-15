@@ -2,8 +2,9 @@
 #   python -I bootstrap.py <pin-ordner> <einstieg> [<lock-hash>]
 # Das Skript liest seine Eingabe als JSON von stdin (auch als
 # januaport.input), schreibt seine Ausgabe nach stdout und ruft Werkzeuge mit
-# januaport.call(name, arguments). stderr geht nirgendwohin: Tracebacks
-# verlassen die Sandbox nie (M6). Bei einer Ausnahme meldet der Bootstrap nur
+# januaport.call(name, arguments). januaport.log goes only to run _meta (M6).
+# stderr geht nirgendwohin: automatische Tracebacks bleiben drinnen (M6).
+# Bei einer Ausnahme meldet der Bootstrap nur
 # den Klassennamen und die Stelle im gepinnten Baum.
 import io
 import json
@@ -12,6 +13,7 @@ import runpy
 import socket
 import struct
 import sys
+import threading
 import types
 
 PIN = os.path.realpath(sys.argv[1])
@@ -24,11 +26,25 @@ LIBS = sys.argv[3] if len(sys.argv) > 3 else None
 
 _chan = socket.socket(fileno=3)
 _next_id = 0
+_send_lock = threading.Lock()
 
 
 def _send(obj):
     body = json.dumps(obj).encode("utf-8")
-    _chan.sendall(struct.pack(">I", len(body)) + body)
+    with _send_lock:
+        _chan.sendall(struct.pack(">I", len(body)) + body)
+
+
+def log(*parts):
+    """Append a line to the run log in _meta; never to daemon logs.
+
+    Like print, parts are separated by a space; a final newline is always added.
+    The guard caps the run log at 64 KiB, including its truncation marker.
+    """
+    text = " ".join(part if isinstance(part, str) else str(part) for part in parts) + "\n"
+    # Even escaped Unicode stays well below the frame reader's byte limit.
+    for start in range(0, len(text), 8192):
+        _send({"type": "log", "data": text[start:start + 8192]})
 
 
 def _recv_exact(n):
@@ -82,6 +98,7 @@ def _main():
     mod = types.ModuleType("januaport")
     mod.input = json.loads(raw) if raw.strip() else {}
     mod.call = call
+    mod.log = log
     mod.ToolError = ToolError
     sys.modules["januaport"] = mod
     sys.path[:0] = [PIN, os.path.join(PIN, "vendor")]

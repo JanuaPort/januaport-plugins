@@ -108,8 +108,8 @@ func TestResultFlags(t *testing.T) {
 	}
 }
 
-// M6: Nur Ausgabe bei ok. Bei jedem anderen Ende sieht die KI einen festen
-// Satz, auch wenn Bytes gelesen wurden.
+// M6: stdout only at ok; errors have a fixed content sentence, even after
+// output bytes. Explicit run logs are separately allowed only in _meta.
 func TestResultNeverLeaksOutputOnError(t *testing.T) {
 	for _, end := range []string{EndError, EndLimit, EndTimeout} {
 		r := Result(Run{End: end}, []byte("KANARIE-4711"))

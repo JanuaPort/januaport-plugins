@@ -311,7 +311,7 @@ func TestLibsTamperedWheelPinInvalid(t *testing.T) {
 			t.Errorf("%s = %s, want ready (gleiches Lock wie libs_tampered_shared)", name, state[name].State)
 		}
 	}
-	listing := must(t, "docker", "exec", project+"-script-runner-1", "ls", "-A", "/libs")
+	listing := must(t, "docker", "exec", project+"-script-runner-1", "ls", "-A", "/libs/ready")
 	for _, n := range strings.Fields(listing) {
 		if n == tamperedLockHash || strings.Contains(n, ".tmp") || strings.Contains(n, ".wheel") {
 			t.Errorf("libs enthält %s", n)
@@ -411,18 +411,16 @@ func TestLibsGlibcCeilingMatchesImage(t *testing.T) {
 	}
 }
 
-// SEC R4 (a) und (b): Zwischenordner und -dateien des vermittlers
-// (<hash>.tmp, <hash>.wheel) liegen im selben Volume und sind in der Sandbox
-// ebenso read-only; der Importpfad zeigt nur auf ein fertig umbenanntes
-// Verzeichnis mit Manifest, nie auf .tmp.
-func TestLibsStagingReadOnlyAndImportPathOnlyFinished(t *testing.T) {
+// #1096: actively create real staging artifacts on the mediator's mount.
+// The sandbox subpath must hide both, including attempts to open known paths.
+func TestLibsStagingInvisibleAndImportPathOnlyFinished(t *testing.T) {
 	const tmpDir, wheelFile = "zz-staging.tmp", "zz-staging.wheel"
 	must(t, "docker", "exec", project+"-script-runner-1", "sh", "-c",
-		"mkdir -p /libs/"+tmpDir+" && echo x > /libs/"+tmpDir+"/f && echo x > /libs/"+wheelFile)
+		"mkdir -p /libs/staging/"+tmpDir+" && echo x > /libs/staging/"+tmpDir+"/f && echo x > /libs/staging/"+wheelFile)
 	defer func() {
-		_, _ = run("docker", "exec", project+"-script-runner-1", "rm", "-rf", "/libs/"+tmpDir, "/libs/"+wheelFile)
+		_, _ = run("docker", "exec", project+"-script-runner-1", "rm", "-rf", "/libs/staging/"+tmpDir, "/libs/staging/"+wheelFile)
 	}()
-	out := okJSON(t, "libs_readonly", map[string]any{"staging": []string{tmpDir, wheelFile}})
+	out := okJSON(t, "libs_readonly", map[string]any{"staging": []string{tmpDir, wheelFile}, "staging_only": true})
 	root, _ := out["root"].(map[string]any)
 	for _, op := range []string{"create", "mkdir"} {
 		if root[op] != "EROFS" {
@@ -432,20 +430,24 @@ func TestLibsStagingReadOnlyAndImportPathOnlyFinished(t *testing.T) {
 	staging, _ := out["staging"].(map[string]any)
 	for _, name := range []string{tmpDir, wheelFile} {
 		ops, _ := staging[name].(map[string]any)
-		if ops["exists"] != true {
-			t.Fatalf("%s in der Sandbox nicht sichtbar: %v", name, ops)
+		if ops["exists"] != false || ops["read"] != "ENOENT" {
+			t.Fatalf("%s in der Sandbox sichtbar/lesbar: %v", name, ops)
 		}
 		for op, v := range ops {
 			if op != "exists" && v == "ok" {
 				t.Errorf("%s: %s gelang in der Sandbox", name, op)
 			}
 		}
-		for _, op := range []string{"unlink", "rename"} {
-			if ops[op] != "EROFS" {
-				t.Errorf("%s: %s = %v, want EROFS", name, op, ops[op])
-			}
+	}
+	for _, name := range out["entries_in_libs"].([]any) {
+		if strings.Contains(fmt.Sprint(name), ".tmp") || strings.Contains(fmt.Sprint(name), ".wheel") || name == "staging" {
+			t.Fatalf("Staging entry visible: %v", name)
 		}
 	}
+	// Both paths are on one mount: this must be a real rename, not a copy.
+	must(t, "docker", "exec", project+"-script-runner-1", "python3", "-I", "-c",
+		"import os; a='/libs/staging/atomic'; b='/libs/ready/atomic'; open(a,'w').close(); ino=os.stat(a).st_ino; os.rename(a,b); assert os.stat(b).st_ino==ino; os.unlink(b)")
+	t.Log("libs_readonly/staging: .tmp and .wheel absent and unreadable; same-mount rename preserves inode")
 	paths, _ := out["libs"].([]any)
 	finished := regexp.MustCompile(`^/libs/[0-9a-f]{64}$`)
 	if len(paths) != 1 || !finished.MatchString(fmt.Sprint(paths[0])) {

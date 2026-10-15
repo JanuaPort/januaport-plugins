@@ -397,12 +397,16 @@ func TestFramesAfterExitedAreDiscarded(t *testing.T) {
 		g.exited(0)
 		g.send(frame.ToolCall{Type: frame.TypeToolCall, ID: 1, Name: "kartei_find", Arguments: json.RawMessage(`{}`)})
 		g.send(frame.Output{Type: frame.TypeOutput, Data: "spät"})
+		g.send(frame.Log{Type: frame.TypeLog, Data: "LATE-LOG-AFTER-EXIT\n"})
 		time.Sleep(200 * time.Millisecond)
 	})
 	e.waitReady("quick")
 	res := e.mustCall("quick", map[string]any{})
 	<-done
 	assertEnd(t, res, contract.EndOK, "")
+	if _, ok := runMeta(t, res)["log"]; ok {
+		t.Fatal("log after exited retained")
+	}
 	if text := res.Content[0].(*mcp.TextContent).Text; text != "" {
 		t.Fatalf("Ausgabe nach exited übernommen: %q", text)
 	}
@@ -419,6 +423,7 @@ func TestFramesAfterTimeoutAreDiscarded(t *testing.T) {
 	done := e.oneRun("i1", func(g *fakeGuard, _ frame.Job) {
 		g.send(frame.Output{Type: frame.TypeOutput, Data: "ok"})
 		time.Sleep(1500 * time.Millisecond) // quick: timeout_s 1
+		g.send(frame.Log{Type: frame.TypeLog, Data: "LATE-LOG-AFTER-TIMEOUT\n"})
 		g.send(frame.ToolCall{Type: frame.TypeToolCall, ID: 1, Name: "kartei_find", Arguments: json.RawMessage(`{}`)})
 		g.exited(0)
 		_ = g.waitEOF()
@@ -428,6 +433,9 @@ func TestFramesAfterTimeoutAreDiscarded(t *testing.T) {
 	res := e.mustCall("quick", map[string]any{})
 	elapsed := time.Since(start)
 	assertEnd(t, res, contract.EndTimeout, "")
+	if _, ok := runMeta(t, res)["log"]; ok {
+		t.Fatal("log after timeout retained")
+	}
 	if elapsed < 900*time.Millisecond || elapsed > 1400*time.Millisecond {
 		t.Fatalf("timeout nach %v, want ≈ 1 s (eigene Uhr)", elapsed)
 	}
@@ -552,7 +560,7 @@ func TestExitClasses(t *testing.T) {
 	}
 }
 
-// M6: Eine Kanarie im Fehler erscheint weder in der Antwort noch im Log.
+// M6: Exception/stdout canary, without explicit januaport.log, never in result or slog.
 func TestM6CanaryNeverInResultOrLog(t *testing.T) {
 	const canary = "KANARIE-7f3a"
 	e := newEnv(t, nil)

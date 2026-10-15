@@ -234,14 +234,15 @@ func newEnvFx(t *testing.T, fx *fixture, pins []pinRow, opts ...envOpt) *env {
 		e.writePins(pins)
 	}
 	cfg := Config{
-		SocketPath:   e.sock,
-		KeyDir:       e.keys,
-		StoreDir:     fx.store,
-		LibsDir:      e.libs,
-		GatewayURL:   gw.srv.URL,
-		Logger:       slog.New(slog.NewTextHandler(e.logs, nil)),
-		BusyWait:     3 * time.Second,
-		PollInterval: 20 * time.Millisecond,
+		SocketPath:     e.sock,
+		KeyDir:         e.keys,
+		StoreDir:       fx.store,
+		LibsDir:        e.libs,
+		LibsStagingDir: libsTempDir(t),
+		GatewayURL:     gw.srv.URL,
+		Logger:         slog.New(slog.NewTextHandler(e.logs, nil)),
+		BusyWait:       3 * time.Second,
+		PollInterval:   20 * time.Millisecond,
 	}
 	for _, o := range opts {
 		o(&cfg)

@@ -1,0 +1,7 @@
+name: log_canary
+description: Prüft den begrenzten Lauf-Protokollkanal.
+entry: main.py
+input_schema:
+  type: object
+tools: []
+timeout_s: 2

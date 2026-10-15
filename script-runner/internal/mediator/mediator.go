@@ -1,6 +1,7 @@
 // Package mediator ist der vermittler: MCP-Server für das Gateway (Weg A),
 // Halter der Pins, einzige Senke für Code (R6) und Gegenstelle des Wächters
-// (Weg C). Er protokolliert nur Zählwerte (M6).
+// (Weg C). Sein Dienstlog enthält nur Zählwerte (M6); explizites
+// januaport.log wird ausschließlich im Lauf-Ergebnis unter _meta ausgegeben.
 package mediator
 
 import (
@@ -32,6 +33,7 @@ type Config struct {
 	KeyDir         string       // Plugin-Ordner mit runtime-key und pins.json
 	StoreDir       string       // gemeinsames Volume mit dem abholer (Weg D)
 	LibsDir        string       // Volume mit den entpackten Python-Bibliotheken (#1041); leer = keine Bibliotheken
+	LibsStagingDir string       // private sibling in the same volume, never mounted in sandbox (#1096)
 	LibsLimits     *libs.Limits // Grenzen des Entpackens; nil = libs.DefaultLimits
 	GatewayURL     string       // Basis für Weg B, ohne /mcp
 	Logger         *slog.Logger
@@ -239,7 +241,7 @@ func openLibs(cfg Config) *libs.Manager {
 	if cfg.LibsLimits != nil {
 		lim = *cfg.LibsLimits
 	}
-	lm, err := libs.Open(cfg.LibsDir, lim, cfg.Logger)
+	lm, err := libs.Open(cfg.LibsDir, cfg.LibsStagingDir, lim, cfg.Logger)
 	if err != nil {
 		cfg.Logger.Error("libs nicht verfügbar", "code", "libs_unavailable")
 		return nil
