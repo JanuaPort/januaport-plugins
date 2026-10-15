@@ -470,7 +470,11 @@ ein fertig umbenanntes `libs/<64 Hex>` mit Manifest, nie auf `.tmp`: `libs`
 im job ist ein geprüfter Lock-Hash, `<hash>.tmp`/`.wheel` sind keine gültigen
 Werte (`TestLibsArg`). `.tmp` und `<hash>.wheel` liegen außerhalb ihrer
 Mount-Sicht und sind weder sichtbar noch lesbar (Sonde
-`TestLibsStagingInvisibleAndImportPathOnlyFinished`). Ein Reset sperrt auch
+`TestLibsStagingInvisibleAndImportPathOnlyFinished`). Der Unit-Test
+`TestStagingNeverVisibleInReadyDuringBuild` blockiert das zweite Wheel nach
+dem ersten Entpacken: `ready` bleibt leer; danach erscheint ausschließlich
+`<hash>` mit demselben Verzeichnis-Inode (atomarer Rename, SEC H1).
+Ein Reset sperrt auch
 neue `Ensure`-Aufträge (`TestEnsureDuringResetStartsNoJob`, SEC H2).
 
 **Compose und Sandbox (#1096):** Der vermittler mountet Volume `libs` als
