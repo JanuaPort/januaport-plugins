@@ -36,18 +36,24 @@ var tamperedLockHash string
 
 const probeWheelName = "probe_pkg-1.0-py3-none-any.whl"
 
+// tamperWheelName ist das Wheel der Sonde libs_tampered: ein eigenes Lock, damit
+// kein anderer Pin sein Verzeichnis anlegt.
+const tamperWheelName = "tamper_pkg-1.0-py3-none-any.whl"
+
 // probeWheel baut ein kleines Wheel mit einem Paket, einer .pth-Datei, die
 // beim Verarbeiten durch site eine Umgebungsvariable setzte, und einem
 // Entry-Point.
-func probeWheel() []byte {
+func probeWheel() []byte { return probeWheelFor("probe_pkg") }
+
+func probeWheelFor(dist string) []byte {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	for _, f := range []struct{ name, data string }{
-		{"probe_pkg/__init__.py", "VALUE = 'ok'\n"},
+		{dist + "/__init__.py", "VALUE = 'ok'\n"},
 		{"evil.pth", "import os; os.environ['PTH_RAN'] = '1'\n"},
-		{"probe_pkg-1.0.dist-info/METADATA", "Metadata-Version: 2.1\nName: probe_pkg\nVersion: 1.0\n"},
-		{"probe_pkg-1.0.dist-info/WHEEL", "Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n"},
-		{"probe_pkg-1.0.dist-info/entry_points.txt", "[console_scripts]\nprobe = probe_pkg:main\n"},
+		{dist + "-1.0.dist-info/METADATA", "Metadata-Version: 2.1\nName: " + dist + "\nVersion: 1.0\n"},
+		{dist + "-1.0.dist-info/WHEEL", "Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n"},
+		{dist + "-1.0.dist-info/entry_points.txt", "[console_scripts]\nprobe = " + dist + ":main\n"},
 	} {
 		w, _ := zw.Create(f.name)
 		_, _ = w.Write([]byte(f.data))
@@ -117,13 +123,22 @@ func addLibsFixtures(repo string) error {
 			return err
 		}
 	}
-	bad := probeWheel()
-	bad[len(bad)/2] ^= 0xff
-	h, err := writePinLibs(repo, "libs_tampered", map[string][]byte{probeWheelName: bad}, good)
+	// libs_tampered: eigenes Lock, Wheel weicht vom Hash im Lock ab.
+	tGood := map[string][]byte{tamperWheelName: probeWheelFor("tamper_pkg")}
+	tBad := probeWheelFor("tamper_pkg")
+	tBad[len(tBad)/2] ^= 0xff
+	h, err := writePinLibs(repo, "libs_tampered", map[string][]byte{tamperWheelName: tBad}, tGood)
 	if err != nil {
 		return err
 	}
 	tamperedLockHash = h
+	// libs_tampered_shared: dasselbe Lock wie libs_readonly und no_pip (deren
+	// Verzeichnis steht), aber ein manipuliertes Wheel.
+	bad := probeWheel()
+	bad[len(bad)/2] ^= 0xff
+	if _, err := writePinLibs(repo, "libs_tampered_shared", map[string][]byte{probeWheelName: bad}, good); err != nil {
+		return err
+	}
 
 	dl, err := os.MkdirTemp("", "p2-1041-wheels")
 	if err != nil {
@@ -210,10 +225,17 @@ func TestLibsNumpyPandasUnderLimits(t *testing.T) {
 // im Wheel wird nie ausgeführt.
 func TestLibsReadOnlyEROFS(t *testing.T) {
 	out := okJSON(t, "libs_readonly", nil)
-	for _, op := range []string{"create", "overwrite", "append", "mkdir", "unlink", "rename", "chmod", "symlink", "truncate"} {
+	for _, op := range []string{"create", "overwrite", "mkdir", "unlink", "rename", "chmod", "symlink", "truncate"} {
 		if out[op] != "EROFS" {
 			t.Errorf("%s = %v, want EROFS", op, out[op])
 		}
+	}
+	// Das Öffnen einer vorhandenen 0444-Datei zum Anhängen scheitert schon an
+	// den Rechten (EACCES), bevor das Dateisystem EROFS meldet; beides heißt
+	// „nicht beschreibbar“. Dass der Mount selbst read-only ist, belegen die
+	// anderen Zeilen.
+	if out["append"] != "EROFS" && out["append"] != "EACCES" {
+		t.Errorf("append = %v, want EROFS oder EACCES", out["append"])
 	}
 	if out["import"] != "ok" || out["intact"] != true {
 		t.Errorf("import/intact: %v / %v", out["import"], out["intact"])
@@ -227,9 +249,12 @@ func TestLibsReadOnlyEROFS(t *testing.T) {
 }
 
 // Invariante 2: ein Wheel, das nicht zum Lock passt, ergibt invalid mit
-// libs_hash_mismatch; kein Werkzeug, kein libs/<hash>, kein Rest.
+// libs_hash_mismatch; kein Werkzeug, kein libs/<hash>, kein Rest. libs_tampered
+// hat ein eigenes Lock; libs_tampered_shared teilt es mit libs_readonly und
+// no_pip, deren Verzeichnis schon steht — auch dort wird das Wheel geprüft, und
+// die guten Pins bleiben ready.
 func TestLibsTamperedWheelPinInvalid(t *testing.T) {
-	// Das Entpacken läuft asynchron; der Pin ist zuerst pending.
+	// Das Entpacken läuft asynchron; die Pins sind zuerst pending.
 	type pinRow struct{ Name, State, Reason string }
 	var res *mcp.ListToolsResult
 	var meta struct {
@@ -248,39 +273,45 @@ func TestLibsTamperedWheelPinInvalid(t *testing.T) {
 		}
 		pending := false
 		for _, p := range meta.Pins {
-			pending = pending || (p.Name == "libs_tampered" && p.State == "pending")
+			pending = pending || (strings.HasPrefix(p.Name, "libs_tampered") && p.State == "pending")
 		}
 		if !pending || time.Now().After(deadline) {
 			break
 		}
 	}
-	found := false
+	state := map[string]pinRow{}
 	for _, p := range meta.Pins {
-		if p.Name == "libs_tampered" {
-			found = true
-			if p.State != "invalid" || p.Reason != "libs_hash_mismatch" {
-				t.Errorf("libs_tampered = %s/%s, want invalid/libs_hash_mismatch", p.State, p.Reason)
+		state[p.Name] = p
+	}
+	for _, name := range invalidPinNames {
+		p, ok := state[name]
+		if !ok {
+			t.Fatalf("%s nicht in tools/list: %s", name, b)
+		}
+		if p.State != "invalid" || p.Reason != "libs_hash_mismatch" {
+			t.Errorf("%s = %s/%s, want invalid/libs_hash_mismatch", name, p.State, p.Reason)
+		}
+		for _, tool := range res.Tools {
+			if tool.Name == name {
+				t.Errorf("Werkzeug für den ungültigen Pin %s", name)
 			}
 		}
-	}
-	if !found {
-		t.Fatalf("libs_tampered nicht in tools/list: %s", b)
-	}
-	for _, tool := range res.Tools {
-		if tool.Name == "libs_tampered" {
-			t.Error("Werkzeug für den ungültigen Pin")
+		_, m, err := tryCall(project, name, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m["end"] != "refused" || m["detail"] != "state" {
+			t.Errorf("Aufruf %s: %v/%v", name, m["end"], m["detail"])
 		}
 	}
-	_, m, err := tryCall(project, "libs_tampered", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if m["end"] != "refused" || m["detail"] != "state" {
-		t.Errorf("Aufruf: %v/%v", m["end"], m["detail"])
+	for _, name := range []string{"libs_readonly", "no_pip"} {
+		if state[name].State != "ready" {
+			t.Errorf("%s = %s, want ready (gleiches Lock wie libs_tampered_shared)", name, state[name].State)
+		}
 	}
 	listing := must(t, "docker", "exec", project+"-script-runner-1", "ls", "-A", "/libs")
 	for _, n := range strings.Fields(listing) {
-		if n == tamperedLockHash || strings.Contains(n, ".tmp") {
+		if n == tamperedLockHash || strings.Contains(n, ".tmp") || strings.Contains(n, ".wheel") {
 			t.Errorf("libs enthält %s", n)
 		}
 	}

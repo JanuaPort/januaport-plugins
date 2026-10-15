@@ -90,7 +90,7 @@ func deflatedZeros(t testing.TB, n int) (comp []byte, crc uint32) {
 		if _, err := fw.Write(c); err != nil {
 			t.Fatal(err)
 		}
-		h.Write(c)
+		_, _ = h.Write(c)
 		left -= len(c)
 	}
 	if err := fw.Close(); err != nil {

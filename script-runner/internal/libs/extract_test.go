@@ -214,7 +214,7 @@ func TestExtractNormalizesModes(t *testing.T) {
 		zent{name: "bin/none", data: []byte("x"), setHdr: func(h *zip.FileHeader) { h.CreatorVersion = 3<<8 | 20; h.ExternalAttrs = 0o100000 << 16 }},
 		zent{name: "bin/writeonly", data: []byte("x"), mode: 0o200},
 		zent{name: "wide/", mode: os.ModeDir | os.ModeSetuid | 0o777},
-		zent{name: "closed/", mode: os.ModeDir | 0o000},
+		zent{name: "closed/", mode: os.ModeDir},
 		zent{name: "closed/f.py", data: []byte("x")},
 	)
 	root, err := extractAll(t, DefaultLimits, 0, w)
@@ -409,7 +409,7 @@ func TestExtractBombPeakHeap(t *testing.T) {
 		zw := zip.NewWriter(&buf)
 		for i := 0; i < entries; i++ {
 			w, err := zw.CreateRaw(&zip.FileHeader{Name: "bomb/f" + itoa(i) + ".bin", Method: zip.Deflate, CRC32: crc,
-				CompressedSize64: uint64(len(comp)), UncompressedSize64: uint64(perEntry)})
+				CompressedSize64: uint64(len(comp)), UncompressedSize64: uint64(perEntry)}) //nolint:gosec // Testwerte positiv
 			if err != nil {
 				t.Fatal(err)
 			}

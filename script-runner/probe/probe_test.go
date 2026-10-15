@@ -238,7 +238,7 @@ var pinNames = []string{"ok_echo", "proc_probe", "sleeper", "residue", "seccomp_
 	"numpy_ok", "libs_readonly", "no_pip"}
 
 // invalidPinNames sind Pins, die ungültig bleiben müssen (#1041).
-var invalidPinNames = []string{"libs_tampered"}
+var invalidPinNames = []string{"libs_tampered", "libs_tampered_shared"}
 
 func pinsJSON() string {
 	var rows []map[string]string

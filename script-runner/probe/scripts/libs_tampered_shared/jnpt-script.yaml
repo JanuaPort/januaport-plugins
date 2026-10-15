@@ -1,0 +1,8 @@
+name: libs_tampered_shared
+description: Sonde libs_tampered_shared (JanuaPort/januaport#1041) - gleiches Lock wie libs_readonly, aber ein manipuliertes Wheel.
+entry: main.py
+input_schema:
+  type: object
+tools: []
+timeout_s: 10
+requirements: requirements.lock

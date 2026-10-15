@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -22,6 +23,7 @@ import (
 	"github.com/januaport/januaport-plugins/script-runner/internal/contract"
 	"github.com/januaport/januaport-plugins/script-runner/internal/frame"
 	"github.com/januaport/januaport-plugins/script-runner/internal/libs"
+	"github.com/januaport/januaport-plugins/script-runner/internal/store"
 )
 
 // libsTempDir ist ein Ordner, den auch nicht beschreibbare Unterordner (0555)
@@ -667,14 +669,18 @@ func TestLibsLegacyPinWithOversizedWheelsDirectoryStaysInvalid(t *testing.T) {
 
 // Mit `requirements` gilt die Grenze nicht für wheels/ (eigene Grenzen).
 func TestLibsPinWithBigWheelsDirectoryIsNotLimitedByTreeCap(t *testing.T) {
-	big := testLib{dist: "big", version: "1.0", files: map[string]string{"big/__init__.py": "X = 1\n", "big/data.bin": strings.Repeat("0123456789abcdef", 1<<18)}}
+	// Schwer komprimierbar (sonst griffe das Verhältnis zu Recht): das Wheel selbst
+	// ist größer als die 4 MiB des Code-Baums.
+	rnd := make([]byte, 5<<20)
+	_, _ = rand.Read(rnd)
+	big := testLib{dist: "big", version: "1.0", files: map[string]string{"big/__init__.py": "X = 1\n", "big/data.bin": string(rnd)}}
 	def := libsPin{dir: "libs-pin", name: "libs_pin", libs: []testLib{big}}
 	e, _ := libsEnv(t, []libsPin{def})
 	g := dialGuard(t, e.sock, "i1", 2)
 	defer func() { _ = g.conn.Close() }()
 	e.waitReady("libs_pin")
-	if n := len(big.bytes(t)); n < 1000 {
-		t.Fatalf("Testfehler: Wheel %d Byte", n)
+	if n := len(big.bytes(t)); n <= store.MaxTreeBytes {
+		t.Fatalf("Testfehler: Wheel nur %d Byte, nicht über der Grenze des Code-Baums", n)
 	}
 }
 
