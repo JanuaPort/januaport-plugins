@@ -25,10 +25,11 @@ const (
 	mediator    = "script-runner"
 	sandbox     = "script-runner-sandbox"
 	fetcher     = "script-runner-fetcher"
+	initializer = "script-runner-init"
 	socketMount = "sockets:/run/script-runner"
 	// libsMount ist der Volume mit den entpackten Python-Bibliotheken (#1041):
 	// beim vermittler beschreibbar, in der Sandbox read-only — der EINE
-	// zusätzliche Mount der Sandbox, sonst bei niemandem.
+	// zusätzliche Mount der Sandbox. Nur der kurzlebige Init sieht ihn ebenfalls voll.
 	libsMount = "libs:/libs"
 	keyDir    = "/run/jnpt/plugins/script-runner"
 	gitKeyDir = "/run/jnpt/plugins/script-runner-git"
@@ -58,7 +59,7 @@ type compose struct {
 type service struct {
 	Image       string            `yaml:"image"`
 	Environment map[string]string `yaml:"environment"`
-	DependsOn   []string          `yaml:"depends_on"`
+	DependsOn   dependencies      `yaml:"depends_on"`
 	Command     []string          `yaml:"command"`
 	User        string            `yaml:"user"`
 	Privileged  bool              `yaml:"privileged"`
@@ -109,6 +110,7 @@ func (ms *mounts) UnmarshalYAML(node *yaml.Node) error {
 			ReadOnly bool   `yaml:"read_only"`
 			Volume   struct {
 				Subpath string `yaml:"subpath"`
+				NoCopy  bool   `yaml:"nocopy"`
 			} `yaml:"volume"`
 		}
 		b, err := yaml.Marshal(n)
@@ -128,7 +130,44 @@ func (ms *mounts) UnmarshalYAML(node *yaml.Node) error {
 			v += ":ro"
 		}
 		v += ":subpath=" + m.Volume.Subpath
+		if m.Volume.NoCopy {
+			v += ":nocopy"
+		}
 		*ms = append(*ms, v)
+	}
+	return nil
+}
+
+// dependencies accepts Compose's list and condition map while preserving
+// deny-by-default decoding (in particular, no required:false dependency).
+type dependencies map[string]string
+
+func (ds *dependencies) UnmarshalYAML(node *yaml.Node) error {
+	*ds = dependencies{}
+	if node.Kind == yaml.SequenceNode {
+		var names []string
+		if err := node.Decode(&names); err != nil {
+			return err
+		}
+		for _, name := range names {
+			(*ds)[name] = "service_started"
+		}
+		return nil
+	}
+	var opts map[string]struct {
+		Condition string `yaml:"condition"`
+	}
+	b, err := yaml.Marshal(node)
+	if err != nil {
+		return err
+	}
+	d := yaml.NewDecoder(bytes.NewReader(b))
+	d.KnownFields(true)
+	if err := d.Decode(&opts); err != nil {
+		return err
+	}
+	for name, opt := range opts {
+		(*ds)[name] = opt.Condition
 	}
 	return nil
 }
@@ -174,7 +213,7 @@ func CheckCompose(src []byte) []string {
 	if _, ok := c.Volumes["libs"]; !ok {
 		add("Volume libs fehlt")
 	}
-	for _, want := range []string{mediator, sandbox, fetcher} {
+	for _, want := range []string{mediator, sandbox, fetcher, initializer} {
 		if _, ok := c.Services[want]; !ok {
 			add("Dienst %s fehlt", want)
 		}
@@ -188,6 +227,7 @@ func CheckCompose(src []byte) []string {
 	v = append(v, checkMediator(c.Services[mediator], c.Networks)...)
 	v = append(v, checkSandbox(c.Services[sandbox])...)
 	v = append(v, checkFetcher(c.Services[fetcher], c.Networks)...)
+	v = append(v, checkInit(c.Services[initializer])...)
 	return v
 }
 
@@ -275,8 +315,8 @@ func checkCommon(name string, s service) []string {
 		if name != mediator && strings.HasPrefix(m, keyDir+":") {
 			add("Schlüsselordner des vermittlers eingehängt")
 		}
-		if name != mediator && name != sandbox && (strings.HasPrefix(m, "libs:") || strings.Contains(m, ":/libs")) {
-			add("libs eingehängt (nur vermittler und Sandbox)")
+		if name != mediator && name != sandbox && name != initializer && (strings.HasPrefix(m, "libs:") || strings.Contains(m, ":/libs")) {
+			add("libs eingehängt (nur vermittler, Sandbox und Init)")
 		}
 		if name != fetcher && strings.HasPrefix(m, gitKeyDir) {
 			add("Deploy-Key eingehängt")
@@ -293,6 +333,9 @@ func checkCommon(name string, s service) []string {
 
 func checkMediator(s service, nets map[string]network) []string {
 	var v []string
+	if len(s.DependsOn) != 2 || s.DependsOn[sandbox] != "service_started" || s.DependsOn[fetcher] != "service_started" {
+		v = append(v, "script-runner: Sandbox/abholer-Abhängigkeit fehlt")
+	}
 	if len(s.Networks) != 1 || !isPluginNet(s.Networks[0], nets) {
 		v = append(v, "script-runner: nicht genau im externen Netz "+pluginNet)
 	}
@@ -312,6 +355,9 @@ func checkMediator(s service, nets map[string]network) []string {
 func checkSandbox(s service) []string {
 	var v []string
 	add := func(f string, a ...any) { v = append(v, sandbox+": "+fmt.Sprintf(f, a...)) }
+	if len(s.DependsOn) != 1 || s.DependsOn[initializer] != "service_completed_successfully" {
+		add("Init muss erfolgreich beendet sein")
+	}
 	if s.NetworkMode != "none" || len(s.Networks) > 0 {
 		add("network_mode ist nicht none")
 	}
@@ -340,8 +386,35 @@ func checkSandbox(s service) []string {
 	if !slices.Equal(s.Tmpfs, []string{"/work:size=64m," + opts, "/tmp:size=16m," + opts}) {
 		add("tmpfs nicht nach Vertrag §6")
 	}
-	if !slices.Equal(s.Volumes, []string{socketMount + ":ro", libsMount + ":ro:subpath=ready"}) {
+	if !slices.Equal(s.Volumes, []string{socketMount + ":ro", libsMount + ":ro:subpath=ready:nocopy"}) {
 		add("Mounts %v, want genau den Socket-Ordner und libs, beide read-only", s.Volumes)
+	}
+	return v
+}
+
+func checkInit(s service) []string {
+	var v []string
+	add := func(text string) { v = append(v, initializer+": "+text) }
+	if s.NetworkMode != "none" || len(s.Networks) != 0 {
+		add("kein Netz erlaubt")
+	}
+	if s.User != "65532:65532" {
+		add("user ist nicht 65532:65532")
+	}
+	if !slices.Equal(s.Command, []string{"init-libs"}) {
+		add("Befehl ist nicht init-libs")
+	}
+	if s.Restart != "no" {
+		add("Init darf nicht neu starten")
+	}
+	if !slices.Equal(s.Volumes, []string{libsMount}) {
+		add("nur der volle libs-Mount ist erlaubt, kein Socket/Store/Schlüssel")
+	}
+	if !slices.Equal(s.SecurityOpt, []string{"no-new-privileges:true"}) {
+		add("security_opt nicht wie ausgeliefert")
+	}
+	if len(s.Tmpfs) != 0 || len(s.Environment) != 0 || len(s.DependsOn) != 0 || s.Healthcheck != nil {
+		add("Init trägt zusätzliche Laufzeit-Konfiguration")
 	}
 	return v
 }

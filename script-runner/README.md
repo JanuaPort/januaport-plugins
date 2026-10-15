@@ -14,13 +14,14 @@ gelaufen.
 
 ## Wie es arbeitet
 
-Drei Dienste aus einem Image, neben dem Gateway:
+Drei dauerhafte Dienste und ein kurzer Init-Dienst aus einem Image, neben dem Gateway:
 
 | Dienst | Aufgabe | Netz |
 |---|---|---|
 | `script-runner` | nimmt Aufrufe vom Gateway an, hält die Pins, übergibt den Code an die Sandbox, leitet Werkzeugaufrufe des Skripts an JanuaPort weiter | nur das interne Netz `jnpt_plugins` (kein Ausgang, nur das Gateway daneben), kein Host-Port |
 | `script-runner-sandbox` | führt **einen** Lauf aus und wird danach mit leerem Arbeitsspeicher neu gestartet | **kein Netz** |
 | `script-runner-fetcher` | prüft Pins gegen den Standard-Zweig und holt Objekte per ssh mit einem Nur-Lese-Deploy-Key | eigenes Netz mit Ausgang, kein Weg zum Gateway |
+| `script-runner-init` | legt die Bibliotheksordner an und beendet sich erfolgreich, bevor die Sandbox startet | **kein Netz**, nur das Volume `libs` |
 
 - **Nur gepinnter Code läuft.** Ein Pin ist Name, Pfad im Repository und voller
   Commit-Hash. Pinbar sind ausschließlich Commits, die Vorfahr des aktuellen
@@ -176,14 +177,26 @@ auch die eines anderen Pins.
 **Wartung (#1096).** Der vermittler sieht das ganze Volume `libs`, bereitet
 Wheels unter `/libs/staging` vor und veröffentlicht erst geprüfte Verzeichnisse
 atomar unter `/libs/ready`. Die Sandbox mountet nur den Unterordner `ready`
-unter `/libs`, read-only. Sie sieht weder `.tmp` noch `.wheel`; ihr Importpfad
+unter `/libs`, read-only und mit `nocopy: true`. Sie sieht weder `.tmp` noch `.wheel`; ihr Importpfad
 bleibt gleich. Quelle und Ziel des Rename liegen im selben Mount, ein
 Kopieren zwischen Dateisystemen ist nicht erforderlich.
 
 Die neue Compose verlangt Docker Engine ≥ 26 und Compose ≥ 2.35 mit
-Volume-Subpaths. Neue Volumes übernehmen beide Unterordner aus dem Image.
-Bei bestehenden P1-Volumes im Wartungsfenster den Stack anhalten, `ready` und
-`staging` für Nutzer 65532 anlegen (staging 0700) und fertige
+Volume-Subpaths. Vor der Sandbox läuft nun `script-runner-init` mit dem
+Unterbefehl `init-libs` als Nutzer 65532: ohne Netz, mit read-only-Dateisystem,
+allen Capabilities entzogen und ausschließlich dem vollen Volume `libs`.
+Er legt `ready` (0755) und `staging` (0700) an und erhält vorhandene Inhalte.
+Die Sandbox wartet auf seinen erfolgreichen Abschluss. Das gilt auch beim
+normalen Einstieg `docker compose up -d script-runner`; Image und Compose
+müssen gemeinsam aktualisiert werden.
+
+Ein Subpath-Mount legt fehlende Unterordner nicht aus dem Image an.
+`nocopy: true` verhindert außerdem, dass Docker den Image-Inhalt von `/libs`
+in ein leeres `ready` kopiert. Nach einem frischen Start bleibt die Sicht der
+Sandbox dadurch leer, bis geprüfte Bibliotheken veröffentlicht werden.
+
+Bei bestehenden P1-Volumes im Wartungsfenster den Stack anhalten, den neuen
+Init-Dienst starten und fertige
 64-Hex-Verzeichnisse nach `ready` verschieben; Zwischenreste verwerfen.
 Alternativ das ableitbare Cache-Volume neu anlegen. Ein Neustart prüft jedes
 fertige Verzeichnis einmal gegen sein Manifest und verwirft Abweichungen.

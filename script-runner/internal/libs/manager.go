@@ -60,8 +60,9 @@ var hashDirRe = regexp.MustCompile(`^[0-9a-f]{64}$`)
 const maxKnownSums = 8192
 
 // Manager hält das Verzeichnis libs/: pro Lock-Hash ein fertiges,
-// schreibgeschütztes Verzeichnis. Nur der vermittler schreibt dort; die
-// Sandbox sieht es nur lesend. Ein Entpacken läuft asynchron und höchstens
+// schreibgeschütztes Verzeichnis. Nur der vermittler schreibt Inhalte;
+// der vorgeschaltete Init legt nur ready/staging an. Die Sandbox sieht die
+// Bibliotheken nur lesend. Ein Entpacken läuft asynchron und höchstens
 // eines zugleich; es entsteht im privaten Staging als <hash>.tmp, wird mit fsync gesichert und
 // dann atomar umbenannt, nie halb sichtbar.
 //

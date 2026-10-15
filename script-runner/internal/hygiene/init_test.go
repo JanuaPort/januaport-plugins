@@ -1,8 +1,9 @@
 package hygiene
 
 import (
-	"gopkg.in/yaml.v3"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestLibsInitAndSandboxMountFailClosed(t *testing.T) {
@@ -31,6 +32,10 @@ func TestLibsInitAndSandboxMountFailClosed(t *testing.T) {
 		{"init store", func(_, s map[string]any) { s["volumes"] = []string{"libs:/libs", "store:/var/lib/script-runner"} }},
 		{"init libs readonly", func(_, s map[string]any) { s["volumes"] = []string{"libs:/libs:ro"} }},
 		{"init libs missing", func(_, s map[string]any) { s["volumes"] = []string{} }},
+		{"init extra tmpfs", func(_, s map[string]any) { s["tmpfs"] = []string{"/tmp"} }},
+		{"init environment", func(_, s map[string]any) { s["environment"] = map[string]string{"EXTRA": "value"} }},
+		{"init dependency", func(_, s map[string]any) { s["depends_on"] = []string{"script-runner"} }},
+		{"init healthcheck", func(_, s map[string]any) { s["healthcheck"] = map[string]any{"test": []string{"CMD", "true"}} }},
 		{"dependency missing", func(ss, _ map[string]any) { delete(ss["script-runner-sandbox"].(map[string]any), "depends_on") }},
 		{"dependency only started", func(ss, _ map[string]any) {
 			ss["script-runner-sandbox"].(map[string]any)["depends_on"] = map[string]any{"script-runner-init": map[string]any{"condition": "service_started"}}

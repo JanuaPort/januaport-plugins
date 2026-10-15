@@ -748,7 +748,7 @@ func TestB2UnconfinedFailsClosed(t *testing.T) {
 
 func b2FailsClosed(t *testing.T, proj string, files []string) {
 	t.Helper()
-	if out, err := compose(proj, files, "up", "-d", "--no-deps", "script-runner", "script-runner-sandbox"); err != nil {
+	if out, err := compose(proj, files, "up", "-d", "script-runner", "script-runner-sandbox"); err != nil {
 		t.Fatalf("compose up: %v %s", err, out)
 	}
 	defer func() { _, _ = compose(proj, files, "down", "-v", "-t", "1") }()

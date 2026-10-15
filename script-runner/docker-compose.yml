@@ -1,12 +1,13 @@
 # Skript-Läufer (JanuaPort/januaport#928) — Beisteller neben dem Gateway.
 #
-# Drei Dienste aus einem Image:
+# Drei dauerhafte Dienste und ein kurzer Init-Dienst aus einem Image:
 #   script-runner          vermittler: MCP für das Gateway (nur im internen
 #                          Netz jnpt_plugins, Port 8090), kein Host-Port,
 #                          Gesundheit über den Docker-Healthcheck (8091)
 #   script-runner-sandbox  Wächter + Python: kein Netz, kein Schlüssel, genau
 #                          ein Lauf je Instanz, danach Neustart mit leerem tmpfs
 #   script-runner-fetcher  abholer: prüft Pins gegen den Standard-Zweig und holt Objekte per ssh, eigenes Netz
+#   script-runner-init     legt ready/staging an, beendet sich vor dem Sandbox-Start
 #
 # Ablage auf der Anlage: /opt/jnpt/plugins/script-runner/ (diese Datei, das
 # Seccomp-Profil unter seccomp/ und die .env mit JNPT_SCRIPT_RUNNER_IMAGE).
@@ -35,7 +36,7 @@ services:
       - /run/jnpt/plugins/script-runner:/run/jnpt/plugins/script-runner:ro
       - sockets:/run/script-runner
       - store:/var/lib/script-runner
-      # Entpackte Bibliotheken (#1041): nur der vermittler schreibt hierhin.
+      # Bibliotheksinhalte schreibt nur der vermittler; Init legt Wurzelordner an.
       - libs:/libs
     # Nur das interne Netz der Kern-Compose (JanuaPort/januaport#1069): Weg A
     # (Gateway → script-runner:8090) und Weg B (→ jnpt:8484) laufen darüber,
@@ -58,6 +59,11 @@ services:
   script-runner-sandbox:
     image: ${JNPT_SCRIPT_RUNNER_IMAGE:?JNPT_SCRIPT_RUNNER_IMAGE fehlt in /opt/jnpt/plugins/script-runner/.env}
     command: ["guard"]
+    # Ein subpath-Mount setzt einen vorhandenen Ordner voraus. Auch beim ersten
+    # `up -d script-runner` muss Init vollständig erfolgreich beendet sein.
+    depends_on:
+      script-runner-init:
+        condition: service_completed_successfully
     # Vertrag §6, Zeile für Zeile.
     network_mode: none
     read_only: true
@@ -90,7 +96,9 @@ services:
       - sockets:/run/script-runner:ro
       # Der EINE zusätzliche Mount (#1041/#1096): nur fertige Bibliotheken;
       # staging bleibt außerhalb der Mount-Sicht. Beide liegen im selben Volume
-      # für einen atomaren Rename. Engine >= 26, Compose >= 2.35.
+      # für einen atomaren Rename. Init legt ready vor diesem Mount an; nocopy
+      # verhindert das Kopieren des Image-/libs-Inhalts IN ready.
+      # Engine >= 26, Compose >= 2.35.
       # Die entpackten Bibliotheken, nur
       # lesend und ohne noexec (native .so brauchen mmap mit PROT_EXEC). /work
       # und /tmp bleiben noexec; geladen wird per sys.path.append, nie über site.
@@ -100,6 +108,7 @@ services:
         read_only: true
         volume:
           subpath: ready
+          nocopy: true
 
   script-runner-fetcher:
     image: ${JNPT_SCRIPT_RUNNER_IMAGE:?JNPT_SCRIPT_RUNNER_IMAGE fehlt in /opt/jnpt/plugins/script-runner/.env}
@@ -119,11 +128,26 @@ services:
     networks: [egress]
     restart: unless-stopped
 
+  script-runner-init:
+    image: ${JNPT_SCRIPT_RUNNER_IMAGE:?JNPT_SCRIPT_RUNNER_IMAGE fehlt in /opt/jnpt/plugins/script-runner/.env}
+    command: ["init-libs"]
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    user: "65532:65532"
+    volumes:
+      # Voller Mount nur zum Initialisieren, kein Socket, Store oder Schlüssel.
+      - libs:/libs
+    restart: "no"
+
 volumes:
   sockets: {}
   store: {}
-  # Entpackte Python-Bibliotheken (#1041): der vermittler schreibt, die Sandbox
-  # liest nur. Eigentümer 65532 erbt das Volume vom Einhängepunkt /libs im Image.
+  # Entpackte Python-Bibliotheken (#1041): der vermittler schreibt Inhalte,
+  # Init legt Wurzelordner an, die Sandbox liest nur. Der volle Init-Mount
+  # übernimmt Eigentümer 65532 vom Einhängepunkt /libs im Image.
   libs: {}
 
 networks:

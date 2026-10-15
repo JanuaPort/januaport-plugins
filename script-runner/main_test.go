@@ -8,7 +8,9 @@ import (
 
 func TestInitLibsCreatesModesAndPreservesCache(t *testing.T) {
 	root := t.TempDir()
-	if err := initLibs(root); err != nil { t.Fatal(err) }
+	if err := initLibs(root); err != nil {
+		t.Fatal(err)
+	}
 	for _, name := range []string{"ready", "staging"} {
 		if err := os.Chmod(filepath.Join(root, name), 0o777); err != nil {
 			t.Fatal(err)
