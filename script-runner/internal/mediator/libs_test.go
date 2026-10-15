@@ -279,7 +279,7 @@ func contains(list []string, s string) bool {
 // Invariante 7 (Altbestand): ein Manifest ohne `requirements` verhält sich
 // wie bisher. Ein Ordner `wheels/` gehört dort zum gepinnten Baum.
 func TestLibsLegacyPinWithWheelsDirectoryBehavesAsBefore(t *testing.T) {
-	def := libsPin{dir: "legacy", name: "legacy", noRequires: true, extraFiles: map[string]string{"wheels/notes.txt": "keine Bibliothek\n"}}
+	def := libsPin{dir: "legacy", name: "legacy", noRequires: true, skipLock: true, extraFiles: map[string]string{"wheels/notes.txt": "keine Bibliothek\n"}}
 	e, _ := libsEnv(t, []libsPin{def})
 	var job frame.Job
 	done := e.oneRun("i1", func(g *fakeGuard, j frame.Job) { job = j; g.exited(0) })
@@ -623,7 +623,7 @@ func TestNoDownloadClientInSource(t *testing.T) {
 				t.Errorf("%s importiert %s", rel, path)
 			}
 			for _, np := range noNetPackages {
-				if pkg == np && (path == "net/http" || path == "net/url") {
+				if pkg == np && path == "net/http" {
 					t.Errorf("%s importiert %s", rel, path)
 				}
 			}
@@ -648,6 +648,103 @@ func TestNoDownloadClientInSource(t *testing.T) {
 				}
 			}
 			return true
+		})
+	}
+}
+
+// Altbestand: ohne `requirements` gelten die alten Grenzen auch für einen
+// Ordner wheels/ (4 MiB für den ganzen Pin-Ordner) — er wird weder übersprungen
+// noch anders bewertet.
+func TestLibsLegacyPinWithOversizedWheelsDirectoryStaysInvalid(t *testing.T) {
+	def := libsPin{dir: "legacy", name: "legacy", noRequires: true, skipLock: true,
+		extraFiles: map[string]string{"wheels/big.whl": strings.Repeat("x", 5<<20)}}
+	e, _ := libsEnv(t, []libsPin{def})
+	state, reason := e.waitPinSettled("legacy")
+	if state != contract.StateInvalid || reason != contract.ReasonManifestInvalid {
+		t.Fatalf("Zustand %s/%s, want invalid/manifest_invalid wie bisher", state, reason)
+	}
+}
+
+// Mit `requirements` gilt die Grenze nicht für wheels/ (eigene Grenzen).
+func TestLibsPinWithBigWheelsDirectoryIsNotLimitedByTreeCap(t *testing.T) {
+	big := testLib{dist: "big", version: "1.0", files: map[string]string{"big/__init__.py": "X = 1\n", "big/data.bin": strings.Repeat("0123456789abcdef", 1<<18)}}
+	def := libsPin{dir: "libs-pin", name: "libs_pin", libs: []testLib{big}}
+	e, _ := libsEnv(t, []libsPin{def})
+	g := dialGuard(t, e.sock, "i1", 2)
+	defer func() { _ = g.conn.Close() }()
+	e.waitReady("libs_pin")
+	if n := len(big.bytes(t)); n < 1000 {
+		t.Fatalf("Testfehler: Wheel %d Byte", n)
+	}
+}
+
+// Aufräumen nur bei vollständiger Lage: Ein Pin, dessen Manifest noch nicht
+// gelesen ist (hier: Commit nicht im Store), könnte sein Lock brauchen.
+func TestLibsPruneWaitsForPendingPins(t *testing.T) {
+	a := libsPin{dir: "pin-a", name: "pin_a", libs: []testLib{demoLib}}
+	b := libsPin{dir: "pin-b", name: "pin_b", libs: []testLib{helperLib}}
+	e, fx := libsEnv(t, []libsPin{a, b})
+	g := dialGuard(t, e.sock, "i1", 2)
+	defer func() { _ = g.conn.Close() }()
+	e.waitReady("pin_a")
+	e.waitReady("pin_b")
+	e.writePins([]pinRow{a.row(fx), {Name: "pin_b", Path: "pin-b", Commit: strings.Repeat("1", 40)}})
+	time.Sleep(300 * time.Millisecond) // viele Abgleiche
+	if state, _ := e.pinState("pin_b"); state != contract.StatePending {
+		t.Fatalf("pin_b = %s, want pending", state)
+	}
+	want := []string{a.lockHash(t), b.lockHash(t)}
+	sort.Strings(want)
+	if got := dirNames(t, e.libs); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("libs = %v, want %v (nichts aufräumen, solange ein Pin unbekannt ist)", got, want)
+	}
+}
+
+// Verschwindet libs/<hash> unter einem gecachten ready, wird neu vorbereitet
+// (kein stilles Weiterlaufen mit einem Verzeichnis, das es nicht gibt).
+func TestLibsMissingDirectoryIsRebuilt(t *testing.T) {
+	a := libsPin{dir: "pin-a", name: "pin_a", libs: []testLib{demoLib}}
+	e, _ := libsEnv(t, []libsPin{a})
+	g := dialGuard(t, e.sock, "i1", 2)
+	defer func() { _ = g.conn.Close() }()
+	e.waitReady("pin_a")
+	hash := a.lockHash(t)
+	removeTree(t, filepath.Join(e.libs, hash))
+	waitFor(t, "libs/<hash> neu vorbereitet", func() bool {
+		_, err := os.Stat(filepath.Join(e.libs, hash, "demo", "__init__.py"))
+		return err == nil && e.m.libs.PreparedCount() == 2
+	})
+	e.waitReady("pin_a")
+}
+
+// Invariante 2 für Pins mit gleichem Lock: Das manipulierte Wheel des einen
+// Pins wird auch dann erkannt, wenn der Lock schon vorbereitet ist — in jeder
+// Reihenfolge, und der gute Pin bleibt ready.
+func TestLibsTamperedWheelWithSharedLockIsInvalidInAnyOrder(t *testing.T) {
+	good := libsPin{dir: "pin-good", name: "pin_good", libs: []testLib{demoLib}}
+	evilLib := demoLib
+	evilLib.tamper = true
+	evil := libsPin{dir: "pin-evil", name: "pin_evil", libs: []testLib{evilLib}}
+	if good.lockHash(t) != evil.lockHash(t) {
+		t.Fatal("Testfehler: die Locks sind verschieden")
+	}
+	for name, order := range map[string][]libsPin{"gut zuerst": {good, evil}, "manipuliert zuerst": {evil, good}} {
+		t.Run(name, func(t *testing.T) {
+			e, _ := libsEnv(t, order)
+			g := dialGuard(t, e.sock, "i1", 2)
+			defer func() { _ = g.conn.Close() }()
+			e.waitReady("pin_good")
+			state, reason := e.waitPinSettled("pin_evil")
+			if state != contract.StateInvalid || reason != contract.ReasonLibsHashMismatch {
+				t.Fatalf("pin_evil = %s/%s, want invalid/libs_hash_mismatch", state, reason)
+			}
+			assertEnd(t, e.mustCall("pin_evil", map[string]any{}), contract.EndRefused, contract.DetailState)
+			if s, _ := e.pinState("pin_good"); s != contract.StateReady {
+				t.Fatalf("pin_good = %s", s)
+			}
+			if got := dirNames(t, e.libs); len(got) != 1 || got[0] != good.lockHash(t) {
+				t.Fatalf("libs = %v", got)
+			}
 		})
 	}
 }

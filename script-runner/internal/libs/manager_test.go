@@ -504,3 +504,117 @@ func (greedySource) Fetch(_ context.Context, _ string, dst io.Writer, _ int64) e
 	_, err := io.Copy(dst, bytes.NewReader(bytes.Repeat([]byte("x"), 1000)))
 	return err
 }
+
+// Ein URL-Wechsel bricht eine laufende Vorbereitung ab: Reset kehrt zurück,
+// ohne dass der blockierte Abruf endet, und es bleibt nichts liegen.
+func TestResetCancelsRunningPreparation(t *testing.T) {
+	f := newLibFixture(t, nil)
+	f.src.gate = make(chan struct{}) // wird nie geschlossen
+	f.m.Ensure(f.plan, f.src)
+	done := make(chan struct{})
+	go func() { f.m.Reset(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Reset wartet auf einen blockierten Abruf")
+	}
+	if got := listDir(t, f.dir); len(got) != 0 {
+		t.Fatalf("Rückstand nach Reset: %v", got)
+	}
+	if f.m.State(f.plan.Lock.Hash).Status != StatusNone {
+		t.Fatal("Zustand überlebt Reset")
+	}
+}
+
+// idSource macht aus der Test-Senke eine mit Inhalts-Identität (bei Git: die
+// Blob-ID). Zwei Pins mit demselben Lock, aber verschiedenen Wheel-Dateien
+// haben verschiedene Identitäten.
+type idSource struct {
+	*fakeSource
+	id string
+}
+
+func (s idSource) Identity(file string) string { return s.id + "/" + file }
+
+// ensureEventually ruft Ensure, bis der Zustand nicht mehr „vorbereitend“ ist.
+func ensureEventually(t *testing.T, m *Manager, plan Plan, src Source) State {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		st := m.Ensure(plan, src)
+		if st.Status != StatusPreparing && st.Status != StatusNone {
+			return st
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("Zustand bleibt %v", st.Status)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// Invariante 2 für Pins, die sich ein Lock teilen: Ist libs/<hash> schon da,
+// wird die Wheel-Datei des zweiten Pins trotzdem gegen das Lock geprüft. Ein
+// manipuliertes Wheel ergibt libs_hash_mismatch für diesen Pin, das fertige
+// Verzeichnis und der gute Pin bleiben unberührt.
+func TestEnsureChecksWheelsOfPinsSharingAPreparedLock(t *testing.T) {
+	f := newLibFixture(t, nil)
+	good := idSource{fakeSource: f.src, id: "gut"}
+	evilFiles := map[string][]byte{}
+	for k, v := range f.wheels {
+		evilFiles[k] = append([]byte(nil), v...)
+	}
+	evilFiles["demo-1.0-py3-none-any.whl"][10] ^= 0xff
+	evil := idSource{fakeSource: &fakeSource{files: evilFiles}, id: "boese"}
+
+	if st := ensureEventually(t, f.m, f.plan, good); st.Status != StatusReady {
+		t.Fatalf("guter Pin: %+v", st)
+	}
+	st := ensureEventually(t, f.m, f.plan, evil)
+	if st.Status != StatusFailed || st.Reason != contract.ReasonLibsHashMismatch || st.Retry {
+		t.Fatalf("manipulierter Pin: %+v, want Failed/libs_hash_mismatch", st)
+	}
+	if st := f.m.Ensure(f.plan, good); st.Status != StatusReady {
+		t.Fatalf("guter Pin nach dem Fehlschlag des anderen: %+v", st)
+	}
+	if err := verifyDir(f.m.Path(f.plan.Lock.Hash), f.plan.Lock.Hash); err != nil {
+		t.Fatalf("fertiges Verzeichnis berührt: %v", err)
+	}
+	if f.m.PreparedCount() != 1 {
+		t.Fatalf("PreparedCount = %d", f.m.PreparedCount())
+	}
+	// Dauerhaft und ohne erneutes Lesen.
+	n := evil.fetchCount()
+	if st := f.m.Ensure(f.plan, evil); st.Status != StatusFailed {
+		t.Fatalf("zweiter Versuch: %+v", st)
+	}
+	time.Sleep(30 * time.Millisecond)
+	if evil.fetchCount() != n {
+		t.Fatal("bekannter Fehler wurde erneut gelesen")
+	}
+}
+
+// Umgekehrte Reihenfolge: Das manipulierte Wheel zuerst darf den Lock für den
+// guten Pin nicht vergiften.
+func TestEnsureTamperedFirstDoesNotPoisonLockForGoodPin(t *testing.T) {
+	f := newLibFixture(t, nil)
+	good := idSource{fakeSource: f.src, id: "gut"}
+	evilFiles := map[string][]byte{}
+	for k, v := range f.wheels {
+		evilFiles[k] = append([]byte(nil), v...)
+	}
+	evilFiles["helper-2.1-py3-none-any.whl"][10] ^= 0xff
+	evil := idSource{fakeSource: &fakeSource{files: evilFiles}, id: "boese"}
+
+	if st := ensureEventually(t, f.m, f.plan, evil); st.Status != StatusFailed || st.Reason != contract.ReasonLibsHashMismatch {
+		t.Fatalf("manipulierter Pin: %+v", st)
+	}
+	if got := listDir(t, f.dir); len(got) != 0 {
+		t.Fatalf("libs = %v nach dem Fehlschlag", got)
+	}
+	if st := ensureEventually(t, f.m, f.plan, good); st.Status != StatusReady {
+		t.Fatalf("guter Pin: %+v", st)
+	}
+	if st := f.m.Ensure(f.plan, evil); st.Status != StatusFailed || st.Reason != contract.ReasonLibsHashMismatch {
+		t.Fatalf("manipulierter Pin danach: %+v", st)
+	}
+}

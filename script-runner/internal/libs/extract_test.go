@@ -555,7 +555,11 @@ func TestVerifyDirDetectsEveryDeviation(t *testing.T) {
 			})
 		}},
 		{"Datei hinzugefügt", func(t *testing.T, root string) {
-			rewrite(t, filepath.Join(root, "demo", "evil.pth"), "import os\n")
+			edit(t, filepath.Join(root, "demo"), func() {
+				if err := os.WriteFile(filepath.Join(root, "demo", "evil.pth"), []byte("import os\n"), 0o444); err != nil {
+					t.Fatal(err)
+				}
+			})
 		}},
 		{"Ordner hinzugefügt", func(t *testing.T, root string) {
 			edit(t, root, func() {
