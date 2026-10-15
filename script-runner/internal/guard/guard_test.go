@@ -185,6 +185,9 @@ func TestLibsArg(t *testing.T) {
 		"mit NUL":           valid[:63] + "\x00",
 		"Option":            "--" + valid[2:],
 		"Unicode":           valid[:63] + "é",
+		"Staging .tmp":      valid + ".tmp",
+		"Staging .wheel":    valid + ".wheel",
+		"Unterordner":       valid + "/demo",
 	} {
 		t.Run(name, func(t *testing.T) {
 			if got, err := libsArg(in); err == nil {

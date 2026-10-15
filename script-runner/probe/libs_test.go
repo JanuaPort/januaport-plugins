@@ -410,3 +410,48 @@ func TestLibsGlibcCeilingMatchesImage(t *testing.T) {
 		t.Fatalf("Image hat glibc %d.%d, libs.MaxGlibcMinor = %d: Messung P0 erneuern", major, minor, libs.MaxGlibcMinor)
 	}
 }
+
+// SEC R4 (a) und (b): Zwischenordner und -dateien des vermittlers
+// (<hash>.tmp, <hash>.wheel) liegen im selben Volume und sind in der Sandbox
+// ebenso read-only; der Importpfad zeigt nur auf ein fertig umbenanntes
+// Verzeichnis mit Manifest, nie auf .tmp.
+func TestLibsStagingReadOnlyAndImportPathOnlyFinished(t *testing.T) {
+	const tmpDir, wheelFile = "zz-staging.tmp", "zz-staging.wheel"
+	must(t, "docker", "exec", project+"-script-runner-1", "sh", "-c",
+		"mkdir -p /libs/"+tmpDir+" && echo x > /libs/"+tmpDir+"/f && echo x > /libs/"+wheelFile)
+	defer func() {
+		_, _ = run("docker", "exec", project+"-script-runner-1", "rm", "-rf", "/libs/"+tmpDir, "/libs/"+wheelFile)
+	}()
+	out := okJSON(t, "libs_readonly", map[string]any{"staging": []string{tmpDir, wheelFile}})
+	root, _ := out["root"].(map[string]any)
+	for _, op := range []string{"create", "mkdir"} {
+		if root[op] != "EROFS" {
+			t.Errorf("Wurzel von /libs: %s = %v, want EROFS", op, root[op])
+		}
+	}
+	staging, _ := out["staging"].(map[string]any)
+	for _, name := range []string{tmpDir, wheelFile} {
+		ops, _ := staging[name].(map[string]any)
+		if ops["exists"] != true {
+			t.Fatalf("%s in der Sandbox nicht sichtbar: %v", name, ops)
+		}
+		for op, v := range ops {
+			if op != "exists" && v == "ok" {
+				t.Errorf("%s: %s gelang in der Sandbox", name, op)
+			}
+		}
+		for _, op := range []string{"unlink", "rename"} {
+			if ops[op] != "EROFS" {
+				t.Errorf("%s: %s = %v, want EROFS", name, op, ops[op])
+			}
+		}
+	}
+	paths, _ := out["libs"].([]any)
+	finished := regexp.MustCompile(`^/libs/[0-9a-f]{64}$`)
+	if len(paths) != 1 || !finished.MatchString(fmt.Sprint(paths[0])) {
+		t.Errorf("Importpfad der Bibliotheken = %v, want genau /libs/<64 Hex>", paths)
+	}
+	if out["manifest_present"] != true {
+		t.Error("das Verzeichnis im Importpfad trägt kein .jnpt-manifest")
+	}
+}

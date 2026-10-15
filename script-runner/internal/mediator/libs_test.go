@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/januaport/januaport-plugins/script-runner/internal/contract"
 	"github.com/januaport/januaport-plugins/script-runner/internal/frame"
 	"github.com/januaport/januaport-plugins/script-runner/internal/libs"
@@ -237,13 +239,30 @@ func TestLibsPinBecomesReadyAndJobCarriesLockHash(t *testing.T) {
 	def := libsPin{dir: "libs-pin", name: "libs_pin", libs: []testLib{demoLib, helperLib}}
 	e, _ := libsEnv(t, []libsPin{def})
 	var job frame.Job
-	done := e.oneRun("i1", func(g *fakeGuard, j frame.Job) { job = j; g.exited(0) })
+	var atJob struct {
+		manifest bool
+		names    []string
+	}
+	done := e.oneRun("i1", func(g *fakeGuard, j frame.Job) {
+		job = j
+		// Im Moment des jobs zeigt libs nur auf ein fertiges Verzeichnis: mit
+		// Manifest, ohne .tmp und ohne Zwischendatei.
+		_, err := os.Stat(filepath.Join(e.libs, j.Libs, ".jnpt-manifest"))
+		atJob.manifest = err == nil
+		for _, de := range dirEntries(e.libs) {
+			atJob.names = append(atJob.names, de)
+		}
+		g.exited(0)
+	})
 	e.waitReady("libs_pin")
 	res := e.mustCall("libs_pin", map[string]any{})
 	<-done
 	assertEnd(t, res, contract.EndOK, "")
 
 	hash := def.lockHash(t)
+	if !atJob.manifest || len(atJob.names) != 1 || atJob.names[0] != hash {
+		t.Fatalf("beim job: Manifest %v, libs = %v, want genau das fertige %s", atJob.manifest, atJob.names, hash)
+	}
 	if job.Libs != hash {
 		t.Fatalf("job.Libs = %q, want %q", job.Libs, hash)
 	}
@@ -753,4 +772,89 @@ func TestLibsTamperedWheelWithSharedLockIsInvalidInAnyOrder(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Fail-closed beim Entfernen (SEC R4): Ein Lauf, der gerade sein libs-Verzeichnis
+// nutzt, behält es bis zum Ende; Aufräumen und Reset (URL-Wechsel) fassen es
+// nicht an. Ein Lauf, der während des Entfernens startet, bekommt
+// refused/state — nie ein ok mit einem teilweisen Baum. Der Zeitpunkt wird über
+// einen blockierten Lauf und Kanäle erzwungen, nicht über sleep.
+func TestLibsRunStartingDuringRemovalIsFailClosed(t *testing.T) {
+	a := libsPin{dir: "pin-a", name: "pin_a", libs: []testLib{demoLib, helperLib}}
+	e, _ := libsEnv(t, []libsPin{a}, withPoll(time.Hour))
+	g := dialGuard(t, e.sock, "i1", 2)
+	defer func() { _ = g.conn.Close() }()
+	waitFor(t, "Pin ready", func() bool {
+		e.m.refresh(context.Background())
+		s, _ := e.pinState("pin_a")
+		return s == contract.StateReady
+	})
+	hash := a.lockHash(t)
+	dir := filepath.Join(e.libs, hash)
+
+	jobSeen, releaseRun := make(chan struct{}), make(chan struct{})
+	go func() {
+		g.job()
+		close(jobSeen)
+		<-releaseRun
+		g.exited(0)
+	}()
+	first := make(chan *mcpResult, 1)
+	go func() {
+		res, err := e.call("pin_a", map[string]any{}, e.fx.commit)
+		first <- &mcpResult{res, err}
+	}()
+	<-jobSeen // der erste Lauf hält sein Verzeichnis
+
+	e.m.libs.Prune(map[string]bool{}) // "nicht mehr referenziert", aber in Benutzung
+	if _, err := os.Stat(filepath.Join(dir, "demo", "__init__.py")); err != nil {
+		t.Fatalf("Aufräumen hat das Verzeichnis eines laufenden Skripts angefasst: %v", err)
+	}
+	resetDone := make(chan struct{})
+	go func() { e.m.libs.Reset(); close(resetDone) }()
+	// Das Entfernen hat begonnen, sobald sich niemand mehr leihen kann.
+	waitFor(t, "Entfernen hat begonnen", func() bool {
+		r, ok := e.m.libs.Acquire(hash)
+		if ok {
+			r()
+		}
+		return !ok
+	})
+	res2, err := e.call("pin_a", map[string]any{}, e.fx.commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertEnd(t, res2, contract.EndRefused, contract.DetailState)
+	select {
+	case <-resetDone:
+		t.Fatal("Reset hat nicht auf den laufenden Lauf gewartet")
+	default:
+	}
+	if _, err := os.Stat(filepath.Join(dir, "helper", "__init__.py")); err != nil {
+		t.Fatalf("Baum des laufenden Skripts nicht mehr vollständig: %v", err)
+	}
+	close(releaseRun)
+	r1 := <-first
+	if r1.err != nil {
+		t.Fatal(r1.err)
+	}
+	assertEnd(t, r1.res, contract.EndOK, "")
+	<-resetDone
+	if got := dirNames(t, e.libs); len(got) != 0 {
+		t.Fatalf("libs = %v nach dem Reset", got)
+	}
+}
+
+type mcpResult struct {
+	res *mcp.CallToolResult
+	err error
+}
+
+func dirEntries(dir string) []string {
+	es, _ := os.ReadDir(dir)
+	var out []string
+	for _, e := range es {
+		out = append(out, e.Name())
+	}
+	return out
 }

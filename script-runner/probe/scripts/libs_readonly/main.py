@@ -14,12 +14,13 @@ if len(libs) != 1:
 root = libs[0]
 
 
-def attempt(label, fn):
+def attempt(label, fn, into=None):
+    into = res if into is None else into
     try:
         fn()
-        res[label] = "ok"
+        into[label] = "ok"
     except OSError as e:
-        res[label] = errno.errorcode.get(e.errno, str(e.errno))
+        into[label] = errno.errorcode.get(e.errno, str(e.errno))
 
 
 def create():
@@ -46,6 +47,29 @@ attempt("rename", lambda: os.rename(os.path.join(root, "probe_pkg"), os.path.joi
 attempt("chmod", lambda: os.chmod(os.path.join(root, "probe_pkg", "__init__.py"), 0o777))
 attempt("symlink", lambda: os.symlink("/etc/passwd", os.path.join(root, "link")))
 attempt("truncate", lambda: os.truncate(os.path.join(root, "probe_pkg", "__init__.py"), 0))
+
+
+# Zwischenordner und -dateien des vermittlers (<hash>.tmp, <hash>.wheel) liegen
+# im selben Nur-Lese-Volume: auch dort scheitert jeder Schreibversuch (SEC R4).
+import januaport  # noqa: E402
+
+res["root"] = {}
+attempt("create", lambda: open("/libs/neu.tmp", "w").close(), res["root"])
+attempt("mkdir", lambda: os.mkdir("/libs/neu.wheel"), res["root"])
+res["staging"] = {}
+for name in januaport.input.get("staging", []):
+    p = os.path.join("/libs", name)
+    r = res["staging"][name] = {"exists": os.path.lexists(p)}
+    attempt("unlink", lambda: os.unlink(p), r)
+    attempt("rename", lambda: os.rename(p, p + "x"), r)
+    attempt("chmod", lambda: os.chmod(p, 0o777), r)
+    if os.path.isdir(p):
+        attempt("create_in", lambda: open(os.path.join(p, "x"), "w").close(), r)
+        attempt("mkdir_in", lambda: os.mkdir(os.path.join(p, "d")), r)
+    else:
+        attempt("write", lambda: open(p, "r+").close() or open(p, "w").close(), r)
+res["manifest_present"] = os.path.exists(os.path.join(root, ".jnpt-manifest"))
+res["entries_in_libs"] = sorted(os.listdir("/libs"))
 
 import probe_pkg  # noqa: E402
 

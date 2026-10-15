@@ -618,3 +618,86 @@ func TestEnsureTamperedFirstDoesNotPoisonLockForGoodPin(t *testing.T) {
 		t.Fatalf("manipulierter Pin danach: %+v", st)
 	}
 }
+
+// Fail-closed beim Entfernen: Ein Lauf hält eine Leihe auf sein libs/<hash>.
+// Aufräumen überspringt das Verzeichnis, ein Reset wartet auf das Ende des
+// Laufs, und wer sich währenddessen oder danach leihen will, bekommt nichts —
+// nie ein halb entferntes Verzeichnis.
+func TestAcquireHoldsDirectoryAgainstPruneAndReset(t *testing.T) {
+	f := newLibFixture(t, nil)
+	hash := f.plan.Lock.Hash
+	f.m.Ensure(f.plan, f.src)
+	waitState(t, f.m, hash, StatusReady)
+	release, ok := f.m.Acquire(hash)
+	if !ok {
+		t.Fatal("keine Leihe auf ein fertiges Verzeichnis")
+	}
+	f.m.Prune(map[string]bool{})
+	if err := verifyDir(f.m.Path(hash), hash); err != nil {
+		t.Fatalf("Aufräumen hat das verliehene Verzeichnis angefasst: %v", err)
+	}
+	resetDone := make(chan struct{})
+	go func() { f.m.Reset(); close(resetDone) }()
+	// Reset hat begonnen, sobald niemand mehr leihen kann.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if r, ok := f.m.Acquire(hash); !ok {
+			break
+		} else {
+			r()
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("Reset hat nie begonnen")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	select {
+	case <-resetDone:
+		t.Fatal("Reset hat nicht auf den laufenden Lauf gewartet")
+	default:
+	}
+	if err := verifyDir(f.m.Path(hash), hash); err != nil {
+		t.Fatalf("Reset hat das verliehene Verzeichnis angefasst: %v", err)
+	}
+	release()
+	release() // doppeltes Freigeben schadet nicht
+	select {
+	case <-resetDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Reset endet nicht nach dem Ende des Laufs")
+	}
+	if got := listDir(t, f.dir); len(got) != 0 {
+		t.Fatalf("libs = %v nach dem Reset", got)
+	}
+	if _, ok := f.m.Acquire(hash); ok {
+		t.Fatal("Leihe auf ein entferntes Verzeichnis")
+	}
+}
+
+func TestAcquireNeedsReadyDirectory(t *testing.T) {
+	f := newLibFixture(t, nil)
+	hash := f.plan.Lock.Hash
+	if _, ok := f.m.Acquire(hash); ok {
+		t.Fatal("Leihe ohne Verzeichnis")
+	}
+	f.m.Ensure(f.plan, f.src)
+	waitState(t, f.m, hash, StatusReady)
+	release, ok := f.m.Acquire(hash)
+	if !ok {
+		t.Fatal("keine Leihe")
+	}
+	release()
+	f.m.Prune(map[string]bool{})
+	if _, ok := f.m.Acquire(hash); ok {
+		t.Fatal("Leihe nach dem Aufräumen")
+	}
+	// Von außen verschwunden: ebenfalls keine Leihe.
+	f.m.Ensure(f.plan, f.src)
+	waitState(t, f.m, hash, StatusReady)
+	if err := removeAll(f.m.Path(hash)); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := f.m.Acquire(hash); ok {
+		t.Fatal("Leihe auf ein von außen entferntes Verzeichnis")
+	}
+}
