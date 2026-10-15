@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -96,5 +97,26 @@ func TestHelloGolden(t *testing.T) {
 	}
 	if !reflect.DeepEqual(a, b) {
 		t.Fatalf("hello = %s, Golden = %s", got, want)
+	}
+}
+
+// #1041, Altbestand: ein job ohne Bibliotheken ist byte-gleich zu vorher
+// (kein Feld `libs`), mit Bibliotheken trägt er den Lock-Hash.
+func TestJobLibsFieldOnlyWhenSet(t *testing.T) {
+	plain, err := json.Marshal(Job{Type: TypeJob, Files: []File{{Path: "main.py", DataB64: "eA=="}}, Entry: "main.py", Input: json.RawMessage(`{}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"type":"job","files":[{"path":"main.py","data_b64":"eA=="}],"entry":"main.py","input":{}}`
+	if string(plain) != want {
+		t.Fatalf("job ohne libs = %s\nwant            %s", plain, want)
+	}
+	withLibs, _ := json.Marshal(Job{Type: TypeJob, Entry: "main.py", Input: json.RawMessage(`{}`), Libs: strings.Repeat("a", 64)})
+	if !strings.Contains(string(withLibs), `"libs":"`+strings.Repeat("a", 64)+`"`) {
+		t.Fatalf("job mit libs = %s", withLibs)
+	}
+	var back Job
+	if err := json.Unmarshal(withLibs, &back); err != nil || back.Libs != strings.Repeat("a", 64) {
+		t.Fatalf("Rundreise: %+v, %v", back, err)
 	}
 }

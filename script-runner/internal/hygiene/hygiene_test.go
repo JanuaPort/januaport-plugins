@@ -69,6 +69,18 @@ func TestComposeMutationsAreCaught(t *testing.T) {
 		{"Deploy-Key im mediator", "      - /run/jnpt/plugins/script-runner:/run/jnpt/plugins/script-runner:ro\n", "      - /run/jnpt/plugins/script-runner:/run/jnpt/plugins/script-runner:ro\n      - /run/jnpt/plugins/script-runner-git:/k:ro\n"},
 		{"abholer im jnpt_default", "  egress: {}\n", "  egress:\n    external: true\n    name: jnpt_default\n"},
 		{"read_only fehlt", "    read_only: true\n", "    read_only: false\n"},
+		// #1041: genau ein zusätzlicher Mount in der Sandbox, read-only; der
+		// vermittler schreibt ihn, sonst niemand.
+		{"libs rw in der Sandbox", "      - libs:/libs:ro\n", "      - libs:/libs\n"},
+		{"zweiter Zusatzmount in der Sandbox", "      - libs:/libs:ro\n", "      - libs:/libs:ro\n      - store:/var/lib/script-runner:ro\n"},
+		{"libs fehlt in der Sandbox", "      - libs:/libs:ro\n", ""},
+		{"libs an anderem Ort in der Sandbox", "libs:/libs:ro", "libs:/opt/libs:ro"},
+		{"Bind-Mount statt Volume als libs", "      - libs:/libs:ro\n", "      - /srv/libs:/libs:ro\n"},
+		{"libs im vermittler nur lesend", "      - libs:/libs\n", "      - libs:/libs:ro\n"},
+		{"libs fehlt im vermittler", "      - libs:/libs\n", ""},
+		{"libs im abholer", "      - /run/jnpt/plugins/script-runner-git:/run/jnpt/plugins/script-runner-git:ro\n", "      - /run/jnpt/plugins/script-runner-git:/run/jnpt/plugins/script-runner-git:ro\n      - libs:/libs\n"},
+		{"libs benannt", "  libs: {}\n", "  libs:\n    name: jnpt_libs\n"},
+		{"libs extern", "  libs: {}\n", "  libs:\n    external: true\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -415,5 +427,57 @@ func TestServicePrefixForbiddenPerService(t *testing.T) {
 		if v := checkCommon("x", s); len(v) == 0 {
 			t.Errorf("checkCommon: %s service:x nicht erkannt", name)
 		}
+	}
+}
+
+// #1041: Die Sandbox sieht die Bibliotheken nur lesend, genau einen Mount mehr
+// als vorher; /work und /tmp bleiben noexec, der Mount trägt kein noexec
+// (native .so brauchen mmap mit PROT_EXEC).
+func TestSandboxLibsMountIsTheOnlyExtraMount(t *testing.T) {
+	base := readCompose(t)
+	i := strings.Index(base, "  script-runner-sandbox:")
+	j := strings.Index(base, "  script-runner-fetcher:")
+	if i < 0 || j < i {
+		t.Fatal("Testfehler: Sandbox-Block nicht gefunden")
+	}
+	var mounts, tmpfs []string
+	section := ""
+	for _, line := range strings.Split(base[i:j], "\n") {
+		switch {
+		case strings.HasPrefix(line, "    volumes:"):
+			section = "volumes"
+		case strings.HasPrefix(line, "    tmpfs:"):
+			section = "tmpfs"
+		case strings.HasPrefix(line, "      - ") && section == "volumes":
+			mounts = append(mounts, strings.TrimPrefix(line, "      - "))
+		case strings.HasPrefix(line, "      - ") && section == "tmpfs":
+			tmpfs = append(tmpfs, strings.TrimPrefix(line, "      - "))
+		case strings.HasPrefix(line, "    ") && !strings.HasPrefix(line, "     "):
+			section = ""
+		}
+	}
+	if want := []string{"sockets:/run/script-runner:ro", "libs:/libs:ro"}; !slices.Equal(mounts, want) {
+		t.Fatalf("Mounts der Sandbox = %v, want %v", mounts, want)
+	}
+	if len(tmpfs) != 2 {
+		t.Fatalf("tmpfs = %v", tmpfs)
+	}
+	for _, line := range tmpfs {
+		if !strings.Contains(line, "noexec") {
+			t.Errorf("tmpfs ohne noexec: %s", line)
+		}
+	}
+}
+
+// Das Image legt den Einhängepunkt mit dem Eigentümer des vermittlers an;
+// ein neues benanntes Volume erbt ihn, und der vermittler (65532, read_only)
+// kann dort schreiben.
+func TestDockerfilePreparesLibsMountPoint(t *testing.T) {
+	b, err := os.ReadFile("../../Dockerfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`install -d -o 65532 -g 65532 -m 0755 [^\n]*\s/libs(\s|$)`).Match(b) {
+		t.Error("Dockerfile legt /libs nicht für 65532 an")
 	}
 }

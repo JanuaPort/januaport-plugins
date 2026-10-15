@@ -175,6 +175,9 @@ func setup() error {
 	if err != nil {
 		return err
 	}
+	if err := addLibsFixtures(repo); err != nil {
+		return err
+	}
 	if out, err := run("cp", "-r", "scripts/.", repo); err != nil {
 		return fmt.Errorf("cp: %v %s", err, out)
 	}
@@ -231,11 +234,15 @@ func setup() error {
 }
 
 var pinNames = []string{"ok_echo", "proc_probe", "sleeper", "residue", "seccomp_probe", "net_probe",
-	"socket_dir", "second_conn", "forkbomb", "raise_canary", "memhog", "quick"}
+	"socket_dir", "second_conn", "forkbomb", "raise_canary", "memhog", "quick",
+	"numpy_ok", "libs_readonly", "no_pip"}
+
+// invalidPinNames sind Pins, die ungültig bleiben müssen (#1041).
+var invalidPinNames = []string{"libs_tampered"}
 
 func pinsJSON() string {
 	var rows []map[string]string
-	for _, n := range pinNames {
+	for _, n := range append(append([]string{}, pinNames...), invalidPinNames...) {
 		rows = append(rows, map[string]string{"name": n, "path": n, "commit": commit})
 	}
 	b, _ := json.Marshal(map[string]any{"version": 1, "repo_url": "ssh://git@git.example.com/srv/scripts.git", "pins": rows})
@@ -507,7 +514,7 @@ func TestR3R9NoNetworkNoJnptMounts(t *testing.T) {
 	}
 	allowed := map[string]bool{"/": true, "/work": true, "/tmp": true, "/run/script-runner": true, "/proc": true,
 		"/dev": true, "/dev/pts": true, "/dev/mqueue": true, "/sys": true, "/sys/fs/cgroup": true,
-		"/etc/hosts": true, "/etc/hostname": true, "/etc/resolv.conf": true, "/dev/console": true}
+		"/etc/hosts": true, "/etc/hostname": true, "/etc/resolv.conf": true, "/dev/console": true, "/libs": true}
 	for _, mnt := range out["mounts"].([]any) {
 		s := mnt.(string)
 		if !allowed[s] && !strings.HasPrefix(s, "/proc/") && !strings.HasPrefix(s, "/sys/") && !strings.HasPrefix(s, "/dev/") {

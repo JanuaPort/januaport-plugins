@@ -1,0 +1,8 @@
+name: no_pip
+description: Sonde no_pip (JanuaPort/januaport#1041) - kein pip in der Sandbox, auch nicht mit Bibliotheken.
+entry: main.py
+input_schema:
+  type: object
+tools: []
+timeout_s: 10
+requirements: requirements.lock
