@@ -27,7 +27,8 @@ Katalog), Host-Units/tmpfiles (P4b, Gateway-Repo — hier nur Beispiele unter
 Pin-Speicher, Lauf-Token, Relay, Audit, `scan` (P1/P3, Gateway), Rezept (P5).
 Zeitplan-Verwaltung, Fälligkeit, Eingabe und Identity eines Zeitplans
 (#1039, Kern); hier nur der Taktgeber.
-Kein pip im Lauf, keine zweite Sprache, keine Netzfreigabe je Skript, kein
+Kein pip und kein Download (Bibliotheken liegen als Wheels im Repo des Betreibers,
+siehe „Python-Bibliotheken“), keine zweite Sprache, keine Netzfreigabe je Skript, kein
 Webhook, keine GUI. Der Git-Anbieter wird ausschließlich mit `ls-remote`
 und `fetch` gelesen.
 
@@ -43,15 +44,16 @@ und `fetch` gelesen.
 | `internal/schedules` | Leser für `schedules.json` (#1039): streng, fail-closed, höchstens 20, Cron wie der Kern (`robfig/cron/v3`), `time/tzdata`, Sommerzeit-Lücken |
 | `internal/ticker` | Taktgeber (#1039 S1): reine Logik — fällige Termine, Merker, `missed`/`skipped_busy`, gespiegelte Pausen, `_meta.schedules` |
 | `internal/manifest` | Leser für `jnpt-script.yaml` |
-| `internal/store` | Senke: Tree-Walk mit Hash-Nachrechnung jedes Objekts (M5) |
+| `internal/store` | Senke: Tree-Walk mit Hash-Nachrechnung jedes Objekts (M5); `LoadSkippingWheels`, `ListWheels`, `CopyBlob` für die Wheels (#1041) |
+| `internal/libs` | Python-Bibliotheken (#1041): Lock-Parser, Wheel-Tags, 1:1-Plan, gehärtetes Entpacken, `.jnpt-manifest`, Cache `libs/<lockhash>/` (`Manager`); kennt weder Git noch Netz |
 | `internal/mediator` | vermittler: MCP, Auth, Pins, Slot/V1, Lauf, Weg B |
 | `internal/guard` | Wächter (`guard_linux.go`; anderswo nur ein Platzhalter) |
 | `internal/fetcher` | abholer |
 | `internal/hygiene` | Wächter-Tests für Compose (Vertrag §6, SEC-Zeile 3), Seccomp-Profil, Dockerfile |
-| `sandbox/bootstrap.py` | Python-Seite: Modul `januaport`, Fehlermeldung ohne Text |
+| `sandbox/bootstrap.py` | Python-Seite: Modul `januaport`, Fehlermeldung ohne Text, `sys.path.append` der Bibliotheken (#1041) |
 | `seccomp/` | Profil, Quelle (moby) und Herleitung `derive.py` |
 | `contract/golden/` | Golden-JSON für §2–§4 — P3 kopiert sie unverändert ins Gateway-Repo; dazu `tools_list_schedules.json` (S1 → Gateway-Repo) und `script-runner-schedules.golden.json` (unverändert aus dem Gateway-Repo) |
-| `probe/` | Docker-Sonden (Build-Tag `docker`), Test-Überlagerung, SSH-Git-Anbieter |
+| `probe/` | Docker-Sonden (Build-Tag `docker`), Test-Überlagerung, SSH-Git-Anbieter; `measure-libs.sh` (Messung P0), Sonden `numpy_ok`, `libs_readonly`, `libs_tampered`, `no_pip` (#1041) |
 | `deploy/` | Beispiele: tmpfiles-Zeilen, Host-Deskriptor (echtes `IMAGE_REPO`, runtime-key in `REQUIRE`), `.env.example`, `daemon.json.example` |
 
 ## Draht-Vertrag (Kurzfassung, maßgeblich ist das Ticket)
@@ -81,7 +83,9 @@ und `fetch` gelesen.
   `tool_call{id,name,arguments}`, `output{data}`,
   `exited{code,signal?,error_type?,error_at?}`. `hello` trägt seit Fassung 3
   `profile` (`jnpt`|`other`, Golden `contract/golden/frame_hello.json`). vermittler → Wächter:
-  `job{files:[{path,data_b64}],entry,input}`, `tool_result{id,result}`.
+  `job{files:[{path,data_b64}],entry,input,libs?}`, `tool_result{id,result}`.
+  `libs` (#1041) ist der Lock-Hash (64 Hex) und fehlt ohne Bibliotheken; der
+  job ist dann byte-gleich zu vorher.
 - **Weg D** (plugin-intern): Volume `/var/lib/script-runner` mit `wanted/<sha>`
   und `repo_url` (schreibt der vermittler), `store.git`, `store.url`,
   `approved/<sha>` (Inhalt: geprüfte Repository-URL), `failed/<sha>` (Inhalt:
@@ -116,6 +120,7 @@ und `fetch` gelesen.
 | `input_schema` | ja | JSON-Schema als YAML, `type: object` |
 | `tools` | ja (darf leer sein) | qualifizierte Werkzeugnamen `^[a-z][a-z0-9_-]{0,127}$`, keine Dopplung, nie `script_*`/`admin_*` (Vertrag F4: das Gateway registriert `script_<name>`); Basis-Werkzeuge (`catalog`, `memory_*` …) sind zulässig und müssen deklariert sein |
 | `timeout_s` | ja | 1–25 |
+| `requirements` | nein (#1041) | nur der Wert `requirements.lock`: der Pin-Ordner bringt dann Lock und `wheels/*.whl` mit (siehe „Python-Bibliotheken“). Ein anderer Inhalt (auch leer, `null`, Liste) ist `manifest_invalid`; ohne das Feld verhält sich der Pin byte-gleich wie bisher. Ein alter Läufer weist das Feld als unbekannt ab (`manifest_invalid`), also fail-closed |
 
 Unbekannte Felder machen das Manifest ungültig (`manifest_invalid`). Ob ein
 deklariertes Werkzeug existiert, prüft nur das Gateway (§2c); der vermittler
@@ -125,7 +130,8 @@ Werkzeuge durch (M1, zweite Linie).
 **Python-Seite:** Eingabe als JSON auf stdin und als `januaport.input`,
 Ausgabe auf stdout, Werkzeuge per `januaport.call(name, arguments)` → dict
 (`CallToolResult`), `januaport.ToolError` bei `isError`. `sys.path` = Pin-Ordner
-und `vendor/` darin (reines Python, R12).
+und `vendor/` darin (reines Python, R12), dazu — mit `requirements` — hinten
+angehängt `/libs/<lockhash>` (Wheels, auch native; nur lesend).
 
 ## Invarianten (die tragen die Sicherheit)
 
@@ -152,15 +158,25 @@ und `vendor/` darin (reines Python, R12).
    4 KiB, Ausgabe ≤ 1 MiB, ≤ 50 Werkzeugaufrufe. Nach dem Ende hängt der Lauf
    ab (`detach`), jeder weitere Rahmen wird verworfen, der Wächter bekommt EOF.
    Socket-Ordner in der Sandbox read-only.
-4. **M5 / R6 — eine Senke.** Code kommt nur aus `store.Load`: Tree-Walk aus der
-   Objekt-DB, jeder Hash (Commit, Bäume, Blobs) selbst nachgerechnet, 120000 /
-   160000 / unzulässige Namen abgewiesen — vor **jeder** Übergabe neu, nicht
-   aus dem Zustands-Cache. Ohne Pin kein Lauf.
+4. **M5 / R6 — eine Senke.** Code kommt nur aus `store.Load` (bzw.
+   `LoadSkippingWheels`): Tree-Walk aus der Objekt-DB, jeder Hash (Commit,
+   Bäume, Blobs) selbst nachgerechnet, 120000 / 160000 / unzulässige Namen
+   abgewiesen — vor **jeder** Übergabe neu, nicht aus dem Zustands-Cache. Ohne
+   Pin kein Lauf. **Auch die Wheels** (#1041) kommen nur über die Senke:
+   `ListWheels` aus dem nachgerechneten Baum, `CopyBlob` rechnet die Git-ID
+   jedes Wheels beim Streamen nach; danach zusätzlich SHA-256 gegen das Lock.
+   Die entpackten Bibliotheken werden **nicht** je Lauf nachgerechnet, sondern
+   beim Entpacken und einmal beim Start (SEC B3, Abschnitt „Python-Bibliotheken“);
+   je Lauf prüft der vermittler nur, dass das Lock im Baum das bereite ist und
+   `libs/<hash>` noch da ist.
 5. **M6 — nie Text aus der Sandbox.** stderr des Skripts geht nach
    `/dev/null`. Die KI bekommt nur feste Sätze, `error_type` (Regex-geprüft)
    und `error_at` (nur `<Datei im Pin>:<Zeile>`, sonst weg). Ausgabe nur bei
    `ok`. Der vermittler loggt nur Zählwerte und feste Codes — nie Argumente,
-   Ausgabe, Fehlertexte oder git-stderr.
+   Ausgabe, Fehlertexte oder git-stderr. Auch bei den Bibliotheken (#1041):
+   nur Zahlen (Wheels, Dateien, Bytes, Dauer) und feste Codes
+   (`libs_hash_mismatch` …, `libs_io`, `libs_cleanup_failed`), nie
+   Paketnamen, Hashes oder Pfade (`TestLibsPinBecomesReadyAndJobCarriesLockHash`).
 6. **S2 / B2 — fail-closed.** Nur `hello` mit `seccomp: 2` **und**
    `profile: "jnpt"` und bekannter Isolation kommt in den Slot; sonst
    `isolation: invalid`, Pins `pending`, kein Werkzeug, `/healthz` 503.
@@ -211,7 +227,12 @@ und `vendor/` darin (reines Python, R12).
    (SEC-Zweitprüfung, Bedingung vor dem Merge). Negativproben je Dienst in
    `TestComposeUnknownAndForbiddenKeysPerService`. Wer der Compose einen
    neuen Schlüssel gibt, nimmt ihn bewusst ins Struct auf — das ist eine
-   Vertragsfrage.
+   Vertragsfrage. **Mounts der Sandbox (#1041):** genau der Socket-Ordner und
+   **ein** zusätzlicher Mount, `libs:/libs:ro` (Volume, ohne `noexec`); der
+   vermittler hängt `libs:/libs` beschreibbar ein, kein anderer Dienst sieht
+   `libs`. `/work` und `/tmp` bleiben `noexec`
+   (`TestSandboxLibsMountIsTheOnlyExtraMount`, Mutationen in
+   `TestComposeMutationsAreCaught`, Sonde `TestLibsExactlyOneExtraMountReadOnly`).
 10. **Der vermittler hat keinen Netzweg außer zum Gateway** (JanuaPort/januaport#1069).
     Er hängt genau am Netz `plugins` = external `jnpt_plugins`, das die
     Kern-Compose mit `internal: true` anlegt und an dem sonst nur `jnpt` hängt.
@@ -235,6 +256,177 @@ und `vendor/` darin (reines Python, R12).
     **Reihenfolge auf einer Anlage:** erst das Netz in der Kern-Compose, dann
     Aktuator-Fassung 3, dann diese Compose und der Deskriptor mit
     `HEALTH_DOCKER=1` (JanuaPort `docs/skript-laeufer.md`, „Vor der Einrichtung“).
+
+11. **Bibliotheken (#1041), Invarianten 1–5 und 7 des Plans.** Details im
+    Abschnitt „Python-Bibliotheken“; je Invariante die Tests:
+    - **Kein pip, kein Netz:** `TestNoDownloadClientInSource` (weder vermittler
+      noch abholer noch `libs`/`store` enthalten einen HTTP-Client für Downloads,
+      kein pip, keine Index-Adresse; `http.*`-Client nur in Weg B und
+      Taktgeber), Sonden `TestLibsNoPip` und `TestR12ImageHasNoPipAndSha1dcGit`,
+      `net_probe` unverändert.
+    - **Hash-Abweichung ist fail-closed:** `TestEnsureTamperedWheelFailsClosed`,
+      `TestLibsReasonsFailClosed` (manipuliertes Wheel, Wheel ohne Eintrag,
+      Eintrag ohne Wheel, sdist, falsche Plattform, kaputtes Lock), Sonde
+      `TestLibsTamperedWheelPinInvalid`; ein abgebrochenes Entpacken wird nie
+      sichtbar (`TestOpenCleansTmpStraysAndTampered`).
+    - **Entpacken:** die B4-Tabellen in `internal/libs/extract_test.go`;
+      `.pth` und Entry-Points laufen nie (Sonde `TestLibsReadOnlyEROFS`,
+      `pth_ran`).
+    - **Sandbox-Grenzen:** `libs` nur lesbar (`TestLibsReadOnlyEROFS`: EROFS),
+      `/work` noexec, genau ein Zusatzmount, pandas unter `pids_limit` und
+      512 MiB (`TestLibsNumpyPandasUnderLimits`).
+    - **Pin-Wechsel und Cache:** `TestLibsSameLockTwoPinsPreparedOnce`,
+      `TestLibsNewLockNewDirectoryAndPruneUnreferenced`,
+      `TestLibsPruneWaitsForPendingPins`, `TestLibsRepositoryURLChangeClearsLibs`,
+      `TestLibsRunWithoutReadyLibsRefusedState`.
+    - **Altbestand:** `TestLibsLegacyPinWithWheelsDirectoryBehavesAsBefore`,
+      `TestLibsLegacyPinWithOversizedWheelsDirectoryStaysInvalid`,
+      `TestJobLibsFieldOnlyWhenSet`, `TestRequirementsFieldInvalidContent`.
+
+## Python-Bibliotheken (#1041 P1)
+
+Verbindlich: Plan-First v1 (JanuaPort/januaport#1041, Kommentar 6176737741),
+SEC-Auflagen B1–B7 (6176765349) und die PO-Entscheide vom 15.10.2026
+(6191014884). **Variante A:** Die Wheels liegen im Skript-Repo des Betreibers;
+beim Pin wird nichts aus dem Internet geladen, im Image gibt es kein pip. Ein
+Mensch pinnt den Commit, damit sind die Wheels über die Git-Hashes gesichert.
+
+**Pin-Ordner:** `requirements.lock` (pip-Format, nur `name==version` mit
+`--hash=sha256:`), `wheels/*.whl` (nur Wheels, flach) und im Manifest
+`requirements: requirements.lock` (nur dieser Wert; ein anderer ist
+`manifest_invalid`). Ohne das Feld verhält sich der Pin byte-gleich wie
+vorher — auch ein Ordner `wheels/` bleibt dann Teil des gepinnten Baums.
+
+**Ablauf (alles im vermittler, `internal/libs`, ohne Python):**
+
+1. `store.LoadSkippingWheels` liest den Code ohne `wheels/` (4-MiB-Grenze nur
+   für den Code); `store.ListWheels` liest die Namen in `wheels/` aus dem
+   nachgerechneten Baum.
+2. `libs.NewPlan` prüft sofort: Lock streng (`ParseLock`, mit Fuzz-Test),
+   Wheel-Namen und Tags (`ParseWheelName`), Wheel-Dateien und Lock-Einträge
+   genau 1:1. Fehler sind endgültige Pin-Gründe, nie ein Werkzeug.
+3. `Manager.Ensure` holt und entpackt **asynchron**, höchstens ein Lock zugleich;
+   der Pin bleibt bis dahin `pending`. Je Wheel: `store.CopyBlob` streamt den
+   Blob in eine Zwischendatei `libs/<hash>.wheel` und rechnet die Git-ID nach
+   (M5), dann SHA-256 gegen das Lock (`libs_hash_mismatch`), dann
+   `extractor.addWheel`. Am Ende `seal` (Manifest, Modi, fsync) und
+   Umbenennen `libs/<hash>.tmp` → `libs/<hash>`; dann erst `ready`.
+4. Der job trägt `libs` (Lock-Hash, 64 Hex). Der Wächter prüft es als Hex und
+   gibt es als vierten Wert (nach Bootstrap, Pin-Ordner und Einstieg) in argv weiter; der Bootstrap hängt
+   `/libs/<hash>` per `sys.path.append` **hinter** Pin-Ordner und `vendor/`
+   an. Nie `site`: keine `.pth`-Dateien, keine Entry-Points. `childEnv` setzt
+   `OPENBLAS_NUM_THREADS=1` und `OMP_NUM_THREADS=1` (Messung P0).
+
+**Gründe** (das Gateway reicht sie als Text durch, im Kern ist dafür kein Code
+nötig; `contract` bleibt bei 1 und 2):
+
+| Grund | Wann |
+|---|---|
+| `libs_invalid` | Lock oder Wheel-Datei formal falsch, Datei nicht Wheel (sdist, egg, README), Lock-Eintrag ohne Wheel oder Wheel ohne Eintrag, `requirements.lock` fehlt, Zip beschädigt, unsichere Namen, Symlink, Zip64, Verschlüsselung, Kollisionen |
+| `libs_hash_mismatch` | SHA-256 des Wheels steht nicht im Lock (ein Git-Objekt, das nicht zu seinem Hash passt, meldet wie bisher `hash_mismatch`) |
+| `libs_platform` | Tags außerhalb der festen Menge (anderes Python, arm64, musllinux, Windows, glibc über 2.41) |
+| `libs_too_large` | eine der Grenzen unten |
+
+**Erlaubte Tags:** `cp312-cp312`, `cp3N-abi3` (N ≤ 12) und `cp312`/`py3`/`py3N`
+mit ABI `none`, jeweils auf `manylinux1|2010|2014|_2_N_x86_64` (N ≤
+`libs.MaxGlibcMinor` = 41, die glibc des Images laut P0) oder `any` (nur ABI
+`none`). Wie bei pip genügt ein zulässiges Tag eines komprimierten Satzes
+(`py2.py3-none-any`, `manylinux_2_27….manylinux_2_28`).
+
+**Grenzen v1** (`libs.DefaultLimits`, PO/LEAD 15.10.; gezählt wird beim
+Entpacken, nie nach dem Zip-Kopf): 128 MiB je Datei, 300 MiB je Wheel und je
+Lock („installiert“), 30 000 Dateien je Lock, 2 GiB gesamt (alle Locks auf der
+Platte), 256 MiB je `.whl`-Datei, 40 000 Zip-Einträge je Wheel, höchstens
+256 Wheels und 256 Lock-Einträge, Kompressionsverhältnis ≤ 64 : 1 je Wheel
+(ab 1 MiB entpackt). numpy plus pandas belegen 91 MiB und 2478 Dateien.
+
+**Entpack-Härtung (SEC B4, jede Zeile ein Tabellentest in
+`internal/libs/extract_test.go`):**
+
+| B4 | Maßnahme | Test |
+|---|---|---|
+| a | Größe beim Streamen zählen (nach jedem 32-KiB-Stück: Datei, Wheel, Lock, gesamt, Verhältnis), dem Zip-Kopf nie glauben | `TestExtractLimits`, `TestExtractNeverTrustsHeaderSizes` |
+| b | abgewiesen: `..`, absolut, Rückstrich, NUL und Steuerzeichen, Laufwerksbuchstabe, `.`/leere Bestandteile, kein UTF-8, zu lang, reservierter Name `.jnpt-manifest`; doppelte Namen nach Case-Folding (`unicode.ToLower(ToUpper(r))`, auch Elternordner, Datei gegen Ordner, über Wheels hinweg; Lehre #1002) | `TestExtractRejectsUnsafeNames`, `…DuplicateNames`, `…CollisionAcrossWheels` |
+| c | Symlinks und Gerätedateien über die externen Attribute (Unix-Typbits, auch bei DOS-Ersteller) | `TestExtractRejectsSpecialFiles` |
+| d | Dateien 0444, Ordner 0555, nie setuid/setgid/sticky | `TestExtractNormalizesModes` |
+| e | Zip64 und mehrteilige Archive abgewiesen, Einträge begrenzt; das zentrale Verzeichnis wird **vor** dem Zip-Paket geprüft (lückenlos, Feldlängen begrenzt), damit dessen Speicher beschränkt bleibt; verschlüsselte Einträge und Verfahren außer Store/Deflate abgewiesen | `TestExtractRejectsZip64`, `…EncryptedAndUnknownMethods`, `…NotAZip` |
+| f | Messtest mit 42.zip-artigen Bomben, misst den Spitzen-Heap während des Entpackens (Grenze 24 MiB Zuwachs, gemessen unter 1,3 MiB) | `TestExtractBombPeakHeap` |
+
+**Manifest `libs/<hash>/.jnpt-manifest` (B3):** JSON mit Fassung, Lock-Hash,
+Ordnern und je Datei Pfad, Größe, SHA-256. `libs.Open` räumt beim Start auf
+(alles, was kein fertiges 64-Hex-Verzeichnis ist: `.tmp`, `.wheel`, Reste) und
+prüft **jedes** Verzeichnis einmal (`verifyDir`: Dateien und Ordner decken sich
+mit dem Manifest, Größe, SHA-256, Modi 0444/0555, keine Symlinks); Abweichungen
+werden verworfen und der Pin bereitet neu vor. Geprüft wird nur beim Start, nie
+je Lauf (Ausnahme der M5-Nachrechnung, SEC B3): Es schreibt nur der vermittler,
+die Sandbox liest nur. Je Lauf wird geprüft, dass das Lock im Baum das
+bereite ist (SHA-256 gleich `libs`) und `libs/<hash>` noch da ist; sonst
+`refused/state`, nie ein stilles Neubauen.
+
+**Benannte Grenze (SEC B3):** *Eigene, vertrauliche Pakete teilen sich die
+Sichtbarkeit mit allen Skripten der Anlage.* Jede Sandbox sieht alle Locks
+unter `/libs`, auch die eines anderen Pins.
+
+**Lieferkette (SEC B1):** SHA-256 im Lock plus der Pin durch einen Menschen
+binden einen Lauf an das, was im Repo liegt. Sie belegen nicht, dass ein
+Wheel das echte PyPI-Artefakt ist. Der Vertrauensanker ist das Repo des
+Betreibers; Schadpakete und Typosquatting fallen in seine Paketwahl. Keine
+Herkunftsprüfung (PEP 740 erst mit einer späteren Variante B).
+
+**Cache (Invariante 5):** Ein Lock wird einmal vorbereitet, gleichgültig wie
+viele Pins ihn tragen (`Manager.Ensure` ist ein Einzelflug je Hash,
+`PreparedCount`). **Jeder Pin prüft trotzdem seine eigenen Wheel-Dateien:** Ist
+`libs/<hash>` schon da, liest der Manager die Wheels des weiteren Pins einmal
+(ohne Entpacken) und rechnet die SHA-256 nach; er merkt sie sich je Blob-ID
+(`Identifier`, Merkzettel im Speicher). Ein Wheel, das nicht zum Lock passt, ist
+`libs_hash_mismatch` für diesen Pin, auch wenn das Verzeichnis für einen anderen
+Pin längst steht (`TestEnsureChecksWheelsOfPinsSharingAPreparedLock`,
+`TestLibsTamperedWheelWithSharedLockIsInvalidInAnyOrder`). Vorbereitungen und
+Fehler gehören zum **Plan** (Lock plus Blob-IDs), fertige Verzeichnisse zum Lock:
+ein manipuliertes Wheel vergiftet den Lock für einen guten Pin nicht
+(`TestEnsureTamperedFirstDoesNotPoisonLockForGoodPin`). Nach einem Neustart ist
+der Merkzettel leer; die Pins bleiben pending, bis sie ihre Wheels einmal
+gelesen haben. Ein neuer Lock ergibt ein neues Verzeichnis. Aufgeräumt wird
+nur, was nicht mehr referenziert ist, und nur bei vollständiger Lage:
+`pins.json` war lesbar, jeder Pin hat sein Manifest gelesen oder ist ungültig,
+es läuft kein Skript. Ein Wechsel der Repository-URL leert `libs` (nur aus
+einer gültigen `pins.json`; der erste Abgleich nach dem Start ist kein Wechsel,
+`libs` überlebt einen Neustart). Ein Fehler beim Lesen (kein Grund) gilt als
+vorübergehend und wird nach 30 s erneut versucht; Gründe sind endgültig.
+
+**Compose und Sandbox:** Volume `libs` — beim vermittler `libs:/libs`
+beschreibbar, in der Sandbox `libs:/libs:ro` als der **eine** zusätzliche
+Mount (`internal/hygiene` kennt genau diesen), ohne `noexec`, weil native
+`.so` mit `mmap(PROT_EXEC)` geladen werden. `/work` und `/tmp` bleiben
+`noexec`. Das Image legt `/libs` für 65532 an; ein neues Volume erbt den
+Eigentümer. Die Compose ist damit ein Wartungsschritt (neues Volume), kein
+Image-Wechsel allein.
+
+**Bewusste Entscheidungen:**
+
+- **Kein pyc vorab (B7 nicht gebaut):** pandas importiert ohne pyc in 1,2–1,4 s
+  (Messung P0), weit unter 3 s. Siehe „Messung #1041 P0“.
+- **Lock-Hash = SHA-256 der Datei-Bytes**, nicht eines normalisierten Inhalts:
+  ein anderer Kommentar ergibt ein neues Verzeichnis, aber nie eine
+  Verwechslung.
+- **Fester Dateiname `requirements.lock`:** keine Pfad-Wahl, kein Suchen.
+- **Prüfung des zentralen Zip-Verzeichnisses vor `zip.NewReader`:** Das
+  Zip-Paket liest alle Verzeichniseinträge in den Speicher, bevor ein Eintrag
+  geprüft ist; ohne diese Vorprüfung wäre der Speicher des vermittlers durch
+  ein 256 MiB großes „Wheel“ nicht beschränkt.
+- **`git cat-file` und große Blobs:** `batch.close` schließt zuerst die
+  Standardausgabe; ein nicht gelesenes großes Objekt ließ git sonst auf einer
+  vollen Pipe hängen.
+
+**Stolperfallen:**
+
+- Die Tests laufen auch als Nicht-Root (`--user 1000`): `libs/<hash>` ist
+  0555, `t.TempDir` räumt das nicht auf; die Hilfen `tempDir`/`libsTempDir`
+  tun es. Als root fällt eine fehlende Rechteprüfung nicht auf.
+- `libs.Limits` ist in Tests absichtlich klein (Bytes); die Grenzen v1 stehen
+  nur in `DefaultLimits`.
+- Eine Änderung des Basis-Images braucht eine neue Messung der glibc
+  (`TestLibsGlibcCeilingMatchesImage`).
 
 ## Taktgeber (#1039 Paket S1)
 
@@ -348,7 +540,8 @@ Diese Auslegungen aus dem Bau von P2 hat LEAD in Fassung 3 bestätigt —
 - `pins.json`: ungültiger Name oder Commit → `manifest_invalid`, ungültiger
   Pfad → `bad_path`. — ratifiziert (F3)
 - Grenze v1: gepinnter Ordner ≤ 4 MiB und ≤ 1000 Dateien, sonst
-  `manifest_invalid`. — ratifiziert (F3)
+  `manifest_invalid`. Mit `requirements` (#1041) gilt das für den Code ohne
+  `wheels/`; die Wheels haben eigene Grenzen (`libs.DefaultLimits`). — ratifiziert (F3)
 - OOM = SIGKILL, das nicht vom Wächter kam → `limit/memory`. — ratifiziert (F3)
 - Fork-Bombe: runc → EAGAIN (`error/exception`, `BlockingIOError`), runsc →
   `limit/sandbox_lost`; beides zulässig. — ratifiziert (F3)
@@ -511,7 +704,8 @@ unterscheidet sich nicht auffällig vom Median.
   Prozess außerhalb der Sandbox angelegt hat (`ECONNREFUSED`) — die Sandbox
   kommt nie in den Slot. `open`, nicht `all`: nur Öffnen eingehängter Sockets,
   kein Anlegen; die Grenze ist die Mount-Liste (R9-Sonde: nur die erwarteten
-  Mounts; `/run/script-runner` enthält genau `sandbox.sock`).
+  Mounts, seit #1041 Socket-Ordner und `/libs`; `/run/script-runner` enthält
+  genau `sandbox.sock`).
 - **Eigener Runtime-Name `runsc-jnpt`** (SEC-Bedingung zu B1):
   `runtimeArgs` gelten für jeden Container, der den Runtime-Namen nutzt. Ein
   eigener Eintrag `runsc-jnpt` mit `["--oci-seccomp", "--host-uds=open"]`
@@ -559,8 +753,12 @@ unterscheidet sich nicht auffällig vom Median.
 # aus dem Repo-Root: der Release-Wächter liest .github/workflows/
 docker run --rm -v "$PWD":/repo -w /repo/script-runner golang:1.26.9 go test ./...
 python3 script-runner/seccomp/derive.py --check
+# Messung P0 (Python-Bibliotheken); P0_RUNTIME=runsc-jnpt auf einem Host mit gVisor
+sh script-runner/probe/measure-libs.sh
+# Fuzz am Lock-Parser (Seeds laufen schon in go test)
+docker run --rm -v "$PWD":/repo -w /repo/script-runner golang:1.26.9 go test -run xxx -fuzz FuzzParseLock -fuzztime 60s ./internal/libs/
 # Docker-Sonden gegen den echten Stack (P2_PREFIX, Standard p2-928, räumt Stacks auf)
-sh script-runner/probe/run.sh
+sh script-runner/probe/run.sh   # lädt numpy/pandas als Wheels per pip in einem Hilfscontainer; P2_WHEELS_DIR=<Ordner> nimmt vorab geladene Wheels
 # mit eigenen Container- und Netznamen für parallele Prüfaufträge
 P2_PREFIX=jnpt1083p2 sh script-runner/probe/run.sh
 # gegen ein fertiges Image (so fährt es die Release-Strecke)

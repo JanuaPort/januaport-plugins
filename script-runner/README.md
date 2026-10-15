@@ -34,7 +34,8 @@ Drei Dienste aus einem Image, neben dem Gateway:
 - **Die Sandbox hat nichts:** kein Netz, keinen Schlüssel, kein Repository,
   keine Ablage, schreibgeschütztes Dateisystem außer zwei kleinen,
   nicht ausführbaren Arbeitsordnern, eigene Seccomp-Sperrliste, keine
-  Capabilities.
+  Capabilities. Das Einzige, was sie zusätzlich sieht: die geprüften
+  Python-Bibliotheken, nur lesend (siehe „Python-Bibliotheken“).
 - **Fehler bleiben drinnen.** Die KI sieht bei einem Fehler nur die Art der
   Ausnahme und die Zeile im Skript — nie einen Traceback, nie Daten.
 - **Protokolliert wird nur Zählbares** (Ende, Dauer, Bytes, Zahl der
@@ -53,8 +54,9 @@ Die Werte sind Grenzen dieser Fassung, keine Zusagen.
 | Werkzeugaufrufe je Lauf | ≤ 50 |
 | Gleichzeitige Läufe | 1 |
 | Läufe in Folge | etwa 6 je Minute; dazwischen antwortet der Läufer „belegt, in etwa 10 Sekunden erneut versuchen“ |
-| Gepinnter Ordner | ≤ 4 MiB, ≤ 1000 Dateien |
-| Sprache | Python 3.12 mit Standardbibliothek; reines Python unter `vendor/` im Skriptordner; **kein pip**, keine kompilierten Erweiterungen |
+| Gepinnter Ordner | ≤ 4 MiB, ≤ 1000 Dateien (der Code, ohne `wheels/`) |
+| Bibliotheken | nur mit `requirements`: Wheels für Python 3.12 auf manylinux x86_64; ≤ 300 MiB und ≤ 30 000 Dateien je Lock installiert, ≤ 2 GiB für alle Locks; ein Thread für BLAS/OpenMP |
+| Sprache | Python 3.12 mit Standardbibliothek; reines Python unter `vendor/` im Skriptordner; Bibliotheken nur als geprüfte Wheels (siehe unten); **kein pip**, kein Download |
 | Git | nur ssh; ein Repository je Anlage |
 
 **Isolation:** Wo gVisor (Runtime `runsc-jnpt`) eingerichtet ist, läuft die
@@ -79,6 +81,7 @@ input_schema:
 tools:                          # abschließend: nur diese Werkzeuge
   - kartei_find
 timeout_s: 20                   # 1 bis 25
+# requirements: requirements.lock   # optional: Python-Bibliotheken als Wheels, siehe unten
 ```
 
 ```python
@@ -92,6 +95,75 @@ json.dump({"offen": found.get("structuredContent")}, sys.stdout)
 Die Eingabe steht als JSON auf stdin und in `januaport.input`, die Ausgabe
 geht nach stdout. Ist sie ein JSON-Objekt, bekommt die KI sie zusätzlich
 strukturiert.
+
+## Python-Bibliotheken (Wheels im Repository)
+
+Ein Skript darf Bibliotheken wie numpy oder pandas benutzen, wenn der
+Skriptordner sie als **Wheels** mitbringt. Der Läufer lädt nichts nach: Es gibt
+kein pip im Image und beim Pinnen keinen Zugriff auf das Internet. Die Wheels
+liegen im Repository des Betreibers; ein Mensch pinnt den Commit, damit sind sie
+über die Git-Hashes gesichert.
+
+```
+meine-auswertung/
+  jnpt-script.yaml        # requirements: requirements.lock
+  main.py
+  requirements.lock       # pip-Format, jeder Eintrag name==version mit --hash=sha256:
+  wheels/
+    pandas-3.0.6-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
+    numpy-2.5.4-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+    …
+```
+
+**Lock bauen.** Wheels für genau diese Plattform laden — aus einem Index, den
+Sie benennen und prüfen (hier `pypi.org`; ein eigener Spiegel ist ebenso
+möglich), samt Abhängigkeiten, und die Hashes ins Lock schreiben:
+
+```sh
+pip download --only-binary=:all: --implementation cp --python-version 3.12 \
+  --platform manylinux2014_x86_64 --platform manylinux_2_28_x86_64 \
+  --index-url https://pypi.org/simple -d meine-auswertung/wheels pandas
+cd meine-auswertung
+for w in wheels/*.whl; do
+  n=$(basename "$w" | cut -d- -f1); v=$(basename "$w" | cut -d- -f2)
+  printf '%s==%s \\n    %s\n' "$n" "$v" "$(pip hash "$w" | tail -1)"
+done > requirements.lock
+# Gegenprobe: dieselben Wheels, jetzt mit Hash-Pflicht
+pip download --only-binary=:all: --require-hashes --no-deps -r requirements.lock \
+  --implementation cp --python-version 3.12 --platform manylinux2014_x86_64 \
+  --platform manylinux_2_28_x86_64 -d /tmp/gegenprobe
+```
+
+**Was der Läufer prüft** (jede Abweichung ergibt einen ungültigen Pin ohne
+Werkzeug, der Grund steht in der Pin-Liste):
+
+| Grund | Bedeutung |
+|---|---|
+| `libs_invalid` | Lock oder Wheel formal falsch; Wheel ohne Lock-Eintrag oder Eintrag ohne Wheel; eine sdist; unsicherer Inhalt (Pfadausbruch, Symlink, …) |
+| `libs_hash_mismatch` | die SHA-256 eines Wheels steht nicht im Lock |
+| `libs_platform` | Tags außer Python 3.12 auf manylinux x86_64 (kein arm64, kein musllinux, glibc höchstens 2.41) |
+| `libs_too_large` | über den Grenzen: 300 MiB und 30 000 Dateien je Lock installiert, 2 GiB für alle Locks |
+
+Der Läufer entpackt jedes Wheel selbst (ohne Python), gehärtet und einmal je
+Lock, nach `libs/<Hash des Locks>/`. Bis dahin steht der Pin auf `pending`.
+Die Sandbox hängt das Verzeichnis nur lesend an (`sys.path.append`, keine
+`.pth`-Dateien, keine Entry-Points) und setzt `OPENBLAS_NUM_THREADS=1` und
+`OMP_NUM_THREADS=1`. Ein neues Lock ergibt ein neues Verzeichnis; was kein Pin
+mehr braucht, wird aufgeräumt, ein Wechsel der Repository-URL leert alles.
+
+**Lieferkette — was das heißt und was nicht.** Der Hash im Lock und der Pin
+durch einen Menschen binden den Lauf an **das, was in Ihrem Repository liegt**.
+Sie belegen nicht, dass ein Wheel das echte Paket vom Index ist; eine
+Herkunftsprüfung gibt es nicht. Die Wahl der Pakete, Schadpakete und
+Typosquatting liegen beim Betreiber, ebenso die Lizenzen der Pakete.
+
+**Benannte Grenze.** Eigene, vertrauliche Pakete teilen sich die Sichtbarkeit
+mit allen Skripten der Anlage: Jede Sandbox sieht alle Locks unter `/libs`,
+auch die eines anderen Pins.
+
+**Wartung.** Die Compose bekommt ein neues Volume `libs`. Das ist ein
+Wartungsschritt: neue Compose ablegen, `up -d`. Ein Neustart prüft jedes
+fertige Verzeichnis einmal gegen sein Manifest und verwirft Abweichungen.
 
 ## Betrieb
 
@@ -133,8 +205,9 @@ strukturiert.
   so unberührt. Ohne `--oci-seccomp` greift das Profil nicht (der Läufer
   bedient dann nicht); ohne `--host-uds=open` erreicht die Sandbox den Läufer
   nicht. `open` (nicht `all`) erlaubt nur das Öffnen von Unix-Sockets, die in
-  die Sandbox eingehängt sind, kein Anlegen; eingehängt ist nur der
-  Socket-Ordner des Läufers, read-only — die Grenze ist die Mount-Liste.
+  die Sandbox eingehängt sind, kein Anlegen; eingehängt sind nur der
+  Socket-Ordner des Läufers und `/libs` (die Bibliotheken), beide read-only —
+  die Grenze ist die Mount-Liste.
 - **Netz:** Der Läufer hängt nur am Netz `jnpt_plugins`, das die Kern-Compose
   von JanuaPort mit `internal: true` anlegt; dort hängt sonst nur das Gateway.
   Er erreicht `jnpt:8484`, das Gateway ihn unter `script-runner:8090`, ins
@@ -176,7 +249,8 @@ verantwortet, Branch-Schutz, Prüfung vor dem Pinnen).
 ```sh
 # aus dem Repo-Root
 docker run --rm -v "$PWD":/repo -w /repo/script-runner golang:1.26.9 go test ./...
-sh script-runner/probe/run.sh    # Docker-Sonden gegen den echten Stack
+sh script-runner/probe/run.sh    # Docker-Sonden gegen den echten Stack (lädt numpy/pandas als Wheels per pip)
+sh script-runner/probe/measure-libs.sh  # Messung: Bibliotheken im Sandbox-Image
 ```
 
 Einzelheiten für Entwickler: `CLAUDE.md`. Änderungen: `CHANGELOG.md`.

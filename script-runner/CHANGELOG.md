@@ -2,6 +2,41 @@
 
 ## Unveröffentlicht
 
+- **Python-Bibliotheken als Wheels im Skript-Repo (JanuaPort/januaport#1041,
+  P0 + P1; Variante A, kein Download, kein pip).** Ein Pin-Ordner kann
+  `requirements.lock` (pip-Format, `--hash=sha256:`, nur Wheels) und
+  `wheels/*.whl` mitbringen; das Manifest trägt dann `requirements:
+  requirements.lock` (neues optionales Feld, nur dieser Wert; ohne das Feld
+  verhält sich der Pin byte-gleich wie bisher, ein alter Läufer weist es als
+  `manifest_invalid` ab). Der vermittler prüft Lock und Plattform-Tags
+  (`cp312`/`abi3`/`py3`/`none` × `manylinux*_x86_64`/`any`, glibc bis 2.41),
+  gleicht Wheel-Dateien und Lock-Einträge 1:1 ab, rechnet jedes Wheel gegen
+  den Git-Hash (M5) und das Lock (SHA-256) nach und entpackt es gehärtet
+  (SEC B4: Größen beim Streamen, Pfad- und Namensprüfung inkl. Case-Folding,
+  keine Symlinks und Geräte, Modi 0444/0555, kein Zip64, Bomben-Test mit
+  Spitzen-Heap) **asynchron** nach `libs/<Lock-Hash>/`; der Pin bleibt bis
+  dahin `pending`. Neue Gründe `libs_invalid`, `libs_hash_mismatch`,
+  `libs_platform`, `libs_too_large`. Jedes Verzeichnis trägt
+  `.jnpt-manifest` (Pfad, Größe, SHA-256 je Datei, SEC B3) und wird beim Start
+  einmal dagegen geprüft; Abweichungen werden verworfen. Ein Lock wird einmal
+  vorbereitet, Nicht-mehr-Referenziertes aufgeräumt, ein URL-Wechsel leert
+  `libs`. Der job trägt `libs` (Lock-Hash, 64 Hex); der Wächter prüft es als
+  Hex, der Bootstrap hängt `/libs/<hash>` per `sys.path.append` an (kein
+  `site`, keine `.pth`, keine Entry-Points); `childEnv` setzt
+  `OPENBLAS_NUM_THREADS=1` und `OMP_NUM_THREADS=1`. **Compose:** neues Volume
+  `libs` (beim vermittler beschreibbar, in der Sandbox read-only als der eine
+  zusätzliche Mount, ohne `noexec`; `/work` und `/tmp` bleiben `noexec`) —
+  **neue Compose und neues Image, ein Wartungsschritt mit Runbook-Eintrag**
+  (P5). `contract` bleibt bei 1 und 2. **Benannte Grenze:** Eigene,
+  vertrauliche Pakete teilen sich die Sichtbarkeit mit allen Skripten der
+  Anlage. **Messung P0** (numpy 2.5.4, pandas 3.0.6, runc): 91 MiB und 2478
+  Dateien installiert, pandas-Import ohne pyc 1,2–1,4 s, RSS 82 MiB, ohne
+  Thread-Deckel so viele Threads wie der Host CPUs hat; deshalb kein pyc vorab
+  (SEC B7 nicht gebaut). Sonden `numpy_ok`, `libs_readonly`, `libs_tampered`,
+  `no_pip`, `probe/measure-libs.sh`; runsc nicht gemessen. Nicht in diesem
+  Paket: `januaport.log` (P2), Kern-Doku und Anleitung für die KI (P4),
+  Release und Kuratierung (P5).
+
 - **vermittler nur im internen Netz `jnpt_plugins` (JanuaPort/januaport#1069).**
   Der Dienst `script-runner` hängt nur noch am externen Netz `jnpt_plugins`, das
   die Kern-Compose mit `internal: true` anlegt (statt `jnpt_default`): kein Weg
