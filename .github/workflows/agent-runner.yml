@@ -1,0 +1,45 @@
+# Tests des Beistellers agent-runner (JanuaPort/januaport#1099 B1).
+#
+# unit:  Go-Tests (Golden-Vertrag mit dem Kern, Schleife gegen Fake-Kern,
+#        Anthropic-Adapter, Lauf-Protokoll ohne Inhalt, Compose-/Dockerfile-
+#        Hygiene), go vet, Race-Detector.
+# image: Docker-Build des distroless-Images.
+name: agent-runner
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'agent-runner/**'
+      - '.github/workflows/agent-runner.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Test (agent-runner, Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent-runner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agent-runner/go.mod
+          cache-dependency-path: agent-runner/go.sum
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test -count=1 -race ./...
+
+  image:
+    name: Image (agent-runner)
+    runs-on: ubuntu-latest
+    needs: unit
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker build
+        run: docker build -t agent-runner:ci agent-runner
