@@ -247,8 +247,8 @@ func TestToolsListSchedulesGolden(t *testing.T) {
 	golden(t, "tools_list_schedules.json", ToolsList(listed, IsolationGVisor, sched))
 }
 
-// Ohne Zeitpläne bleibt tools/list wie in Fassung 1 (kein Schlüssel
-// `schedules`): Das Golden tools_list.json ändert sich nicht.
+// Ohne Zeitpläne fehlt weiterhin der Schlüssel `schedules`. Die übrige Form
+// bleibt erhalten; das Golden tools_list.json trägt seit Fassung 5 contract 2.
 func TestToolsListWithoutSchedulesHasNoKey(t *testing.T) {
 	for _, s := range [][]ScheduleStatus{nil, {}} {
 		b, _ := json.Marshal(ToolsList(nil, IsolationGVisor, s))

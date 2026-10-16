@@ -9,7 +9,8 @@ Der Skript-Läufer führt **gepinnte Python-Skripte** aus einem Git-Repository
 des Kunden aus, ausgelöst von einer KI über JanuaPort. Er läuft als Beisteller
 neben dem Gateway; das Gateway selbst führt nie Code aus (R1). Entstanden in
 JanuaPort/januaport#928 (Paket P2). Verbindlich sind der **Draht-Vertrag**
-(Fassung 1 + Fassung 2 + Nachtrag 2a in JanuaPort/januaport#928) und das
+(Fassung 5, `contract: 2`, JanuaPort/januaport#1040; Grundlage Fassung 1 + 2
+sowie Nachtrag 2a in JanuaPort/januaport#928; lokal `contract/README.md`) und das
 Bedrohungsmodell von SEC (T1–T12, R1–R13, M1–M7, V1–V3); die Nummern in
 Kommentaren und Tests verweisen darauf.
 
@@ -65,14 +66,19 @@ und `fetch` gelesen.
   (die Werkzeuge hängen an den Pins, nicht an einer festen Registrierung).
 - **`tools/list`:** je `ready`-Pin ein Werkzeug (Name = Pin-Name,
   `_meta["januaport.ai/script"]`), auf dem Ergebnis
-  `_meta["januaport.ai/runner"]` mit `contract: 1`, `isolation` und **allen**
+  `_meta["januaport.ai/runner"]` mit `contract: 2`, `isolation` und **allen**
   Pins samt Zustand. Ist `isolation` `invalid`, erscheint kein Werkzeug und
   jeder sonst bereite Pin als `pending` (§5: „dann ist kein Pin ready“).
   Mit Zeitplänen trägt `_meta["januaport.ai/runner"]` zusätzlich `schedules`
   (#1039, siehe „Taktgeber“); ohne Zeitpläne fehlt der Schlüssel.
 - **`tools/call`:** Header `X-Jnpt-Run-Token` (`jnptrun_` + 43 base64url),
-  `X-Jnpt-Run-Id` (UUIDv4), `X-Jnpt-Pin-Commit`. Fehlen Token oder ID oder sind
-  sie falsch geformt → JSON-RPC-Fehler (Protokollverstoß). Alles Fachliche als
+  `X-Jnpt-Run-Id` (UUIDv4), `X-Jnpt-Pin-Commit`, zusätzlich optional
+  `X-Jnpt-Run-Limits: wall_s=<s>;output_bytes=<n>;tool_calls=<n>`.
+  Genau diese Reihenfolge, drei positive ASCII-Dezimalzahlen, keine Leerzeichen
+  oder mehrfachen Kopfzeilen; Überlauf wird abgewiesen. Fehlen Token oder ID
+  oder sind vorhandene Lauf-Header falsch geformt → JSON-RPC-Fehler
+  (Protokollverstoß), vor Lauf und Slot-Belegung, fester Satz ohne Headerwert.
+  Alles Fachliche als
   `CallToolResult` mit `_meta["januaport.ai/run"]` und festem Satz. Reihenfolge
   der Ablehnungen: `refused/pin` → `refused/commit` → `refused/state` →
   `refused/input` → `busy`.
@@ -107,9 +113,33 @@ und `fetch` gelesen.
   Nur ein negativer Vorfahren-Befund (Exit 1) widerruft die Zweigfreigabe;
   andere Git-Prüffehler liefern keine neue Erkenntnis. Ein Wechsel der
   `repo_url` leert die Freigaben weiterhin.
-  Der Draht-Vertrag bleibt Fassung 1; nur der Grund-Wert
-  `not_on_default_branch` kommt hinzu (`ReasonNotOnDefaultBranch`). Das Gateway
+  Die Zweigprüfung änderte die Vertragskennung damals nicht; aktuell gilt
+  Fassung 5 mit Kennung 2. Der Grund-Wert
+  `not_on_default_branch` kam hinzu (`ReasonNotOnDefaultBranch`). Das Gateway
   reicht Gründe als Text durch und hat keine geschlossene Liste.
+
+### Laufgrenzen und Kompatibilität (#1040 P3)
+
+Ohne Grenz-Header bleiben die Altgrenzen **25 s / 1 MiB / 50 Aufrufe**.
+Mit Header gilt je Wert `min(Vorgabe, technische Decke)`; die Decken sind
+**24 h / 16 MiB / 10 000** (`contract.MaxWallS`, `MaxOutputBytes`,
+`MaxToolCalls`). SEC L8: Tests prüfen sie als Literale 86400 / 16777216 / 10000.
+Eingabe weiterhin höchstens 256 KiB. Ausgabe und Werkzeugaufrufe misst der
+vermittler selbst je Lauf; die festen Sätze nennen die Grenze dieses Laufs.
+
+**SEC L6:** Wandzeit in P3 weiterhin `min(wall_s, manifest.timeout_s, 25 s)`.
+Die eigene Konstante `mediator.l6WallCap` ist keine technische Decke. Erst muss
+der Internet-Ausgang des vermittlers entfernt sein (#1069); längere Läufe und
+das optionale Manifestfeld werden erst in P4/P5 freigegeben. Auch mit der bereits
+gehärteten Compose wird die Kappe in P3 nicht angehoben.
+
+**Benannte Kompatibilitätsgrenze:** Ein Läufer mit `contract: 2` braucht ein
+Gateway ab **0.77.0**. Ein älteres Gateway sperrt den Läufer ganz
+(„andere Vertragsfassung“). **Update-Reihenfolge: erst das Gateway, dann der Läufer.**
+
+Belege: `TestParseRunLimits`, `TestRunHeadersGoldenV1AndV2`,
+`TestRunnerContractTwoLiteral`, die `TestRunLimits*AtAdapter` sowie
+`TestMalformedRunLimitsAtAdapterDoNotStartOrOccupySlot`.
 
 ## Manifest `jnpt-script.yaml` (Vertrag §10: P2 legt die Felder fest)
 
@@ -156,7 +186,14 @@ angehängt `/libs/<lockhash>` (Wheels, auch native; nur lesend).
    Der Wächter setzt `PR_SET_DUMPABLE 0` als erste Handlung und bedient nur
    als PID 1.
 3. **M4 — eine Verbindung = ein Lauf; Größen beim Lesen.** Rahmen ≤ 1 MiB +
-   4 KiB, Ausgabe ≤ 1 MiB, ≤ 50 Werkzeugaufrufe. Nach dem Ende hängt der Lauf
+   4 KiB je Nachricht (eigenständige Protokollgrenze), Ausgabe und Aufrufe nach
+   den Laufgrenzen oben. Der Wächter streamt stdout in 64-KiB-Stücken, ohne
+   Summen- oder Aufrufkappe; auch sechsfaches JSON-Escaping bleibt pro Stück
+   unter der Rahmengrenze. `TestRunLimitsGuardStreamsBeyondV1` prüft 16 MiB
+   Ausgabe und 61 Aufrufe am echten Wächter-Adapter; der MCP-Adapter prüft
+   zusätzlich Ausgabe über der Altgrenze und 60 erfolgreiche Aufrufe.
+   `guard.MaxJobFrame` (8 MiB) begrenzt Job-/Bootstrap-Nachrichten, nicht die
+   Ausgabe eines Laufs. Nach dem Ende hängt der Lauf
    ab (`detach`), jeder weitere Rahmen wird verworfen, der Wächter bekommt EOF.
    Socket-Ordner in der Sandbox read-only.
 3a. **L1 — Abbruch heißt Platz frei (JanuaPort/januaport#1040, SEC L1).** Endet
@@ -331,8 +368,8 @@ Die akzeptierten Abschnitte werden sofort weitergereicht, nicht erst bei
 job erhalten: `ok`, Skriptfehler, Wandzeit, Speicher, Sandbox-Abbruch,
 Größen-/Aufrufgrenzen und `internal` (abgebrochener Kontext). Es steht nur als
 additives String-Feld `log` in `_meta["januaport.ai/run"]`; leer fehlt es
-(`omitempty`), vor dem Start ebenso. Contract bleibt 1 und 2; ein altes
-Gateway verwirft das unbekannte Feld in `takeRunMeta` (P3 ergänzt den Kern).
+(`omitempty`), vor dem Start ebenso. Das Log-Feld bleibt additiv; der Läufer
+meldet seit #1040 P3 Contract 2 und braucht Gateway 0.77.0 oder neuer.
 M6 gilt unverändert für stdout bei Fehlern und stderr. Das Lauf-Protokoll
 erscheint nie im Dienstlog oder in dessen Fehlertexten. Nach `detach` wird
 auch `log` verworfen (M4).
@@ -381,7 +418,7 @@ im vermittler ist das seit #1096 `/libs/ready/<hash>`.
    `OPENBLAS_NUM_THREADS=1` und `OMP_NUM_THREADS=1` (Messung P0).
 
 **Gründe** (das Gateway reicht sie als Text durch, im Kern ist dafür kein Code
-nötig; `contract` bleibt bei 1 und 2):
+nötig; die aktuelle Vertragskennung ist 2, siehe Kompatibilitätsgrenze oben):
 
 | Grund | Wann |
 |---|---|
