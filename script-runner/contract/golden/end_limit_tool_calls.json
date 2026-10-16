@@ -11,7 +11,7 @@
   "content": [
     {
       "type": "text",
-      "text": "Das Skript hat mehr als 50 Werkzeugaufrufe versucht."
+      "text": "Das Skript hat die Grenze der Werkzeugaufrufe dieses Laufs überschritten."
     }
   ],
   "isError": true

@@ -159,7 +159,7 @@ func TestCachedPinCannotRunAfterApprovalRemoved(t *testing.T) {
 	}
 	e.m.mu.Unlock()
 	p.state = contract.StateReady
-	result, _ := e.m.run(context.Background(), p, []byte(`{}`), testRunToken)
+	result, _ := e.m.run(context.Background(), p, []byte(`{}`), testRunToken, contract.RunLimits{WallS: 25, OutputBytes: 1048576, ToolCalls: 50})
 	if result.End != contract.EndRefused || result.Detail != contract.DetailState {
 		t.Fatalf("cached pin ran after approval removal: %+v", result)
 	}
