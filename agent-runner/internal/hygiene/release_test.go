@@ -398,3 +398,20 @@ func TestReleaseWorkflowOrderAndC1(t *testing.T) {
 		}
 	}
 }
+
+// Die Sonde läuft im Release gegen das ausgelieferte Image; ihre Hilfs-Images
+// dürfen nicht über ein bewegliches Tag nachrutschen (Hinweis GATE, #1099).
+func TestSmokeHelperImagesPinnedByDigest(t *testing.T) {
+	b, err := os.ReadFile("../../probe/smoke.ps1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	if strings.Contains(s, ":latest") {
+		t.Fatal("smoke.ps1 nutzt ein :latest-Image")
+	}
+	pinned := regexp.MustCompile(`'(busybox|curlimages/curl):[0-9.]+@sha256:[0-9a-f]{64}'`)
+	if got := len(pinned.FindAllString(s, -1)); got != 2 {
+		t.Fatalf("erwartet zwei per Digest gepinnte Hilfs-Images, gefunden %d", got)
+	}
+}
