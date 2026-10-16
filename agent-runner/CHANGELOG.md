@@ -14,4 +14,4 @@
 - Fake-Kern-Tests, Negativ- und Mutationsproben; Prüfbericht im Gate-Bericht auf JanuaPort/januaport#1099.
 
 Kein veröffentlichtes Image, kein Live-Modellaufruf, kein Katalogeintrag.
-OpenAI-Adapter, Zeitplanung und GUI sind nicht Bestandteil von B1.
+Nur Anthropic: Ein Profil auf einer openai-kompatiblen Modell-Anbindung scheitert in 0.1.0 (der Kern weist die Anfrage ab). OpenAI-Adapter, Zeitplanung und GUI sind nicht Bestandteil von B1.

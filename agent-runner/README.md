@@ -6,6 +6,8 @@ Ergebnisse anhängen. Modell und Werkzeuge laufen über JanuaPort. Der Läufer
 kennt den Modell-Schlüssel nicht und hat im ausgelieferten Netz keinen
 Internet-Ausgang. Apache 2.0, siehe [LICENSE](../LICENSE).
 
+**Grenze in 0.1.0:** Der Läufer baut nur Anfragen im Format der Anthropic Messages API. Ein Agenten-Profil, das auf eine openai-kompatible Modell-Anbindung zeigt (OpenAI, Azure, Mistral, Ollama), scheitert in 0.1.0, weil der Kern die Anfrage abweist. Der OpenAI-Adapter folgt in einer späteren Version.
+
 ## Start
 
 Voraussetzung: ein Kern mit Agenten-Relay und Modell-Durchgang aus
