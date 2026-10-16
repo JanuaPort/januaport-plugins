@@ -24,8 +24,8 @@ const FileName = "jnpt-script.yaml"
 // Wheels liegen in `wheels/` daneben.
 const RequirementsFile = "requirements.lock"
 
-// MaxTimeoutS ist die Wandzeit-Obergrenze (Grenzen v1, unter dem
-// 30-s-Relay des Gateways).
+// MaxTimeoutS bleibt in P3 die Manifest-Obergrenze (Pflichtfeld 1..25).
+// Längere/optionale Manifestzeiten gehören zu P4/P5 (#1040, SEC L6).
 const MaxTimeoutS = 25
 
 // Manifest beschreibt ein Skript.
