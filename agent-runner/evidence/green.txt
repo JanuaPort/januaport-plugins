@@ -1,5 +1,0 @@
-?   	github.com/januaport/januaport-plugins/agent-runner	[no test files]
-ok  	github.com/januaport/januaport-plugins/agent-runner/internal/anthropic	0.012s
-ok  	github.com/januaport/januaport-plugins/agent-runner/internal/hygiene	0.018s
-?   	github.com/januaport/januaport-plugins/agent-runner/internal/runlog	[no test files]
-ok  	github.com/januaport/januaport-plugins/agent-runner/internal/runner	2.462s

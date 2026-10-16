@@ -11,7 +11,7 @@
 - Feste Fehlertexte und inhaltfreies Lauf-Protokoll.
 - Sieben unveränderte Kern-Goldens sowie separate Vorschläge für Fehlerenden.
 - Internes Netz, read-only, distroless/static als Non-Root.
-- Fake-Kern-Tests, Negativ- und Mutationsproben; Nachweise in `REPORT.md`.
+- Fake-Kern-Tests, Negativ- und Mutationsproben; Prüfbericht im Gate-Bericht auf JanuaPort/januaport#1099.
 
 Kein veröffentlichtes Image, kein Live-Modellaufruf, kein Katalogeintrag.
 OpenAI-Adapter, Zeitplanung und GUI sind nicht Bestandteil von B1.

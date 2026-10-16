@@ -64,5 +64,5 @@ verworfen. Bei abgebrochener Verbindung bleibt das Protokoll der Nachweis
 des Endes, eine HTTP-Antwort kann dann ausbleiben.
 
 Vertrag und neue Ende-Beispiele: [contract/README.md](contract/README.md).
-Prüfbericht: [REPORT.md](REPORT.md). Der B1-Nachweis benutzt ausschließlich
-einen lokalen Fake-Kern, keine Live-Modellaufrufe.
+Die Tests benutzen ausschließlich einen lokalen Fake-Kern, keine Live-Modellaufrufe.
+Mutationsproben: `probe/mutations.py` (Bericht nach `<tmp>/agent-runner-mutations/`).

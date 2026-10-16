@@ -1,1 +1,0 @@
-golangci-lint v2.9.0: PASS (0 issues)

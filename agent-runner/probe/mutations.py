@@ -2,10 +2,12 @@
 
 python agent-runner/probe/mutations.py jnpt1099-b1-check
 Every source edit is restored in finally. No golden file is modified.
+The report goes to <tmp>/agent-runner-mutations/, never into the repo.
 """
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTAINER = sys.argv[1]
@@ -94,7 +96,9 @@ def main():
             for path, body in originals.items():
                 path.write_bytes(body)
     target = "mutations.txt" if len(sys.argv) < 3 else "mutations-additional.txt"
-    (ROOT / "evidence" / target).write_text("\n".join(report), encoding="utf-8", newline="\n")
+    out = Path(tempfile.gettempdir()) / "agent-runner-mutations"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / target).write_text("\n".join(report), encoding="utf-8", newline="\n")
     return int(failed)
 
 if __name__ == "__main__":
