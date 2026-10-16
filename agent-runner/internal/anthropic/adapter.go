@@ -127,6 +127,15 @@ func ValidateContent(raw json.RawMessage) error {
 			if json.Unmarshal(b["source"], &source) != nil || !only(source, "type media_type data") || str(source["type"]) != "base64" || str(source["media_type"]) == "" {
 				return errPayload
 			}
+			// Match the core's image allowlist on every path: model responses,
+			// outgoing history and MCP tool-result projection all use this check.
+			if str(b["type"]) == "image" {
+				switch str(source["media_type"]) {
+				case "image/png", "image/jpeg", "image/gif", "image/webp":
+				default:
+					return errPayload
+				}
+			}
 			if _, e := base64.StdEncoding.DecodeString(str(source["data"])); e != nil || str(source["data"]) == "" {
 				return errPayload
 			}

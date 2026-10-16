@@ -86,7 +86,7 @@ func fixedMessage(end, detail string) string {
 	case "provider":
 		return "Der Modellanbieter hat den Aufruf mit einem Fehler beantwortet; sein Text wird nicht weitergegeben."
 	case "rejected":
-		return "Werkzeuge und Funktionen des Anbieters (Websuche, Abruf, Code-Ausführung, Container, MCP-Server) sind im Modell-Durchgang gesperrt."
+		return "Der Modell-Durchgang hat die Anfrage des Agenten-Läufers abgewiesen."
 	default:
 		return "Der Agenten-Lauf ist wegen eines Fehlers beendet."
 	}

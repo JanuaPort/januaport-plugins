@@ -31,14 +31,20 @@ type workflowJob struct {
 	Permissions map[string]string `yaml:"permissions"`
 	Env         map[string]string `yaml:"env"`
 	Steps       []workflowStep    `yaml:"steps"`
+	Defaults    struct {
+		Run struct {
+			WorkingDirectory string `yaml:"working-directory"`
+		} `yaml:"run"`
+	} `yaml:"defaults"`
 }
 
 type workflowStep struct {
-	Name string            `yaml:"name"`
-	Uses string            `yaml:"uses"`
-	Run  string            `yaml:"run"`
-	With map[string]any    `yaml:"with"`
-	Env  map[string]string `yaml:"env"`
+	Name  string            `yaml:"name"`
+	Uses  string            `yaml:"uses"`
+	Run   string            `yaml:"run"`
+	With  map[string]any    `yaml:"with"`
+	Env   map[string]string `yaml:"env"`
+	Shell string            `yaml:"shell"`
 }
 
 func readWorkflow(t *testing.T, path string) workflow {
@@ -115,7 +121,7 @@ func stringList(v any) []string {
 	return out
 }
 
-// Plan P4a: Auslöser ist nur der Tag agent-runner-v*, nie ein Branch.
+// B1.1: Auslöser ist nur der Tag agent-runner-v*, nie ein Branch.
 func TestReleaseWorkflowOnlyOnTag(t *testing.T) {
 	w := readWorkflow(t, releaseWorkflow)
 	if got := onKeys(w); !slices.Equal(got, []string{"push"}) {
@@ -261,7 +267,7 @@ func TestSmokeStateIgnored(t *testing.T) {
 	}
 }
 
-// Plan P4a + E7: ein Build, nur linux/amd64, SBOM und Provenance, per Digest
+// B1.1: ein Build, nur linux/amd64, SBOM und Provenance, per Digest
 // gepusht und ohne Tag — getaggt wird erst nach den Sonden.
 func TestReleaseWorkflowBuildPushByDigest(t *testing.T) {
 	w := readWorkflow(t, releaseWorkflow)
@@ -283,6 +289,9 @@ func TestReleaseWorkflowBuildPushByDigest(t *testing.T) {
 		t.Fatalf("%d Build-Schritte, erwartet genau 1", len(builds))
 	}
 	with := builds[0].With
+	if with["context"] != "agent-runner" {
+		t.Errorf("context = %v", with["context"])
+	}
 	if with["platforms"] != "linux/amd64" {
 		t.Errorf("platforms = %v", with["platforms"])
 	}
@@ -326,15 +335,32 @@ func TestReleaseWorkflowOrderAndC1(t *testing.T) {
 		}
 	}
 	unit := w.Jobs["unit"].text()
+	if len(w.Jobs) != 5 || w.Jobs["unit"].Defaults.Run.WorkingDirectory != "agent-runner" {
+		t.Fatal("Jobs oder unit-Arbeitsverzeichnis weichen ab")
+	}
 	for _, want := range []string{"go vet ./...", "go test -race -count=1 ./..."} {
 		if !strings.Contains(unit, want) {
 			t.Errorf("unit ohne %q", want)
 		}
 	}
 	probes := w.Jobs["probes"].text()
+	foundProbe := false
+	for _, s := range w.Jobs["probes"].Steps {
+		if s.Shell == "pwsh" && s.Run == `./agent-runner/probe/smoke.ps1 -Image "${env:IMAGE_REPO}@${env:DIGEST}"` {
+			foundProbe = true
+		}
+	}
+	if !foundProbe {
+		t.Error("PowerShell-Sonde nicht an Build-Digest gebunden")
+	}
 	for _, want := range []string{"needs.build.outputs.digest", ".config.digest", "probe/smoke.ps1", "${IMAGE_REPO}@${DIGEST}", "github.run_id"} {
 		if !strings.Contains(probes, want) {
 			t.Errorf("probes ohne %q", want)
+		}
+	}
+	for _, want := range []string{`docker pull -q --platform linux/amd64 "$ref"`, `docker save "$ref"`, `tar -xOf - manifest.json`, `.platform.architecture == "amd64"`, `grep -c .)" = 1`, `checked=sha256:`, `pushed=$(docker buildx imagetools inspect`} {
+		if !strings.Contains(probes, want) {
+			t.Errorf("Config-Bindung ohne %q", want)
 		}
 	}
 	for name, j := range w.Jobs {
@@ -346,6 +372,15 @@ func TestReleaseWorkflowOrderAndC1(t *testing.T) {
 	for _, want := range []string{"imagetools create", "sha256sum"} {
 		if !strings.Contains(publish, want) {
 			t.Errorf("publish ohne %q", want)
+		}
+	}
+	if !strings.Contains(publish, `imagetools create -t "${IMAGE_REPO}:${version}" "${IMAGE_REPO}@${DIGEST}"`) {
+		t.Error("publish verwendet nicht den Build-Digest")
+	}
+	scan := w.Jobs["scan"].text()
+	for _, want := range []string{"--exit-code 0", "--input image.tar", "--scanners vuln", "actions/upload-artifact@"} {
+		if !strings.Contains(scan, want) {
+			t.Errorf("Scan ohne %q", want)
 		}
 	}
 	// SEC H-a: Weicht der Config-Digest ab, bricht probes ab; publish bricht

@@ -397,50 +397,55 @@ func TestRejectedMessageAtAdapter(t *testing.T) {
 func TestImageMediaTypesAtAdapter(t *testing.T) {
 	for _, media := range []string{"image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "application/pdf", "image/bmp", "image/avif", "IMAGE/PNG", ""} {
 		allowed := media == "image/png" || media == "image/jpeg" || media == "image/gif" || media == "image/webp"
-		t.Run(media, func(t *testing.T) {
-			block, _ := json.Marshal([]any{map[string]any{"type": "image", "source": map[string]string{"type": "base64", "media_type": media, "data": "YQ=="}}})
-			// Sender guard: invalid images must never reach the gateway.
-			var hits atomic.Int32
-			f := &fakeCore{model: func(w http.ResponseWriter, r *http.Request, n int) {
-				hits.Add(1)
-				modelReply(w, `[{"type":"text","text":"ok"}]`, "end_turn")
-			}}
-			r, _, _ := setup(t, f)
-			req := anthropic.NewRequest("s", "i", nil, 1024)
-			req.Messages[0].Content = block
-			_, class, detail := r.model(context.Background(), r.client("<lauf-token>"), req)
-			if allowed {
-				if class != "" || hits.Load() != 1 {
-					t.Fatalf("allowed image: %s/%s hits=%d", class, detail, hits.Load())
+		for _, nested := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/nested=%t", media, nested), func(t *testing.T) {
+				block, _ := json.Marshal([]any{map[string]any{"type": "image", "source": map[string]string{"type": "base64", "media_type": media, "data": "YQ=="}}})
+				if nested {
+					block = json.RawMessage(`[{"type":"tool_result","tool_use_id":"x","content":` + string(block) + `}]`)
 				}
-			} else if class != "error" || detail != "rejected" || hits.Load() != 0 {
-				t.Fatalf("forbidden image sent: %s/%s hits=%d", class, detail, hits.Load())
-			}
-			// MCP result projection through the entire loop into the next request.
-			tool, _ := json.Marshal(map[string]any{"content": []any{map[string]string{"type": "image", "mimeType": media, "data": "YQ=="}}})
-			f = &fakeCore{tool: tool, model: func(w http.ResponseWriter, r *http.Request, n int) {
-				if n == 1 {
-					modelReply(w, `[{"type":"tool_use","id":"x","name":"erp_list_things","input":{"q":"`+secret+`"}}]`, "tool_use")
-				} else {
+				// Sender guard: invalid images must never reach the gateway.
+				var hits atomic.Int32
+				f := &fakeCore{model: func(w http.ResponseWriter, r *http.Request, n int) {
+					hits.Add(1)
 					modelReply(w, `[{"type":"text","text":"ok"}]`, "end_turn")
+				}}
+				r, _, _ := setup(t, f)
+				req := anthropic.NewRequest("s", "i", nil, 1024)
+				req.Messages[0].Content = block
+				_, class, detail := r.model(context.Background(), r.client("<lauf-token>"), req)
+				if allowed {
+					if class != "" || hits.Load() != 1 {
+						t.Fatalf("allowed image: %s/%s hits=%d", class, detail, hits.Load())
+					}
+				} else if class != "error" || detail != "rejected" || hits.Load() != 0 {
+					t.Fatalf("forbidden image sent: %s/%s hits=%d", class, detail, hits.Load())
 				}
-			}}
-			r, _, _ = setup(t, f)
-			_, b := invoke(t, r, context.Background(), requestFixture(t), nil)
-			end(t, b, "ok", 2)
-			encoded, _ := json.Marshal(f.requests[1])
-			if strings.Contains(string(encoded), anthropic.Placeholder) == allowed || strings.Contains(string(encoded), "YQ==") != allowed {
-				t.Fatalf("image projection: %s", encoded)
-			}
-			// The same content validator also guards model responses/history.
-			f = &fakeCore{model: func(w http.ResponseWriter, r *http.Request, n int) { modelReply(w, string(block), "end_turn") }}
-			r, _, _ = setup(t, f)
-			_, b = invoke(t, r, context.Background(), requestFixture(t), nil)
-			want := "error"
-			if allowed {
-				want = "ok"
-			}
-			end(t, b, want, 1)
-		})
+				// MCP result projection through the entire loop into the next request.
+				tool, _ := json.Marshal(map[string]any{"content": []any{map[string]string{"type": "image", "mimeType": media, "data": "YQ=="}}})
+				f = &fakeCore{tool: tool, model: func(w http.ResponseWriter, r *http.Request, n int) {
+					if n == 1 {
+						modelReply(w, `[{"type":"tool_use","id":"x","name":"erp_list_things","input":{"q":"`+secret+`"}}]`, "tool_use")
+					} else {
+						modelReply(w, `[{"type":"text","text":"ok"}]`, "end_turn")
+					}
+				}}
+				r, _, _ = setup(t, f)
+				_, b := invoke(t, r, context.Background(), requestFixture(t), nil)
+				end(t, b, "ok", 2)
+				encoded, _ := json.Marshal(f.requests[1])
+				if strings.Contains(string(encoded), anthropic.Placeholder) == allowed || strings.Contains(string(encoded), "YQ==") != allowed || (allowed && !strings.Contains(string(encoded), `"media_type":"`+media+`"`)) {
+					t.Fatalf("image projection: %s", encoded)
+				}
+				// The same content validator also guards model responses/history.
+				f = &fakeCore{model: func(w http.ResponseWriter, r *http.Request, n int) { modelReply(w, string(block), "end_turn") }}
+				r, _, _ = setup(t, f)
+				_, b = invoke(t, r, context.Background(), requestFixture(t), nil)
+				want := "error"
+				if allowed {
+					want = "ok"
+				}
+				end(t, b, want, 1)
+			})
+		}
 	}
 }

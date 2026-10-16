@@ -1,6 +1,7 @@
 """B1 mutation evidence. Run against a disposable Go container mounting this repo.
 
 python agent-runner/probe/mutations.py jnpt1099-b1-check
+B1.1 only: append B1.1 as the optional case filter.
 Every source edit is restored in finally. No golden file is modified.
 The report goes to <tmp>/agent-runner-mutations/, never into the repo.
 """
@@ -16,6 +17,7 @@ C = "internal/runner/contract.go"
 G = "internal/runner/gateway.go"
 L = "internal/runner/loop.go"
 S = "internal/runner/server.go"
+W = "../.github/workflows/agent-runner-release.yml"
 
 # label, Go test regex, edits (path, original, replacement)
 CASES = [
@@ -62,13 +64,36 @@ CASES = [
     ("Gateway-Konfiguration ungeprueft", "TestConfigAndKeyFailClosed", [(S, 'if e != nil || u.Host == ""', 'if false && (e != nil || u.Host == ""'), (S, '(u.Path != "" && u.Path != "/") {', '(u.Path != "" && u.Path != "/")) {')]),
     ("Wandzeit-Konfiguration ungeprueft", "TestConfigAndKeyFailClosed", [(S, 'cfg.MaxWallS < 1 || cfg.MaxWallS > DefaultMaxWallS', 'false')]),
     ("Daten hinter JSON", "TestMalformedArgumentsAtAdapter", [(S, 'e != nil || !json.Valid(body)', 'e != nil || (false && !json.Valid(body))')]),
-    ("Antwortgroesse aufgeweicht", "TestSizeBoundsAndMalformedModelAtAdapter", [(G, 'remaining: maxBody', 'remaining: maxBody * 2')]),
+    ("Antwortgroesse aufgeweicht", "TestResponseBody4MiBLimitAtAdapter", [(G, 'remaining: maxBody', 'remaining: maxBody * 2')]),
     ("Anfragegroesse aufgeweicht", "TestSizeBoundsAndMalformedModelAtAdapter", [(S, 'http.MaxBytesReader(w, req.Body, maxBody)', 'http.MaxBytesReader(w, req.Body, maxBody * 2)'), (S, 'MaxRequestBodyBytes: maxBody', 'MaxRequestBodyBytes: maxBody * 2'), (C, 'len(raw) > maxBody', 'len(raw) > maxBody * 2')]),
     ("Docker root", "TestDockerNonRootStatic", [("Dockerfile", 'USER 65532:65532', 'USER 0:0')]),
     ("Compose schreibbares Root-FS", "TestCompose$", [("docker-compose.yml", 'read_only: true', 'read_only: false')]),
     ("Thinking veraendert", "TestLoopGoldenThinkingAndLog", [(L, 'Content: response.Content', 'Content: json.RawMessage(`[{"type":"text","text":"replaced"}]`)')]),
     ("Cache entfernt", "TestThinkingAndCache", [(A, 'tools[len(tools)-1].CacheControl = map[string]string{"type": "ephemeral"}', 'tools[len(tools)-1].CacheControl = nil')]),
     ("SDK-Cleanup vom Lauf geloest", "TestCleanupWithinWallAtAdapter", [(L, 'scope: ctx', 'scope: nil')]),
+    ("B1.1 H1 Close vor cancel", "TestCancelBeforeSessionCloseAtAdapter", [(L, 'cancel(); _ = session.Close()', '_ = session.Close(); cancel()')]),
+    ("B1.1 H2 Antwortdeckel angehoben", "TestResponseBody4MiBLimitAtAdapter", [(G, 'remaining: maxBody', 'remaining: maxBody * 2')]),
+    ("B1.1 H3 alter rejected-Satz", "TestRejectedMessageAtAdapter|TestAllResultGoldens", [(C, 'Der Modell-Durchgang hat die Anfrage des Agenten-Läufers abgewiesen.', 'Werkzeuge und Funktionen des Anbieters (Websuche, Abruf, Code-Ausführung, Container, MCP-Server) sind im Modell-Durchgang gesperrt.')]),
+    ("B1.1 H4 Medien-Positivliste entfernt", "TestImageMediaTypesAtAdapter", [(A, 'if str(b["type"]) == "image" {', 'if false {')]),
+    ("B1.1 H4 Projektionspruefung entfernt", "TestImageMediaTypesAtAdapter", [(A, 'if ValidateContent(encoded) == nil {', 'if true { _ = encoded')]),
+    ("B1.1 H4 Senderpruefung entfernt", "TestImageMediaTypesAtAdapter", [(G, 'e != nil || anthropic.Validate(b) != nil', 'e != nil')]),
+    ("B1.1 H4 Antwortpruefung entfernt", "TestImageMediaTypesAtAdapter", [(G, 'res.StatusCode != 200 || anthropic.ValidateContent(envelope.Response.Content) != nil', 'res.StatusCode != 200')]),
+    ("B1.1 H4 Verschachtelungspruefung entfernt", "TestImageMediaTypesAtAdapter", [(A, 'str(b["tool_use_id"]) == "" || ValidateContent(b["content"]) != nil', 'str(b["tool_use_id"]) == ""')]),
+    ("B1.1 H5 Sondenzustand nicht ignoriert", "TestSmokeStateIgnored", [(".gitignore", '/probe/.smoke/', '')]),
+    ("B1.1 Release Branch-Ausloeser", "TestReleaseWorkflowOnlyOnTag", [(W, '    tags:', '    branches: [main]\n    tags:')]),
+    ("B1.1 Release Tag-Schema gelockert", "TestReleaseTagSchema", [(W, '^agent-runner-v[0-9]+', 'agent-runner-v[0-9]+')]),
+    ("B1.1 Release ungepinnte Aktion", "TestReleaseWorkflowUsesPinnedBySHA", [(W, 'actions/checkout@11d5960a326750d5838078e36cf38b85af677262', 'actions/checkout@v4')]),
+    ("B1.1 Release anderer SHA-Pin", "TestReleaseWorkflowUsesPinnedBySHA", [(W, 'actions/checkout@11d5960a326750d5838078e36cf38b85af677262', 'actions/checkout@' + '0' * 40)]),
+    ("B1.1 Release C1 Vergleich entfernt", "TestReleaseWorkflowOrderAndC1", [(W, '[ "$checked" = "$pushed" ] ||', '[ true ] ||')]),
+    ("B1.1 Release C2 Drittanbieter mit Schreibrecht", "TestReleaseWorkflowC2NoThirdPartyWithWrite", [(W, 'docker/setup-buildx-action@', 'thirdparty/setup-buildx-action@')]),
+    ("B1.1 Release Schreibrecht fuer scan", "TestReleaseWorkflowPermissions|TestReleaseWorkflowC2NoThirdPartyWithWrite", [(W, 'name: Trivy-Bericht (kein Gate)\n    needs: build\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n      packages: read', 'name: Trivy-Bericht (kein Gate)\n    needs: build\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n      packages: write')]),
+    ("B1.1 Release Build mit Tag", "TestReleaseWorkflowBuildPushByDigest", [(W, '          platforms: linux/amd64', '          tags: ghcr.io/januaport/agent-runner:0.1.0\n          platforms: linux/amd64')]),
+    ("B1.1 Release Sonden mit Tag statt Digest", "TestReleaseWorkflowOrderAndC1", [(W, '${env:IMAGE_REPO}@${env:DIGEST}', '${env:IMAGE_REPO}:0.1.0')]),
+    ("B1.1 Release Publish ohne Sonden", "TestReleaseWorkflowOrderAndC1", [(W, 'needs: [build, probes]', 'needs: [build]')]),
+    ("B1.1 Release Tag-Digest-Vergleich entfernt", "TestReleaseWorkflowOrderAndC1", [(W, '[ "$tagged" = "$DIGEST" ] ||', '[ true ] ||')]),
+    ("B1.1 Release zweite Plattform", "TestReleaseWorkflowBuildPushByDigest", [(W, 'platforms: linux/amd64', 'platforms: linux/amd64,linux/arm64')]),
+    ("B1.1 Release weiterer Build", "TestReleaseWorkflowBuildPushByDigest", [(W, '    steps:', '    steps:\n      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8')]),
+    ("B1.1 Release Scan als Gate", "TestReleaseWorkflowOrderAndC1", [(W, '--exit-code 0', '--exit-code 1')]),
 ]
 
 def main():
@@ -87,6 +112,8 @@ def main():
             proc = subprocess.run(["docker", "exec", CONTAINER, "go", "test", "./internal/...", "-run", test, "-count=1", "-timeout=8s"], text=True, encoding="utf-8", errors="replace", capture_output=True, timeout=30)
             output = proc.stdout + proc.stderr
             killed = proc.returncode != 0 and ("--- FAIL:" in output or "test timed out" in output) and "build failed" not in output
+            if label.startswith("B1.1"):
+                killed &= "test timed out" not in output
             line = f"{'ROT' if killed else 'UNBELEGT'} | {label} | {test} | exit={proc.returncode}"
             print(line, flush=True)
             excerpt = output if len(output) <= 8000 else output[:8000] + "\n[Ausgabe fuer den Bericht auf 8000 Zeichen gekuerzt]\n"
