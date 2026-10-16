@@ -1,0 +1,37 @@
+?   	github.com/januaport/januaport-plugins/agent-runner	[no test files]
+ok  	github.com/januaport/januaport-plugins/agent-runner/internal/anthropic	0.007s
+ok  	github.com/januaport/januaport-plugins/agent-runner/internal/hygiene	0.010s
+?   	github.com/januaport/januaport-plugins/agent-runner/internal/runlog	[no test files]
+--- FAIL: TestRevocationAtBothGateways (0.02s)
+    --- FAIL: TestRevocationAtBothGateways//api/plugin/agent-runner/modelUnauthorized (0.01s)
+        hardening_test.go:29: want revoked/1: {"_meta":{"januaport.ai/run":{"detail":"gateway","end":"error","steps":1}},"content":[{"text":"Der Agenten-Lauf ist wegen eines Fehlers beendet.","type":"text"}],"isError":true}
+    --- FAIL: TestRevocationAtBothGateways//api/plugin/agent-runner/modelForbidden (0.00s)
+        hardening_test.go:29: want revoked/1: {"_meta":{"januaport.ai/run":{"detail":"gateway","end":"error","steps":1}},"content":[{"text":"Der Agenten-Lauf ist wegen eines Fehlers beendet.","type":"text"}],"isError":true}
+    --- FAIL: TestRevocationAtBothGateways//api/plugin/agent-runner/mcpUnauthorized (0.00s)
+        hardening_test.go:29: want revoked/0: {"_meta":{"januaport.ai/run":{"detail":"gateway","end":"error","steps":0}},"content":[{"text":"Der Agenten-Lauf ist wegen eines Fehlers beendet.","type":"text"}],"isError":true}
+    --- FAIL: TestRevocationAtBothGateways//api/plugin/agent-runner/mcpForbidden (0.00s)
+        hardening_test.go:29: want revoked/0: {"_meta":{"januaport.ai/run":{"detail":"gateway","end":"error","steps":0}},"content":[{"text":"Der Agenten-Lauf ist wegen eines Fehlers beendet.","type":"text"}],"isError":true}
+2026/10/16 22:51:59 http: panic serving 127.0.0.1:59448: runtime error: invalid memory address or nil pointer dereference
+goroutine 238 [running]:
+net/http.(*conn).serve.func1()
+	/usr/local/go/src/net/http/server.go:1917 +0xbd
+panic({0x8948e0?, 0xd23710?})
+	/usr/local/go/src/runtime/panic.go:860 +0x13a
+github.com/januaport/januaport-plugins/agent-runner/internal/runner.(*fakeCore).serve(0x3c1d794fccb0, 0x3c1d793e0d88, {0x96a730, 0x3c1d792f40f0}, 0x3c1d795b52c0)
+	/repo/agent-runner/internal/runner/runner_test.go:96 +0x4c4
+github.com/januaport/januaport-plugins/agent-runner/internal/runner.setup.func1({0x96a730?, 0x3c1d792f40f0?}, 0x0?)
+	/repo/agent-runner/internal/runner/runner_test.go:151 +0x34
+net/http.HandlerFunc.ServeHTTP(0x424225?, {0x96a730?, 0x3c1d792f40f0?}, 0x3c1d792f4001?)
+	/usr/local/go/src/net/http/server.go:2306 +0x29
+net/http.serverHandler.ServeHTTP({0x969048?}, {0x96a730?, 0x3c1d792f40f0?}, 0x1?)
+	/usr/local/go/src/net/http/server.go:3331 +0x8e
+net/http.(*conn).serve(0x3c1d7958e000, {0x96bf50, 0x3c1d7953e3c0})
+	/usr/local/go/src/net/http/server.go:2087 +0x690
+created by net/http.(*Server).Serve in goroutine 214
+	/usr/local/go/src/net/http/server.go:3484 +0x485
+--- FAIL: TestCancellationAndWallAtAdapter (1.01s)
+    --- FAIL: TestCancellationAndWallAtAdapter/false (0.00s)
+        runner_test.go:337: want cancelled/1: 
+FAIL
+FAIL	github.com/januaport/januaport-plugins/agent-runner/internal/runner	2.269s
+FAIL

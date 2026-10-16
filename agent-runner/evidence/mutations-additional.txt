@@ -1,0 +1,9 @@
+ROT | SDK-Cleanup vom Lauf geloest | TestCleanupWithinWallAtAdapter | exit=1
+ok  	github.com/januaport/januaport-plugins/agent-runner/internal/anthropic	0.004s [no tests to run]
+ok  	github.com/januaport/januaport-plugins/agent-runner/internal/hygiene	0.003s [no tests to run]
+?   	github.com/januaport/januaport-plugins/agent-runner/internal/runlog	[no test files]
+--- FAIL: TestCleanupWithinWallAtAdapter (2.02s)
+    hardening_test.go:310: SDK cleanup outlived run deadline
+FAIL
+FAIL	github.com/januaport/januaport-plugins/agent-runner/internal/runner	2.021s
+FAIL

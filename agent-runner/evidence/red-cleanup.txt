@@ -1,0 +1,5 @@
+--- FAIL: TestCleanupWithinWallAtAdapter (2.01s)
+    hardening_test.go:293: SDK cleanup outlived run deadline
+FAIL
+FAIL	github.com/januaport/januaport-plugins/agent-runner/internal/runner	2.020s
+FAIL

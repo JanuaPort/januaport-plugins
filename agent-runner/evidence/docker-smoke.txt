@@ -1,0 +1,2 @@
+PASS: built image, UID 65532, read-only, healthcheck, one internal network, no published ports; outside-network canary blocked, positive control reachable.
+Image-ID=sha256:bfce169e58ee5b64c9bbac099f5b87dfa990f45125cd5b61b9922d682004964c User=65532:65532
