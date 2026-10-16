@@ -36,42 +36,39 @@ Nur Anthropic: Ein Profil auf einer openai-kompatiblen Modell-Anbindung scheiter
   Modellantworten. Tabellentest am echten HTTP-/MCP-Adapter.
 - H5: Temporärer Sonden-Zustand `probe/.smoke/` in `.gitignore`.
 
-Version bleibt 0.1.0, noch nicht getaggt. Die folgende Vorlage ist kein
-Release-Nachweis; das Gate trägt die Werte nach dem grünen Release-Lauf
-und vor dem Katalogeintrag ein, nach dem Muster des script-runners.
+Getaggt als `agent-runner-v0.1.0` (Release-Lauf 38983345807, 17.10.2026).
 
 ### Kuratierung
 
-```markdown
-### v0.1.0 — <Datum>
+### v0.1.0 — 2026-10-17
 
 | Feld | Wert |
 |---|---|
 | Image | `ghcr.io/januaport/agent-runner` |
 | Tag | `agent-runner-v0.1.0` (Image-Tag `0.1.0`) |
-| Digest (OCI-Index) | `sha256:<nach Release ergänzen>` |
-| Plattform | `linux/amd64` (`sha256:<nach Release ergänzen>`), sonst keine |
+| Digest (OCI-Index) | `sha256:c9357185a4ea988fcbe1ae31f1bded4f6218388d04cd5c2905897803b0f993bd` |
+| Plattform | `linux/amd64` (`sha256:577077565cdb6cee0437bd537eb0c3cf4aa31b6b0f6bb1b37d5912c9725f38d4`), sonst keine |
 | Art | `service`, eigener Build (Plugins-Repo) |
-| Geprüft mit | <JanuaPort v0.80.0 nach Live-Prüfung bestätigen> |
-| Benötigter Commit von Compose | `<Commit im Plugins-Repo>` (`docker-compose.yml`) |
-| Lauf der Sonden | Release-Lauf `<Lauf-ID>` — hat genau diesen Digest geprüft (SEC C1) |
+| Geprüft mit | JanuaPort v0.80.0, **Live-Prüfung steht aus** (Durchstich #1099) |
+| Benötigter Commit von Compose | `19ea160` (`docker-compose.yml`) |
+| Lauf der Sonden | Release-Lauf `38983345807` — hat genau diesen Digest geprüft (SEC C1) |
 
-**Digest** zweimal gemessen am <Datum>: Zusammenfassung des Release-Laufs und
-`docker buildx imagetools inspect`. Beide stimmen überein. SBOM und Provenance
-hängen als Attestation am Index.
+**Digest** zweimal gemessen am 2026-10-17: Zusammenfassung des Release-Laufs
+(`digest.txt` im Artefakt) und `docker buildx imagetools inspect`. Beide stimmen
+überein. SBOM und Provenance hängen als Attestation am Index.
 
-**Sonden:** grün im Lauf `<Lauf-ID>` gegen genau diesen Digest: UID 65532,
-read-only Root-FS, `/healthz` ok, genau ein internes Netz, kein Host-Port,
+**Sonden:** grün im Lauf `38983345807` gegen genau diesen Digest: UID 65532,
+read-only Root-FS, Gesundheitsprüfung ok, genau ein internes Netz, kein Host-Port,
 Testserver im fremden Netz unerreichbar (erreichbare Positivkontrolle).
-Der Config-Digest des geprüften Images ist gleich dem der amd64-Plattform
-des gepushten.
 
-**Scan:** Trivy <Fassung> (Artefakt des Laufs), Datenbank vom <Datum>, Scanner
-`vuln`: **<n> critical · <n> high** · <n> medium · <n> low · <n> unknown.
-Hohe Funde einzeln, je mit behobener Fassung oder Begründung.
+**Scan:** Trivy 0.74.0 (Artefakt des Laufs), Scan vom 2026-10-16T23:50Z, Scanner
+`vuln`: **0 critical · 0 high** · 0 medium · 0 low · 1 unknown. Der eine Fund
+(CVE-2026-39824, `golang.org/x/sys` v0.41.0, behoben in 0.44.0) betrifft
+`golang.org/x/sys/windows`. Das Paket ist im `linux/amd64`-Binary nicht gebaut,
+Nachzug mit dem nächsten Abhängigkeits-Update.
 
 **Inhalt:** distroless/static:nonroot, statisches Go-Binary `agent-runner`
-(Go <Fassung>).
+(Go 1.26.9).
 
 **Isolation:** UID/GID 65532, read-only Root-FS, `cap_drop: ALL`,
 no-new-privileges, Schlüsselordner nur lesend, ausschließlich internes Netz.
@@ -80,7 +77,8 @@ no-new-privileges, Schlüsselordner nur lesend, ausschließlich internes Netz.
 Modellanbieter-Zugang. Ein Image, das eine neue Compose braucht, ist ein
 Wartungsschritt mit Runbook-Eintrag, kein stilles Katalog-Update.
 
-**Entscheid:** <katalogisiert / nicht katalogisiert>, weil <Begründung>.
+**Entscheid:** noch nicht katalogisiert, weil die Live-Prüfung gegen JanuaPort
+v0.80.0 aussteht (Durchstich mit Anthropic). Danach wird „Geprüft mit“ bestätigt
+und der Katalogeintrag folgt.
 
 Quelle: JanuaPort/januaport#1099.
-```
