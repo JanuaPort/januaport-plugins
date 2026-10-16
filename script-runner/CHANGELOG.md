@@ -2,6 +2,10 @@
 
 ## 0.2.0 — 2026-10-16 (JanuaPort/januaport#1040 P3, #1041 P1/P2, #1096, #1069)
 
+- **Image:** `sha256:a1e55aa3228e2eb21af2921d78bc4ad507877a53465f9a42b65b2b295dac698c` (Index, nur `linux/amd64`; arm64-Ausnahme bis zur ersten Nachfrage oder 0.3.0, JanuaPort/januaport#928)
+- **Geprüft mit JanuaPort 0.78.0** (Showcase, Live-Beleg JanuaPort/januaport#1040 6205593013)
+- **Scan:** Trivy 0.74.0 vom 16.10.2026, 0 Funde mit Fix; 1 CRITICAL und 59 HIGH ohne Fix fallen unter die Ausnahme JanuaPort/januaport#1059 bis 2027-01-08
+
 - **Vertragsfassung 5, `contract: 2`:** Das Gateway gibt Wandzeit, Ausgabebytes
   und Werkzeugaufrufe je Lauf über `X-Jnpt-Run-Limits` vor. Strenges Format,
   feste Fehler ohne Headerwert und Ablehnung vor Lauf/Slot bei Formfehlern.
