@@ -7,7 +7,7 @@ func TestRunLogGolden(t *testing.T) {
 	golden(t, "end_error_log.json", Result(Run{End: EndError, Detail: DetailExit, Isolation: IsolationStandard, Log: "vor dem Fehler\n"}, nil))
 	// Existing without-log golden must stay byte-for-byte compatible.
 	golden(t, "end_ok_text.json", Result(Run{End: EndOK, BytesOut: 12, Isolation: IsolationStandard}, []byte("12 geprüft.\n")))
-	if Version != 1 {
-		t.Fatal("additive log changed contract version")
+	if Version != 2 {
+		t.Fatal("run limits require contract 2; log remains additive")
 	}
 }

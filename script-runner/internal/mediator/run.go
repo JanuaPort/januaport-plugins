@@ -19,12 +19,13 @@ import (
 	"github.com/januaport/januaport-plugins/script-runner/internal/store"
 )
 
-// maxWall ist die Obergrenze der Wandzeit (Grenzen v1, unter dem
-// 30-s-Relay des Gateways).
-const maxWall = 25 * time.Second
+// l6WallCap bleibt in P3 unabhängig von der technischen 24-h-Decke bei 25 s.
+// SEC L6 (#1040): Erst den Internet-Ausgang des vermittlers entfernen (#1069),
+// dann in P4/P5 längere Läufe freigeben. Auch mit neuer Compose nicht hier anheben.
+const l6WallCap = 25 * time.Second
 
 // callTool ist tools/call (Vertrag §3, §4). Fachliches steht immer im
-// Ergebnis; ein JSON-RPC-Fehler nur bei fehlenden Lauf-Headern.
+// Ergebnis; ein JSON-RPC-Fehler bei fehlenden oder falsch geformten Lauf-Headern.
 func (m *Mediator) callTool(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var header http.Header
 	if req.Extra != nil {
@@ -48,7 +49,7 @@ func (m *Mediator) callTool(ctx context.Context, req *mcp.CallToolRequest) (*mcp
 	case len(req.Params.Arguments) > contract.MaxInputBytes:
 		r = contract.Run{End: contract.EndRefused, Detail: contract.DetailInput}
 	default:
-		r, out = m.run(ctx, p, req.Params.Arguments, rh.RunToken)
+		r, out = m.run(ctx, p, req.Params.Arguments, rh.RunToken, rh.Limits)
 	}
 	if r.Isolation == "" {
 		r.Isolation = isolation
@@ -61,7 +62,7 @@ func (m *Mediator) callTool(ctx context.Context, req *mcp.CallToolRequest) (*mcp
 // run führt einen Lauf auf einer frischen Instanz aus. Ende und Dauer misst
 // der vermittler selbst (M2); die Angaben des Wächters zählen nur für
 // ok/error innerhalb der Wandzeit.
-func (m *Mediator) run(ctx context.Context, p pinState, input json.RawMessage, runToken string) (contract.Run, []byte) {
+func (m *Mediator) run(ctx context.Context, p pinState, input json.RawMessage, runToken string, limits contract.RunLimits) (contract.Run, []byte) {
 	// Der Zustand aus tools/list darf eine inzwischen widerrufene Freigabe
 	// nicht ausführbar halten (L3); die Zweigprüfung selbst macht der abholer.
 	if m.fetchVerdict(p.pin.Commit).state != contract.StateReady {
@@ -101,8 +102,9 @@ func (m *Mediator) run(ctx context.Context, p pinState, input json.RawMessage, r
 	defer sc.detach(a)
 	r := &runner{
 		m: m, sc: sc, a: a, pin: p, tree: tree,
-		run: contract.Run{Isolation: sc.isolation},
-		gw:  &gatewayClient{url: m.cfg.GatewayURL + "/mcp", token: runToken},
+		run:    contract.Run{Isolation: sc.isolation},
+		gw:     &gatewayClient{url: m.cfg.GatewayURL + "/mcp", token: runToken},
+		limits: limits,
 	}
 	defer r.gw.close()
 	// acquire kann warten: direkt vor der Übergabe die Freigabe erneut lesen.
@@ -113,7 +115,7 @@ func (m *Mediator) run(ctx context.Context, p pinState, input json.RawMessage, r
 	if err := frame.Write(sc.c, frame.Job{Type: frame.TypeJob, Files: jobFiles(tree), Entry: p.manifest.Entry, Input: input, Libs: p.libs}); err != nil {
 		return contract.Run{End: contract.EndLimit, Detail: contract.DetailSandboxLost, Isolation: sc.isolation}, nil
 	}
-	wall := min(time.Duration(p.manifest.TimeoutS)*time.Second, maxWall)
+	wall := min(time.Duration(limits.WallS)*time.Second, time.Duration(p.manifest.TimeoutS)*time.Second, l6WallCap)
 	return r.loop(ctx, time.NewTimer(wall))
 }
 
@@ -126,15 +128,16 @@ func jobFiles(t store.Tree) []frame.File {
 }
 
 type runner struct {
-	m    *Mediator
-	sc   *sbConn
-	a    *attachment
-	pin  pinState
-	tree store.Tree
-	run  contract.Run
-	out  []byte
-	log  runlog.Buffer
-	gw   *gatewayClient
+	m      *Mediator
+	sc     *sbConn
+	a      *attachment
+	pin    pinState
+	tree   store.Tree
+	run    contract.Run
+	out    []byte
+	log    runlog.Buffer
+	gw     *gatewayClient
+	limits contract.RunLimits
 }
 
 func (r *runner) end(end, detail string) (contract.Run, []byte) {
@@ -193,12 +196,12 @@ func (r *runner) handle(ctx context.Context, f inFrame, wall *time.Timer) (contr
 			return contract.Run{}, nil, false
 		}
 		r.out = append(r.out, o.Data...)
-		if len(r.out) > contract.MaxOutputBytes {
+		if len(r.out) > r.limits.OutputBytes {
 			res, out := r.end(contract.EndLimit, contract.DetailOutput)
 			return res, out, true
 		}
 	case frame.TypeToolCall:
-		if r.run.ToolCalls >= contract.MaxToolCalls {
+		if r.run.ToolCalls >= r.limits.ToolCalls {
 			res, out := r.end(contract.EndLimit, contract.DetailToolCalls)
 			return res, out, true
 		}

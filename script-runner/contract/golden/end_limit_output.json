@@ -11,7 +11,7 @@
   "content": [
     {
       "type": "text",
-      "text": "Die Ausgabe des Skripts überschreitet die Grenze von 1 MiB."
+      "text": "Die Ausgabe des Skripts überschreitet die Grenze dieses Laufs."
     }
   ],
   "isError": true

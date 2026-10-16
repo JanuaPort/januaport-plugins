@@ -37,13 +37,13 @@ func TestRunLogOnlyInMetaNeverInSlog(t *testing.T) {
 					g.send(frame.Output{Type: frame.TypeOutput, Data: strings.Repeat("x", frame.MaxFromSandbox)})
 					_ = g.waitEOF()
 				case "output":
-					g.send(frame.Output{Type: frame.TypeOutput, Data: strings.Repeat("x", contract.MaxOutputBytes)})
+					g.send(frame.Output{Type: frame.TypeOutput, Data: strings.Repeat("x", contract.DefaultOutputBytes)})
 					g.send(frame.Output{Type: frame.TypeOutput, Data: "x"})
 					_ = g.waitEOF()
 				case "tool_calls":
-					for i := 0; i < contract.MaxToolCalls+1; i++ {
+					for i := 0; i < contract.DefaultToolCalls+1; i++ {
 						g.send(frame.ToolCall{Type: frame.TypeToolCall, Name: "undeclared"})
-						if i < contract.MaxToolCalls {
+						if i < contract.DefaultToolCalls {
 							_, _, _ = g.read()
 						}
 					}

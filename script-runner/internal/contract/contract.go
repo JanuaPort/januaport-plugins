@@ -1,5 +1,5 @@
 // Package contract ist der Draht-Vertrag Gateway ↔ Skript-Läufer
-// (JanuaPort/januaport#928, Vertrag Fassung 1 + 2 + Nachtrag 2a): Namen,
+// (JanuaPort/januaport#928; Fassung 5: JanuaPort/januaport#1040): Namen,
 // Ende-Klassen, feste Sätze und die Form von tools/list und tools/call.
 // Die Golden-Dateien unter contract/golden/ sind die Referenz; eine Änderung
 // hier ist eine Vertragsänderung und braucht eine neue Fassung im Ticket.
@@ -18,7 +18,7 @@ import (
 )
 
 // Version ist `contract` in `_meta["januaport.ai/runner"]`.
-const Version = 1
+const Version = 2
 
 // Schlüssel in `_meta`.
 const (
@@ -32,6 +32,7 @@ const (
 	HeaderRunToken  = "X-Jnpt-Run-Token"
 	HeaderRunID     = "X-Jnpt-Run-Id"
 	HeaderPinCommit = "X-Jnpt-Pin-Commit"
+	HeaderRunLimits = "X-Jnpt-Run-Limits"
 )
 
 // Ende-Klassen (Vertrag §4).
@@ -100,11 +101,20 @@ const (
 	ReasonLibsTooLarge     = "libs_too_large"
 )
 
-// Grenzen v1, soweit der vermittler sie durchsetzt.
+// Eingabe bleibt unverändert. Ohne Grenz-Header gelten die Altgrenzen.
 const (
-	MaxInputBytes  = 256 << 10
-	MaxOutputBytes = 1 << 20
-	MaxToolCalls   = 50
+	MaxInputBytes      = 256 << 10
+	DefaultWallS       = 25
+	DefaultOutputBytes = 1 << 20
+	DefaultToolCalls   = 50
+)
+
+// Technische Decken (Fassung 5, SEC L8). Eine größere Gateway-Vorgabe wird
+// gekürzt, nicht abgewiesen. Die zusätzliche L6-Wandzeitkappe hält der Mediator.
+const (
+	MaxWallS       = 24 * 60 * 60
+	MaxOutputBytes = 16 << 20
+	MaxToolCalls   = 10000
 )
 
 // Run ist das Ergebnis eines Laufs, wie es in `_meta["januaport.ai/run"]`
@@ -122,9 +132,9 @@ type Run struct {
 
 var messages = map[string]string{
 	EndError + "/" + DetailExit:        "Das Skript hat mit einem Fehlercode geendet.",
-	EndLimit + "/" + DetailOutput:      "Die Ausgabe des Skripts überschreitet die Grenze von 1 MiB.",
+	EndLimit + "/" + DetailOutput:      "Die Ausgabe des Skripts überschreitet die Grenze dieses Laufs.",
 	EndLimit + "/" + DetailFrame:       "Das Skript hat eine zu große Nachricht gesendet.",
-	EndLimit + "/" + DetailToolCalls:   "Das Skript hat mehr als 50 Werkzeugaufrufe versucht.",
+	EndLimit + "/" + DetailToolCalls:   "Das Skript hat die Grenze der Werkzeugaufrufe dieses Laufs überschritten.",
 	EndLimit + "/" + DetailMemory:      "Das Skript hat die Speichergrenze überschritten.",
 	EndLimit + "/" + DetailSandboxLost: "Die Sandbox ist während des Laufs abgebrochen, zum Beispiel wegen zu vieler Prozesse.",
 	EndTimeout + "/":                   "Das Skript hat die Wandzeit überschritten und wurde beendet.",
@@ -223,7 +233,8 @@ type ScheduleStatus struct {
 }
 
 // RunnerMeta ist `_meta["januaport.ai/runner"]` auf dem tools/list-Ergebnis.
-// `schedules` fehlt ohne Zeitpläne; tools/list bleibt dann wie in Fassung 1.
+// `schedules` fehlt ohne Zeitpläne; die Pin-/Werkzeugform bleibt wie zuvor,
+// während `contract` mit Fassung 5 auf 2 steigt.
 type RunnerMeta struct {
 	Contract  int              `json:"contract"`
 	Isolation string           `json:"isolation"`
@@ -285,6 +296,7 @@ type RunHeaders struct {
 	RunToken  string
 	RunID     string
 	PinCommit string
+	Limits    RunLimits
 }
 
 var (
@@ -292,8 +304,10 @@ var (
 	uuidV4Re   = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 )
 
-// ParseRunHeaders prüft Lauf-Token und Lauf-ID. Fehlen sie oder sind sie
-// falsch geformt, ist das ein Protokollverstoß (JSON-RPC-Fehler). Der
+// ParseRunHeaders prüft Lauf-Token, Lauf-ID und die optionalen Lauf-Grenzen.
+// Ohne Grenz-Header gelten die Altgrenzen. Fehlen Token oder ID oder sind
+// vorhandene Lauf-Header falsch geformt, ist das ein Protokollverstoß
+// (JSON-RPC-Fehler). Der
 // Pin-Commit wird hier nur gelesen; ob er passt, entscheidet der Aufrufer
 // (refused/commit).
 func ParseRunHeaders(h http.Header) (RunHeaders, error) {
@@ -307,5 +321,10 @@ func ParseRunHeaders(h http.Header) (RunHeaders, error) {
 	if !utf8.ValidString(rh.PinCommit) {
 		rh.PinCommit = ""
 	}
+	limits, err := parseRunLimits(h)
+	if err != nil {
+		return RunHeaders{}, err
+	}
+	rh.Limits = limits
 	return rh, nil
 }

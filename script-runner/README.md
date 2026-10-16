@@ -8,9 +8,13 @@ So wird aus einer Folge von Werkzeugaufrufen ein wiederholbarer Baustein
 (Stufe 3, „Use Cases bauen“).
 
 **Stand: Im Bau** (JanuaPort/januaport#928, Paket P2). Gebaut und getestet ist
-der Beisteller selbst; die Gegenstelle im Gateway (Pins, Lauf-Token, Audit),
-die Auslieferung und der Katalogeintrag folgen. Noch nicht auf einer Anlage
+der Beisteller selbst; die Gegenstelle für Vertragskennung 2 ist ab Gateway
+0.77.0 vorhanden. Auslieferung und Katalogeintrag folgen. Noch nicht auf einer Anlage
 gelaufen.
+
+**Benannte Kompatibilitätsgrenze:** Dieser Läufer meldet `contract: 2` und
+braucht ein Gateway ab **0.77.0**. Ein älteres Gateway sperrt den Läufer ganz
+(„andere Vertragsfassung“). **Update-Reihenfolge: erst das Gateway, dann der Läufer.**
 
 ## Wie es arbeitet
 
@@ -43,24 +47,32 @@ Drei dauerhafte Dienste und ein kurzer Init-Dienst aus einem Image, neben dem Ga
 - **Das Dienstlog enthält nur Zählbares** (Ende, Dauer, Bytes, Zahl der
   Werkzeugaufrufe), nie das Lauf-Protokoll. Das Audit schreibt JanuaPort.
 
-## Grenzen v1
+## Grenzen je Lauf (Vertragsfassung 5)
 
-Die Werte sind Grenzen dieser Fassung, keine Zusagen.
+Das Gateway übergibt die Laufgrenzen in `X-Jnpt-Run-Limits`. Ausgabe und
+Werkzeugaufrufe sind je Lauf wählbar, bis zu den technischen Decken unten.
+Ohne diese Kopfzeile gelten die Altgrenzen 25 s / 1 MiB / 50 Aufrufe.
+Eine vorhandene, falsch geformte Kopfzeile wird vor dem Start als
+Protokollfehler abgewiesen. Details und Golden-Dateien: [Vertrag](contract/README.md).
 
 | Grenze | Wert |
 |---|---|
-| Wandzeit je Lauf | ≤ 25 s, je Skript kleiner wählbar |
+| Wandzeit je Lauf | Minimum aus Gateway-Vorgabe, Manifest und 25 s (SEC L6); technische Decke 24 h |
 | CPU / RAM / Prozesse | 1 / 512 MiB / 128 |
 | Arbeitsordner | 64 MiB `/work`, 16 MiB `/tmp` |
-| Eingabe / Ausgabe | ≤ 256 KiB / ≤ 1 MiB |
+| Eingabe / Ausgabe | ≤ 256 KiB / Gateway-Vorgabe, gekürzt auf höchstens 16 MiB |
 | Lauf-Protokoll | ≤ 64 KiB einschließlich `\n[gekürzt]\n`; Platz für die Marke wird reserviert |
-| Werkzeugaufrufe je Lauf | ≤ 50 |
+| Werkzeugaufrufe je Lauf | Gateway-Vorgabe, gekürzt auf höchstens 10 000 |
 | Gleichzeitige Läufe | 1 |
 | Läufe in Folge | etwa 6 je Minute; dazwischen antwortet der Läufer „belegt, in etwa 10 Sekunden erneut versuchen“ |
 | Gepinnter Ordner | ≤ 4 MiB, ≤ 1000 Dateien (der Code, ohne `wheels/`) |
 | Bibliotheken | nur mit `requirements`: Wheels für Python 3.12 auf manylinux x86_64; ≤ 300 MiB und ≤ 30 000 Dateien je Lock installiert, ≤ 2 GiB für alle Locks; ein Thread für BLAS/OpenMP |
 | Sprache | Python 3.12 mit Standardbibliothek; reines Python unter `vendor/` im Skriptordner; Bibliotheken nur als geprüfte Wheels (siehe unten); **kein pip**, kein Download |
 | Git | nur ssh; ein Repository je Anlage |
+
+**Die 25-s-Kappe bleibt in P3 bestehen (SEC L6).** Erst muss der vermittler
+seinen Internet-Ausgang verlieren (#1069); das Anheben folgt mit P4/P5.
+`timeout_s` bleibt im Manifest Pflicht und liegt weiterhin in 1..25.
 
 **Isolation:** Wo gVisor (Runtime `runsc-jnpt`) eingerichtet ist, läuft die
 Sandbox darin; sonst unter runc mit der Härtung oben und geteiltem Kernel.

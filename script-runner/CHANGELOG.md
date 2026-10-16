@@ -1,6 +1,26 @@
 # Changelog — script-runner
 
-## Unveröffentlicht
+## 0.2.0 — 2026-10-16 (unveröffentlicht, JanuaPort/januaport#1040 P3)
+
+- **Vertragsfassung 5, `contract: 2`:** Das Gateway gibt Wandzeit, Ausgabebytes
+  und Werkzeugaufrufe je Lauf über `X-Jnpt-Run-Limits` vor. Strenges Format,
+  feste Fehler ohne Headerwert und Ablehnung vor Lauf/Slot bei Formfehlern.
+  Ohne Header bleiben die Altgrenzen 25 s / 1 MiB / 50 Aufrufe; höhere Vorgaben
+  werden auf die technischen Decken 24 h / 16 MiB / 10 000 gekürzt.
+- **SEC L6:** Die eigenständige 25-s-Kappe bleibt in P3 wirksam:
+  Minimum aus Kopfzeile, Manifest und Kappe. Manifest weiterhin Pflichtfeld
+  `timeout_s` in 1..25; Eingabe unverändert höchstens 256 KiB. Ausgabe und
+  Aufrufe nutzen die Grenze dieses Laufs, auch im festen Fehlertext wie im
+  Gateway 0.77.0. Wächter streamt ohne kleinere Summengrenze.
+- **Benannte Kompatibilitätsgrenze (Minor-Version):** Ein Läufer mit
+  `contract: 2` braucht ein Gateway ab **0.77.0**. Ein älteres Gateway sperrt
+  den Läufer ganz („andere Vertragsfassung“).
+  **Update-Reihenfolge: erst das Gateway, dann der Läufer.** Neues Image nötig.
+- Test-first, Golden-Dateien für Kennung 2 und Altgrenzen ohne Header,
+  Adaptertests und 19 wirksame Mutationsproben. Nachweis:
+  [P3-Abschlussbericht](https://github.com/JanuaPort/januaport/issues/1040#issuecomment-6205261051).
+
+### Weitere bereits unveröffentlichte Änderungen
 
 - **Unit-Test für unsichtbares Staging (#1041, SEC H1):** Prüft leeres `ready` während `build` und Veröffentlichung des fertigen Locks per atomarem Rename.
 
@@ -16,7 +36,8 @@
 - **Lauf-Protokoll (JanuaPort/januaport#1041 P2).** `januaport.log(*teile)`
   liefert Text ausschließlich als additives `_meta["januaport.ai/run"].log`,
   auch bei Fehler, Wandzeit, Speicher und Abbruch nach dem Start; leer fehlt
-  das Feld, Contract bleibt 1 und 2. Fester 64-KiB-Puffer bereits im Wächter,
+  das Feld. Das Log bleibt additiv; aktuelle Vertragskennung siehe 0.2.0.
+  Fester 64-KiB-Puffer bereits im Wächter,
   UTF-8-Ersatz und einmalige Kürzungsmarke innerhalb der Grenze; nie im
   Dienstlog. Golden-Dateien, Docker-Pin `log_canary` und Mutationsprüfungen.
 - **Privates Wheel-Staging (JanuaPort/januaport#1096).** Ein Volume, zwei
@@ -60,7 +81,7 @@
   `libs` (beim vermittler beschreibbar, in der Sandbox read-only als der eine
   zusätzliche Mount, ohne `noexec`; `/work` und `/tmp` bleiben `noexec`) —
   **neue Compose und neues Image, ein Wartungsschritt mit Runbook-Eintrag**
-  (P5). `contract` bleibt bei 1 und 2. **Benannte Grenze:** Eigene,
+  (P5). Das Bibliotheksformat bleibt unverändert. **Benannte Grenze:** Eigene,
   vertrauliche Pakete teilen sich die Sichtbarkeit mit allen Skripten der
   Anlage. **Messung P0** (numpy 2.5.4, pandas 3.0.6, runc): 91 MiB und 2478
   Dateien installiert, pandas-Import ohne pyc 1,2–1,4 s, RSS 82 MiB, ohne
