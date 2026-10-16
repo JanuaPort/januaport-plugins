@@ -1,6 +1,6 @@
 # Changelog — script-runner
 
-## 0.2.0 — 2026-10-16 (unveröffentlicht, JanuaPort/januaport#1040 P3)
+## 0.2.0 — 2026-10-16 (JanuaPort/januaport#1040 P3, #1041 P1/P2, #1096, #1069)
 
 - **Vertragsfassung 5, `contract: 2`:** Das Gateway gibt Wandzeit, Ausgabebytes
   und Werkzeugaufrufe je Lauf über `X-Jnpt-Run-Limits` vor. Strenges Format,
@@ -20,7 +20,7 @@
   Adaptertests und 19 wirksame Mutationsproben. Nachweis:
   [P3-Abschlussbericht](https://github.com/JanuaPort/januaport/issues/1040#issuecomment-6205261051).
 
-### Weitere bereits unveröffentlichte Änderungen
+### Ebenfalls in 0.2.0 (seit 0.1.4)
 
 - **Unit-Test für unsichtbares Staging (#1041, SEC H1):** Prüft leeres `ready` während `build` und Veröffentlichung des fertigen Locks per atomarem Rename.
 
