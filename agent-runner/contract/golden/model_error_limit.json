@@ -1,0 +1,10 @@
+{
+  "body": {
+    "error": {
+      "class": "limit",
+      "detail": "steps",
+      "message": "Der Agenten-Lauf hat eine seiner Grenzen erreicht und ist beendet."
+    }
+  },
+  "status": 429
+}

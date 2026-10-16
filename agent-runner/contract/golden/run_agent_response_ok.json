@@ -1,0 +1,14 @@
+{
+  "_meta": {
+    "januaport.ai/run": {
+      "end": "ok",
+      "steps": 4
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "Drei Rechnungen geprüft; eine weicht von der Bestellung ab."
+    }
+  ]
+}

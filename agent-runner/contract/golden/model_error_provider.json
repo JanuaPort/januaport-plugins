@@ -1,0 +1,10 @@
+{
+  "body": {
+    "error": {
+      "class": "provider",
+      "message": "Der Modellanbieter hat den Aufruf mit einem Fehler beantwortet; sein Text wird nicht weitergegeben.",
+      "provider_status": 429
+    }
+  },
+  "status": 502
+}
