@@ -90,4 +90,4 @@ Speicher, PIDs und Mindestlebensdauer bleiben eigenständige Grenzen.
 - Parser: `internal/contract/limits_test.go`; echter MCP-Adapter:
   `internal/mediator/limits_test.go`; echter Wächter-Adapter:
   `internal/guard/limits_linux_test.go`.
-- [P3-Abschlussbericht](P3-1040.md): Verifikation, Mutationsproben und Fundstellen.
+- [P3-Abschlussbericht](https://github.com/JanuaPort/januaport/issues/1040#issuecomment-6205261051): Verifikation, Mutationsproben und Fundstellen.

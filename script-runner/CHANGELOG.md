@@ -18,7 +18,7 @@
   **Update-Reihenfolge: erst das Gateway, dann der Läufer.** Neues Image nötig.
 - Test-first, Golden-Dateien für Kennung 2 und Altgrenzen ohne Header,
   Adaptertests und 19 wirksame Mutationsproben. Nachweis:
-  [P3-Abschlussbericht](contract/P3-1040.md).
+  [P3-Abschlussbericht](https://github.com/JanuaPort/januaport/issues/1040#issuecomment-6205261051).
 
 ### Weitere bereits unveröffentlichte Änderungen
 
