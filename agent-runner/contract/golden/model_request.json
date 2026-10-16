@@ -1,0 +1,27 @@
+{
+  "body": {
+    "max_tokens": 1024,
+    "messages": [
+      {
+        "content": "Prüfe die Rechnungen von heute.",
+        "role": "user"
+      }
+    ],
+    "system": "Prüfe Rechnungen.",
+    "tools": [
+      {
+        "description": "Lists things.",
+        "input_schema": {
+          "type": "object"
+        },
+        "name": "erp_list_things"
+      }
+    ]
+  },
+  "headers": {
+    "Authorization": "Bearer <lauf-token>",
+    "Content-Type": "application/json"
+  },
+  "method": "POST",
+  "path": "/api/plugin/agent-runner/model"
+}

@@ -1,0 +1,26 @@
+# JanuaPort/januaport#1099 B1; Netzbesitz beim Kern (#1069).
+name: jnpt-plugin-agent-runner
+services:
+  agent-runner:
+    image: ${JNPT_AGENT_RUNNER_IMAGE:?JNPT_AGENT_RUNNER_IMAGE fehlt}
+    read_only: true
+    user: "65532:65532"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      JNPT_GATEWAY_URL: ${JNPT_GATEWAY_URL:-http://jnpt:8484}
+    volumes:
+      - /run/jnpt/plugins/agent-runner:/run/jnpt/plugins/agent-runner:ro
+    networks: [plugins]
+    mem_limit: 256m
+    pids_limit: 64
+    healthcheck:
+      test: ["CMD", "/agent-runner", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+networks:
+  plugins:
+    external: true
+    name: jnpt_plugins
