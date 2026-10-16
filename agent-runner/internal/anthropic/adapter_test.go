@@ -58,8 +58,8 @@ func TestForbiddenModelPayloads(t *testing.T) {
 }
 
 func TestAllowedBase64Blocks(t *testing.T) {
-	for _, kind := range []string{"image", "document"} {
-		b := json.RawMessage(`[{"type":"` + kind + `","source":{"type":"base64","media_type":"application/pdf","data":"YQ=="}}]`)
+	for _, tc := range []struct{ kind, media string }{{"image", "image/png"}, {"document", "application/pdf"}} {
+		b := json.RawMessage(`[{"type":"` + tc.kind + `","source":{"type":"base64","media_type":"` + tc.media + `","data":"YQ=="}}]`)
 		if e := ValidateContent(b); e != nil {
 			t.Fatal(e)
 		}
