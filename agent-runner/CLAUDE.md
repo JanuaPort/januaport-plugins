@@ -22,7 +22,7 @@ Zeitpläne/Ticker zu Release B. Betreiberanleitung: `README.md`.
 | `contract/golden` | Byte-identische Referenzdateien des Kerns, SHA256SUMS |
 | `contract/proposed` | Neue Ende-Antworten und Lauf-Protokoll zur Kernübernahme |
 | `probe/mutations.py` | Reproduzierbare Mutationen mit Wiederherstellung |
-| `evidence` | Roter Ausgangsstand und Prüfergebnisse |
+| `internal/hygiene/release_test.go` | Release-Auslöser, Rechte, SHA-Pins und Digest-Bindung |
 
 ## Draht-Vertrag
 
@@ -51,10 +51,12 @@ Lauf-Token an derselben Betreiberadresse `JNPT_GATEWAY_URL`.
 | Modell nur über Kern; HTTP-Umleitungen und Umgebungsproxy gesperrt | `TestNoRedirectsOrProxyAtEitherGateway` |
 | Messages ohne model/stream, keine erzwungene Werkzeugwahl, nur erlaubte Nachrichten/Blöcke, Medien base64, keine Anbieter-Werkzeuge | `TestForbiddenModelPayloads`, `TestModelWireGuards`, `TestUnsafeResponseAndUnknownToolAtAdapter` |
 | Thinking und redacted_thinking bleiben in der angehängten Historie erhalten | `TestLoopGoldenThinkingAndLog`, `TestThinkingAndCache` |
-| URL-Bilder/andere nicht darstellbare MCP-Blöcke werden fester Platzhalter | `TestURLImageToolResultAtAdapter`, `TestToolResultSanitization` |
+| Bilder nur base64 mit image/png, image/jpeg, image/gif oder image/webp; andere MCP-Bilder/URL-Bilder werden fester Platzhalter | `TestImageMediaTypesAtAdapter`, `TestURLImageToolResultAtAdapter`, `TestToolResultSanitization` |
+| error/rejected nennt unabhängig vom Feld die abgewiesene Läuferanfrage | `TestRejectedMessageAtAdapter`, `TestAllResultGoldens` |
+| Antworten auf beiden Gateway-Pfaden höchstens 4 MiB, ohne Fristablauf abgewiesen | `TestResponseBody4MiBLimitAtAdapter` |
 | AG8: Fehlertext und unbekannte Fehlerdetails gelangen nicht in Antwort/Protokoll | `TestGatewayErrorsFixed`, `TestLogErrorContentAbsent`, `TestRevocationAtBothGateways` |
 | Werkzeugaufrufe nur aus tools/list; eindeutige IDs, gültige Namen, begrenzte Liste/Pagination | `TestUnsafeResponseAndUnknownToolAtAdapter`, `TestToolListAndMultiToolGuards`, `TestToolListSizeLimit` |
-| Schritte/Aufrufe lokal begrenzt, Wandzeit = min(Anfrage, Meldung), Standard 300 s; Context-Abbruch beendet laufendes HTTP samt SDK-Cleanup | `TestLimitsAtAdapter`, `TestCancellationAndWallAtAdapter`, `TestAdvertisedWallCapEnforcedAtAdapter`, `TestCleanupWithinWallAtAdapter` |
+| Schritte/Aufrufe lokal begrenzt, Wandzeit = min(Anfrage, Meldung), Standard 300 s; Context-Abbruch beendet laufendes HTTP samt SDK-Cleanup, cancel vor Close | `TestLimitsAtAdapter`, `TestCancellationAndWallAtAdapter`, `TestAdvertisedWallCapEnforcedAtAdapter`, `TestCleanupWithinWallAtAdapter`, `TestCancelBeforeSessionCloseAtAdapter` |
 | Lauf-Protokoll enthält nur Schritte, Anzahl und Namen der Werkzeuge, Ende-Klasse, Dauer | `TestLoopGoldenThinkingAndLog` gegen `run_log_ok.json` |
 | #1069: genau internes jnpt_plugins, kein Host-Port, kein zusätzliches Ausgangsnetz | `TestCompose`, `TestComposeForbiddenPaths` |
 | Distroless, statisch, UID 65532, read-only, cap_drop ALL, no-new-privileges, nur Schlüsselordner ro | `TestDockerNonRootStatic`, `TestComposeForbiddenPaths` |
@@ -70,7 +72,8 @@ Lauf-Token an derselben Betreiberadresse `JNPT_GATEWAY_URL`.
   System; damit bleiben auch große Werkzeuglisten unter vier Breakpoints.
 - `max_tokens = min(1024, limits.tokens_out)` je Modellaufruf. Die tatsächlichen
   Token-Summen prüft ausschließlich der Kern, auch Cache-Tokens.
-- 4 MiB je eingehender HTTP-Anfrage/Antwort, 1024 Werkzeugdefinitionen und
+- 4 MiB je eingehender HTTP-Anfrage und je HTTP-Antwort auf beiden
+  Gateway-Pfaden (Bearer-Transport), 1024 Werkzeugdefinitionen und
   höchstens 1024 unterschiedliche Folgeseiten sind Protokollschutz.
 - Die Erfolgsausgabe besteht aus finalen Textblöcken; Thinking steht nur in
   der Modellhistorie. Fehler-Antworten verwenden die feste Satzliste.
@@ -82,6 +85,9 @@ Lauf-Token an derselben Betreiberadresse `JNPT_GATEWAY_URL`.
   `session.Close()` wird dieser abgebrochen; ein hängendes Session-DELETE
   verlängert den Lauf dadurch nicht. Eingehend bleibt zusätzlich
   `PropagateRequestCancellation` aktiviert.
+  H1 prüft die Reihenfolge ohne Uhr: Ein erfolgreicher Lauf darf kein
+  Session-DELETE zum Kern senden. H2 liest übergroße Antworten auf beiden
+  Pfaden ohne Lauf-Frist und verlangt den Größenfehler bei 4 MiB.
 - Drei Prüfstellen begrenzen Anfragekörper auf 4 MiB: HTTP-Wrapper,
   explizites SDK-`MaxRequestBodyBytes` und Argumentparser. Die Größenmutation
   hebt alle drei gleichzeitig an; sonst würde die zweite Linie sie verdecken.
@@ -90,11 +96,26 @@ Lauf-Token an derselben Betreiberadresse `JNPT_GATEWAY_URL`.
 
 ## Prüfen
 
+Release B1.1: `.github/workflows/agent-runner-release.yml`, nur
+`agent-runner-vX.Y.Z`, ein Build `linux/amd64` mit SBOM und Provenance,
+Push per Digest ohne Tag → Config-Digest-Vergleich (SEC C1) und
+`pwsh`/`probe/smoke.ps1` gegen genau diesen Digest → Tag `X.Y.Z`.
+Die vorhandene PowerShell-Sonde bleibt die einzige Implementierung;
+Ubuntu hat `pwsh`. Sie prüft die Isolation mit einer erreichbaren
+Positivkontrolle im fremden Netz. `probe/.smoke/` ist ignoriert.
+Nur `build`/`publish` haben `packages: write`, dort nur `actions/*`/`docker/*`;
+alle Aktions-SHAs entsprechen `script-runner-release.yml` (SEC C2).
+Trivy als gepinntes Binary im lesenden Job: Bericht als Artefakt, kein Gate.
+Das Gate füllt die Kuratierungsvorlage unter 0.1.0 in `CHANGELOG.md` nach
+dem Release mit Digest, Lauf-ID, Scan und geprüfter JanuaPort v0.80.0 aus.
+Der Hygiene-Test benötigt den ganzen Checkout samt `.github/workflows/`.
+Prüfberichte bleiben außerhalb des öffentlichen Repositories.
+
 ```sh
 # Im Modul, Go 1.26.9 (lokal oder im Go-Container)
 go vet ./...
 go test ./...
-go test -race ./...
+go test -race -count=1 ./...
 golangci-lint run
 docker build -t agent-runner:test .
 ```

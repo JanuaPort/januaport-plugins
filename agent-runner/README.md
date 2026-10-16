@@ -24,8 +24,14 @@ docker compose -f docker-compose.yml up -d
 docker compose -f docker-compose.yml ps
 ```
 
-Für eine Anlage ein geprüftes Image per Digest in `.env` hinterlegen. B1
-liefert noch keinen veröffentlichten Katalogeintrag oder Release-Workflow.
+Für eine Anlage ein geprüftes Image per Digest in `.env` hinterlegen. Die
+Release-Strecke `.github/workflows/agent-runner-release.yml` startet nur mit
+`agent-runner-vX.Y.Z`: Tests → ein Build für `linux/amd64` mit SBOM und
+Provenance → Sonden gegen den gepushten Digest samt Config-Digest-Vergleich
+(SEC C1) → Image-Tag `X.Y.Z` auf denselben Digest. Trivy liefert einen Bericht
+als Artefakt, kein Gate. Die Kuratierung unter 0.1.0 in `CHANGELOG.md` füllt
+das Gate nach dem Release aus, einschließlich Prüfung mit JanuaPort v0.80.0.
+Ein veröffentlichtes Image und ein Katalogeintrag stehen noch aus.
 
 | Variable | Standard | Bedeutung |
 |---|---|---|
@@ -56,6 +62,14 @@ gezählt. Die Wandzeit umfasst Werkzeugsuche, Modell- und Werkzeugaufrufe;
 sie ist das Minimum aus Anfrage und eigener Meldung (Standard 300 s).
 Die Token-Budgets verwaltet der Kern. Beendet der Kern den Relay-Kontext,
 endet der laufende HTTP-Aufruf ebenfalls.
+Vor dem Schließen der MCP-Sitzung wird der Lauf-Kontext abgebrochen; das
+SDK-Cleanup kann den Lauf dadurch nicht verlängern. Der HTTP-Transport
+begrenzt Antworten auf Modell- und MCP-Pfad auf 4 MiB, unabhängig von der
+Wandzeit.
+
+Bilder werden nur als base64 mit `image/png`, `image/jpeg`, `image/gif`
+oder `image/webp` weitergegeben. Andere Bild-Medientypen und URL-Bilder aus
+Werkzeugergebnissen werden zum festen Platzhalter aus dem Draht-Vertrag.
 
 Eine JSON-Zeile je Lauf auf stdout: `steps`, `tool_calls`, `tools`, `end`,
 `duration_ms`. Darin stehen **keine Inhalte**: keine Eingabe, Anweisungen,
@@ -64,7 +78,14 @@ sind Teil dieses Betriebsprotokolls. Ende-Klassen: `ok`, `limit`, `cancelled`,
 `revoked`, `error`. Fehler liefern feste Sätze; Text des Durchgangs wird
 verworfen. Bei abgebrochener Verbindung bleibt das Protokoll der Nachweis
 des Endes, eine HTTP-Antwort kann dann ausbleiben.
+Für `error/rejected` lautet der feste Satz: „Der Modell-Durchgang hat die
+Anfrage des Agenten-Läufers abgewiesen.“
 
 Vertrag und neue Ende-Beispiele: [contract/README.md](contract/README.md).
 Die Tests benutzen ausschließlich einen lokalen Fake-Kern, keine Live-Modellaufrufe.
 Mutationsproben: `probe/mutations.py` (Bericht nach `<tmp>/agent-runner-mutations/`).
+Die Release-Strecke verwendet die vorhandene `probe/smoke.ps1` mit `pwsh`
+auf Ubuntu: UID 65532, read-only Root-FS, `/healthz`, genau ein internes Netz,
+kein Host-Port und ein Testserver in einem fremden Netz (mit erreichbarer
+Positivkontrolle). Lokal: `pwsh -File probe/smoke.ps1 -Image agent-runner:test`.
+Der temporäre Zustand unter `probe/.smoke/` ist ignoriert und wird aufgeräumt.

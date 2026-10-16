@@ -43,13 +43,16 @@ Oberste zulässige Felder: `messages`, `system`, `tools`, `tool_choice`,
 `metadata`. Der Erzeuger setzt davon messages/system/tools/max_tokens;
 **kein model, stream oder tool_choice**. Nachrichten haben nur role/content.
 Erlaubte Blöcke: text, image, document, tool_use, tool_result, thinking,
-redacted_thinking. Bilder/Dokumente benötigen base64-Quellen. Anbieter-
+redacted_thinking. Bilder/Dokumente benötigen base64-Quellen. Bilder erlauben
+nur `media_type` `image/png`, `image/jpeg`, `image/gif` oder `image/webp`,
+auch in verschachtelten Werkzeugergebnissen und Modellantworten. Anbieter-
 Werkzeuge werden abgewiesen. Signed thinking wird nicht umgeschrieben.
 
 Werkzeugdefinitionen stammen von `tools/list`; nur deren Namen werden
-aufgerufen. MCP-Text und base64-Bilder werden in `tool_result` projiziert,
+aufgerufen. MCP-Text und base64-Bilder mit einem dieser vier Medientypen
+(`mimeType` in MCP, `media_type` in Messages) werden in `tool_result` projiziert,
 strukturierte Ergebnisse als JSON-Text angehängt. Nicht darstellbare
-Blöcke einschließlich URL-Bildern werden zu:
+Blöcke einschließlich URL-Bildern und Bildern mit anderem Medientyp werden zu:
 
 > [Werkzeug-Inhalt in diesem Modell-Durchgang nicht darstellbar.]
 
@@ -83,6 +86,15 @@ Grenzdetails des Kerns werden aus steps/tool_calls/wall/tokens_in/tokens_out
 Wegen ergibt revoked; die Fehlerklassen cancelled/revoked ebenso. Unbekannte
 Klassen, ungültiges JSON oder Transportfehler ergeben error/gateway.
 `error.message` und provider_status werden nicht übernommen (AG8).
+Für `error/rejected` gilt unabhängig vom abgewiesenen Feld der feste Satz:
+„Der Modell-Durchgang hat die Anfrage des Agenten-Läufers abgewiesen.“ Das
+unveränderliche Kern-Golden `model_error_rejected.json` enthält weiterhin
+den alten Durchgangstext; dieser wird verworfen, nicht als Läuferantwort benutzt.
+
+Beide ausgehenden HTTP-Pfade begrenzen Antwortkörper im Bearer-Transport auf
+4 MiB. Diese Sperre gilt beim Lesen und benötigt keinen Fristablauf. Vor
+`session.Close()` wird der Lauf-Kontext abgebrochen, auch nach erfolgreichem
+Lauf; dadurch endet das vom SDK abgekoppelte Cleanup innerhalb des Laufs.
 
 Die sechs Ende-Beispiele sind Vorschläge für den Kern, keine nachträgliche
 Änderung seines gelieferten Vertrags. Eine Live-Abnahme steht aus.

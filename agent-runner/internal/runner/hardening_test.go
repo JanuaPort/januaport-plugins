@@ -310,3 +310,142 @@ func TestCleanupWithinWallAtAdapter(t *testing.T) {
 		t.Fatal("SDK cleanup outlived run deadline")
 	}
 }
+
+// H1: A successful run must cancel its transport scope before SDK Close.
+// Reply immediately to DELETE: observing it is an ordering failure, independent
+// of wall time or the speed of the test machine.
+func TestCancelBeforeSessionCloseAtAdapter(t *testing.T) {
+	var deletes atomic.Int32
+	f := &fakeCore{before: func(w http.ResponseWriter, r *http.Request) bool {
+		if r.URL.Path == MCPPath {
+			w.Header().Set("Mcp-Session-Id", "ordering-session")
+		}
+		if r.Method == http.MethodDelete {
+			deletes.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+			return true
+		}
+		return false
+	}, model: func(w http.ResponseWriter, r *http.Request, n int) {
+		modelReply(w, `[{"type":"text","text":"ok"}]`, "end_turn")
+	}}
+	r, _, _ := setup(t, f)
+	_, b := invoke(t, r, context.Background(), requestFixture(t), nil)
+	end(t, b, "ok", 1)
+	if deletes.Load() != 0 {
+		t.Fatal("session.Close sent DELETE before run cancellation")
+	}
+}
+
+// H2: Exercise the real bearer HTTP adapter on both outgoing paths. No run
+// deadline supplies the rejection: the reader must return a size error itself.
+func TestResponseBody4MiBLimitAtAdapter(t *testing.T) {
+	const ceiling = 4 * 1024 * 1024
+	for _, path := range []string{ModelPath, MCPPath} {
+		for _, size := range []int{ceiling - 1, ceiling + 1} {
+			t.Run(fmt.Sprintf("%s/%d", path, size), func(t *testing.T) {
+				f := &fakeCore{before: func(w http.ResponseWriter, r *http.Request) bool {
+					_, _ = io.WriteString(w, strings.Repeat("x", size))
+					return true
+				}}
+				r, _, _ := setup(t, f)
+				res, err := r.client("<lauf-token>").Get(r.cfg.GatewayURL + path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer func() { _ = res.Body.Close() }()
+				body, err := io.ReadAll(res.Body)
+				if size < ceiling {
+					if err != nil || len(body) != size {
+						t.Fatalf("allowed body: bytes=%d err=%v", len(body), err)
+					}
+				} else if err == nil || err.Error() != "antwort ist zu groß" || len(body) != ceiling {
+					t.Fatalf("4 MiB size guard missing: bytes=%d err=%v", len(body), err)
+				}
+			})
+		}
+	}
+}
+
+func TestRejectedMessageAtAdapter(t *testing.T) {
+	const message = "Der Modell-Durchgang hat die Anfrage des Agenten-Läufers abgewiesen."
+	for _, local := range []bool{false, true} {
+		t.Run(fmt.Sprint(local), func(t *testing.T) {
+			f := &fakeCore{model: func(w http.ResponseWriter, r *http.Request, n int) {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = io.WriteString(w, `{"error":{"class":"rejected","message":"`+secret+`"}}`)
+			}}
+			steps := 1
+			if local {
+				f.list = json.RawMessage(`{"tools":[{"name":"bad name","inputSchema":{}}]}`)
+				steps = 0
+			}
+			r, _, log := setup(t, f)
+			_, b := invoke(t, r, context.Background(), requestFixture(t), nil)
+			end(t, b, "error", steps)
+			var result struct{ Content []struct{ Text string } }
+			if err := json.Unmarshal(b, &result); err != nil || len(result.Content) != 1 || result.Content[0].Text != message {
+				t.Fatalf("rejected message: %s (%v)", b, err)
+			}
+			if strings.Contains(string(b)+log.String(), secret) {
+				t.Fatal("rejection leaked gateway text")
+			}
+		})
+	}
+}
+
+func TestImageMediaTypesAtAdapter(t *testing.T) {
+	for _, media := range []string{"image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml", "application/pdf", "image/bmp", "image/avif", "IMAGE/PNG", ""} {
+		allowed := media == "image/png" || media == "image/jpeg" || media == "image/gif" || media == "image/webp"
+		for _, nested := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/nested=%t", media, nested), func(t *testing.T) {
+				block, _ := json.Marshal([]any{map[string]any{"type": "image", "source": map[string]string{"type": "base64", "media_type": media, "data": "YQ=="}}})
+				if nested {
+					block = json.RawMessage(`[{"type":"tool_result","tool_use_id":"x","content":` + string(block) + `}]`)
+				}
+				// Sender guard: invalid images must never reach the gateway.
+				var hits atomic.Int32
+				f := &fakeCore{model: func(w http.ResponseWriter, r *http.Request, n int) {
+					hits.Add(1)
+					modelReply(w, `[{"type":"text","text":"ok"}]`, "end_turn")
+				}}
+				r, _, _ := setup(t, f)
+				req := anthropic.NewRequest("s", "i", nil, 1024)
+				req.Messages[0].Content = block
+				_, class, detail := r.model(context.Background(), r.client("<lauf-token>"), req)
+				if allowed {
+					if class != "" || hits.Load() != 1 {
+						t.Fatalf("allowed image: %s/%s hits=%d", class, detail, hits.Load())
+					}
+				} else if class != "error" || detail != "rejected" || hits.Load() != 0 {
+					t.Fatalf("forbidden image sent: %s/%s hits=%d", class, detail, hits.Load())
+				}
+				// MCP result projection through the entire loop into the next request.
+				tool, _ := json.Marshal(map[string]any{"content": []any{map[string]string{"type": "image", "mimeType": media, "data": "YQ=="}}})
+				f = &fakeCore{tool: tool, model: func(w http.ResponseWriter, r *http.Request, n int) {
+					if n == 1 {
+						modelReply(w, `[{"type":"tool_use","id":"x","name":"erp_list_things","input":{"q":"`+secret+`"}}]`, "tool_use")
+					} else {
+						modelReply(w, `[{"type":"text","text":"ok"}]`, "end_turn")
+					}
+				}}
+				r, _, _ = setup(t, f)
+				_, b := invoke(t, r, context.Background(), requestFixture(t), nil)
+				end(t, b, "ok", 2)
+				encoded, _ := json.Marshal(f.requests[1])
+				if strings.Contains(string(encoded), anthropic.Placeholder) == allowed || strings.Contains(string(encoded), "YQ==") != allowed || (allowed && !strings.Contains(string(encoded), `"media_type":"`+media+`"`)) {
+					t.Fatalf("image projection: %s", encoded)
+				}
+				// The same content validator also guards model responses/history.
+				f = &fakeCore{model: func(w http.ResponseWriter, r *http.Request, n int) { modelReply(w, string(block), "end_turn") }}
+				r, _, _ = setup(t, f)
+				_, b = invoke(t, r, context.Background(), requestFixture(t), nil)
+				want := "error"
+				if allowed {
+					want = "ok"
+				}
+				end(t, b, want, 1)
+			})
+		}
+	}
+}
