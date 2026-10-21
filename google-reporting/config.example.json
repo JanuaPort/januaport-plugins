@@ -1,0 +1,35 @@
+{
+  "definition_version": "synthetic-v1",
+  "gsc_property": "sc-domain:example.test",
+  "ga4_property": "123456",
+  "ga4_time_zone": "Europe/Berlin",
+  "hosts": [
+    "www.example.test"
+  ],
+  "segments": {
+    "atas": [
+      "/atas"
+    ],
+    "gateway": [
+      "/gateway"
+    ],
+    "shared": [
+      "/"
+    ]
+  },
+  "gsc_urls": {
+    "/atas": [
+      "https://www.example.test/atas"
+    ],
+    "/gateway": [
+      "https://www.example.test/gateway"
+    ],
+    "/": [
+      "https://www.example.test/"
+    ]
+  },
+  "query_enabled": false,
+  "query_min_impressions": 10,
+  "ga4_min_group_size": 10,
+  "key_events": null
+}
