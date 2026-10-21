@@ -45,6 +45,13 @@ jnpt_plugins bleibt internal; eigenes Egress-Netz benötigt Zielhost-Firewall.
 Keine Behauptung, Compose erzwinge die Domain-Allowlist. Lokale Gesundheit und
 Google-Readiness getrennt. Vollständiges Runbook und Live-Gates: README.md.
 
+`SETUP.md` ist die Einrichtungsanleitung für den Admin und wird je Plugin-Version als
+`setup_guide` in den signierten Katalog übernommen (JanuaPort/januaport#1137). Sie muss ohne
+das Repo verständlich sein: höchstens 32 KiB, gültiges UTF-8, keine relativen Links, nur die
+Handgriffe des Admins (Betreiberschritte bleiben im README). SEC V1 (minimale Google-Rechte,
+Datei löschen, Kopie höchstens im Passwortmanager) steht dort und in
+`tests/test_setup_guide.py`; wer die Rechte ändert, zieht beide nach.
+
 Tests enthalten nur synthetische Daten; Signer flüchtig generieren. Lock
 mit pip-compile --generate-hashes erstellen, install --require-hashes.
 Mutationstests müssen Bridge-Key-Auth, Vorprüfung, Filter, Retries und Kill abdecken.

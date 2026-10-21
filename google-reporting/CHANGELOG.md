@@ -2,6 +2,10 @@
 
 ## Unveröffentlicht
 
+- JanuaPort/januaport#1137: Einrichtungsanleitung für den Admin in `SETUP.md` (Google-Seite mit
+  minimalen Rechten nach SEC V1, Eintrag des Servicekonto-JSON, Nutzer-Scopes, Prüfung,
+  Schlüsselwechsel). Sie geht als `setup_guide` in den signierten Plugin-Katalog; das README
+  verweist darauf. `tests/test_setup_guide.py` prüft 32 KiB, UTF-8 und den V1-Inhalt.
 - #1130: privater Python-REST-Beisteller mit acht festen GSC-/GA4-Berichten,
   getrennten Readonly-Scopes, öffentlichen Seitenfiltern,
   killbaren begrenzten Prozessen und flüchtigen Token-Caches.
