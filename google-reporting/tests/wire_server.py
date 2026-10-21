@@ -61,10 +61,7 @@ def main():
     pool = WorkerPool(cfg, "unused", adapter_factory=SyntheticAdapter)
     app = create_app(
         cfg,
-        {
-            "gsc": b"synthetic-gsc-bridge-contract-no-real-key",
-            "ga4": b"synthetic-ga4-bridge-contract-no-real-key",
-        },
+        b"synthetic-google-reporting-bridge-contract-no-real-key",
         pool,
     )
     asyncio.run(serve_app(app, "127.0.0.1", args.port))

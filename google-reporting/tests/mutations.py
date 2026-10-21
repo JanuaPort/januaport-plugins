@@ -11,11 +11,11 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 MUTANTS = [
     (
-        "source-key-auth",
+        "bridge-key-auth",
         "server.py",
         "if not authorized:",
         "if False:",
-        "test_boundary.HTTP.test_source_keys_are_not_interchangeable",
+        "test_boundary.HTTP.test_wrong_or_missing_bridge_key_is_rejected_for_both_sources",
     ),
     (
         "unknown-input",

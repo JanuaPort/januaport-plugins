@@ -113,7 +113,7 @@ class HTTP(unittest.IsolatedAsyncioTestCase):
         self.cfg = Config.from_dict(fixture())
         self.client = TestClient(
             SafeTestServer(
-                create_app(self.cfg, {"gsc": b"A" * 32, "ga4": b"B" * 32}, self.pool)
+                create_app(self.cfg, b"A" * 32, self.pool)
             )
         )
         await self.client.start_server()
@@ -141,18 +141,29 @@ class HTTP(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn("CANARY", await response.text())
         self.assertEqual(self.pool.calls, [])
 
-    async def test_source_keys_are_not_interchangeable(self):
-        for source, key in [("gsc", "B"), ("ga4", "A")]:
+    async def test_one_bridge_key_serves_both_sources(self):
+        for source in ("gsc", "ga4"):
             response = await self.client.get(
                 "/v1/" + source + "/get_status",
-                headers={"Authorization": "Bearer " + key * 32},
+                headers={"Authorization": "Bearer " + "A" * 32},
+            )
+            self.assertEqual(response.status, 200)
+        self.assertEqual([c.source for c in self.pool.calls], ["gsc", "ga4"])
+
+    async def test_wrong_or_missing_bridge_key_is_rejected_for_both_sources(self):
+        for source in ("gsc", "ga4"):
+            response = await self.client.get(
+                "/v1/" + source + "/get_status",
+                headers={"Authorization": "Bearer " + "B" * 32},
             )
             self.assertEqual(response.status, 403)
+            response = await self.client.get("/v1/" + source + "/get_status")
+            self.assertEqual(response.status, 401)
         self.assertEqual(self.pool.calls, [])
 
     async def test_unconfigured_key_events_and_query_disabled(self):
         response = await self.client.get(
-            "/v1/ga4/key_events", headers={"Authorization": "Bearer " + "B" * 32}
+            "/v1/ga4/key_events", headers={"Authorization": "Bearer " + "A" * 32}
         )
         self.assertEqual((await response.json())["state"], "not_configured")
         response = await self.client.get(
@@ -201,7 +212,7 @@ class Disconnect(unittest.IsolatedAsyncioTestCase):
             )
             client = TestClient(
                 SafeTestServer(
-                    create_app(cfg, {"gsc": b"A" * 32, "ga4": b"B" * 32}, pool)
+                    create_app(cfg, b"A" * 32, pool)
                 )
             )
             await client.start_server()
@@ -238,7 +249,7 @@ class Disconnect(unittest.IsolatedAsyncioTestCase):
             SafeTestServer(
                 create_app(
                     Config.from_dict(fixture()),
-                    {"gsc": b"A" * 32, "ga4": b"B" * 32},
+                    b"A" * 32,
                     UnavailablePool(),
                 )
             )

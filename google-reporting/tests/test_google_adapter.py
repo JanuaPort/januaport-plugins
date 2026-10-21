@@ -14,6 +14,10 @@ from google_reporting.google_adapter import GoogleAdapter, SCOPES, load_identity
 from test_contract import fixture
 
 
+NL = chr(10)
+CR = chr(13)
+
+
 def synthetic_identity():
     # Ephemeral synthetic signing key, never persisted or committed.
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -245,6 +249,36 @@ class Adapter(unittest.TestCase):
                 file.seek(0)
                 json.dump(data, file)
                 file.truncate()
+                file.flush()
+                with self.assertRaises(ValueError):
+                    load_identity(file.name)
+
+    def test_identity_survives_stripped_line_breaks_of_gui_password_field(self):
+        # The admin GUI password field swallows line breaks on paste. The JSON stays
+        # valid because the PEM line breaks inside private_key are escapes.
+        pretty = json.dumps(self.identity, indent=2)
+        for name, text in [
+            ("compact", json.dumps(self.identity)),
+            ("pretty_without_newlines", pretty.replace(NL, "")),
+            ("pretty_without_any_line_break", pretty.replace(CR, "").replace(NL, "")),
+        ]:
+            with self.subTest(name), tempfile.NamedTemporaryFile(mode="w+") as file:
+                self.assertNotIn(NL, text)
+                file.write(text)
+                file.flush()
+                info = load_identity(file.name)
+                self.assertEqual(info["client_email"], self.identity["client_email"])
+                self.assertIn(NL, info["private_key"])
+
+    def test_identity_without_line_breaks_keeps_every_other_check(self):
+        for field, value in [
+            ("token_uri", "http://169.254.169.254/metadata"),
+            ("client_email", "synthetic@attacker.test"),
+        ]:
+            data = dict(self.identity)
+            data[field] = value
+            with self.subTest(field), tempfile.NamedTemporaryFile(mode="w+") as file:
+                file.write(json.dumps(data, indent=2).replace(NL, ""))
                 file.flush()
                 with self.assertRaises(ValueError):
                     load_identity(file.name)
