@@ -140,14 +140,30 @@ geliefert; keine Pakete oder Discovery-Dokumente zur Laufzeit.
    Der Schlüssel liegt **nur im Tresor** und kommt als RAM-Datei auf die Anlage
    (Hausmuster #887): keine Klartextdatei unter `/etc` oder `/opt`, keine
    Schlüssel in Envs, Image, Compose, Git oder Chat. Zwei Stellen in der
-   Basis-Einrichtung der Admin-GUI (das Gateway legt sie an, sobald die Ordner
-   aus Schritt 3 existieren):
+   Basis-Einrichtung (das Gateway legt sie an, sobald die Ordner aus Schritt 3
+   existieren), mit unterschiedlichen Wegen:
 
    | Stelle | Ordner auf der Anlage | Inhalt von `runtime-key` |
    |---|---|---|
-   | `plugin-google-reporting` | `/run/jnpt/plugins/google-reporting/` | der **eine** Bridge-Key (32–256 druckbare ASCII-Zeichen), dieselbe Zeichenkette wie die Connector-Credential `google-reporting` |
-   | `plugin-google-reporting-google` | `/run/jnpt/plugins/google-reporting-google/` | das Servicekonto-JSON (bis 1 MiB) |
+   | `plugin-google-reporting` | `/run/jnpt/plugins/google-reporting/` | der **eine** Bridge-Key, ein Zufallswert; derselbe Wert steht in der Connector-Credential `google-reporting`. Setzt der Betreiber per CLI (siehe unten) |
+   | `plugin-google-reporting-google` | `/run/jnpt/plugins/google-reporting-google/` | das Servicekonto-JSON (bis 1 MiB). Trägt der Admin/PO in der Admin-GUI unter Basis-Einrichtung ein |
 
+   **Der Bridge-Key ist ein Zufallswert, den kein Mensch kennen muss.** Der
+   Betreiber erzeugt ihn auf der Anlage und setzt ihn über stdin per Betreiber-CLI
+   (`jnpt credential set`, Wert nie als Argument; im Container
+   `docker compose exec -T jnpt jnpt credential set --name …`, mit der Compose-Datei
+   der Anlage) in die Stelle **und** mit demselben Wert in die Connector-Credential.
+   Danach wird der Wert verworfen; er erscheint nie in Chat, Log oder Datei:
+
+   ```bash
+   K=$(openssl rand -hex 32)            # 64 Zeichen, erfüllt 32–256 druckbare ASCII
+   printf %s "$K" | jnpt credential set --name plugin-google-reporting
+   printf %s "$K" | jnpt credential set --name google-reporting
+   unset K
+   ```
+
+   Nur das Servicekonto-JSON trägt der Admin/PO selbst in die Admin-GUI ein
+   (Basis-Einrichtung, Stelle `plugin-google-reporting-google`).
    Das Passwortfeld der GUI schluckt beim Einfügen die Zeilenumbrüche. Das schadet
    nicht: Das JSON bleibt gültig, weil die Zeilenumbrüche im `private_key` als
    Backslash-n-Escape stehen. **Die heruntergeladene JSON-Datei nach dem Eintragen
@@ -189,9 +205,9 @@ geliefert; keine Pakete oder Discovery-Dokumente zur Laufzeit.
    Capabilities entfernt, minimale tmpfs, kein Host-Port/Docker-Socket/Vault-Mount,
    keine Reverse-Proxy-Route. Lokal /healthz prüft nur Startkonfiguration/Dienst,
    keine Google-Probe; temporärer Googleausfall löst kein Update-Rollback aus.
-6. Den Bridge-Key zusätzlich als **eine** Connector-Credential `google-reporting`
-   im JanuaPort-Vault anlegen (Wert gleich `runtime-key` der Stelle
-   `plugin-google-reporting`). Bytegleiche Vorlagen aus Integrations-/Produktrepo
+6. Die **eine** Connector-Credential `google-reporting` im JanuaPort-Vault ist
+   schon aus Schritt 2 gesetzt (Wert gleich `runtime-key` der Stelle
+   `plugin-google-reporting`, nie von Hand getippt). Bytegleiche Vorlagen aus Integrations-/Produktrepo
    (`google-search-console`, `google-analytics`, beide jeweils 1.0.0 und beide mit
    dieser Credential) als **corp**-Instanzen mit http://google-reporting:8092
    erstellen. Team-Selbstanlage erlaubt nur öffentliche HTTPS-Ziele; Admin-MCP
@@ -202,11 +218,11 @@ geliefert; keine Pakete oder Discovery-Dokumente zur Laufzeit.
    Katalog/Werkzeuge neu einlesen. Bestehender REST-Lifecycle/Reload; erstmalige
    Vorlagenauslieferung kann Gateway-/Katalogneustart brauchen.
 
-Rotation: neuen Wert in der Basis-Einrichtung der Admin-GUI eintragen (Stelle
-`plugin-google-reporting` bzw. `plugin-google-reporting-google`); das Gateway
-schreibt die Datei, das Unit-Paar erzeugt den Container neu (≤ 60 s plus Recreate).
-Beim Bridge-Key die Connector-Credential `google-reporting` im Vault im selben
-Zug nachziehen, danach positive Probe je Quelle. Beim Google-Schlüssel den neuen
+Rotation: Beim Bridge-Key einen neuen Zufallswert wie in Schritt 2 erzeugen und im
+selben Zug in `plugin-google-reporting` und `google-reporting` setzen; beim
+Servicekonto-JSON den neuen Wert in der Admin-GUI eintragen (Stelle
+`plugin-google-reporting-google`). Das Gateway schreibt die Datei, das Unit-Paar
+erzeugt den Container neu (≤ 60 s plus Recreate). Danach positive Probe je Quelle. Beim Google-Schlüssel den neuen
 Schlüssel in der Cloud Console anlegen, eintragen, Probe, dann den alten dort
 löschen. Der Tresor reist im Backup mit; die RAM-Dateien schreibt das Gateway nach
 jedem Boot neu. Restore mit neuer Prüfung.

@@ -13,8 +13,9 @@
 - #1130 B1 (SEC-Zweitprüfung): Secret-Ablage nach Hausmuster #887. Ein Bridge-Key für
   beide Quellen (Stelle `plugin-google-reporting`, Datei `runtime-key`) statt zwei
   getrennter Keys; `bridge_keys_must_differ` und die Quellentrennung im Bridge-Auth
-  entfallen. Das Servicekonto-JSON kommt aus der Stelle `plugin-google-reporting-google`
-  (Admin-GUI, Basis-Einrichtung). Compose mountet zwei Ordner read-only
+  entfallen. Der Bridge-Key ist ein Zufallswert und wird per Betreiber-CLI (stdin) in Stelle und
+  Connector-Credential `google-reporting` gesetzt. Das Servicekonto-JSON kommt aus der
+  Stelle `plugin-google-reporting-google` (Admin-GUI, Basis-Einrichtung). Compose mountet zwei Ordner read-only
   (`/run/secrets/jnpt`, `/run/secrets/google`) statt dreier Datei-Mounts; Deskriptor-
   REQUIRE, tmpfiles-Beispiel und ein eigenes Unit-Paar für Neustart bei Schlüsselwechsel
   und nach Boot sind neu. `load_identity` akzeptiert das JSON auch ohne Zeilenumbrüche

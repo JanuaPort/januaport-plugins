@@ -28,8 +28,10 @@ GA-Kleingruppenschwelle aus Messvertrag,Auditmetadaten je SSO/Token.
 Privacy-Scan heißt field:query, weil Gateway JSON-Schlüssel rekursiv scannt.
 Keine stillen Ersatzmetriken, Null-Fallbacks, freien Googleobjekte oder PII-Logs.
 
-Secret-Ablage (Hausmuster #887, SEC B1): Stellen `plugin-google-reporting` (Bridge-Key)
-und `plugin-google-reporting-google` (Servicekonto-JSON) im Gateway-Tresor; die Ordner
+Secret-Ablage (Hausmuster #887, SEC B1): Stellen `plugin-google-reporting` (Bridge-Key,
+Zufallswert, vom Betreiber per `jnpt credential set` über stdin gesetzt — zugleich als
+Connector-Credential `google-reporting`, danach verworfen) und
+`plugin-google-reporting-google` (Servicekonto-JSON, nur Admin-GUI) im Gateway-Tresor; die Ordner
 unter `/run/jnpt/plugins/` kommen aus tmpfiles (`deploy/jnpt-plugins-google-reporting.
 conf.example`), Compose hängt sie als Ordner read-only ein. Nie Klartext unter `/etc`
 oder `/opt`. Der Dienst liest beim Start; Neustart nach Schlüsselwechsel und Boot macht
