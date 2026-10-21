@@ -126,6 +126,34 @@ Redirects werden nicht verfolgt. Keine implizite Entwickler-ADC oder interaktive
 Login. Offizielle Clients werden beim Imagebau einschließlich GSC-Discovery
 geliefert; keine Pakete oder Discovery-Dokumente zur Laufzeit.
 
+## Einrichtung der Google-Seite, Schritt für Schritt
+
+Für den Admin oder eine KI, die ihn führt. Die Rechte sind das Minimum nach SEC V1 (#1130).
+
+1. In der Google Cloud Console ein **neues** Projekt nur für diesen Zweck anlegen, kein vorhandenes
+   wiederverwenden.
+2. Darin genau zwei APIs aktivieren: **Google Search Console API** und **Google Analytics Data API**.
+3. Ein Dienstkonto anlegen und ihm **keine Rolle** im Projekt geben. Unter „Schlüssel“ genau einen
+   JSON-Schlüssel erzeugen und herunterladen.
+4. In der Search Console die E-Mail-Adresse des Dienstkontos als Nutzer der Property hinzufügen, mit
+   Berechtigung **„Eingeschränkt“**, nie „Vollständig“ oder Inhaber.
+5. In Google Analytics unter Verwaltung → Property-Zugriff dieselbe Adresse als **„Betrachter“** auf
+   genau dieser Property hinzufügen, wenn möglich mit den Datenbeschränkungen „Keine Kosten- und
+   Umsatzmesswerte“.
+6. Drei Angaben für `config.json` notieren:
+   - die **GA4-Property-ID**, nur die Ziffern ohne `properties/`,
+   - den **GSC-Property-Typ** und die Adresse, also `sc-domain:<domain>` für eine Domain-Property oder die
+     URL-Präfix-Adresse,
+   - die **Zeitzone** der GA4-Property (IANA, z. B. `Europe/Berlin`).
+7. Den Inhalt der JSON-Datei in der Admin-GUI unter **Basis-Einrichtung** bei
+   `plugin-google-reporting-google` einfügen. Dass die Zeilenumbrüche beim Einfügen verloren gehen, ist
+   unschädlich.
+8. Die heruntergeladene Datei danach lokal löschen. Eine Kopie gehört höchstens in einen
+   Passwortmanager, nie auf die Anlage.
+
+Den Bridge-Key setzt der Betreiber, nicht der Admin (siehe unten). Wechsel jährlich und bei Verdacht
+sofort: neuen Schlüssel erzeugen, eintragen, den alten in der Cloud Console löschen.
+
 ## Einrichtung, Betrieb und Rückbau
 
 1. Neue zweckgebundene Servicekonto-Identität für diese Website. GSC expliziter
