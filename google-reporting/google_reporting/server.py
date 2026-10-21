@@ -15,6 +15,13 @@ from .workers import WorkerPool
 
 LOG = logging.getLogger("google_reporting")
 
+# Directory mounts of the gateway key places (rotation-safe, unlike file mounts):
+# plugin-google-reporting = the one Bridge key, plugin-google-reporting-google
+# = the service account JSON. Both are read once at start.
+CONFIG_PATH = "/etc/google-reporting/config.json"
+BRIDGE_KEY_PATH = "/run/secrets/jnpt/runtime-key"
+IDENTITY_PATH = "/run/secrets/google/runtime-key"
+
 
 def read_key(path):
     value = Path(path).read_bytes().strip()
@@ -23,10 +30,14 @@ def read_key(path):
     return value
 
 
-def create_app(cfg, keys, pool):
-    if keys["gsc"] == keys["ga4"]:
-        raise ValueError("bridge_keys_must_differ")
+def load_runtime_files(bridge_key_path=BRIDGE_KEY_PATH, identity_path=IDENTITY_PATH):
+    from .google_adapter import load_identity
 
+    load_identity(identity_path)
+    return read_key(bridge_key_path)
+
+
+def create_app(cfg, key, pool):
     @web.middleware
     async def errors(request, handler):
         started = time.monotonic()
@@ -59,7 +70,7 @@ def create_app(cfg, keys, pool):
             header = request.headers.getall("Authorization", [])
             if len(header) != 1:
                 raise ReportError(401, "bridge_unauthorized")
-            expected = b"Bearer " + keys[source]
+            expected = b"Bearer " + key
             try:
                 authorized = hmac.compare_digest(header[0].encode("ascii"), expected)
             except UnicodeError:
@@ -148,23 +159,17 @@ def serve():
     # Library/access logs may embed full URLs or response bodies.
     for name in ("aiohttp", "google", "googleapiclient", "urllib3", "httplib2"):
         logging.getLogger(name).setLevel(logging.CRITICAL)
-    cfg = Config.from_dict(
-        json.loads(Path("/etc/google-reporting/config.json").read_text())
-    )
-    from .google_adapter import load_identity
-
-    identity = "/run/secrets/google-service-account.json"
-    load_identity(identity)
-    keys = {s: read_key("/run/secrets/" + s + "-bridge-key") for s in ("gsc", "ga4")}
+    cfg = Config.from_dict(json.loads(Path(CONFIG_PATH).read_text()))
+    key = load_runtime_files()
     bind = os.environ.get("GOOGLE_REPORTING_BIND_IP", "")
     # Exact plugin-network IPv4 is provisioned by the operator, never 0.0.0.0.
     ip = ipaddress.ip_address(bind)
     if ip.version != 4 or not ip.is_private or ip.is_unspecified or ip.is_loopback:
         raise ValueError("invalid_bind_ip")
-    pool = WorkerPool(cfg, identity)
+    pool = WorkerPool(cfg, IDENTITY_PATH)
     from .safe_http import serve_app
 
-    asyncio.run(serve_app(create_app(cfg, keys, pool), bind))
+    asyncio.run(serve_app(create_app(cfg, key, pool), bind))
 
 
 def main():

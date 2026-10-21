@@ -5,5 +5,9 @@ SERVICE=google-reporting
 ENV_FILE=/opt/jnpt/plugins/google-reporting/.env
 ENV_KEY=JNPT_GOOGLE_REPORTING_IMAGE
 HEALTH_DOCKER=1
-REQUIRE=/opt/jnpt/plugins/google-reporting/config.json:/run/jnpt/plugins/google-reporting/google-service-account.json:/run/jnpt/plugins/google-reporting/gsc-bridge-key:/run/jnpt/plugins/google-reporting/ga4-bridge-key
+# Vorbedingungen: config.json und BEIDE runtime-key-Dateien, die das Gateway nach
+# dem Eintragen in der Basis-Einrichtung ablegt (Stellen plugin-google-reporting
+# und plugin-google-reporting-google). Fehlt eine, bucht der Aktuator
+# `unprovisioned` statt `failed`.
+REQUIRE=/opt/jnpt/plugins/google-reporting/config.json:/run/jnpt/plugins/google-reporting/runtime-key:/run/jnpt/plugins/google-reporting-google/runtime-key
 # DATA_DIRS intentionally absent: no report persistence.

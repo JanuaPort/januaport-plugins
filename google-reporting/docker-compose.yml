@@ -21,19 +21,20 @@ services:
         target: /etc/google-reporting/config.json
         read_only: true
         bind: {create_host_path: false}
+      # Zwei ORDNER-Mounts statt Datei-Mounts (Muster #887): ein atomar ersetzter
+      # Schlüssel kommt an, und die Stellen entstehen im Gateway aus den Ordnern.
+      # jnpt/runtime-key = der EINE Bridge-Key (Stelle plugin-google-reporting),
+      # google/runtime-key = das Servicekonto-JSON (plugin-google-reporting-google).
+      # Beide liest der Dienst nur beim Start; den Neustart nach einem
+      # Schlüsselwechsel löst deploy/jnpt-google-reporting-key.path aus.
       - type: bind
-        source: /run/jnpt/plugins/google-reporting/google-service-account.json
-        target: /run/secrets/google-service-account.json
+        source: /run/jnpt/plugins/google-reporting
+        target: /run/secrets/jnpt
         read_only: true
         bind: {create_host_path: false}
       - type: bind
-        source: /run/jnpt/plugins/google-reporting/gsc-bridge-key
-        target: /run/secrets/gsc-bridge-key
-        read_only: true
-        bind: {create_host_path: false}
-      - type: bind
-        source: /run/jnpt/plugins/google-reporting/ga4-bridge-key
-        target: /run/secrets/ga4-bridge-key
+        source: /run/jnpt/plugins/google-reporting-google
+        target: /run/secrets/google
         read_only: true
         bind: {create_host_path: false}
     networks:

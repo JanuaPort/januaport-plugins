@@ -1,0 +1,20 @@
+# BEISPIEL — systemd-tmpfiles-Zeilen für den Google-Reporting-Beisteller
+# (JanuaPort/januaport#1130, Form nach script-runner/deploy/jnpt-plugins-script-runner.conf.example).
+#
+# Ablage auf der Anlage: als zusätzliche Zeilen in
+# /etc/tmpfiles.d/jnpt-plugins.conf, danach
+#   systemd-tmpfiles --create /etc/tmpfiles.d/jnpt-plugins.conf
+#
+# Jeder Ordner unter /run/jnpt/plugins lässt im Gateway eine Schlüssel-Stelle
+# erscheinen (plugin-<name>); das Gateway schreibt dort runtime-key hinein.
+#   google-reporting         runtime-key = der EINE Bridge-Key für GSC und GA4
+#                            (Stelle plugin-google-reporting; derselbe Wert steht
+#                            in der Connector-Credential google-reporting)
+#   google-reporting-google  runtime-key = das Servicekonto-JSON
+#                            (Stelle plugin-google-reporting-google, Eintrag in der
+#                            Admin-GUI unter Basis-Einrichtung)
+# Der Dienst liest beide Dateien nur beim Start; den Neustart nach einem
+# Schlüsselwechsel und nach dem Boot löst das Unit-Paar
+# jnpt-google-reporting-key.path/.service aus.
+d /run/jnpt/plugins/google-reporting 0750 65532 65532 -
+d /run/jnpt/plugins/google-reporting-google 0750 65532 65532 -

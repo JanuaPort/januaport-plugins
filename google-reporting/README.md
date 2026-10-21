@@ -20,8 +20,9 @@ Realtime-, Ads-, Admin-, Inspection-API oder Odoo-Verbindung.
 | GA4 | `ga4/landing_pages` | `landingPage` ohne Querystring, sessions, engagedSessions |
 | GA4 | `ga4/key_events` | nur konfigurierte bestehende eventName, keyEvents |
 
-`Authorization: Bearer <Bridge-Key>`: unabhängige Secret-Datei je Quelle.
-Ein GSC-Key öffnet keine GA4-Route. Status nimmt keine Parameter an.
+`Authorization: Bearer <Bridge-Key>`: **ein** Bridge-Key für beide Quellen
+(Stelle `plugin-google-reporting`, Datei `runtime-key`). Die Rechte je Werkzeug
+prüft das Gateway, nicht der Dienst. Status nimmt keine Parameter an.
 Alle Berichte erlauben `period_days` (28/90, Default 28), `end_date` (ISO),
 `segment` (`all_public`/`atas`/`gateway`/`shared`, Default all_public).
 GSC erlaubt optional `page_path` innerhalb des Segments; Ranglisten `limit`
@@ -67,9 +68,11 @@ Property gehören. GA4 filtert **immer** sowohl landingPage-Werteliste als auch
 hostName-Werteliste, auch bei gemischten Properties. Deren Kompatibilität bleibt
 vor Live-Freigabe zu bestätigen; keine stillen Ersatzmetriken.
 
-`query_enabled` ist **false als sichere Auslieferungsvorgabe**. Erst nach expliziter
-SEC-Bewertung verbleibender Freitext-/Namensrisiken einschalten. Das präzisiert
-bewusst den Designvorschlag: ein vorhandenes Tool ist keine Freigabe der Query-Sicht.
+`query_enabled` ist **false als sichere Auslieferungsvorgabe** (Betreiberschalter).
+Der erste Start läuft mit `false`, bis die Zahlenberichte live belegt sind; danach
+darf der Betreiber den Schalter ohne weitere SEC-Prüfung einschalten (SEC-Zweitprüfung
+#1130, V5). Benanntes Restrisiko: Eine Anfrage mit einem Personennamen und mindestens
+10 Impressionen kommt durch. Ein vorhandenes Tool ist keine Freigabe der Query-Sicht.
 `query_min_impressions` mindestens 10; kleine Query-Gruppen werden unterdrückt.
 Die Vorlage scannt das JSON-Feld `query` rekursiv auf email, telefon, iban.
 Schwelle und Musterscan anonymisieren keinen Freitext und erkennen keine Namen.
@@ -134,13 +137,41 @@ geliefert; keine Pakete oder Discovery-Dokumente zur Laufzeit.
 2. Keyless nur mit geprüftem Identity-Vertrag; V1 akzeptiert ausschließlich eine
    explizite Servicekonto-Schlüsseldatei. token_uri muss oauth2.googleapis.com/token
    und universe_domain googleapis.com sein; Signer wird ohne Netz validiert.
-   Datei hostseitig UID 65532 lesbar, beispielsweise 0400, keine Schlüssel in Envs,
-   Image, Compose, Git oder Chat. Zwei unabhängig generierte Bridge-Secretdateien
-   (32–256 druckbare ASCII-Bytes) ebenso schützen.
-3. Dateien gemäß Compose bereitstellen: config.json unter
-   /opt/jnpt/plugins/google-reporting/, drei Secrets unter
-   /run/jnpt/plugins/google-reporting/. Compose/.env und Deskriptor aus deploy/
-   installieren. Deskriptor REQUIRE führt fehlende Dateien zu unprovisioned.
+   Der Schlüssel liegt **nur im Tresor** und kommt als RAM-Datei auf die Anlage
+   (Hausmuster #887): keine Klartextdatei unter `/etc` oder `/opt`, keine
+   Schlüssel in Envs, Image, Compose, Git oder Chat. Zwei Stellen in der
+   Basis-Einrichtung der Admin-GUI (das Gateway legt sie an, sobald die Ordner
+   aus Schritt 3 existieren):
+
+   | Stelle | Ordner auf der Anlage | Inhalt von `runtime-key` |
+   |---|---|---|
+   | `plugin-google-reporting` | `/run/jnpt/plugins/google-reporting/` | der **eine** Bridge-Key (32–256 druckbare ASCII-Zeichen), dieselbe Zeichenkette wie die Connector-Credential `google-reporting` |
+   | `plugin-google-reporting-google` | `/run/jnpt/plugins/google-reporting-google/` | das Servicekonto-JSON (bis 1 MiB) |
+
+   Das Passwortfeld der GUI schluckt beim Einfügen die Zeilenumbrüche. Das schadet
+   nicht: Das JSON bleibt gültig, weil die Zeilenumbrüche im `private_key` als
+   Backslash-n-Escape stehen. **Die heruntergeladene JSON-Datei nach dem Eintragen
+   löschen**; eine Kopie gehört allenfalls in den Passwortmanager des Betreibers,
+   nie auf die Platte der Anlage.
+3. Auf der Anlage: `config.json` unter `/opt/jnpt/plugins/google-reporting/`
+   (kein Secret). Die zwei Ordner unter `/run/jnpt/plugins/` legt systemd-tmpfiles
+   an (`deploy/jnpt-plugins-google-reporting.conf.example`, zwei `d`-Zeilen
+   `0750 65532 65532`); das Gateway schreibt `runtime-key` hinein, nach jedem Boot
+   neu. Compose/.env und Deskriptor aus deploy/ installieren. Deskriptor REQUIRE
+   nennt config.json und beide `runtime-key`; fehlt eine Datei, bucht der Aktuator
+   `unprovisioned`. Compose hängt die **Ordner** read-only ein
+   (`…/google-reporting` → `/run/secrets/jnpt`, `…/google-reporting-google` →
+   `/run/secrets/google`), damit ein atomar ersetzter Schlüssel ankommt.
+   **Neustart bei Schlüsselwechsel und nach dem Boot:** der Dienst liest beide
+   Dateien nur beim Start. Das Unit-Paar `deploy/jnpt-google-reporting-key.path`
+   (zwei `PathChanged=`) und `.service` (`docker compose … up -d
+   --force-recreate`) nach `/etc/systemd/system/` legen und **nur die Path-Unit**
+   aktivieren: `systemctl daemon-reload && systemctl enable --now
+   jnpt-google-reporting-key.path`. Das deckt auch den Boot ab: Startet der
+   Container vor dem Schreiben der Dateien, endet er mit `startup_failed` (Exit 1);
+   das Schreiben löst den Recreate aus. Die Vorlage `jnpt-plugin-key@` des Produkts
+   genügt hier nicht, weil sie nur eine Stelle beobachtet und es für
+   `google-reporting-google` keine Compose gibt.
    DATA_DIRS bleibt leer; kein eigener Host-Aktuator, kein signierter Katalogeintrag
    oder Release-Tag in diesem Änderungspaket. Release hält GATE/VENDOR.
 4. **Netz vor Aktivierung nachweisen:** bestehendes jnpt_plugins muss internal=true
@@ -158,24 +189,35 @@ geliefert; keine Pakete oder Discovery-Dokumente zur Laufzeit.
    Capabilities entfernt, minimale tmpfs, kein Host-Port/Docker-Socket/Vault-Mount,
    keine Reverse-Proxy-Route. Lokal /healthz prüft nur Startkonfiguration/Dienst,
    keine Google-Probe; temporärer Googleausfall löst kein Update-Rollback aus.
-6. Unabhängige Bridge-Keys im JanuaPort-Vault als google-search-console und
-   google-analytics speichern. Bytegleiche Vorlagen aus Integrations-/Produktrepo
-   jeweils1.0.0 als **corp**-Instanzen mit http://google-reporting:8092 erstellen.
-   Team-Selbstanlage erlaubt nur öffentliche HTTPS-Ziele; Admin-MCP benötigt
-   target_address-Schalter für private Ziele, alternativ Betreiberweg. Aktivierung
-   erstellt keine Instanzen/Rechte. Nur vorgesehenem INBOUND-Zugang freigeben.
+6. Den Bridge-Key zusätzlich als **eine** Connector-Credential `google-reporting`
+   im JanuaPort-Vault anlegen (Wert gleich `runtime-key` der Stelle
+   `plugin-google-reporting`). Bytegleiche Vorlagen aus Integrations-/Produktrepo
+   (`google-search-console`, `google-analytics`, beide jeweils 1.0.0 und beide mit
+   dieser Credential) als **corp**-Instanzen mit http://google-reporting:8092
+   erstellen. Team-Selbstanlage erlaubt nur öffentliche HTTPS-Ziele; Admin-MCP
+   benötigt target_address-Schalter für private Ziele, alternativ Betreiberweg.
+   Aktivierung erstellt keine Instanzen/Rechte. Nur vorgesehenem INBOUND-Zugang
+   freigeben.
 7. Auditbedingung prüfen; Status, Negativproben, dann Berichte. „JanuaPort SSO Neu“
    Katalog/Werkzeuge neu einlesen. Bestehender REST-Lifecycle/Reload; erstmalige
    Vorlagenauslieferung kann Gateway-/Katalogneustart brauchen.
 
-Rotation: neue geschützte Datei, kontrollierter Container-Recreate, passenden
-Vault-Key nachziehen, positive Probe je Quelle, alten Google-Key/Bridge-Key
-widerrufen. Host-Secrets sind **kein automatischer Vault-Backupbestandteil**;
-geschützten Wiederherstellungsweg separat festlegen. Restore mit neuer Prüfung.
+Rotation: neuen Wert in der Basis-Einrichtung der Admin-GUI eintragen (Stelle
+`plugin-google-reporting` bzw. `plugin-google-reporting-google`); das Gateway
+schreibt die Datei, das Unit-Paar erzeugt den Container neu (≤ 60 s plus Recreate).
+Beim Bridge-Key die Connector-Credential `google-reporting` im Vault im selben
+Zug nachziehen, danach positive Probe je Quelle. Beim Google-Schlüssel den neuen
+Schlüssel in der Cloud Console anlegen, eintragen, Probe, dann den alten dort
+löschen. Der Tresor reist im Backup mit; die RAM-Dateien schreibt das Gateway nach
+jedem Boot neu. Restore mit neuer Prüfung.
+**Benannte Grenze: Entfernen ist kein Widerruf.** Wird ein Wert in der GUI
+entfernt oder ersetzt, bleibt der Google-Schlüssel gültig, bis er in der Cloud
+Console gelöscht ist; ein abgeflossener Bridge-Key bleibt gültig, bis er ersetzt
+ist.
 Update/Rollback nutzt Standarddeskriptor/HEALTH_DOCKER=1 und lokale Gesundheit.
 Stop: verbleibende Connectoren melden Fehler, nie Nullberichte. Vollständiger
-Rückbau entfernt Rechte/Instanzen, widerruft Bridge-Keys/Google-Grants, löscht
-Secretdateien nach Betreiberentscheidung. Plugin-Purge erledigt externe Grants
+Rückbau entfernt Rechte/Instanzen, widerruft Bridge-Key/Google-Grants (Schlüssel in
+der Cloud Console löschen), entfernt die beiden Stellen und Ordner. Plugin-Purge erledigt externe Grants
 und beliebige Hostdateien nicht automatisch.
 
 ## Reproduzierbare Prüfung und offene Live-Gates
@@ -210,3 +252,6 @@ keine Google-Identität. Ohne gesetzte URL überspringt die normale Go-CI diesen
 optionalen Python-Nachbartest; ihre eigenen HTTP-Goldens bleiben verpflichtend.
 Die Plugin-CI installiert den Hash-Lock, prüft Unit-/Mutationssuite, baut das Image
 und führt die Tests nochmals als Non-root im Read-only-Container ohne externes Netz aus.
+`tests/test_deploy_files.py` prüft Compose, Deskriptor, tmpfiles-Beispiel und Unit-Paar
+gegeneinander; im Image-Schritt fehlen diese Dateien, dort überspringt sich der Test,
+im Unit-Schritt läuft er.

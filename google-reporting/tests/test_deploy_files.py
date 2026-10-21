@@ -67,12 +67,12 @@ class DeployFiles(unittest.TestCase):
         )
 
     def test_unit_pair_watches_both_keys_and_recreates(self):
-        path = text(DEPLOY / "jnpt-google-reporting-key.path")
+        path = re.sub(r"^#.*$", "", text(DEPLOY / "jnpt-google-reporting-key.path"), flags=re.M)
         self.assertEqual(
             re.findall(r"^PathChanged=(.+)$", path, re.M), [BRIDGE, GOOGLE]
         )
         self.assertNotIn("PathModified", path)
-        self.assertNotIn("MakeDirectory", re.sub(r"^#.*$", "", path, flags=re.M))
+        self.assertNotIn("MakeDirectory", path)
         service = text(DEPLOY / "jnpt-google-reporting-key.service")
         self.assertIn(
             "ExecStart=/usr/bin/docker compose -f "
