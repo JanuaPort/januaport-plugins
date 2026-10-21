@@ -24,9 +24,9 @@ regex = '''\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'''
 keywords = ["@"]
 
 [[rules.allowlists]]
-description = "Beispieldomains (RFC 2606) und die eigene Domain"
+description = "Beispieldomains und Reserve-TLD .test (RFC 2606) und die eigene Domain"
 regexTarget = "match"
-regexes = ['''@(?:[A-Za-z0-9-]+\.)*(?:example\.(?:com|org|net)|januaport\.ai|contoso\.com)$''']
+regexes = ['''@(?:[A-Za-z0-9-]+\.)*(?:example\.(?:com|org|net)|januaport\.ai|contoso\.com|test)$''']
 
 [[rules.allowlists]]
 description = "Lock-Dateien tragen die öffentlichen Autorenangaben fremder Pakete"
