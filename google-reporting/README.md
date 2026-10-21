@@ -126,33 +126,14 @@ Redirects werden nicht verfolgt. Keine implizite Entwickler-ADC oder interaktive
 Login. Offizielle Clients werden beim Imagebau einschließlich GSC-Discovery
 geliefert; keine Pakete oder Discovery-Dokumente zur Laufzeit.
 
-## Einrichtung der Google-Seite, Schritt für Schritt
+## Einrichtung für den Admin
 
-Für den Admin oder eine KI, die ihn führt. Die Rechte sind das Minimum nach SEC V1 (#1130).
-
-1. In der Google Cloud Console ein **neues** Projekt nur für diesen Zweck anlegen, kein vorhandenes
-   wiederverwenden.
-2. Darin genau zwei APIs aktivieren: **Google Search Console API** und **Google Analytics Data API**.
-3. Ein Dienstkonto anlegen und ihm **keine Rolle** im Projekt geben. Unter „Schlüssel“ genau einen
-   JSON-Schlüssel erzeugen und herunterladen.
-4. In der Search Console die E-Mail-Adresse des Dienstkontos als Nutzer der Property hinzufügen, mit
-   Berechtigung **„Eingeschränkt“**, nie „Vollständig“ oder Inhaber.
-5. In Google Analytics unter Verwaltung → Property-Zugriff dieselbe Adresse als **„Betrachter“** auf
-   genau dieser Property hinzufügen, wenn möglich mit den Datenbeschränkungen „Keine Kosten- und
-   Umsatzmesswerte“.
-6. Drei Angaben für `config.json` notieren:
-   - die **GA4-Property-ID**, nur die Ziffern ohne `properties/`,
-   - den **GSC-Property-Typ** und die Adresse, also `sc-domain:<domain>` für eine Domain-Property oder die
-     URL-Präfix-Adresse,
-   - die **Zeitzone** der GA4-Property (IANA, z. B. `Europe/Berlin`).
-7. Den Inhalt der JSON-Datei in der Admin-GUI unter **Basis-Einrichtung** bei
-   `plugin-google-reporting-google` einfügen. Dass die Zeilenumbrüche beim Einfügen verloren gehen, ist
-   unschädlich.
-8. Die heruntergeladene Datei danach lokal löschen. Eine Kopie gehört höchstens in einen
-   Passwortmanager, nie auf die Anlage.
-
-Den Bridge-Key setzt der Betreiber, nicht der Admin (siehe unten). Wechsel jährlich und bei Verdacht
-sofort: neuen Schlüssel erzeugen, eintragen, den alten in der Cloud Console löschen.
+Die Schritte für den Admin (Google-Seite mit minimalen Rechten nach SEC V1, Eintrag des
+Servicekonto-JSON, Scopes des Nutzers, Prüfung, Schlüsselwechsel) stehen in
+[SETUP.md](SETUP.md). Die Datei wird je Plugin-Version als `setup_guide` in den signierten
+Plugin-Katalog übernommen und ist dann über den Admin-MCP (`admin_get_plugin_setup_guide`),
+REST und die GUI abrufbar (JanuaPort/januaport#1137). Höchstens 32 KiB, gültiges UTF-8,
+keine relativen Links; `tests/test_setup_guide.py` prüft das.
 
 ## Einrichtung, Betrieb und Rückbau
 
