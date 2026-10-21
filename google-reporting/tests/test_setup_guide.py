@@ -48,6 +48,9 @@ class SetupGuide(unittest.TestCase):
         guide = self.guide()
         self.assertIn("`google-search-console`", guide)
         self.assertIn("`google-analytics`", guide)
+        # Interface First: the admin-MCP path (JanuaPort/januaport#1145) is named, too.
+        self.assertIn("`admin_set_user_scopes`", guide)
+        self.assertIn("`admin_list_users`", guide)
 
     def test_has_no_relative_links(self):
         for target in re.findall(r"\]\(([^)]+)\)", self.guide()):

@@ -42,8 +42,9 @@ Zugangsdaten eingegeben.
 
 Wer die Berichte abrufen soll, bekommt in der Admin-GUI unter **Users** beim eigenen Nutzer
 die Scopes `google-search-console` und `google-analytics`. Ein Team oder ein eigener Token ist
-dafür nicht nötig. Im Admin-MCP gibt es für die Scopes eines Nutzers noch kein Werkzeug; es ist
-geplant.
+dafür nicht nötig. Über den Admin-MCP geht dasselbe mit `admin_set_user_scopes`. Das Werkzeug
+ersetzt die ganze Menge: vorher mit `admin_list_users` die bestehenden Scopes des Nutzers lesen
+und mitgeben, sonst gehen sie verloren.
 
 ## 4. Prüfen
 
