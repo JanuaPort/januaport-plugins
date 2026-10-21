@@ -1,0 +1,43 @@
+name: google-reporting
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'google-reporting/**'
+      - '.github/workflows/google-reporting.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  unit:
+    name: Fixed reports and negative controls (Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: google-reporting
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: google-reporting/requirements.lock
+      - run: python -m pip install --require-hashes -r requirements.lock
+      - run: python -m unittest discover -s tests -v
+      - run: python tests/mutations.py
+  image:
+    name: Private non-root service image (no publish)
+    runs-on: ubuntu-latest
+    needs: unit
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t google-reporting:ci google-reporting
+      - name: Unit tests inside non-root read-only image without external network
+        run: >-
+          docker run --rm --network none --read-only --user 65532:65532
+          --cap-drop ALL --security-opt no-new-privileges --memory 512m --cpus 1
+          --pids-limit 32 --tmpfs /tmp:rw,noexec,nosuid,nodev,size=8m,uid=65532,gid=65532
+          --mount type=bind,src="$PWD/google-reporting/tests",dst=/app/tests,readonly
+          --entrypoint python google-reporting:ci -m unittest discover -s tests -v

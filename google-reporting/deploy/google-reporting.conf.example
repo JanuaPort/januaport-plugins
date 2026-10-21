@@ -1,0 +1,9 @@
+# /etc/jnpt-updater.d/google-reporting.conf; root-owned regular file, 0600/0644.
+IMAGE_REPO=ghcr.io/januaport/google-reporting
+COMPOSE_FILE=/opt/jnpt/plugins/google-reporting/docker-compose.yml
+SERVICE=google-reporting
+ENV_FILE=/opt/jnpt/plugins/google-reporting/.env
+ENV_KEY=JNPT_GOOGLE_REPORTING_IMAGE
+HEALTH_DOCKER=1
+REQUIRE=/opt/jnpt/plugins/google-reporting/config.json:/run/jnpt/plugins/google-reporting/google-service-account.json:/run/jnpt/plugins/google-reporting/gsc-bridge-key:/run/jnpt/plugins/google-reporting/ga4-bridge-key
+# DATA_DIRS intentionally absent: no report persistence.
