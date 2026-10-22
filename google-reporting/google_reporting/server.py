@@ -60,9 +60,11 @@ def route_kind(parts):
 async def bounded_body(request):
     if request.content_length is not None and request.content_length > MAX_BODY:
         raise ReportError(400, "request_too_large")
-    raw = await request.content.read(MAX_BODY + 1)
-    if len(raw) > MAX_BODY:
-        raise ReportError(400, "request_too_large")
+    raw = b""
+    async for chunk in request.content.iter_chunked(4096):
+        raw += chunk
+        if len(raw) > MAX_BODY:
+            raise ReportError(400, "request_too_large")
     return raw
 
 
