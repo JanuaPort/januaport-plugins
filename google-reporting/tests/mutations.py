@@ -172,6 +172,42 @@ MUTANTS = [
         "if not isinstance(data, dict):",
         "test_manage_adapter.Annotations.test_unknown_v1alpha_field_fails_closed_before_the_write",
     ),
+    # JanuaPort/januaport#1150: only the asked apiNames decide in checkCompatibility.
+    (
+        "compatibility-checks-foreign-entries",
+        "google_adapter.py",
+        "        if name in requested:\n            states.setdefault(name, []).append(state)",
+        "        states.setdefault(name, []).append(state)",
+        "test_google_adapter.Compatibilities.test_table",
+    ),
+    (
+        "compatibility-missing-name-tolerated",
+        "google_adapter.py",
+        "    if any(name not in states for name in requested):\n        raise ReportError(503, \"report_definition_unverified\")\n",
+        "",
+        "test_google_adapter.Compatibilities.test_table",
+    ),
+    (
+        "compatibility-length-check-back",
+        "google_adapter.py",
+        "    states = {}\n",
+        "    if len(answered) != len(requested):\n        raise ReportError(503, \"report_definition_unverified\")\n    states = {}\n",
+        "test_google_adapter.Adapter.test_status_is_ready_on_a_whole_property_answer_actual_rest",
+    ),
+    (
+        "late-end-date-accepted",
+        "domain.py",
+        "        if end > latest:",
+        "        if False:",
+        "test_contract.Contract.test_end_date_after_the_last_final_day_has_its_own_fixed_code",
+    ),
+    (
+        "late-end-date-code-generic",
+        "domain.py",
+        '"end_date_not_available"',
+        '"invalid_input"',
+        "test_boundary.HTTP.test_late_end_date_reports_a_fixed_code_without_echo",
+    ),
 ]
 
 

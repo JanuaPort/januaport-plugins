@@ -12,6 +12,14 @@ import requests
 from google_reporting.domain import Config, ReportError, parse_request
 from google_reporting.google_adapter import GoogleAdapter, SCOPES, load_identity
 from test_contract import fixture
+from google.analytics.data_v1beta.types import (
+    CheckCompatibilityResponse,
+    Compatibility,
+    DimensionCompatibility,
+    DimensionMetadata,
+    MetricCompatibility,
+    MetricMetadata,
+)
 
 
 NL = chr(10)
@@ -374,6 +382,45 @@ class Adapter(unittest.TestCase):
             self.assertIn("synthetic_event", str(api))
             self.assertEqual(api["metrics"], [{"name": "keyEvents"}])
 
+    def test_status_is_ready_on_a_whole_property_answer_actual_rest(self):
+        # GA4 answers for every dimension and metric of the property (#1150).
+        a, b, c = self.patches()
+        original = self.send
+
+        def send(session, prepared, **kwargs):
+            if ":checkCompatibility" not in prepared.url:
+                return original(session, prepared, **kwargs)
+            fields = json.loads(prepared.body)
+            data = {
+                "dimensionCompatibilities": [
+                    {"dimensionMetadata": {"apiName": "city"}, "compatibility": "INCOMPATIBLE"}
+                ]
+                + [
+                    {"dimensionMetadata": {"apiName": d["name"]}, "compatibility": "COMPATIBLE"}
+                    for d in fields["dimensions"]
+                ],
+                "metricCompatibilities": [
+                    {"metricMetadata": {"apiName": m["name"]}, "compatibility": "COMPATIBLE"}
+                    for m in fields["metrics"]
+                ]
+                + [{"metricMetadata": {"apiName": "totalUsers"}, "compatibility": "INCOMPATIBLE"}],
+            }
+            response = requests.Response()
+            response.request = prepared
+            response.status_code = 200
+            response._content = json.dumps(data).encode()
+            return response
+
+        with (
+            a,
+            c,
+            patch.object(
+                requests.Session, "send", lambda session, p, **kw: send(session, p, **kw)
+            ),
+        ):
+            out = self.adapter.run(parse_request(self.cfg, "ga4", "get_status", []))
+        self.assertEqual(out["state"], "ready")
+
     def test_token_redirects_and_transport_retry_adapters_are_disabled(self):
         from requests.adapters import BaseAdapter
 
@@ -489,3 +536,98 @@ class SlowTokenCancellation(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(pool.pending, 0)
             finally:
                 await pool.close()
+
+
+def dimension(name, state="COMPATIBLE"):
+    return DimensionCompatibility(
+        dimension_metadata=DimensionMetadata(api_name=name),
+        compatibility=Compatibility[state],
+    )
+
+
+def metric(name, state="COMPATIBLE"):
+    return MetricCompatibility(
+        metric_metadata=MetricMetadata(api_name=name),
+        compatibility=Compatibility[state],
+    )
+
+
+class WholePropertyClient:
+    """checkCompatibility lists every dimension and metric of the property, not only the asked ones."""
+
+    def __init__(self, answer):
+        self.answer, self.asked = answer, []
+
+    def check_compatibility(self, request, **kwargs):
+        dims = [d.name for d in request.dimensions]
+        mets = [m.name for m in request.metrics]
+        self.asked.append((dims, mets))
+        answered_dims, answered_mets = self.answer(dims, mets)
+        return CheckCompatibilityResponse(
+            dimension_compatibilities=answered_dims,
+            metric_compatibilities=answered_mets,
+        )
+
+
+FOREIGN_DIMENSIONS = [dimension("city"), dimension("browser", "INCOMPATIBLE")]
+FOREIGN_METRICS = [metric("totalUsers"), metric("bounceRate", "INCOMPATIBLE")]
+
+
+def answer(dims, mets, drop_dim=None, drop_met=None, bad_dim=None, bad_met=None,
+           foreign=True, unspecified=None):
+    def state(name, bad):
+        if name == unspecified:
+            return "COMPATIBILITY_UNSPECIFIED"
+        return "INCOMPATIBLE" if name == bad else "COMPATIBLE"
+
+    d = [dimension(n, state(n, bad_dim)) for n in dims if n != drop_dim]
+    m = [metric(n, state(n, bad_met)) for n in mets if n != drop_met]
+    if foreign:
+        d = FOREIGN_DIMENSIONS[:1] + d + FOREIGN_DIMENSIONS[1:]
+        m = FOREIGN_METRICS + m
+    return d, m
+
+
+class Compatibilities(unittest.TestCase):
+    """Only the requested apiNames decide; foreign entries of the property never do (#1150)."""
+
+    def setUp(self):
+        raw = fixture()
+        raw["key_events"] = {
+            "names": ["synthetic_event"],
+            "meaning": "Existing synthetic goal, not qualified lead",
+            "valid_from": "2020-01-01",
+            "valid_to": "2999-12-31",
+            "consent_coverage": "unknown",
+        }
+        self.adapter = GoogleAdapter(Config.from_dict(raw), "unused")
+
+    def verdict(self, build):
+        client = WholePropertyClient(build)
+        try:
+            self.adapter.check_definitions(client)
+        except ReportError as exc:
+            return (exc.status, exc.code)
+        self.assertEqual(len(client.asked), 3)
+        return "ok"
+
+    def test_table(self):
+        unverified = (503, "report_definition_unverified")
+        incompatible = (503, "report_definition_incompatible")
+        probe = WholePropertyClient(lambda d, m: answer(d, m, foreign=False))
+        self.adapter.check_definitions(probe)
+        dim, met = probe.asked[0][0][0], probe.asked[0][1][0]
+        cases = [
+            ("exact answer", lambda d, m: answer(d, m, foreign=False), "ok"),
+            ("whole property with foreign entries", answer, "ok"),
+            ("requested dimension missing", lambda d, m: answer(d, m, drop_dim=dim), unverified),
+            ("requested metric missing", lambda d, m: answer(d, m, drop_met=met), unverified),
+            ("empty answer", lambda d, m: ([], []), unverified),
+            ("only foreign entries", lambda d, m: (FOREIGN_DIMENSIONS, FOREIGN_METRICS), unverified),
+            ("requested dimension incompatible", lambda d, m: answer(d, m, bad_dim=dim), incompatible),
+            ("requested metric incompatible", lambda d, m: answer(d, m, bad_met=met), incompatible),
+            ("unspecified is no proof", lambda d, m: answer(d, m, unspecified=met), incompatible),
+        ]
+        for label, build, expected in cases:
+            with self.subTest(label):
+                self.assertEqual(self.verdict(build), expected)

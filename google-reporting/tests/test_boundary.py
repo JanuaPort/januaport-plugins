@@ -141,6 +141,16 @@ class HTTP(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn("CANARY", await response.text())
         self.assertEqual(self.pool.calls, [])
 
+    async def test_late_end_date_reports_a_fixed_code_without_echo(self):
+        for source, report in (("gsc", "page_summary"), ("ga4", "traffic_summary")):
+            response = await self.client.get(
+                "/v1/" + source + "/" + report + "?end_date=2999-01-01",
+                headers={"Authorization": "Bearer " + "A" * 32},
+            )
+            self.assertEqual(response.status, 400)
+            self.assertEqual(await response.json(), {"error": "end_date_not_available"})
+        self.assertEqual(self.pool.calls, [])
+
     async def test_one_bridge_key_serves_both_sources(self):
         for source in ("gsc", "ga4"):
             response = await self.client.get(

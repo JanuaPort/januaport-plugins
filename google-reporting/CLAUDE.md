@@ -1,4 +1,4 @@
-# google-reporting — Modulvertrag (#1130, #1148)
+# google-reporting 1.0.0 — Modulvertrag (#1130, #1148, #1150)
 
 Privater Python-REST-Beisteller, Apache2.0. Stufe 1, gebaut/synthetisch geprüft,
 Live-Abnahme offen. Kein eigener MCP-Server oder Gateway-Auth-Typ.
@@ -51,6 +51,14 @@ Schreibhandgriffe (#1148, SEC-Auflagen P1–P4, W1–W6, H1–H3), Invarianten:
   vor dem Schreiben. Schreibaufrufe ohne Retries. Eine Änderung an diesen Punkten zieht die
   Mutationstests (`tests/mutations.py`) und die Dokus (README, SETUP.md) nach.
 
+- **GA4-Status (#1150):** `checkCompatibility` antwortet für **alle** Dimensionen und Metriken der
+  Property. `check_definitions` filtert auf die angefragten `apiName`s (`verify_compatible`):
+  fehlt einer, `report_definition_unverified`; ist einer nicht `COMPATIBLE`,
+  `report_definition_incompatible`; Fremdeinträge zählen nie. Kein Längenvergleich.
+- **Spätes `end_date` (#1150):** wohlgeformt, aber nach „Quelle-heute minus 3 Tage“ ist es
+  `end_date_not_available` (400, fester Code, kein Datum im Fehler, kein Klemmen); nur ein
+  kaputtes Datum bleibt `invalid_input`. Die Fehler-JSON trägt weiter nur `{"error": code}`.
+
 Invarianten an allen Code-/Dokuorten nachziehen:512 KiB Antwort,8 KiB Anfrage,
 Pfad 512,100 Rangzeilen/90 Tage,50 öffentliche Pfade/4096Regex,20 s/25 s,
 2 Worker/30 pro Quelle pro Minute/keine Retries,query_enabled=false als Auslieferungsvorgabe (Betreiberschalter, SEC V5),
@@ -87,4 +95,16 @@ Tests enthalten nur synthetische Daten; Signer flüchtig generieren. Lock
 mit pip-compile --generate-hashes erstellen, install --require-hashes.
 Mutationstests müssen Bridge-Key-Auth, Vorprüfung, Filter, Retries und Kill abdecken, seit
 #1148 auch Scope-Trennung, Tagesdeckel, P1 (primary), P2 (Privacy-Scan) und das Titelpräfix.
-Signatur/Katalog-Release/Deployment nicht Teil der Implementierung.
+Signatur/Katalog/Deployment nicht Teil der Implementierung.
+
+Release (#1138): Version 1.0.0 steht im Kopf dieser Datei, im README-Titel und im CHANGELOG
+(sonst nirgends: Deskriptor und Compose tragen keine Version, Anlagen beziehen per Digest aus dem
+Katalog). Das Image baut nur `.github/workflows/google-reporting-release.yml` auf den Tag
+`google-reporting-vX.Y.Z` (Tag setzt GATE, nie ein Branch). Es spiegelt agent-runner-release:
+ein Build amd64 per Digest, SBOM/Provenance, Config-Digest-Vergleich (SEC C1), Sonden gegen den
+Digest, Tag erst danach; Aktionen per SHA gepinnt, in Jobs mit `packages: write` nur `actions/*`
+und `docker/*` (SEC C2). Abweichung zu den Go-Vorbildern: Der `unit`-Job installiert den
+Hash-Lock und fährt `unittest` plus `tests/mutations.py`; die Sonden sind dieselbe Härtung wie
+der Image-Job in `google-reporting.yml` (Tests read-only eingehängt, kein Netz) plus Start ohne
+Konfiguration. `tests/test_release_workflow.py` hält das zusammen (überspringt sich ohne
+`.github/`). Eine Änderung am Workflow zieht diesen Test und den CHANGELOG-Abschnitt „Kuratierung“ nach.
