@@ -1,7 +1,8 @@
-# Google Reporting — #1130
+# Google Reporting 1.0.0 — #1130
 
 Stufe 1 „Sicher verbinden“. Gebaut und synthetisch geprüft; **noch nicht live
-abgenommen, veröffentlicht oder produktiv provisioniert**. Apache 2.0.
+abgenommen oder produktiv provisioniert**, die Fassung 1.0.0 (#1130, #1148, #1150) ist
+**noch nicht getaggt**: Der Release-Workflow steht, den Tag setzt GATE. Apache 2.0.
 Ein privater Python-Beisteller übersetzt acht feste GET-Berichte in offizielle
 Google-REST-Aufrufe. JanuaPort behält Rechte, Audit und Pseudonymisierung.
 Keine Accountsuche, freien Dimensionen/Metriken, Nutzer-/Session-/Lead-IDs,
@@ -286,8 +287,9 @@ keine relativen Links; `tests/test_setup_guide.py` prüft das.
    das Schreiben löst den Recreate aus. Die Vorlage `jnpt-plugin-key@` des Produkts
    genügt hier nicht, weil sie nur eine Stelle beobachtet und es für
    `google-reporting-google` keine Compose gibt.
-   DATA_DIRS bleibt leer; kein eigener Host-Aktuator, kein signierter Katalogeintrag
-   oder Release-Tag in diesem Änderungspaket. Release hält GATE/VENDOR.
+   DATA_DIRS bleibt leer; kein eigener Host-Aktuator. Das Image `ghcr.io/januaport/google-reporting`
+   entsteht nur aus dem Tag `google-reporting-vX.Y.Z` (Absatz „Release (#1138)“ weiter unten); Tag und signierter
+   Katalogeintrag liegen bei GATE/VENDOR, nicht in diesem Änderungspaket.
 4. **Netz vor Aktivierung nachweisen:** bestehendes jnpt_plugins muss internal=true
    und passende IPAM besitzen. Betreiber reserviert eine freie IPv4 in diesem Netz
    als GOOGLE_REPORTING_PLUGIN_IP. Der Listener bindet ausschließlich diese IP,
@@ -345,6 +347,13 @@ entstehen flüchtig im Test. Keine echten Credentials/Googleanfragen.
 Produkt: `go test ./internal/connector/...` und
 `go test ./cmd/jnpt -run 'TestGoogleReporting1130|TestGoogleManage1148'` prüfen echte HTTP-, MCP-,
 Privacy-, Policy- und Auditpfade. Golden-Dateien enthalten keine Bridge-Secrets.
+Release (#1138): `.github/workflows/google-reporting-release.yml` läuft nur auf den Tag
+`google-reporting-vX.Y.Z` (setzt GATE). Ablauf wie agent-runner/script-runner: Hash-Lock,
+Unit-Tests und Mutationsproben, ein Build `linux/amd64` mit SBOM und Provenance per Digest nach
+GHCR, Sonden gegen genau diesen Digest (Config-Digest = gepusht, Benutzer 65532, Tests im
+gehärteten Container ohne Netz, Start ohne Konfiguration endet mit `startup_failed`), erst danach
+der Image-Tag. Trivy-Bericht als Artefakt, kein Gate; den Nachweis je Digest trägt GATE in den
+Abschnitt „Kuratierung“ von `CHANGELOG.md` ein. Lokal vorab: `actionlint`, `docker build`.
 Imagebau: `docker build .`; hinter verwaltetem Proxy optional BuildKit
 `--secret id=jnpt_ca,src=<CA-Bundle>`; Secret wird nicht ins Image kopiert.
 

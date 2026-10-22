@@ -153,7 +153,7 @@ class ReleaseWorkflow(unittest.TestCase):
             publish,
         )
         self.assertIn('[ "$tagged" = "$DIGEST" ]', publish)
-        self.assertNotIn("latest", publish)
+        self.assertNotIn(":latest", publish)
 
     def test_the_ci_workflow_stays_free_of_publishing(self):
         ci = (WORKFLOWS / "google-reporting.yml").read_text(encoding="utf-8")

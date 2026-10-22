@@ -1,6 +1,15 @@
 # Änderungen — Google Reporting
 
-## Unveröffentlicht
+## 1.0.0 — Datum setzt GATE beim Tag
+
+**Erste Release-Fassung, noch nicht getaggt.** Sie umfasst JanuaPort/januaport#1130 (Berichte),
+#1148 (Schreibhandgriffe) und #1150 (Statusprüfung, spätes `end_date`). Die Release-Strecke
+(JanuaPort/januaport#1138) ist `.github/workflows/google-reporting-release.yml`: Tag
+`google-reporting-vX.Y.Z` → Hash-Lock, Unit-Tests und Mutationsproben → ein Build `linux/amd64`
+mit SBOM/Provenance per Digest nach `ghcr.io/januaport/google-reporting` → Config-Digest-Vergleich
+(SEC C1) und Sonden gegen genau diesen Digest → Image-Tag `X.Y.Z` auf denselben Digest. Trivy-Bericht
+als Artefakt, kein Gate. SHA-Pins und Schreibrechte nach dem agent-runner-/script-runner-Vorbild
+(SEC C2), Wächter in `tests/test_release_workflow.py`. Kein Katalogeintrag (VENDOR, nach Live-Beleg).
 
 - JanuaPort/januaport#1150: GA4 `get_status` meldete auf echten Properties immer `unavailable`.
   `checkCompatibility` antwortet für alle Dimensionen und Metriken der Property; die Prüfung
@@ -46,3 +55,51 @@
   (GUI-Passwortfeld). Entfernen ist kein Widerruf: Der Google-Schlüssel gilt bis zum
   Löschen in der Cloud Console. Alt: `google-service-account.json`, `gsc-bridge-key`,
   `ga4-bridge-key` (nie veröffentlicht).
+
+Die folgende Vorlage ist kein Release-Nachweis; GATE trägt die Werte nach dem grünen Release-Lauf
+und vor dem Katalogeintrag ein, nach dem Muster von agent-runner und script-runner.
+
+### Kuratierung
+
+```markdown
+### v1.0.0 — <Datum>
+
+| Feld | Wert |
+|---|---|
+| Image | `ghcr.io/januaport/google-reporting` |
+| Tag | `google-reporting-v1.0.0` (Image-Tag `1.0.0`) |
+| Digest (OCI-Index) | `sha256:<nach Release ergänzen>` |
+| Plattform | `linux/amd64` (`sha256:<nach Release ergänzen>`), sonst keine |
+| Art | `service`, eigener Build (Plugins-Repo) |
+| Geprüft mit | <JanuaPort-Fassung nach Live-Beleg bestätigen> |
+| Benötigter Commit von Compose | `<Commit im Plugins-Repo>` (`docker-compose.yml`) |
+| Lauf der Sonden | Release-Lauf `<Lauf-ID>` — hat genau diesen Digest geprüft (SEC C1) |
+
+**Digest** zweimal gemessen am <Datum>: Zusammenfassung des Release-Laufs (`digest.txt` im
+Artefakt) und `docker buildx imagetools inspect`. Beide stimmen überein. SBOM und Provenance
+hängen als Attestation am Index.
+
+**Sonden:** grün im Lauf `<Lauf-ID>` gegen genau diesen Digest: Benutzer 65532:65532,
+Unit-Tests im Container ohne Netz, read-only, alle Capabilities entfernt; Start ohne
+Konfiguration endet mit Exit 1 und genau `startup_failed`. Der Config-Digest des geprüften
+Images ist gleich dem der amd64-Plattform des gepushten.
+
+**Scan:** Trivy <Fassung> (Artefakt des Laufs), Datenbank vom <Datum>, Scanner `vuln`:
+**<n> critical · <n> high** · <n> medium · <n> low · <n> unknown. Hohe Funde einzeln, je mit
+behobener Fassung oder Begründung (Python-Pakete aus dem Hash-Lock, Debian-Basis).
+
+**Inhalt:** `python:3.12-slim` (im Dockerfile per Digest gepinnt), Pakete nur aus
+`requirements.lock` mit Hashes, Dienst `google_reporting`, Benutzer 65532.
+
+**Isolation:** UID/GID 65532, read-only Root-FS, `cap_drop: ALL`, no-new-privileges,
+Schlüsselordner nur lesend, internes Plugin-Netz plus eigenes Egress-Netz (Zielhost-Firewall
+beim Betreiber, Compose erzwingt keine Domain-Allowlist).
+
+**Grenzen v1:** nur `linux/amd64`; Live-Beleg der Berichte und Schreibhandgriffe steht aus
+(README, Live-Gates). Ein Image, das eine neue Compose braucht, ist ein Wartungsschritt mit
+Runbook-Eintrag, kein stilles Katalog-Update.
+
+**Entscheid:** <katalogisiert / nicht katalogisiert>, weil <Begründung>.
+
+Quelle: JanuaPort/januaport#1138, #1130, #1148, #1150.
+```
