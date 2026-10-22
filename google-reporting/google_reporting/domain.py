@@ -50,6 +50,7 @@ class Config:
     query_min_impressions: int = 10
     ga4_min_group_size: int = 10
     key_events: dict | None = None
+    ga4_channel_group_name: str = "KI-Assistenten"
 
     @classmethod
     def from_dict(cls, raw):
@@ -95,6 +96,10 @@ class Config:
             )
             ZoneInfo(cfg.ga4_time_zone)
             require(type(cfg.query_enabled) is bool)
+            require(
+                isinstance(cfg.ga4_channel_group_name, str)
+                and bool(re.fullmatch(r"[^\x00-\x1f\x7f]{1,80}", cfg.ga4_channel_group_name))
+            )
             require(
                 type(cfg.query_min_impressions) is int
                 and 10 <= cfg.query_min_impressions <= 1000000

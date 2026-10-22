@@ -16,6 +16,8 @@ from google.analytics.data_v1beta.services.beta_analytics_data.transports.rest i
     BetaAnalyticsDataRestTransport,
 )
 from .domain import ReportError, build_query, project, parse_request
+from .manage import ManageRequest
+from .manage_adapter import ManageRunner
 
 
 def proto_request(cls, fields):
@@ -27,6 +29,12 @@ def proto_request(cls, fields):
 SCOPES = {
     "gsc": "https://www.googleapis.com/auth/webmasters.readonly",
     "ga4": "https://www.googleapis.com/auth/analytics.readonly",
+}
+# A write asks for its own credential object with exactly this scope, never combined with
+# the readonly one (JanuaPort/januaport#1148, SEC W1).
+WRITE_SCOPES = {
+    "gsc": "https://www.googleapis.com/auth/webmasters",
+    "ga4": "https://www.googleapis.com/auth/analytics.edit",
 }
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 
@@ -57,12 +65,14 @@ def load_identity(path):
         raise ValueError("invalid_identity_file") from None
 
 
-def safe_error(exc):
+def safe_error(exc, manage=False):
     status = getattr(getattr(exc, "resp", None), "status", None) or getattr(
         exc, "code", None
     )
     if callable(status):
         status = status()
+    if manage and status in (400, 409, 412, 422):
+        return ReportError(502, "source_rejected")
     if status in (401, 403) or isinstance(
         exc, (exceptions.Unauthenticated, exceptions.PermissionDenied)
     ):
@@ -99,6 +109,18 @@ class ScopedCredentials(service_account.Credentials):
         )
 
 
+def discovery_client(api, version, cred):
+    raw_http = httplib2.Http(timeout=18)
+    raw_http.follow_redirects = False
+    http = google_auth_httplib2.AuthorizedHttp(
+        cred, http=raw_http, max_refresh_attempts=0
+    )
+    # Bundled discovery avoids runtime discovery downloads and arbitrary service URLs.
+    return build(
+        api, version, http=http, cache_discovery=False, static_discovery=True
+    )
+
+
 class GoogleAdapter:
     """One cache per worker, distinct scoped credentials for each source; RAM only."""
 
@@ -116,19 +138,7 @@ class GoogleAdapter:
             )
             self.credentials[source] = cred
             if source == "gsc":
-                raw_http = httplib2.Http(timeout=18)
-                raw_http.follow_redirects = False
-                http = google_auth_httplib2.AuthorizedHttp(
-                    cred, http=raw_http, max_refresh_attempts=0
-                )
-                # Bundled discovery avoids runtime discovery downloads and arbitrary service URLs.
-                self.clients[source] = build(
-                    "searchconsole",
-                    "v1",
-                    http=http,
-                    cache_discovery=False,
-                    static_discovery=True,
-                )
+                self.clients[source] = discovery_client("searchconsole", "v1", cred)
             else:
                 transport = BetaAnalyticsDataRestTransport(
                     credentials=cred,
@@ -148,7 +158,41 @@ class GoogleAdapter:
                 self.clients[source] = BetaAnalyticsDataClient(transport=transport)
         return self.clients[source]
 
+    def service(self, label, api, version, scope):
+        """One client and one credential object per scope (write scopes never combined)."""
+        if label not in self.clients:
+            info = load_identity(self.identity_path)
+            cred = ScopedCredentials.from_service_account_info(
+                info, scopes=[scope], always_use_jwt_access=False
+            )
+            self.credentials[label] = cred
+            self.clients[label] = discovery_client(api, version, cred)
+        return self.clients[label]
+
+    def gsc_read(self):
+        return self.client("gsc")
+
+    def gsc_write(self):
+        return self.service("gsc-write", "searchconsole", "v1", WRITE_SCOPES["gsc"])
+
+    def ga_read(self):
+        return self.service("ga4-admin-read", "analyticsadmin", "v1alpha", SCOPES["ga4"])
+
+    def ga_edit(self):
+        return self.service("ga4-admin-edit", "analyticsadmin", "v1alpha", WRITE_SCOPES["ga4"])
+
+    def run_manage(self, req):
+        try:
+            return ManageRunner(self.cfg, self).run(req)
+        except ReportError:
+            raise
+        except Exception as exc:
+            # Never propagate Google messages, URLs, inputs or stack traces.
+            raise safe_error(exc, manage=True) from None
+
     def run(self, req):
+        if isinstance(req, ManageRequest):
+            return self.run_manage(req)
         query = build_query(self.cfg, req)
         if query is None:
             return project(self.cfg, req, {})

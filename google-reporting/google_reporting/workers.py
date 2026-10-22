@@ -4,6 +4,7 @@ import asyncio
 from collections import deque
 import multiprocessing
 import logging
+from datetime import datetime, timezone
 import time
 from .domain import ReportError, encode_response
 
@@ -11,6 +12,7 @@ BUDGET_SECONDS = 20
 WORKERS = 2
 RATE_PER_MINUTE = 30
 MAX_QUEUED = 4
+WRITE_CAP_PER_DAY = 20
 
 
 def worker_main(conn, cfg, identity_path, adapter_factory=None):
@@ -39,7 +41,13 @@ def worker_main(conn, cfg, identity_path, adapter_factory=None):
 
 class WorkerPool:
     def __init__(
-        self, cfg, identity_path, *, budget=BUDGET_SECONDS, adapter_factory=None
+        self,
+        cfg,
+        identity_path,
+        *,
+        budget=BUDGET_SECONDS,
+        adapter_factory=None,
+        today=None,
     ):
         self.cfg, self.identity_path = cfg, identity_path
         self.budget = budget
@@ -52,6 +60,19 @@ class WorkerPool:
         self.rate = {"gsc": deque(), "ga4": deque()}
         self.pending = 0
         self.closed = False
+        # Write attempts live here, in the long-running server process: a killed worker
+        # cannot reset them (SEC P3). A restart of the process starts at zero.
+        self.write_attempts = {}
+        self.today = today or (lambda: datetime.now(timezone.utc).date().isoformat())
+
+    def _count_write(self, req):
+        """Count the attempt before the Google call; failures count, previews do not."""
+        day = self.today()
+        self.write_attempts = {k: v for k, v in self.write_attempts.items() if k[1] == day}
+        key = (req.source, day)
+        if self.write_attempts.get(key, 0) >= WRITE_CAP_PER_DAY:
+            raise ReportError(429, "write_cap_reached")
+        self.write_attempts[key] = self.write_attempts.get(key, 0) + 1
 
     def _start(self, index):
         parent, child = self.context.Pipe()
@@ -92,6 +113,8 @@ class WorkerPool:
             raise ReportError(429, "source_rate_limited")
         if self.pending >= WORKERS + MAX_QUEUED:
             raise ReportError(429, "queue_full")
+        if getattr(req, "write", False) and not req.dry_run:
+            self._count_write(req)
         ticks.append(started)
         self.pending += 1
         index = None
