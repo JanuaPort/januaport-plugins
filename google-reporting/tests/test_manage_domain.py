@@ -178,6 +178,7 @@ class Annotation(unittest.TestCase):
     def test_personal_data_is_rejected_with_a_fixed_code_and_no_echo(self):
         # SEC P2: email, phone, IBAN in the only free texts that reach the property.
         for field in ("title", "description"):
+            # Beispielwerte wie im Kern-Mustertest (internal/privacy), IBAN = Prüfsummen-Beispiel.
             for canary in ("max.mustermann@example.test", "+49 30 12345678", "DE89370400440532013000", "0511/1234567"):
                 with self.subTest(field=field, canary=canary):
                     body = {"date": "2026-10-22", "title": "t"}

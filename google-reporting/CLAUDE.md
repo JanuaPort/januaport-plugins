@@ -44,6 +44,8 @@ Schreibhandgriffe (#1148, SEC-Auflagen P1–P4, W1–W6, H1–H3), Invarianten:
   Neustart = null (dokumentiert).
 - **P4:** Änderungszeile `change ts= source= op= target= fields= before= after=` nur bei
   `state=applied`, nur Felder aus `FIXED_FIELDS` (feste Typen) und `FREE_TEXT_FIELDS` (Länge/Hash).
+- **Worker-Abbruch nach dem Google-Aufruf:** Dann entsteht keine Änderungszeile; die Spur liefert der
+  GA4-Änderungsverlauf bzw. `list_*` (SEC R4, #1148).
 - **H1/H2/H3:** Titelpräfix `[JP] `, Sitemap-URL streng (Host aus `hosts`, ASCII, `.xml`, ohne
   Query/Fragment/Port/`..`), unbekanntes v1alpha-Feld im Vorzustand = `unexpected_source_shape`
   vor dem Schreiben. Schreibaufrufe ohne Retries. Eine Änderung an diesen Punkten zieht die
