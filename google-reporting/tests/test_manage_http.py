@@ -135,6 +135,22 @@ class Routes(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status, 400)
         self.assertEqual(self.pool.calls, [])
 
+    async def test_chunked_body_is_read_completely_and_bounded(self):
+        # No Content-Length: the service reads until the end, but not beyond 8 KiB.
+        async def pieces(*parts):
+            for part in parts:
+                yield part
+                await asyncio.sleep(0.01)
+
+        body = json.dumps({"sitemap_url": "https://www.example.test/sitemap.xml", "dry_run": True}).encode()
+        response = await self.client.post("/v1/gsc/submit_sitemap", data=pieces(body[:10], body[10:30], body[30:]), headers=AUTH)
+        self.assertEqual(response.status, 200)
+        self.assertEqual(self.pool.calls[-1].params["sitemap_url"], "https://www.example.test/sitemap.xml")
+        calls = len(self.pool.calls)
+        response = await self.client.post("/v1/gsc/submit_sitemap", data=pieces(b'{"x":"', b"A" * 5000, b"A" * 5000, b'"}'), headers=AUTH)
+        self.assertEqual(response.status, 400)
+        self.assertEqual(len(self.pool.calls), calls)
+
     async def test_change_line_has_a_fixed_format_and_no_free_text_or_key(self):
         self.pool.payload = APPLIED
         body = {"date": "2026-10-22", "title": "Copy ATAS-12", "description": "Commit 4ffbc7d8"}
