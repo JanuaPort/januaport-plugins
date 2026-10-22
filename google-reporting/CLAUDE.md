@@ -51,6 +51,14 @@ Schreibhandgriffe (#1148, SEC-Auflagen P1–P4, W1–W6, H1–H3), Invarianten:
   vor dem Schreiben. Schreibaufrufe ohne Retries. Eine Änderung an diesen Punkten zieht die
   Mutationstests (`tests/mutations.py`) und die Dokus (README, SETUP.md) nach.
 
+- **GA4-Status (#1150):** `checkCompatibility` antwortet für **alle** Dimensionen und Metriken der
+  Property. `check_definitions` filtert auf die angefragten `apiName`s (`verify_compatible`):
+  fehlt einer, `report_definition_unverified`; ist einer nicht `COMPATIBLE`,
+  `report_definition_incompatible`; Fremdeinträge zählen nie. Kein Längenvergleich.
+- **Spätes `end_date` (#1150):** wohlgeformt, aber nach „Quelle-heute minus 3 Tage“ ist es
+  `end_date_not_available` (400, fester Code, kein Datum im Fehler, kein Klemmen); nur ein
+  kaputtes Datum bleibt `invalid_input`. Die Fehler-JSON trägt weiter nur `{"error": code}`.
+
 Invarianten an allen Code-/Dokuorten nachziehen:512 KiB Antwort,8 KiB Anfrage,
 Pfad 512,100 Rangzeilen/90 Tage,50 öffentliche Pfade/4096Regex,20 s/25 s,
 2 Worker/30 pro Quelle pro Minute/keine Retries,query_enabled=false als Auslieferungsvorgabe (Betreiberschalter, SEC V5),

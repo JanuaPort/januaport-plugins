@@ -228,7 +228,9 @@ def parse_request(cfg, source, report, pairs, now=None):
             ZoneInfo(zone)
         ).date() - timedelta(days=3)
         end = iso_date(args["end_date"]) if "end_date" in args else latest
-        require(end <= latest)
+        if end > latest:
+            # Well-formed but beyond the final data: a fixed code, no date echoed (#1150).
+            raise ReportError(400, "end_date_not_available")
         start = end - timedelta(days=int(period) - 1)
         segment = args.get("segment", "all_public")
         require(segment in ("all_public", "atas", "gateway", "shared"))

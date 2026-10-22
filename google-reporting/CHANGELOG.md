@@ -2,6 +2,13 @@
 
 ## Unveröffentlicht
 
+- JanuaPort/januaport#1150: GA4 `get_status` meldete auf echten Properties immer `unavailable`.
+  `checkCompatibility` antwortet für alle Dimensionen und Metriken der Property; die Prüfung
+  verglich die Länge mit den angefragten. Jetzt zählen nur die angefragten `apiName`s: jeder
+  muss vorkommen und `COMPATIBLE` sein (`report_definition_unverified` bzw. `_incompatible`
+  sonst). Ein wohlgeformtes, aber zu spätes `end_date` endet mit dem festen Code
+  `end_date_not_available` (400) statt pauschal `invalid_input`; kein Echo, kein Klemmen.
+  Tabellentests, REST-Test mit Ganz-Property-Antwort, drei neue Mutanten.
 - JanuaPort/januaport#1148: drei Schreibhandgriffe für das Inbound-ATAS-Team: GA4-Annotation
   (anlegen, ändern, auflisten), GSC-Sitemap (einreichen, auflisten, lesen), GA4-Kanalgruppe
   „KI-Assistenten“ (anlegen, ändern, auflisten), dazu die URL-Inspektion (lesend). Feste Routen

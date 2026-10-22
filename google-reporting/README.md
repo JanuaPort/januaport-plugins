@@ -17,7 +17,7 @@ Handgriffe Annotation, Sitemap und Kanalgruppe, kein Löschen, keine weitere Adm
 | GSC | `gsc/performance_overview` | Datum, Klicks, Impressionen, CTR, Position |
 | GSC | `gsc/query_summary` | begrenzte Query-Auswahl; standardmäßig gesperrt |
 | GSC | `gsc/page_summary` | ausschließlich freigegebene öffentliche Pfade |
-| GA4 | `ga4/get_status` | Probe plus Kompatibilitätsprüfung der Berichtsdefinitionen |
+| GA4 | `ga4/get_status` | Probe plus Kompatibilitätsprüfung der Berichtsdefinitionen (nur die angefragten `apiName`s, jeder muss in der Antwort stehen und `COMPATIBLE` sein) |
 | GA4 | `ga4/traffic_summary` | `sessionDefaultChannelGroup`, sessions, engagedSessions |
 | GA4 | `ga4/landing_pages` | `landingPage` ohne Querystring, sessions, engagedSessions |
 | GA4 | `ga4/key_events` | nur konfigurierte bestehende eventName, keyEvents |
@@ -40,6 +40,10 @@ konfigurierte Property-Zeitzone. Liefert GA4 eine andere Zeitzone, schlägt der
 Bericht fehl; fehlende Metadaten sind als nicht verifiziert markiert.
 GSC-Tage und GA4-Tage sind keine identischen Intervalle. Sessions sind keine
 Klicks, keyEvents keine qualifizierten Leads oder Odoo-Ergebnisse.
+Ein wohlgeformtes `end_date` nach diesem letzten Tag (GSC: Pazifikzeit, GA4:
+Property-Zeitzone) scheitert mit dem eigenen festen Code `end_date_not_available`
+(400, ohne Echo des Datums und ohne Klemmen); ein kaputtes Datum bleibt `invalid_input`.
+Wer den Zeitraum nicht festlegen muss, lässt `end_date` weg: Dann gilt genau dieser letzte Tag.
 
 Antworten tragen schema_version 1.0, Quelle/Bericht, `ok`/`partial`/`no_rows`/
 `not_configured`, Bereich, tatsächliche Pfadmenge/Konfigurationsfassung, Zeilen,
@@ -52,7 +56,7 @@ Metrikbeschränkung, Zeilenanzahl und sichere Quotenfelder bleiben unterscheidba
 Nicht gelieferte Merkmale bleiben unbekannt. Freie Diagnose-Texte werden verworfen.
 Eine echte zulässige Null bleibt Null; unterdrückte/fehlende Zeilen werden nie Null.
 
-Fehler: 400 Eingabe, 401/403 Bridge, 429 lokale Bremse, 502 Quelle, 503 Betrieb/
+Fehler: 400 Eingabe (`invalid_input`, `end_date_not_available`), 401/403 Bridge, 429 lokale Bremse, 502 Quelle, 503 Betrieb/
 Quoten, 504 Budget. Nur feste Codes, keine URLs/Exceptions/Secrets. Nur get_status
 übersetzt Zugriffs-/Betriebsfehler in feste Diagnosezustände ready, not_configured,
 access_denied, quota_limited, unavailable. Normale Berichte behalten HTTP-Fehler;

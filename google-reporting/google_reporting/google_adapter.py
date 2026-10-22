@@ -121,6 +121,19 @@ def discovery_client(api, version, cred):
     )
 
 
+def verify_compatible(requested, answered):
+    """checkCompatibility lists every dimension and metric of the property, so only the
+    requested apiNames decide: each must be answered and COMPATIBLE (#1150)."""
+    states = {}
+    for name, state in answered:
+        if name in requested:
+            states.setdefault(name, []).append(state)
+    if any(name not in states for name in requested):
+        raise ReportError(503, "report_definition_unverified")
+    if any(state != "COMPATIBLE" for values in states.values() for state in values):
+        raise ReportError(503, "report_definition_incompatible")
+
+
 class GoogleAdapter:
     """One cache per worker, distinct scoped credentials for each source; RAM only."""
 
@@ -240,12 +253,17 @@ class GoogleAdapter:
                 retry=None,
                 timeout=18,
             )
-            if len(response.dimension_compatibilities) != len(
-                query["dimensions"]
-            ) or len(response.metric_compatibilities) != len(query["metrics"]):
-                raise ReportError(503, "report_definition_unverified")
-            for entry in list(response.dimension_compatibilities) + list(
-                response.metric_compatibilities
-            ):
-                if entry.compatibility.name != "COMPATIBLE":
-                    raise ReportError(503, "report_definition_incompatible")
+            verify_compatible(
+                [d["name"] for d in query["dimensions"]],
+                [
+                    (e.dimension_metadata.api_name, e.compatibility.name)
+                    for e in response.dimension_compatibilities
+                ],
+            )
+            verify_compatible(
+                [m["name"] for m in query["metrics"]],
+                [
+                    (e.metric_metadata.api_name, e.compatibility.name)
+                    for e in response.metric_compatibilities
+                ],
+            )
