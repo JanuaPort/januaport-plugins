@@ -44,6 +44,42 @@ class Contract(unittest.TestCase):
         )
         self.assertEqual((req.start_date, req.end_date), ("2025-12-28", "2026-03-27"))
 
+    def test_end_date_after_the_last_final_day_has_its_own_fixed_code(self):
+        # The data ends three days before today in the source zone: GSC in
+        # America/Los_Angeles, GA4 in the property zone (#1150). A late but well-formed
+        # end_date is not malformed input, so the caller learns the reason.
+        instant = dt.datetime(2026, 3, 30, 0, 30, tzinfo=dt.timezone.utc)
+        for source, report, latest in (
+            ("gsc", "performance_overview", "2026-03-26"),
+            ("ga4", "traffic_summary", "2026-03-27"),
+        ):
+            day = dt.date.fromisoformat(latest)
+            ok = parse_request(self.config, source, report, [("end_date", latest)], instant)
+            self.assertEqual(ok.end_date, latest)
+            for late in (day + dt.timedelta(days=1), day + dt.timedelta(days=400)):
+                with self.subTest(source=source, end_date=late.isoformat()):
+                    with self.assertRaises(ReportError) as ctx:
+                        parse_request(
+                            self.config,
+                            source,
+                            report,
+                            [("end_date", late.isoformat())],
+                            instant,
+                        )
+                    self.assertEqual(
+                        (ctx.exception.status, ctx.exception.code),
+                        (400, "end_date_not_available"),
+                    )
+                    self.assertNotIn(late.isoformat(), str(ctx.exception))
+
+    def test_malformed_end_date_stays_invalid_input(self):
+        for value in ("2026-02-30", "yesterday", "2026-3-1", ""):
+            with self.subTest(value=value), self.assertRaises(ReportError) as ctx:
+                parse_request(self.config, "gsc", "performance_overview", [("end_date", value)])
+            self.assertEqual(
+                (ctx.exception.status, ctx.exception.code), (400, "invalid_input")
+            )
+
     def test_invalid_input_before_google(self):
         cases = [
             [("property_id", "canary")],
