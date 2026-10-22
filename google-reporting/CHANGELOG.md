@@ -2,6 +2,19 @@
 
 ## Unveröffentlicht
 
+- JanuaPort/januaport#1148: drei Schreibhandgriffe für das Inbound-ATAS-Team: GA4-Annotation
+  (anlegen, ändern, auflisten), GSC-Sitemap (einreichen, auflisten, lesen), GA4-Kanalgruppe
+  „KI-Assistenten“ (anlegen, ändern, auflisten), dazu die URL-Inspektion (lesend). Feste Routen
+  je Operation (`/v1/gsc/…`, `/v1/ga4/…`, kein `delete`), Site und Property nur aus der
+  Betreiberkonfiguration, je Schreibscope (`webmasters`, `analytics.edit`) ein eigenes
+  Credential-Objekt, `dry_run` mit `before`/`after`, Tagesdeckel 20 Schreibversuche je Quelle
+  im Serverprozess, Änderungszeile im Log (Freitext nur als Länge und Hash), Titelpräfix `[JP]`,
+  Privacy-Scan der Annotationstexte, Kanalgruppe nie `primary` und mit den Standardkanälen.
+  Neuer optionaler Konfigurationswert `ga4_channel_group_name`. Keine neue Abhängigkeit: Admin
+  API v1alpha über den vorhandenen, gepinnten Discovery-Client. SETUP.md: GSC „Uneingeschränkt“,
+  GA4 „Bearbeiter“, dritte API. Ändert die Log-Invariante „Route/Code/Dauer“ um die
+  Änderungszeile bei angewendeten Schreibaufrufen. Gebaut/synthetisch geprüft; Live-Abnahme
+  (Staging, dann mit PO-Go) offen.
 - JanuaPort/januaport#1137: Einrichtungsanleitung für den Admin in `SETUP.md` (Google-Seite mit
   minimalen Rechten nach SEC V1, Eintrag des Servicekonto-JSON, Nutzer-Scopes, Prüfung,
   Schlüsselwechsel). Sie geht als `setup_guide` in den signierten Plugin-Katalog; das README

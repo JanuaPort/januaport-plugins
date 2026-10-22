@@ -31,5 +31,6 @@
   "query_enabled": false,
   "query_min_impressions": 10,
   "ga4_min_group_size": 10,
-  "key_events": null
+  "key_events": null,
+  "ga4_channel_group_name": "KI-Assistenten"
 }
