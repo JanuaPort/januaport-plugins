@@ -59,6 +59,31 @@ als Artefakt, kein Gate. SHA-Pins und Schreibrechte nach dem agent-runner-/scrip
 Die folgende Vorlage ist kein Release-Nachweis; GATE trägt die Werte nach dem grünen Release-Lauf
 und vor dem Katalogeintrag ein, nach dem Muster von agent-runner und script-runner.
 
+### Kuratierung v1.0.0 — 2026-10-22 (GATE)
+
+| Feld | Wert |
+|---|---|
+| Image | `ghcr.io/januaport/google-reporting` |
+| Tag | `google-reporting-v1.0.0` (Image-Tag `1.0.0`) auf `3c1ad7f` |
+| Digest (OCI-Index) | `sha256:540b1bb78c215c5bf737d65651aa7e9f00115dadcc2817bd078edc29aff52119` |
+| Plattform | `linux/amd64` (`sha256:71241b0ef550614f60934658c558fb2cd223c07875218a3d341347671a8fb16f`), sonst keine; dazu der Attestations-Eintrag `sha256:db231ea7…` |
+| Art | `service`, eigener Build (Plugins-Repo) |
+| Geprüft mit | JanuaPort 0.82.0 (Showcase, 22.10.2026) |
+| Benötigter Commit von Compose | `docker-compose.yml` wie seit `793b79d` unverändert (byte-gleich mit 3c1ad7f, sha256 `abd4cc51…`) |
+| Lauf der Sonden | Release-Lauf `39748937674`: hat genau diesen Digest geprüft (SEC C1, Config `sha256:6d135481…` geprüft = gepusht) |
+
+**Digest** zweimal gemessen am 22.10.2026: `digest.txt` im Artefakt des Laufs und `docker buildx imagetools inspect …:1.0.0`. Beide stimmen überein. SBOM und Provenance hängen als Attestation am Index.
+
+**Sonden:** grün im Lauf `39748937674`. Benutzer 65532:65532, Unit-Tests im Container ohne Netz, read-only, `cap_drop ALL`. Ein Start ohne Konfiguration endet mit Exit 1 und genau `startup_failed`.
+
+**Scan:** Trivy 0.74.0 (Artefakt `trivy-google-reporting-v1.0.0`), Datenbank vom 22.10.2026, Debian 13.7, Scanner `vuln`: **0 critical · 44 high** · 63 medium · 62 low · 1 unknown. Alle 44 high liegen in der Debian-Basis von `python:3.12-slim` und haben **keine behobene Fassung**: util-linux-Familie (CVE-2026-76642, -78408, -78409, -78410), libacl1 (CVE-2026-54369), ncurses (CVE-2025-69720), libsystemd0/libudev1 (CVE-2026-16742), perl-base (CVE-2026-9538). Keiner davon liegt in den Python-Paketen aus dem Hash-Lock. Der Dienst ruft keines dieser Programme auf und läuft als 65532 mit read-only Root-FS ohne Capabilities. Mit Fix gibt es nur 5 medium und 1 low, aufzunehmen beim nächsten Neubau.
+
+**Live auf dem Showcase seit 22.10.2026 08:40Z** (statt des lokalen Images 793b79d): Container healthy, Egress-Netz erreicht den Dienst nicht. GSC `get_status` ready, **GA4 `get_status` ok mit `report_definitions: validated`** (#1150 live), GSC/GA4-Berichte über 28 Tage liefern Daten.
+
+**Entscheid:** Der Showcase-Betrieb per Digest ist freigegeben. Einen Katalogeintrag gibt es **noch nicht**: Er folgt nach dem Live-Beleg der Schreibhandgriffe (#1148, Staging, dann PO-Go) durch VENDOR mit PO-Go.
+
+Quelle: JanuaPort/januaport#1138, #1130, #1148, #1150.
+
 ### Kuratierung
 
 ```markdown
