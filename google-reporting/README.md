@@ -5,7 +5,9 @@ abgenommen, veröffentlicht oder produktiv provisioniert**. Apache 2.0.
 Ein privater Python-Beisteller übersetzt acht feste GET-Berichte in offizielle
 Google-REST-Aufrufe. JanuaPort behält Rechte, Audit und Pseudonymisierung.
 Keine Accountsuche, freien Dimensionen/Metriken, Nutzer-/Session-/Lead-IDs,
-Realtime-, Ads-, Admin-, Inspection-API oder Odoo-Verbindung.
+Realtime-, Ads-API oder Odoo-Verbindung. Seit #1148 kommen fünf lesende und fünf
+schreibende Verwaltungsrouten dazu (Abschnitt „Verwaltungshandgriffe“): genau die drei
+Handgriffe Annotation, Sitemap und Kanalgruppe, kein Löschen, keine weitere Admin-API.
 
 ## Vertrag
 
@@ -56,9 +58,88 @@ Quoten, 504 Budget. Nur feste Codes, keine URLs/Exceptions/Secrets. Nur get_stat
 access_denied, quota_limited, unavailable. Normale Berichte behalten HTTP-Fehler;
 JanuaPort zeigt bei Nicht-2xx seine bestehende Statusmeldung ohne Fehlerbody.
 
+## Verwaltungshandgriffe (JanuaPort/januaport#1148)
+
+Für das Inbound-ATAS-Team: der Funnel lässt sich ohne menschliches Eingreifen anpassen.
+Die Produktvorlagen heißen `google-search-console-manage` und `google-analytics-manage`
+(je 1.0.0, derselbe Bridge-Key); die Lesevorlagen bleiben unverändert.
+
+| Quelle | Route unter `/v1/` | Methode | Google-Aufruf, Scope |
+|---|---|---|---|
+| GSC | `gsc/list_sitemaps` | GET | `sitemaps.list`, `webmasters.readonly` |
+| GSC | `gsc/get_sitemap` (`sitemap_url`) | GET | `sitemaps.get`, `webmasters.readonly` |
+| GSC | `gsc/inspect_url` (`page_path`) | GET | `urlInspection.index.inspect`, `webmasters.readonly` |
+| GSC | `gsc/submit_sitemap` | POST | `sitemaps.submit` (PUT), `webmasters` |
+| GA4 | `ga4/list_annotations` | GET | Admin v1alpha `reportingDataAnnotations.list`, `analytics.readonly` |
+| GA4 | `ga4/create_annotation` | POST | `reportingDataAnnotations.create`, `analytics.edit` |
+| GA4 | `ga4/update_annotation` | POST | `get` (readonly), dann `patch`, `analytics.edit` |
+| GA4 | `ga4/list_channel_groups` | GET | `channelGroups.list`, `analytics.readonly` |
+| GA4 | `ga4/create_channel_group` | POST | `list` (readonly), dann `create`, `analytics.edit` |
+| GA4 | `ga4/update_channel_group` | POST | `get` (readonly), dann `patch`, `analytics.edit` |
+
+Es gibt **eine feste Route je Operation**, keinen generischen Pfad und kein `delete`/`archive`
+(404). Site und Property kommen ausschließlich aus der Betreiberkonfiguration, nie aus einem
+Parameter. Ein Schreibaufruf holt seinen Schreib-Scope über ein **eigenes Credential-Objekt**;
+die Lesewege und der Vorzustand eines Schreibaufrufs bleiben auf dem Readonly-Scope, die Scopes
+werden nie kombiniert (`tests/test_manage_adapter.py` pinnt die Menge je Operation).
+
+- **Eingaben** (Body ein JSON-Objekt, höchstens 8 KiB, doppelte und unbekannte Schlüssel gleich
+  400; Fehlercode fest, kein Echo): Sitemap-URL nur `https://<konfigurierter Host>/…xml`, ohne
+  Query, Fragment, Port, Benutzerteil, `..`, Nicht-ASCII (und bei URL-Präfix-Property mit dem
+  Präfix); `inspect_url` nur Pfade aus der öffentlichen Seitenliste; Annotation: **ein** Datum
+  (2020-01-01 bis heute + 366 Tage), Titel höchstens 55 Zeichen (Google: 60 inklusive Präfix),
+  Beschreibung höchstens 150, Farbe aus `PURPLE BROWN BLUE GREEN RED CYAN` (Vorgabe `BLUE`);
+  Kanalgruppe: Liste von 1–20 kleingeschriebenen Quell-Hostnamen, kommagetrennt. Titel und
+  Beschreibung laufen durch einen Scan auf E-Mail, Telefonnummer und IBAN (Muster des
+  Gateway-Privacy-Scans, `personal_data_rejected`).
+- **Annotation `[JP]`:** Der Dienst setzt jedem Titel `[JP] ` voran. `update_annotation`
+  ändert nur Annotationen mit diesem Präfix, die nicht vom System erzeugt sind; andere gibt
+  der Dienst mit `annotation_not_managed` zurück, ohne zu schreiben.
+- **Kanalgruppe:** Der Name kommt aus `ga4_channel_group_name` (Vorgabe „KI-Assistenten“), nie
+  aus einem Parameter; `primary` gibt es nicht als Parameter und steht immer auf `false`. Eine
+  Gruppe, die ein Mensch angelegt hat (anderer Anzeigename), und die Standardgruppe fasst der
+  Dienst nicht an (`channel_group_not_managed`); `update_channel_group` ändert per Patch nur die
+  Regeln. Die gebaute Regelliste setzt den KI-Kanal (`eachScopeSource` in der Hostliste) an
+  die erste Stelle, danach spiegelt sie die 19 Standardkanäle von Google über
+  `eachScopeDefaultChannelGroup`. Eine eigene Gruppe ordnet jede Sitzung ein; ohne diese
+  Spiegelung landete alles andere unter „Unassigned“. Google erlaubt 2 eigene Gruppen je
+  Property (360: 5) mit höchstens 50 Regeln.
+- **Vorschau und Antwort:** Jeder Schreibhandgriff kennt `dry_run` (JSON-Boolean). Die Antwort
+  trägt immer `state` (`applied`, `preview`, `unchanged`), `target`, `changed_fields`, `before`
+  und `after`; eine Vorschau ruft nichts Schreibendes bei Google auf.
+- **Tagesdeckel:** höchstens 20 Schreibversuche je Quelle und UTC-Tag. Der Zähler liegt im
+  langlebigen Serverprozess (nicht im Worker, der bei Abbruch getötet wird), zählt den Versuch
+  vor dem Google-Aufruf und damit auch Fehlschläge, nicht aber `dry_run`. Der 21. Versuch gibt
+  429 `write_cap_reached`. Ein Neustart des Containers setzt den Zähler auf null; das ist eine
+  dokumentierte Grenze, ein Aufrufer kann ihn nicht auslösen. Schreibaufrufe laufen ohne Retries.
+- **v1alpha:** Annotationen und Kanalgruppen gibt es nur in der Admin API v1alpha; ihre Form
+  kann sich ändern. Trägt ein Datensatz, den der Dienst überschreiben würde, ein unbekanntes
+  Feld, bricht er mit `unexpected_source_shape` ab, bevor er schreibt. Der Dienst nutzt dafür
+  den vorhandenen Discovery-Client (`analyticsadmin` v1alpha aus dem gepinnten
+  `google-api-python-client`), keine zusätzliche Abhängigkeit.
+- **Änderungszeile:** Für jeden **angewendeten** Schreibaufruf schreibt der Dienst genau eine
+  Zeile `change ts=… source=… op=… target=… fields=… before={…} after={…}`. Werte stehen nur für
+  Felder mit festem Typ (Datum, Farbe, Hostnamen, Sitemap-URL, Flags); Titel und Beschreibung
+  nur als Länge und SHA-256-Präfix. Token, Schlüssel und Bridge-Key stehen nie darin. Das
+  Gateway-Audit hält fest, wer welches Werkzeug mit welchem Ergebnis aufrief; diese Zeile hält
+  fest, was sich änderte. Eine Mail bei Schreibaufrufen gibt es nicht (eigener Produktschnitt).
+- **Grenzen, ehrlich:** `sitemaps.submit` meldet die Sitemap nur an und löst kein Crawling aus;
+  „Indexierung beantragen“ hat keine öffentliche API (die Indexing API gilt nur für
+  JobPosting und BroadcastEvent und ist nicht eingebaut). Der Sitemap-Ping ist seit 2023
+  abgeschaltet. Suchvolumen liefert keine dieser APIs. Die Rollen-Obergrenze bei Google
+  (GSC „Uneingeschränkt“, GA4 „Bearbeiter“, keine IAM-Rolle) bestimmt weiter den Schaden bei
+  einem abgeflossenen Schlüssel; die Routenliste schützt nur den Weg über das Gateway.
+
+Fehlercodes dieser Routen: `invalid_input`, `personal_data_rejected` (400), `route_not_found`
+(404), `sitemap_not_found`, `annotation_not_found`, `channel_group_not_found` (404),
+`annotation_not_managed`, `channel_group_not_managed`, `channel_group_exists` (409),
+`write_cap_reached` (429), `unexpected_source_shape`, `source_rejected` (502).
+
 ## Konfiguration und Datenschutz
 
-`config.example.json` ist vollständig synthetisch. Pflicht: feste GSC-Property,
+`config.example.json` ist vollständig synthetisch. Optional `ga4_channel_group_name`
+(1–80 Zeichen, Vorgabe „KI-Assistenten“): Name der einen Kanalgruppe, die der Dienst anlegen
+und ändern darf. Pflicht: feste GSC-Property,
 GA4-Property-ID ohne `properties/`, IANA-Zeitzone, exakte kanonische Hosts,
 drei disjunkte Gruppen mit zusammen 1–50 öffentlichen Pfaden und explizite
 vollständige GSC-URLs je Pfad/Host. Keine Querystrings, Fragmente, dynamischen
@@ -97,7 +178,8 @@ Parameter stehen in redact_params. Bei abfragen/antworten speichert das Gateway
 bewusst deklarierte Inhalte trotz dieser Liste. Diese Einstellung gilt je
 Zugangsklasse, nicht je Integration. Hier wird sie nie global geändert. Höhere
 verbindliche Tiefe benötigt eigenen LEAD/SEC-Schnitt vor Freigabe.
-Containerlog enthält nur feste Route, festen Code, Dauer.
+Containerlog enthält nur feste Route, festen Code, Dauer; dazu bei einem angewendeten
+Schreibaufruf die Änderungszeile (nur Konfigurationswerte, Freitext als Länge und Hash).
 Auch HTTP-Parserfehler vor der Middleware verwenden eine gepinnte aiohttp-Naht
 (SafeAppRunner), die Eingabebytes aus Fehlerbody und Log entfernt.
 Parserlimits bleiben begrenzt; SDK-/aiohttp-Upgrades verlangen Canary-Proben. Keine Access-Logs,
@@ -109,7 +191,8 @@ Python-Logs. Keine Datenbank, Berichtscache oder geplante Abfragen.
 512 KiB JSON vor Ausgabe, 8 KiB URL/Query, Pfad 512 Zeichen. **20 Sekunden**
 Gesamtbudget inklusive Queue, Token-Refresh und API. Connector-Timeout **25 s**.
 Zwei persistente Python-Kindprozesse insgesamt, vier zusätzliche Queueplätze,
-30 Berichts-/Probeanforderungen je Quelle pro rollender Minute. Status kann
+30 Berichts-/Probeanforderungen je Quelle pro rollender Minute, dazu höchstens 20
+Schreibversuche je Quelle und Tag (nur im RAM des Serverprozesses). Status kann
 mehrere feste Kompatibilitätsaufrufe innerhalb derselben Frist enthalten.
 Ein Prozess führt immer nur einen Auftrag aus. Token/Clients pro Quelle und
 Prozess getrennt, nur im RAM. Reguläre Aufrufe verwenden gültige Tokens weiter;
@@ -137,12 +220,14 @@ keine relativen Links; `tests/test_setup_guide.py` prüft das.
 
 ## Einrichtung, Betrieb und Rückbau
 
-1. Neue zweckgebundene Servicekonto-Identität für diese Website. GSC expliziter
-   Property-Lesegrant, GA4 Viewer auf **konkreter Property**; IAM allein genügt
-   nicht. Kein Terminagent-Konto, kein Owner/Editor auf Vorrat. Nur Search Console
-   API und Analytics Data API aktivieren. Je Client ausschließlich
-   webmasters.readonly beziehungsweise analytics.readonly. Minimale GSC-Rolle
-   und Grant funktionieren erst nach kontrolliertem Live-Test als belegt.
+1. Neue zweckgebundene Servicekonto-Identität für diese Website. Seit #1148 (SEC-Obergrenze V1):
+   GSC höchstens „Uneingeschränkt“ (nie Inhaber), GA4 höchstens „Bearbeiter“ auf der **konkreten
+   Property** (nie Administrator), keine IAM-Rolle; IAM allein genügt nicht. Kein
+   Terminagent-Konto, kein Owner/Admin auf Vorrat. Search Console API, Analytics Data API und
+   Analytics Admin API aktivieren. Die Lesewege fragen ausschließlich
+   webmasters.readonly beziehungsweise analytics.readonly an, ein Schreibaufruf holt
+   `webmasters` beziehungsweise `analytics.edit` über ein eigenes Credential-Objekt. Die
+   Rechte und Grants funktionieren erst nach kontrolliertem Live-Test als belegt.
 2. Keyless nur mit geprüftem Identity-Vertrag; V1 akzeptiert ausschließlich eine
    explizite Servicekonto-Schlüsseldatei. token_uri muss oauth2.googleapis.com/token
    und universe_domain googleapis.com sein; Signer wird ohne Netz validiert.
@@ -218,8 +303,10 @@ keine relativen Links; `tests/test_setup_guide.py` prüft das.
    schon aus Schritt 2 gesetzt (Wert gleich `runtime-key` der Stelle
    `plugin-google-reporting`, nie von Hand getippt). Bytegleiche Vorlagen aus Integrations-/Produktrepo
    (`google-search-console`, `google-analytics`, beide jeweils 1.0.0 und beide mit
-   dieser Credential) als **corp**-Instanzen mit http://google-reporting:8092
-   erstellen. Team-Selbstanlage erlaubt nur öffentliche HTTPS-Ziele; Admin-MCP
+   dieser Credential; für den ATAS-Zugang zusätzlich `google-search-console-manage` und
+   `google-analytics-manage`, ebenfalls 1.0.0) als **corp**-Instanzen mit
+   http://google-reporting:8092 erstellen. Die Schreibwerkzeuge der Manage-Vorlagen bekommt
+   nur der ATAS-Zugang, je Werkzeug einzeln (tool-genaues Recht). Team-Selbstanlage erlaubt nur öffentliche HTTPS-Ziele; Admin-MCP
    benötigt target_address-Schalter für private Ziele, alternativ Betreiberweg.
    Aktivierung erstellt keine Instanzen/Rechte. Nur vorgesehenem INBOUND-Zugang
    freigeben.
@@ -252,7 +339,7 @@ Python3.12: venv anlegen, `pip install --require-hashes -r requirements.lock`,
 entstehen flüchtig im Test. Keine echten Credentials/Googleanfragen.
 `python tests/mutations.py` muss kritische Mutanten erkennen.
 Produkt: `go test ./internal/connector/...` und
-`go test ./cmd/jnpt -run TestGoogleReporting1130` prüfen echte HTTP-, MCP-,
+`go test ./cmd/jnpt -run 'TestGoogleReporting1130|TestGoogleManage1148'` prüfen echte HTTP-, MCP-,
 Privacy-, Policy- und Auditpfade. Golden-Dateien enthalten keine Bridge-Secrets.
 Imagebau: `docker build .`; hinter verwaltetem Proxy optional BuildKit
 `--secret id=jnpt_ca,src=<CA-Bundle>`; Secret wird nicht ins Image kopiert.
@@ -265,13 +352,20 @@ GATE-Release. Live-DoD: je Quelle echter Bericht über **ChatGPT → JanuaPort S
 → Connector → Beisteller → Google**, danach 28/90 Tage soweit vorhanden.
 Keine produktive Freigabe aus synthetischen Tests ableiten.
 
+Live-Gates der Verwaltungshandgriffe (#1148): zuerst Staging, danach mit eigenem PO-Go eine
+echte Annotation, eine Sitemap-Einreichung und die Kanalgruppe gegen die Produktiv-Property.
+Dabei zu belegen: die Feldnamen der Gruppierungsregeln (`eachScopeSource`,
+`eachScopeDefaultChannelGroup`; die Google-Referenz nennt keine Werteliste, die Namen stammen
+aus Drittdokumentation), die Obergrenze eigener Gruppen der Property und dass die Standardkanäle
+in der Gruppe so zählen wie in der Standardgruppe.
+
 Quellen: [GSC Query](https://developers.google.com/webmaster-tools/v1/searchanalytics/query),
 [GA4 runReport](https://developers.google.com/analytics/devguides/reporting/data/v1/rest/v1beta/properties/runReport),
 [GA4 Metadaten](https://developers.google.com/analytics/devguides/reporting/data/v1/rest/v1beta/ResponseMetaData).
 
 Optionaler repoübergreifender Wire-Test: in diesem Verzeichnis
 `python tests/wire_server.py --port 18092` starten. In der Produkt-Worktree:
-`TEST_GOOGLE_REPORTING_URL=http://127.0.0.1:18092 go test ./internal/connector/contracttest -run TestGoogleReporting1130ActualPythonService -count=1`.
+`TEST_GOOGLE_REPORTING_URL=http://127.0.0.1:18092 go test ./internal/connector/contracttest -run 'ActualPythonService' -count=1` (deckt die Lese- und die #1148-Schreibvorlagen ab).
 Der Test trifft die echte HTTP-/Worker-Servicegrenze mit synthetischem Adapter,
 keine Google-Identität. Ohne gesetzte URL überspringt die normale Go-CI diesen
 optionalen Python-Nachbartest; ihre eigenen HTTP-Goldens bleiben verpflichtend.

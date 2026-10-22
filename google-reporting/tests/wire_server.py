@@ -6,6 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import asyncio
+from google_reporting.manage import ManageRequest, envelope
 from google_reporting.safe_http import serve_app
 from google_reporting.domain import Config, project
 from google_reporting.server import create_app
@@ -18,6 +19,20 @@ class SyntheticAdapter:
         self.cfg = cfg
 
     def run(self, req):
+        if isinstance(req, ManageRequest):
+            # Synthetic answers in the real envelope; no Google call and no state.
+            if not req.write:
+                return envelope(req.source, req.operation, "no_rows", items=[], quality={"truncated": False, "returned_items": 0})
+            return envelope(
+                req.source,
+                req.operation,
+                "preview" if req.dry_run else "applied",
+                dry_run=req.dry_run,
+                target=None,
+                changed_fields=[],
+                before=None,
+                after={},
+            )
         if req.source == "gsc":
             key = (
                 req.end_date

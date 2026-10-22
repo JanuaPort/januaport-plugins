@@ -11,6 +11,14 @@ from pathlib import Path
 import time
 from aiohttp import web
 from .domain import Config, ReportError, parse_request, encode_response, REPORTS
+from .manage import (
+    GET_OPS,
+    MAX_BODY,
+    POST_OPS,
+    change_line,
+    parse_get,
+    parse_post,
+)
 from .workers import WorkerPool
 
 LOG = logging.getLogger("google_reporting")
@@ -37,6 +45,36 @@ def load_runtime_files(bridge_key_path=BRIDGE_KEY_PATH, identity_path=IDENTITY_P
     return read_key(bridge_key_path)
 
 
+def route_kind(parts):
+    """report (GET, fixed reports), read (GET, manage lists) or write (POST); else None."""
+    if len(parts) != 4 or parts[1] != "v1" or parts[2] not in REPORTS:
+        return None
+    source, op = parts[2:]
+    if op in REPORTS[source]:
+        return "report"
+    if op in GET_OPS[source]:
+        return "read"
+    return "write" if op in POST_OPS[source] else None
+
+
+async def bounded_body(request):
+    if request.content_length is not None and request.content_length > MAX_BODY:
+        raise ReportError(400, "request_too_large")
+    raw = b""
+    async for chunk in request.content.iter_chunked(4096):
+        raw += chunk
+        if len(raw) > MAX_BODY:
+            raise ReportError(400, "request_too_large")
+    return raw
+
+
+def log_change(source, operation, payload):
+    """One fixed-format line per applied write; previews and reads leave none (SEC P4)."""
+    result = json.loads(payload)
+    if result.get("state") == "applied":
+        LOG.info(change_line(source, operation, result))
+
+
 def create_app(cfg, key, pool):
     @web.middleware
     async def errors(request, handler):
@@ -56,16 +94,12 @@ def create_app(cfg, key, pool):
                     body=b'{"state":"healthy"}', content_type="application/json"
                 )
             parts = request.path.split("/")
-            if (
-                len(parts) != 4
-                or parts[1] != "v1"
-                or parts[2] not in REPORTS
-                or parts[3] not in REPORTS[parts[2]]
-            ):
+            kind = route_kind(parts)
+            if kind is None:
                 raise ReportError(404, "route_not_found")
             source, report = parts[2:]
             route = source + "/" + report
-            if request.method != "GET":
+            if request.method != ("POST" if kind == "write" else "GET"):
                 raise ReportError(405, "method_not_allowed")
             header = request.headers.getall("Authorization", [])
             if len(header) != 1:
@@ -77,9 +111,14 @@ def create_app(cfg, key, pool):
                 authorized = False
             if not authorized:
                 raise ReportError(403, "bridge_forbidden")
-            if request.can_read_body:
+            if kind == "write":
+                req = parse_post(cfg, source, report, await bounded_body(request))
+            elif request.can_read_body:
                 raise ReportError(400, "unexpected_body")
-            req = parse_request(cfg, source, report, list(request.query.items()))
+            elif kind == "read":
+                req = parse_get(cfg, source, report, list(request.query.items()))
+            else:
+                req = parse_request(cfg, source, report, list(request.query.items()))
             if source == "gsc" and report == "query_summary" and not cfg.query_enabled:
                 raise ReportError(503, "query_not_approved")
             if source == "ga4" and report == "key_events" and cfg.key_events is None:
@@ -102,6 +141,8 @@ def create_app(cfg, key, pool):
                             await task
                         except asyncio.CancelledError:
                             pass
+            if kind == "write":
+                log_change(source, report, payload)
             return web.Response(body=payload, content_type="application/json")
         except ReportError as exc:
             code = exc.code

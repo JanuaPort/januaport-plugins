@@ -1,4 +1,4 @@
-# google-reporting — Modulvertrag (#1130)
+# google-reporting — Modulvertrag (#1130, #1148)
 
 Privater Python-REST-Beisteller, Apache2.0. Stufe 1, gebaut/synthetisch geprüft,
 Live-Abnahme offen. Kein eigener MCP-Server oder Gateway-Auth-Typ.
@@ -15,11 +15,41 @@ Live-Abnahme offen. Kein eigener MCP-Server oder Gateway-Auth-Typ.
 - safe_http.py: gepinnte aiohttp-Protokollnaht ersetzt Fehler vor der Middleware
   durch feste JSON-Codes ohne rohe Requestbytes/Exception-Logs. SafeAppRunner
   ist Pflicht, Parserlimits bleiben 8192. Upgrade verlangt Canary-Proben.
-- server.py: feste GET-Routen, **ein** Bridge-Key für beide Quellen
+- server.py: feste GET-Routen (Berichte, seit #1148 auch die Manage-Listen) und je Schreiboperation
+  eine feste POST-Route, **ein** Bridge-Key für beide Quellen
   (`/run/secrets/jnpt/runtime-key`) und das Servicekonto-JSON
   (`/run/secrets/google/runtime-key`), beide beim Start via `load_runtime_files`;
-  strikte Vorprüfung, sichere Codes und Route/Code/Dauer-Log. Die Rechte je
+  strikte Vorprüfung, sichere Codes und Route/Code/Dauer-Log, bei einem angewendeten
+  Schreibaufruf zusätzlich genau eine Änderungszeile. Die Rechte je
   Werkzeug prüft das Gateway, nicht der Dienst. /healthz lokal ohne Googlezugriff.
+- manage.py + manage_adapter.py (#1148): die drei Schreibhandgriffe und ihre Lesewerkzeuge.
+  `manage.py` ist rein (Routenmengen, Validierung, Google-Bodies, Projektion, Änderungszeile),
+  `manage_adapter.py` ruft die Discovery-Clients (GSC `searchconsole` v1, GA `analyticsadmin`
+  v1alpha; **keine** zusätzliche Abhängigkeit, der Lock bleibt unverändert). Site/Property nur
+  aus der Konfiguration. Kein delete/archive, kein generischer Pfad.
+
+Schreibhandgriffe (#1148, SEC-Auflagen P1–P4, W1–W6, H1–H3), Invarianten:
+- **W1 Scope-Trennung:** ein Credential-Objekt je Scope (`SCOPES` readonly, `WRITE_SCOPES`
+  `webmasters`/`analytics.edit`), nie kombiniert; Lesewege und der Vorzustand eines Schreibaufrufs
+  bleiben readonly. `tests/test_manage_adapter.py::ScopePins` pinnt die Menge je Operation.
+- **P1:** `primary` ist kein Parameter und steht immer auf `false`; ein Patch enthält nur
+  `groupingRule` (Mask `grouping_rule`); geändert wird nur die Gruppe mit dem konfigurierten
+  `ga4_channel_group_name`; die Regelliste führt die 19 Standardkanäle mit, der KI-Kanal steht
+  vor „Referral“ (`eachScopeSource` / `eachScopeDefaultChannelGroup`, Namen aus Drittdoku, live
+  zu belegen).
+- **P2:** Titel/Beschreibung der Annotation durchlaufen den Scan auf E-Mail/Telefon/IBAN
+  (`personal_data_rejected`, kein Echo); in der Änderungszeile nur Länge und Hash.
+- **P3:** Tagesdeckel `WRITE_CAP_PER_DAY` = 20 je Quelle/UTC-Tag in `WorkerPool.write_attempts`
+  (Serverprozess, nicht Worker); zählt vor dem Google-Aufruf, Fehlschläge zählen, `dry_run` nicht;
+  Neustart = null (dokumentiert).
+- **P4:** Änderungszeile `change ts= source= op= target= fields= before= after=` nur bei
+  `state=applied`, nur Felder aus `FIXED_FIELDS` (feste Typen) und `FREE_TEXT_FIELDS` (Länge/Hash).
+- **Worker-Abbruch nach dem Google-Aufruf:** Dann entsteht keine Änderungszeile; die Spur liefert der
+  GA4-Änderungsverlauf bzw. `list_*` (SEC R4, #1148).
+- **H1/H2/H3:** Titelpräfix `[JP] `, Sitemap-URL streng (Host aus `hosts`, ASCII, `.xml`, ohne
+  Query/Fragment/Port/`..`), unbekanntes v1alpha-Feld im Vorzustand = `unexpected_source_shape`
+  vor dem Schreiben. Schreibaufrufe ohne Retries. Eine Änderung an diesen Punkten zieht die
+  Mutationstests (`tests/mutations.py`) und die Dokus (README, SETUP.md) nach.
 
 Invarianten an allen Code-/Dokuorten nachziehen:512 KiB Antwort,8 KiB Anfrage,
 Pfad 512,100 Rangzeilen/90 Tage,50 öffentliche Pfade/4096Regex,20 s/25 s,
@@ -50,9 +80,11 @@ Google-Readiness getrennt. Vollständiges Runbook und Live-Gates: README.md.
 das Repo verständlich sein: höchstens 32 KiB, gültiges UTF-8, keine relativen Links, nur die
 Handgriffe des Admins (Betreiberschritte bleiben im README). SEC V1 (minimale Google-Rechte,
 Datei löschen, Kopie höchstens im Passwortmanager) steht dort und in
-`tests/test_setup_guide.py`; wer die Rechte ändert, zieht beide nach.
+`tests/test_setup_guide.py`; wer die Rechte ändert, zieht beide nach. Seit #1148: GSC höchstens
+„Uneingeschränkt“, GA4 höchstens „Bearbeiter“, keine IAM-Rolle (SEC-Obergrenze V1).
 
 Tests enthalten nur synthetische Daten; Signer flüchtig generieren. Lock
 mit pip-compile --generate-hashes erstellen, install --require-hashes.
-Mutationstests müssen Bridge-Key-Auth, Vorprüfung, Filter, Retries und Kill abdecken.
+Mutationstests müssen Bridge-Key-Auth, Vorprüfung, Filter, Retries und Kill abdecken, seit
+#1148 auch Scope-Trennung, Tagesdeckel, P1 (primary), P2 (Privacy-Scan) und das Titelpräfix.
 Signatur/Katalog-Release/Deployment nicht Teil der Implementierung.
