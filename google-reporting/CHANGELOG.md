@@ -1,8 +1,8 @@
 # Änderungen — Google Reporting
 
-## 1.0.0 — Datum setzt GATE beim Tag
+## 1.0.0 — 2026-10-22
 
-**Erste Release-Fassung, noch nicht getaggt.** Sie umfasst JanuaPort/januaport#1130 (Berichte),
+**Erste Release-Fassung.** Sie umfasst JanuaPort/januaport#1130 (Berichte),
 #1148 (Schreibhandgriffe) und #1150 (Statusprüfung, spätes `end_date`). Die Release-Strecke
 (JanuaPort/januaport#1138) ist `.github/workflows/google-reporting-release.yml`: Tag
 `google-reporting-vX.Y.Z` → Hash-Lock, Unit-Tests und Mutationsproben → ein Build `linux/amd64`
