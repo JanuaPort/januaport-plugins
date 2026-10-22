@@ -30,13 +30,32 @@ class SetupGuide(unittest.TestCase):
         guide = self.guide()
         for phrase in (
             "keine Rolle",
-            "„Eingeschränkt“",
-            "„Betrachter“",
+            "„Uneingeschränkt“",
+            "„Bearbeiter“",
             "„Keine Kosten- und Umsatzmesswerte“",
             "Google Search Console API",
             "Google Analytics Data API",
+            "Google Analytics Admin API",
         ):
             self.assertIn(phrase, guide)
+
+    def test_names_the_ceiling_of_the_write_rights(self):
+        # SEC ceiling V1 (JanuaPort/januaport#1148): GSC at most „Uneingeschränkt“, GA4 at most
+        # „Bearbeiter“, never an owner or administrator and no IAM role.
+        guide = self.guide()
+        self.assertIn("„Inhaber“", guide)
+        self.assertIn("„Administrator“", guide)
+        self.assertNotIn("„Betrachter“", guide)
+        self.assertNotIn("„Eingeschränkt“", guide)
+        self.assertIn("keine Rolle", guide)
+
+    def test_names_the_manage_scopes_and_the_daily_cap(self):
+        guide = self.guide()
+        self.assertIn("`google-search-console-manage`", guide)
+        self.assertIn("`google-analytics-manage`", guide)
+        self.assertIn("`google-search-console-manage:submit_sitemap`", guide)
+        self.assertIn("`google-analytics-manage:create_annotation`", guide)
+        self.assertIn("20", guide)
 
     def test_keeps_key_out_of_files(self):
         guide = self.guide()
