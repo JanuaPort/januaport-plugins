@@ -53,6 +53,41 @@ Getaggt als `agent-runner-v0.1.0` (Release-Lauf 38983345807, 17.10.2026).
 
 ### Kuratierung
 
+### v0.1.1 — 2026-10-23
+
+| Feld | Wert |
+|---|---|
+| Image | `ghcr.io/januaport/agent-runner` |
+| Tag | `agent-runner-v0.1.1` (Image-Tag `0.1.1`) |
+| Digest (OCI-Index) | `sha256:2918dec223505557438f46f1032e46e4a7a5b4542307476f278b7825897c271d` |
+| Plattform | `linux/amd64` (`sha256:f8ab1c6f10e371643d4dc80ba80026aeb96eeedba3252e822ee2947d617a5325`), sonst keine |
+| Art | `service`, eigener Build (Plugins-Repo) |
+| Geprüft mit | JanuaPort v0.82.0, **live auf dem Showcase** (Durchstich #1099, 23.10.2026) |
+| Benötigter Commit von Compose | `19ea160` (`docker-compose.yml`, unverändert seit 0.1.0) |
+| Lauf der Sonden | Release-Lauf `39943955357`, hat genau diesen Digest geprüft (SEC C1) |
+
+**Digest:** aus `digest.txt` im Artefakt des Release-Laufs und aus der Zusammenfassung „Tag 0.1.1 → …“
+desselben Laufs; beide stimmen überein. Auf dem Showcase per Digest gezogen und gestartet
+(Container healthy, nur `jnpt_plugins`, kein Host-Port).
+
+**Live-Prüfung (Showcase, Anthropic, Profil `demo`):** Lauf mit einem Token von außen: `end=ok`,
+8,1 s, 2 Schritte, 3 Werkzeugaufrufe durch den Kern, Audit nur mit Metadaten. Entzug mitten im
+Lauf: Lauf etwa 1 s nach dem Widerruf beendet, kein innerer Aufruf danach, Aufrufer bekommt die
+Absage ohne Orakel. Der Sub-Agent aus claude.ai steht noch aus (#1099).
+
+**Scan:** Trivy (Artefakt des Laufs), Scan vom 2026-10-23T11:09Z, Scanner `vuln`:
+**0 critical · 1 high** · 2 unknown.
+- HIGH CVE-2026-111943 (Go-stdlib `crypto/x509`, Go 1.26.9, behoben in 1.26.10): Denylist für
+  zurückgezogene Zwischenzertifikate. Im Läufer nicht erreichbar, weil er keine TLS-Verbindung
+  aufbaut: Er spricht nur unverschlüsseltes HTTP mit dem Kern im internen Netz `jnpt_plugins` und
+  hat keinen Internetzugang. Der Kern steht seit #1136 auf Go 1.26.10. Nachzug: Toolchain-Sprung
+  des Läufers auf Go 1.26.10 als 0.1.2, **vor dem Katalogeintrag**.
+- unknown CVE-2026-39824 (`golang.org/x/sys/windows`, im `linux/amd64`-Binary nicht gebaut) und
+  DSA-6572-1 (`ca-certificates` der Basis, vom Läufer nicht benutzt).
+
+**Entscheid:** auf dem Showcase im Betrieb. Noch nicht katalogisiert: Erst kommt 0.1.2 mit Go 1.26.10,
+dann der Sub-Agent-Beleg, dann der Katalogeintrag (VENDOR, mit PO-Go).
+
 ### v0.1.0 — 2026-10-17
 
 | Feld | Wert |
