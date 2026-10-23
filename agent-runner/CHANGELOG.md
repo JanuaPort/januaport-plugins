@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.1 — Datum beim Release
+## 0.1.1 — 2026-10-23
 
 **Fix für den Live-Durchstich.** JanuaPort/januaport#1099.
 
