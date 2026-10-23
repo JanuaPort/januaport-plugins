@@ -34,7 +34,11 @@ gegen den Standard-Zweig. Das Desktop-Manifest heißt `jnpt-desktop.yaml`
 (einschließlich `python`, Timeout 1–86400 Sekunden).
 Der interne Abruf `GET /desktop/package?commit=…&path=…` verlangt den
 runtime-key und einen aktuell freigegebenen Desktop-Pin, maximal 128 MiB.
-Status/Manifestwerte stehen in `tools/list` unter `desktop_pins`.
+Status/Manifestwerte stehen in `tools/list` unter `desktop_pins`, immer mit
+`name`, `commit`, `path` und `algo` aus `desktop-pins.json`. Der Kern ordnet
+Deklarationen nur bei gleichem Namen, Commit und Pfad seinem eigenen Pin zu.
+Bei Pinentzug beendet der Kern offene Aufträge des Pins mit `denied` und
+bricht einen laufenden Lauf ab; der Beisteller liefert nur aktuelle Pins.
 Desktop-Pins laufen auf dem Gerät: Der Beisteller startet dafür keine
 Sandbox und entpackt keine Windows-Wheels. Auch Zeitpläne taktet das Gerät
 aus seinem signierten Manifest. Details: [Weg A und Dateiformat](contract/README.md#desktop-pins-und-paketabruf-auf-weg-a-1165-d2b).

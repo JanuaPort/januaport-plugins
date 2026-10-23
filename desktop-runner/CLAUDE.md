@@ -64,6 +64,8 @@ Maßgeblich: [Draht-Vertrag v1](contract/README.md).
    409 already_started ohne Token. MCP verlangt beide Token, zustandslos.
 7. Pakete nur für `(commit,path)` eines offenen eigenen Auftrags **oder**
    eines aktuellen eigenen Manifest-Pins, damit Sync ohne Claim funktioniert.
+   Pinentzug beendet im Kern alle offenen Aufträge des Pins mit `denied` und
+   bricht einen laufenden Lauf ab; script-runner liefert nur aktuelle Pins.
    Unbekannt/fremd byte-gleiche 404. Git-IDs/exakte Objektmenge vor jeder
    Ablage prüfen; fehlend/überzählig, 120000/160000, unsichere Namen oder
    Grenzen → refused/hash, kein Prozess. SHA-1DC statt crypto/sha1 (C3).

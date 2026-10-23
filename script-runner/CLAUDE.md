@@ -185,7 +185,15 @@ Windows-kompatible Pfade, unbekannte Felder und weitere YAML-Dokumente.
 YAML-Typen werden ausdrücklich geprüft: Text und Werkzeugnamen als Strings,
 Timeout als Ganzzahl, ohne Bool-/Bruchzahl-Konvertierung durch yaml.v3.
 Fehler bleiben feste Codes/Sätze ohne Echo. Nur bei `ready` werden die
-Manifestwerte in `_meta["januaport.ai/runner"].desktop_pins` veröffentlicht.
+Manifestwerte in `_meta["januaport.ai/runner"].desktop_pins` veröffentlicht,
+gebunden an die geprüfte Zweigfreigabe. Jeder Eintrag trägt in jedem Zustand
+die Pflichtfelder `name`, `commit`, `path`, `algo` aus `desktop-pins.json`,
+nicht aus dem Repository-Manifest. Der Kern ordnet Deklarationen nur bei
+Übereinstimmung von Name, Commit **und** Pfad mit seinem eigenen Pin zu.
+Eine Neuanlage unter demselben Namen veröffentlicht die neue Identität und
+deren Deklaration. Pinentzug beendet im Kern alle offenen Aufträge des Pins
+mit `denied` und bricht einen laufenden Lauf ab; der script-runner bleibt
+bei Paketen ausschließlich für aktuelle Pins.
 
 `store.DesktopPackage` rechnet Commit, Vorfahrenbäume und den ganzen Pin neu
 nach; Windows-Wheels und Python-ZIP sind dabei opake Blobs. Es gibt keine
@@ -196,6 +204,7 @@ expandiert. Die Paketreihenfolge ist deterministisch (siehe Vertrag).
 
 | Invariante / zweiter Berechtigungsweg | Test am echten Adapter |
 |---|---|
+| Desktop-Meta trägt immer Name/Commit/Pfad/Algorithmus aus der Pin-Datei; Deklarationen nur mit Freigabe; Neuanlage übernimmt keine alte Identität oder Paketberechtigung | `TestDesktopPinIdentityAndApprovalAtMCP`, `TestDesktopPinRecreatedIdentityAtMCP`, `TestDesktopSHA256AtHTTP`; Pflichtfelder auch leer: `TestDesktopPinStatusRequiredIdentity` |
 | V2/M7/L3 gelten auch für Desktop: nur Standard-Zweig-Abstammung; vorhandenes Objekt ist keine Freigabe | `TestDesktopPRCommitNoApprovalNoPackage`, `TestDesktopFetcherRechecksM7V2AtRealGitAdapter` |
 | Beide Listen teilen `wanted/`; Freigaben bleiben URL-gebunden; abweichende URLs sperren | `TestDesktopSharedWantedAndRepositoryBinding`, `TestDesktopFailurePrecedesCachedApprovalAtHTTP`, `TestWantedWaitsForRepositoryURLPublication` |
 | Paket ausschließlich für aktuellen Desktop-Pin und frische Freigabe, runtime-key auf Weg A; unbekannt/fremd byte-gleiche 404 | `TestDesktopPackageAuthorizationAtHTTP`, `TestDesktopRevocationDuringRealTreeWalkAtHTTP`, `TestDesktopPinFileFailsClosedAtHTTP`, `TestDesktopQueryRejectsMalformedAtHTTP` |
