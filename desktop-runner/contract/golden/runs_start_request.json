@@ -1,0 +1,13 @@
+{
+  "method": "POST",
+  "path": "/api/device/v1/runs/start",
+  "headers": {
+    "Authorization": "Bearer jnpt_example_<secret>",
+    "X-Jnpt-Desktop-Contract": "1",
+    "X-Jnpt-Manifest-Seq": "42",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "run_key": "demo/daily/2026-10-23T10:00:00Z"
+  }
+}

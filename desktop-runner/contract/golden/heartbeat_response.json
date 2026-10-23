@@ -1,0 +1,13 @@
+{
+  "status": 200,
+  "headers": {
+    "Cache-Control": "no-store",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "cancel": [
+      "7d95f836-ded8-4a37-9017-3cebc3c4ee27"
+    ],
+    "manifest_seq_current": 41
+  }
+}

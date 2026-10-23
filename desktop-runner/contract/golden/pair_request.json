@@ -1,0 +1,13 @@
+{
+  "method": "POST",
+  "path": "/api/device/v1/pair",
+  "headers": {
+    "X-Jnpt-Desktop-Contract": "1",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "contract": 1,
+    "code": "0123456789abcdef.ABCD-EFGH-JKMN",
+    "runner_version": "0.0.0"
+  }
+}

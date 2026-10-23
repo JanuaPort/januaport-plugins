@@ -1,0 +1,18 @@
+{
+  "method": "POST",
+  "path": "/api/device/v1/runs/result",
+  "headers": {
+    "Authorization": "Bearer jnpt_example_<secret>",
+    "X-Jnpt-Desktop-Contract": "1",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "job_id": "7d95f836-ded8-4a37-9017-3cebc3c4ee27",
+    "manifest_seq": 42,
+    "commit": "aa5b88780339d2adc033e65d48a023f583f318e5",
+    "end": "ok",
+    "log": "Beispiel abgeschlossen.\n",
+    "ran_offline": false,
+    "finished_at": "2026-10-23T10:02:00Z"
+  }
+}

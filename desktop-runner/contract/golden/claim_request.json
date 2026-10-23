@@ -1,0 +1,8 @@
+{
+  "method": "POST",
+  "path": "/api/device/v1/jobs/claim",
+  "headers": {
+    "Authorization": "Bearer jnpt_example_<secret>",
+    "X-Jnpt-Desktop-Contract": "1"
+  }
+}

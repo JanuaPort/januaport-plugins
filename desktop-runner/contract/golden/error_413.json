@@ -1,0 +1,13 @@
+{
+  "status": 413,
+  "headers": {
+    "Cache-Control": "no-store",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "error": {
+      "class": "too_large",
+      "message": "Die Anfrage überschreitet die zulässige Größe."
+    }
+  }
+}

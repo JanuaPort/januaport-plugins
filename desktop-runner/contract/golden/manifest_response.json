@@ -1,0 +1,65 @@
+{
+  "status": 200,
+  "headers": {
+    "Cache-Control": "no-store",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "manifest": {
+      "contract": 1,
+      "device_id": "device-example",
+      "seq": 42,
+      "issued_at": "2026-10-23T09:59:00Z",
+      "grace_hours": 24,
+      "pins": [
+        {
+          "pin": "demo",
+          "commit": "aa5b88780339d2adc033e65d48a023f583f318e5",
+          "path": "demo",
+          "algo": "sha1",
+          "declared_tools": [
+            "example_read"
+          ],
+          "schedules": [
+            {
+              "name": "daily",
+              "cron": "0 12 * * *",
+              "tz": "Europe/Berlin",
+              "input": {
+                "text": "Grüße \u003cTEST\u003e",
+                "order": {
+                  "z": 2,
+                  "a": 1
+                },
+                "count": 18446744073709551615
+              }
+            }
+          ]
+        },
+        {
+          "pin": "demo_offline",
+          "commit": "aa5b88780339d2adc033e65d48a023f583f318e5",
+          "path": "demo",
+          "algo": "sha1",
+          "declared_tools": [],
+          "schedules": [
+            {
+              "name": "daily",
+              "cron": "0 12 * * *",
+              "tz": "Europe/Berlin",
+              "input": {
+                "text": "Grüße \u003cTEST\u003e",
+                "order": {
+                  "z": 2,
+                  "a": 1
+                },
+                "count": 18446744073709551615
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "sig": "w1uSbh9JkHdpgwKLzgIlj8IObgwX0Ng/No5LfZh7I1aawfaNmnEov7wKTHacdr0ppTddXyvikWYhWYDQ0ManAw=="
+  }
+}

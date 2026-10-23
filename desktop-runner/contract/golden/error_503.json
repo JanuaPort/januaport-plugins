@@ -1,0 +1,14 @@
+{
+  "status": 503,
+  "headers": {
+    "Cache-Control": "no-store",
+    "Retry-After": "60",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "error": {
+      "class": "unavailable",
+      "message": "Der Dienst ist vorübergehend nicht verfügbar."
+    }
+  }
+}

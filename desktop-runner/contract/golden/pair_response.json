@@ -1,0 +1,13 @@
+{
+  "status": 200,
+  "headers": {
+    "Cache-Control": "no-store",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "device_id": "device-example",
+    "token": "jnpt_example_<secret>",
+    "expires_at": "2026-11-23T10:00:00Z",
+    "anlage_pubkey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+  }
+}
