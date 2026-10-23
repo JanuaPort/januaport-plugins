@@ -50,6 +50,7 @@ Lauf-Token an derselben Betreiberadresse `JNPT_GATEWAY_URL`.
 | Anfrage hat Contract 1, feste Gateway-Pfade, gültige Grenzen und passende eindeutige Header; unbekannte Argumente scheitern | `TestAuthHeadersAndPathsAtAdapter`, `TestMalformedArgumentsAtAdapter` |
 | Modell nur über Kern; HTTP-Umleitungen und Umgebungsproxy gesperrt | `TestNoRedirectsOrProxyAtEitherGateway` |
 | Messages ohne model/stream, keine erzwungene Werkzeugwahl, nur erlaubte Nachrichten/Blöcke, Medien base64, keine Anbieter-Werkzeuge | `TestForbiddenModelPayloads`, `TestModelWireGuards`, `TestUnsafeResponseAndUnknownToolAtAdapter` |
+| tool_use darf `caller` nur als `{"type":"direct"}` tragen (Anthropic seit 10/2026); jeder andere caller (Code-Ausführung) oder jedes weitere Feld scheitert; der Block bleibt unverändert in der Historie | `TestToolUseCaller`, `TestLoopToolUseCaller`, `TestLoopProgrammaticCallerRejected` |
 | Thinking und redacted_thinking bleiben in der angehängten Historie erhalten | `TestLoopGoldenThinkingAndLog`, `TestThinkingAndCache` |
 | Bilder nur base64 mit image/png, image/jpeg, image/gif oder image/webp; andere MCP-Bilder/URL-Bilder werden fester Platzhalter | `TestImageMediaTypesAtAdapter`, `TestURLImageToolResultAtAdapter`, `TestToolResultSanitization` |
 | error/rejected nennt unabhängig vom Feld die abgewiesene Läuferanfrage | `TestRejectedMessageAtAdapter`, `TestAllResultGoldens` |

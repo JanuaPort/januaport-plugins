@@ -480,3 +480,35 @@ func TestRunnerAdvertisementAndHealth(t *testing.T) {
 		t.Fatal(w.Body.String())
 	}
 }
+
+// Live shape since 10/2026 (#1099): every tool_use carries `caller`, the response
+// top level carries container/stop_details. A direct caller runs and stays in history.
+func TestLoopToolUseCaller(t *testing.T) {
+	use := `{"type":"tool_use","id":"call_1","name":"erp_list_things","input":{"q":"` + secret + `"},"caller":{"type":"direct"}}`
+	f := &fakeCore{model: func(w http.ResponseWriter, r *http.Request, n int) {
+		if n == 1 {
+			_ = json.NewEncoder(w).Encode(map[string]any{"response": map[string]any{"content": json.RawMessage(`[` + use + `]`), "role": "assistant", "stop_reason": "tool_use", "container": nil, "stop_details": nil}, "usage": map[string]any{"tokens_in": 1, "tokens_out": 1}})
+		} else {
+			modelReply(w, `[{"type":"text","text":"fertig"}]`, "end_turn")
+		}
+	}}
+	r, _, _ := setup(t, f)
+	_, got := invoke(t, r, context.Background(), requestFixture(t), nil)
+	if f.calls != 1 {
+		t.Fatalf("tool calls %d: %s", f.calls, got)
+	}
+	last := f.requests[len(f.requests)-1]["messages"].([]any)
+	a, _ := json.Marshal(last[1].(map[string]any)["content"].([]any)[0])
+	equalJSON(t, a, []byte(use))
+}
+
+func TestLoopProgrammaticCallerRejected(t *testing.T) {
+	f := &fakeCore{model: func(w http.ResponseWriter, r *http.Request, n int) {
+		modelReply(w, `[{"type":"tool_use","id":"call_1","name":"erp_list_things","input":{},"caller":{"type":"code_execution_20250825","tool_id":"srvtoolu_1"}}]`, "tool_use")
+	}}
+	r, _, _ := setup(t, f)
+	_, got := invoke(t, r, context.Background(), requestFixture(t), nil)
+	if f.calls != 0 || !strings.Contains(string(got), `"gateway"`) {
+		t.Fatalf("calls %d: %s", f.calls, got)
+	}
+}

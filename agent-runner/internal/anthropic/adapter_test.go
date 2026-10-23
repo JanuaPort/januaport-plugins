@@ -105,3 +105,26 @@ func TestToolResultSanitization(t *testing.T) {
 		}
 	}
 }
+
+// Anthropic sends `caller` on every tool_use block since 10/2026 (#1099 live run).
+// Only a direct call is allowed; programmatic callers need code execution, which the core rejects.
+func TestToolUseCaller(t *testing.T) {
+	block := func(extra string) json.RawMessage {
+		return json.RawMessage(`[{"type":"tool_use","id":"toolu_1","name":"erp_list_things","input":{}` + extra + `}]`)
+	}
+	if e := ValidateContent(block(`,"caller":{"type":"direct"}`)); e != nil {
+		t.Fatalf("direct caller rejected: %v", e)
+	}
+	for _, extra := range []string{
+		`,"caller":{"type":"code_execution_20250825","tool_id":"srvtoolu_1"}`,
+		`,"caller":{"type":"direct","tool_id":"x"}`,
+		`,"caller":{}`,
+		`,"caller":"direct"`,
+		`,"caller":null`,
+		`,"origin":{"type":"direct"}`,
+	} {
+		if ValidateContent(block(extra)) == nil {
+			t.Errorf("accepted: %s", extra)
+		}
+	}
+}
