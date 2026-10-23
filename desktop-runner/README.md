@@ -119,6 +119,13 @@ dieselbe Benutzersitzung, auch nicht vor Veränderungen während eines Skripts.
 Dienstlogs enthalten nur feste numerische Codes/Zähler, fünf Dateien zu je
 1 MiB; keine Eingaben, Skriptlogs, Token, Konten oder Leerlaufzeiten.
 
+**Ein Gerät ist eine Vertrauensdomäne (SEC D4 A1).** Ein Skript läuft als
+derselbe Nutzer wie der Läufer. Es kann deshalb den DPAPI-geschützten
+Geräte-Token öffnen und über einen eigenen Prozess `runs/start` für einen
+fälligen Slot eines anderen Pins auf demselben Gerät aufrufen. Alle Pins eines
+Geräts teilen damit ihr Vertrauen und ihre Werkzeugrechte. Wer getrennte
+Werkzeugrechte braucht, nimmt getrennte Geräte bzw. getrennte Konten.
+
 ## Prüfung und Release
 
 ~~~powershell
