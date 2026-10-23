@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "version": "3.12.10",
+      "filename": "python-3.12.10-embed-amd64.zip",
+      "sha256": "4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3"
+    },
+    {
+      "version": "3.13.9",
+      "filename": "python-3.13.9-embed-amd64.zip",
+      "sha256": "91d828c2da3a029b41699e918674a0cb379c02cf20dab9c501306885f837402a"
+    }
+  ]
+}

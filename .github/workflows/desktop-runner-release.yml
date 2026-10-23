@@ -1,0 +1,129 @@
+# One unsigned build; optional Azure signature; sums/provenance bind final bytes.
+name: desktop-runner-release
+on:
+  push:
+    tags: ['desktop-runner-v*']
+permissions:
+  contents: read
+jobs:
+  tests:
+    uses: ./.github/workflows/desktop-runner.yml
+  build:
+    needs: tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: desktop-runner/go.mod
+          cache-dependency-path: desktop-runner/go.sum
+      - name: Tag prüfen und einmal bauen
+        shell: pwsh
+        working-directory: desktop-runner
+        env:
+          CGO_ENABLED: '0'
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          if ($env:GITHUB_REF_NAME -notmatch '^desktop-runner-v[0-9]+\.[0-9]+\.[0-9]+$') { throw 'tag_invalid' }
+          $releaseVersion = $env:GITHUB_REF_NAME.Substring('desktop-runner-v'.Length)
+          go build -trimpath -ldflags "-s -w -X main.version=$releaseVersion" -o out/desktop-runner.exe .
+          if ($LASTEXITCODE -ne 0) { throw 'build_failed' }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: unsigned-windows-amd64
+          path: desktop-runner/out/desktop-runner.exe
+          if-no-files-found: error
+  sign:
+    needs: build
+    runs-on: windows-latest
+    environment: release-signing
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      SIGNING_PROFILE: ${{ vars.SIGNING_PROFILE }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: unsigned-windows-amd64
+          path: release
+      - name: Azure OIDC
+        if: env.SIGNING_PROFILE != ''
+        uses: azure/login@487024fc392f1f60cc70bc8a48233c14bc1de77f
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+      - name: Microsoft Artifact Signing
+        if: env.SIGNING_PROFILE != ''
+        uses: azure/artifact-signing-action@29de24bf030cfee71b1ad0207ab4d69e74514a42
+        with:
+          endpoint: https://neu.codesigning.azure.net/
+          signing-account-name: januaport-signing
+          certificate-profile-name: ${{ env.SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\release
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-digest: SHA256
+          exclude-environment-credential: true
+          exclude-azure-cli-credential: false
+      - name: Signatursonde, endgültige Prüfsumme und Notiz
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGNING_PROFILE)) {
+            $note = 'UNSIGNIERT: SIGNING_PROFILE fehlt. Dieses Release hat keine Authenticode-Signatur.'
+          } else {
+            $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' | Sort-Object FullName -Descending | Select-Object -First 1
+            if (-not $signtool) { throw 'signtool_missing' }
+            & $signtool.FullName verify /pa release/desktop-runner.exe
+            if ($LASTEXITCODE -ne 0) { throw 'signature_invalid' }
+            $note = 'Authenticode-signiert mit Microsoft Artifact Signing; signtool verify /pa bestanden.'
+          }
+          $hash = (Get-FileHash release/desktop-runner.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          [IO.File]::WriteAllText("$pwd/release/SHA256SUMS", "$hash *desktop-runner.exe`n", [Text.UTF8Encoding]::new($false))
+          [IO.File]::WriteAllText("$pwd/release/RELEASE-NOTES.txt", "Desktop-Läufer für Windows/amd64.`n`n$note`n", [Text.UTF8Encoding]::new($false))
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: release-windows-amd64
+          path: release/*
+          if-no-files-found: error
+  publish:
+    needs: sign
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: release-windows-amd64
+          path: release
+      - name: Prüfsumme der finalen Bytes
+        working-directory: release
+        run: sha256sum --check SHA256SUMS
+      - uses: actions/attest-build-provenance@9d57eef8c06cd9d6b433effeeb7a6a77b3ff94ad
+        id: provenance
+        with:
+          subject-path: release/desktop-runner.exe
+      - name: Release mit Provenance
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
+        env:
+          PROVENANCE: ${{ steps.provenance.outputs.bundle-path }}
+        with:
+          script: |
+            const fs = require('fs');
+            const tag = context.ref.replace('refs/tags/', '');
+            const release = await github.rest.repos.createRelease({
+              ...context.repo, tag_name: tag, name: tag,
+              body: fs.readFileSync('release/RELEASE-NOTES.txt', 'utf8'), draft: true
+            });
+            for (const name of ['desktop-runner.exe', 'SHA256SUMS']) {
+              await github.rest.repos.uploadReleaseAsset({...context.repo, release_id: release.data.id, name, data: fs.readFileSync('release/' + name)});
+            }
+            await github.rest.repos.uploadReleaseAsset({...context.repo, release_id: release.data.id, name: 'provenance.jsonl', data: fs.readFileSync(process.env.PROVENANCE)});
+            await github.rest.repos.updateRelease({...context.repo, release_id: release.data.id, draft: false});
