@@ -33,11 +33,14 @@ Maßgeblich: [Draht-Vertrag v1](contract/README.md).
    `/api/device/v1/`, Contract-Header je Anfrage, no-store je Antwort.
    Läufer-Token überall **außer `pair`**, dort kein Authorization-Header.
    Standard LAN/Tunnel, öffentlich nur Opt-in mit Allowlist und Bremse (C2).
-2. Kopplung ersetzt Token per stdin: Code 15 min/einmalig/≥50 Bit,
-   Crockford-Gruppen, nach 5 Fehlversuchen verbrannt, globale 429-Bremse.
+2. Kopplung ersetzt Token per stdin: Code 15 min/einmalig/60 Bit,
+   Format `<device_id>.XXXX-XXXX-XXXX` (16 kleine Hex-Zeichen,
+   Crockford-Gruppen), nach 5 Fehlversuchen verbrannt, globale 429-Bremse.
    E3: nur gültiges HTTPS oder echter Loopback; selbstsigniert nur mit
    `--ca`/`--fingerprint`, kein Abschalten der Prüfung. Ed25519-Key per TOFU
-   speichern, Rotation v1 nur neue Kopplung (E2). Widerruf: 401 `revoked`
+   speichern; leeren Key und RFC-8032-Testvektor 1 vor jeder Speicherung
+   abweisen, bestehende Kopplung erhalten. Rotation v1 nur neue Kopplung (E2).
+   Widerruf: 401 `revoked`
    ohne message; Credential, Pakete/Umgebungen, Manifest und Journal löschen.
 3. E1: Geräte-Manifest mit Ed25519 über exakt kanonische Bytes prüfen:
    rekursiv sortierte UTF-8-Schlüssel, kein äußerer Leerraum/BOM/LF,
@@ -93,10 +96,10 @@ gegen jemanden mit Zugriff auf diese Sitzung (C4).
 
 | Invariante | Tests |
 |---|---|
-| B1: Git vor Spawn, Objektmenge/Modi/Namen | TestFalscherHashBrichtVorDemStartAb, TestPaketObjektmengeModiUndNamen, TestSHA1Collision, TestPaketMedientypAmHTTPAdapter |
+| B1: Git vor Spawn, Objektmenge/Modi/Namen | TestFalscherHashBrichtVorDemStartAb, TestPaketObjektmengeModiUndNamen, TestSHA1Collision, TestPaketMedientypAmHTTPAdapter, TestGoldenPaketeBytegenauUndManipulation |
 | Runtime/Lock/Umgebung | TestPythonAllowlistUndWheel, TestUmgebungVorJedemStart, TestUmgebungFehlendeZusaetzlicheDateien, TestWheelTagsLockUndManifestVerbote, TestWindowsPythonEchterStartUndManipulation |
 | ZIP-Namen/Typen/Kollisionen/Bomben | TestZIPAbweisungAmEntpacker; Kopien: TestCopiedLibraryFunctions |
-| E3: TLS vor Code, CA/Pin, keine Redirects/Proxys, Pubkey nötig | TestPairTLSUndLeererPubkey, TestCAFingerprintProxyUndURL, TestRedirectUndRemoteHTTPAbgewiesen |
+| E3: TLS vor Code, CA/Pin, keine Redirects/Proxys, Pubkey nötig | TestPairTLSUndLeererPubkey, TestCAFingerprintProxyUndURL, TestRedirectUndRemoteHTTPAbgewiesen, TestPairCodeFormat, TestPairLeererPubkey, TestPairRFC8032Pubkey, TestPairLeererPubkeySpeichertNichts, TestPairRFC8032PubkeySpeichertNichts |
 | E1: Gerät/seq/Signatur, alter Sync unverändert | TestManifestAblehnung, TestManifestSyncAtomarUndOfflineAmAdapter, TestVeralteterStartSynchronisiertErneut; Kopien: TestCopiedContractFunctions |
 | Konto/Sitzung/idle vor Spawn | TestKontoUndManipulationVorSpawn, TestReadyVerboteneZustaende |
 | B2/B3: keine Listener/Downloads, keine privaten Bodys/Kind-Token | TestKeineListenerDownloaderOderPip, TestNurAnlageUndKeinePrivatenBodys, TestWindowsPythonEchterStartUndManipulation, TestWindowsJobObjectEnkelUndToken |

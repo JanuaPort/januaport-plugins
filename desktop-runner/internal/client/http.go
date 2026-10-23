@@ -40,6 +40,11 @@ type PairReply struct {
 	ExpiresAt    string `json:"expires_at"`
 	AnlagePubkey string `json:"anlage_pubkey"`
 }
+
+// Public RFC-8032 test vector 1, never an installation trust anchor.
+// The fixture equality and rejection are exercised by TestPairRFC8032Pubkey.
+const rfc8032TestPublicKey = "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+
 type StartReply struct {
 	RunToken  string `json:"run_token"`
 	ExpiresAt string `json:"expires_at"`
@@ -222,7 +227,7 @@ func (a *API) request(ctx context.Context, method, endpoint string, body any, se
 }
 func (a *API) Pair(ctx context.Context, code, version string) (PairReply, error) {
 	var out PairReply
-	if !regexp.MustCompile(`^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$`).MatchString(code) {
+	if !regexp.MustCompile(`^[0-9a-f]{16}\.[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$`).MatchString(code) {
 		return out, ErrProtocol
 	}
 	b, status, e := a.request(ctx, "POST", "pair", struct {
@@ -238,6 +243,9 @@ func (a *API) Pair(ctx context.Context, code, version string) (PairReply, error)
 	}
 	key, e := base64.StdEncoding.Strict().DecodeString(out.AnlagePubkey)
 	if e != nil || len(key) != 32 || out.DeviceID == "" || !strings.HasPrefix(out.Token, "jnpt_") || strings.ContainsAny(out.Token, "\r\n") || !utc(out.ExpiresAt) {
+		return PairReply{}, ErrProtocol
+	}
+	if base64.StdEncoding.EncodeToString(key) == rfc8032TestPublicKey {
 		return PairReply{}, ErrProtocol
 	}
 	return out, nil

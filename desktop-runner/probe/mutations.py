@@ -9,6 +9,9 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 CASES = [
+    ("pair-code", "client/http.go", ".MatchString(code) {", ".MatchString(code) && false {", "client", "TestPairCodeFormat"),
+    ("pair-test-key", "client/http.go", "== rfc8032TestPublicKey {", "== rfc8032TestPublicKey && false {", "client", "TestPairRFC8032Pubkey"),
+    ("golden-blob-binding", "client/copied_contract.go", "if !ok || o.kind != kind {", "if (!ok || o.kind != kind) && kind != 'b' {", "client", "TestGoldenPaketeBytegenauUndManipulation"),
     ("package-mime", "client/http.go", 'if res.Header.Get("Content-Type") != expectedType {', 'if res.Header.Get("Content-Type") != expectedType && false {', "client", "TestPaketMedientypAmHTTPAdapter"),
     ("frame-cap", "client/engine.go", "n == 0 || n > 8<<20", "n == 0 || n > 16<<20", "client", "TestRahmenDeckelMitVollstaendigemKoerper"),
     ("wheel-platform", "client/environment.go", "if !matched {", "if !matched && false {", "client", "TestWheelTagsLockUndManifestVerbote"),

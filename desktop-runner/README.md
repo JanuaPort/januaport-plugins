@@ -12,7 +12,7 @@ registriert genau diese Datei; Verschieben erfordert erneutes Installieren.
 Eine administrative Konsole ist nicht erforderlich.
 
 ~~~powershell
-.\desktop-runner.exe pair --url https://anlage.example --code ABCD-EFGH-JKMN
+.\desktop-runner.exe pair --url https://anlage.example --code 0123456789abcdef.ABCD-EFGH-JKMN
 .\desktop-runner.exe install
 .\desktop-runner.exe status
 .\desktop-runner.exe run        # Vordergrund, Strg+C beendet den Betrieb
@@ -20,6 +20,9 @@ Eine administrative Konsole ist nicht erforderlich.
 ~~~
 
 Den einmaligen, 15 Minuten gültigen Kopplungscode erzeugt die Anlage.
+Format: <code>&lt;device_id&gt;.XXXX-XXXX-XXXX</code>: 16 kleine Hex-Zeichen,
+Punkt und zwölf große Crockford-Base32-Zeichen (60 Bit Geheimnis).
+I/L/O/U, Alias-Schreibweisen und Codes ohne Geräte-ID werden abgewiesen.
 Bei privater CA zusätzlich <code>--ca C:\Vertrauen\anlage-ca.pem</code>
 verwenden; alternativ <code>--fingerprint &lt;64-Hex-Zeichen&gt;</code>
 für SHA-256 des exakten DER-Serverzertifikats. Die Optionen schließen sich aus.
@@ -31,7 +34,10 @@ Umleitungen und Umgebungsproxys sind gesperrt. Kein Abschaltschalter für TLS.
 
 Credential und Ed25519-Key liegen DPAPI-CurrentUser-verschlüsselt mit Entropie
 unter <code>%LOCALAPPDATA%\JanuaPort\desktop-runner\</code>. Der DACL erlaubt
-ausschließlich dem eigenen Nutzer Zugriff. Erneutes erfolgreiches Koppeln
+ausschließlich dem eigenen Nutzer Zugriff. Ein leerer Anlagenschlüssel oder
+der öffentliche RFC-8032-Testschlüssel aus den Goldens wird abgewiesen;
+dabei wird nichts gespeichert und eine bestehende Kopplung bleibt unverändert.
+Erneutes erfolgreiches Koppeln
 ersetzt den alten Vertrauensbereich einschließlich aller lokalen Ergebnisse.
 Einen laufenden Läufer vorher beenden.
 
