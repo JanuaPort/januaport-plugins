@@ -21,7 +21,12 @@ type desktopState struct {
 }
 
 func (p desktopState) listed() contract.DesktopPinStatus {
-	s := contract.DesktopPinStatus{Name: p.pin.Name, State: p.state, Reason: p.reason, DeclaredTools: []string{}}
+	// Identity comes from desktop-pins.json; only the approved verdict supplies
+	// manifest declarations. Reusing a name must retain the new commit/path.
+	s := contract.DesktopPinStatus{
+		Name: p.pin.Name, Commit: p.pin.Commit, Path: p.pin.Path, Algo: p.pin.Algo,
+		State: p.state, Reason: p.reason, DeclaredTools: []string{},
+	}
 	if p.state == contract.StateReady && p.manifest != nil {
 		s.DeclaredTools = p.manifest.Tools
 		s.TimeoutS = p.manifest.TimeoutS

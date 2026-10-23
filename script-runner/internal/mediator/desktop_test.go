@@ -90,6 +90,82 @@ func (e *env) waitDesktop(state, reason string) {
 	})
 }
 
+func (e *env) assertDesktopIdentity(commit, path, algo string) {
+	e.t.Helper()
+	p := e.desktopMeta()
+	if len(p) != 1 || p[0]["name"] != "desk" || p[0]["commit"] != commit || p[0]["path"] != path || p[0]["algo"] != algo {
+		e.t.Fatalf("desktop identity: got %v, want desk/%s/%s/%s", p, commit, path, algo)
+	}
+}
+
+func TestDesktopPinIdentityAndApprovalAtMCP(t *testing.T) {
+	e := newEnvFx(t, desktopFixture(t, nil), nil)
+	e.writeDesktop(e.fx.commit, "desk")
+	e.waitDesktop("ready", "")
+	e.assertDesktopIdentity(e.fx.commit, "desk", "sha1")
+	if err := os.Remove(filepath.Join(e.fx.store, "approved", e.fx.commit)); err != nil {
+		t.Fatal(err)
+	}
+	e.waitDesktop("pending", "")
+	e.assertDesktopIdentity(e.fx.commit, "desk", "sha1")
+	p := e.desktopMeta()[0]
+	if mustJSON(p["declared_tools"]) != "[]" || p["timeout_s"] != float64(0) || p["input_schema"] != nil || p["description"] != "" {
+		t.Fatalf("unapproved pin exposes manifest values: %v", p)
+	}
+	// Invalid pins still carry their materialized identity, without declarations.
+	e.writeDesktop(e.fx.commit, "../desk")
+	e.waitDesktop("invalid", "bad_path")
+	e.assertDesktopIdentity(e.fx.commit, "../desk", "sha1")
+	if got := mustJSON(e.desktopMeta()[0]["declared_tools"]); got != "[]" {
+		t.Fatalf("invalid pin exposes declarations: %s", got)
+	}
+}
+
+func TestDesktopPinRecreatedIdentityAtMCP(t *testing.T) {
+	for _, changed := range []string{"commit", "path"} {
+		t.Run(changed, func(t *testing.T) {
+			f := desktopFixture(t, func(f *fixture) {
+				f.write("other/jnpt-desktop.yaml", strings.Replace(strings.Replace(desktopManifest, "kartei_find", "kartei_other", 1), "requirements: requirements.lock\n", "", 1))
+				f.write("other/main.py", "print('other')\n")
+				f.write("other/python.zip", "opaque runtime bytes")
+			})
+			e := newEnvFx(t, f, nil)
+			e.writeDesktop(f.commit, "desk")
+			e.waitDesktop("ready", "")
+			oldCommit := f.commit
+			commit, path, tools := oldCommit, "other", `["kartei_other"]`
+			if changed == "commit" {
+				f.write("desk/jnpt-desktop.yaml", strings.Replace(desktopManifest, "kartei_find", "kartei_new", 1))
+				f.git(f.work, "add", "desk/jnpt-desktop.yaml")
+				f.git(f.work, "commit", "-q", "-m", "new desktop declaration")
+				commit = f.git(f.work, "rev-parse", "HEAD")
+				f.git(f.store, "--git-dir=store.git", "fetch", "-q", f.work, "HEAD:refs/heads/main")
+				if err := os.WriteFile(filepath.Join(f.store, "approved", commit), []byte("ssh://git@git.example.com/org/scripts.git"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				path, tools = "desk", `["kartei_new"]`
+			}
+			e.writeDesktopRaw(`{"version":1,"repo_url":"ssh://git@git.example.com/org/scripts.git","pins":[]}`)
+			waitUntil(t, 5*time.Second, "desktop pin revoked", func() bool { return len(e.desktopMeta()) == 0 })
+			if s, _, _ := e.packageGet(oldCommit, "desk", testKey); s != 404 {
+				t.Fatalf("revoked pin package: %d", s)
+			}
+			e.writeDesktop(commit, path)
+			e.waitDesktop("ready", "")
+			e.assertDesktopIdentity(commit, path, "sha1")
+			if got := mustJSON(e.desktopMeta()[0]["declared_tools"]); got != tools {
+				t.Fatalf("recreated pin declarations: got %s, want %s", got, tools)
+			}
+			if s, _, _ := e.packageGet(oldCommit, "desk", testKey); s != 404 {
+				t.Fatalf("recreated name authorizes old commit/path: %d", s)
+			}
+			if s, _, _ := e.packageGet(commit, path, testKey); s != 200 {
+				t.Fatalf("current pin package: %d", s)
+			}
+		})
+	}
+}
+
 func (e *env) packageGet(commit, path, key string) (int, http.Header, []byte) {
 	e.t.Helper()
 	r, _ := http.NewRequest(http.MethodGet, e.srv.URL+"/desktop/package?commit="+commit+"&path="+path, nil)
@@ -111,7 +187,7 @@ func TestDesktopMetadataAndNoSandboxOrWheelExtraction(t *testing.T) {
 	e.writeDesktop(e.fx.commit, "desk")
 	e.waitDesktop("ready", "") // Desktop readiness does not depend on sandbox isolation.
 	p := e.desktopMeta()[0]
-	if len(p) != 7 || p["reason"] != "" {
+	if len(p) != 10 || p["reason"] != "" {
 		t.Fatalf("desktop metadata fields: %v", p)
 	}
 	if p["timeout_s"] != float64(86400) || p["description"] != "Desktop-Test." || p["input_schema"] == nil || mustJSON(p["declared_tools"]) != `["kartei_find"]` {
@@ -560,6 +636,7 @@ func TestDesktopSHA256AtHTTP(t *testing.T) {
 	e := newEnvFx(t, f, nil)
 	e.writeDesktop(f.commit, "desk")
 	e.waitDesktop("ready", "")
+	e.assertDesktopIdentity(f.commit, "desk", "sha256")
 	s, _, b := e.packageGet(f.commit, "desk", testKey)
 	if s != 200 || !bytes.Contains(b, []byte(`"algo":"sha256"`)) {
 		t.Fatalf("sha256: %d", s)

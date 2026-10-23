@@ -92,10 +92,15 @@ V2/M7 und Standard-Zweig-Abstammung L3 unverändert. Vorhandene Objekte allein
 erteilen keine Freigabe. `failed/` hat Vorrang; Freigaben sind URL-gebunden.
 
 `tools/list` ergänzt `_meta["januaport.ai/runner"].desktop_pins` je Pin um
-`{name,state,reason,declared_tools,timeout_s,input_schema,description}`.
-Ohne Desktop-Pins fehlt der Schlüssel. Metadaten stammen ausschließlich aus
-dem nachgerechneten `jnpt-desktop.yaml`; nur bei `ready` werden die gelesenen
-Manifestwerte veröffentlicht. Die sechs Basisfelder plus `python` sind
+`{name,commit,path,algo,state,reason,declared_tools,timeout_s,input_schema,description}`.
+`name`, `commit`, `path` und `algo` sind **Pflichtfelder in jedem Zustand** und
+stammen aus `desktop-pins.json`, nicht aus dem Repository-Manifest. Der Kern
+ordnet die Werkzeugdeklaration nur zu, wenn **Name, Commit und Pfad** mit
+seinem eigenen Pin übereinstimmen; eine Neuanlage unter demselben Namen ist
+keine Übernahme der alten Freigabe. Ohne Desktop-Pins fehlt der Schlüssel.
+Die Manifestwerte stammen ausschließlich aus dem nachgerechneten
+`jnpt-desktop.yaml` des Pins mit geprüfter Zweigfreigabe; nur bei `ready`
+werden sie veröffentlicht. Die sechs Basisfelder plus `python` sind
 Pflicht, `timeout_s` ist 1–86400, `requirements` optional ausschließlich
 `requirements.lock`. Einstieg, Python-ZIP und gegebenenfalls Lock müssen im
 Pin liegen. Unbekannte YAML-Felder, weitere YAML-Dokumente und ungültige
@@ -119,6 +124,9 @@ Genau ein `commit` und ein `path`, keine weiteren Parameter. Die Route liest
 die aktuelle Desktop-Datei und die Zweigfreigabe; ausschließlich ein dort
 freigegebenes Paar wird geliefert. Pin und Freigabe werden nach dem Tree-Walk
 erneut geprüft, das gelistete `ready` ist keine Abrufberechtigung.
+Ein Pinentzug beendet im Kern alle offenen Aufträge dieses Pins mit `denied`
+und bricht einen laufenden Lauf ab; der script-runner liefert weiterhin
+ausschließlich Pakete für aktuelle Pins.
 
 - **200:** `Content-Type: application/vnd.jnpt.gitobjects.v1`, binäres Paket
   wie im Desktop-Vertrag: Commit, Bäume bis zum Pin und alle Objekte darunter,

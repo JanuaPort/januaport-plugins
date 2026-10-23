@@ -372,6 +372,10 @@ Der Körper ist ein binärer Strom ohne zusätzliche Kompression:
    **Die Rahmenlänge schließt das Typbyte ein**, nicht die vier Längenbytes.
    Der Kopf zählt nicht zu N. Hinter dem letzten Rahmen folgen keine Bytes.
 
+Bei Pinentzug beendet der Kern alle offenen Aufträge dieses Pins mit `denied`
+und bricht einen laufenden Lauf ab; der script-runner liefert ausschließlich
+Pakete für aktuelle Pins (siehe [Weg A](../../script-runner/contract/README.md#desktop-pins-und-paketabruf-auf-weg-a-1165-d2b)).
+
 `algo`, `commit` und `path` müssen dem offenen eigenen Auftrag oder dem
 freigegebenen Pin im aktuellen signierten Geräte-Manifest entsprechen. Enthalten sind
 genau das angeforderte Commit-Objekt, die Bäume von der Wurzel bis `path`

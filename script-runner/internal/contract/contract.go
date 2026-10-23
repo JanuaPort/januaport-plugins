@@ -245,8 +245,13 @@ type RunnerMeta struct {
 }
 
 // DesktopPinStatus is metadata for the Desktop-Läufer, never an MCP tool.
+// Name/Commit/Path/Algo are required materialized pin fields in every state.
+// The core binds declarations only to its own matching name, commit and path.
 type DesktopPinStatus struct {
 	Name          string         `json:"name"`
+	Commit        string         `json:"commit"`
+	Path          string         `json:"path"`
+	Algo          string         `json:"algo"`
 	State         string         `json:"state"`
 	Reason        string         `json:"reason"`
 	DeclaredTools []string       `json:"declared_tools"`
