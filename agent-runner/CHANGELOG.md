@@ -63,6 +63,30 @@ Getaggt als `agent-runner-v0.1.0` (Release-Lauf 38983345807, 17.10.2026).
 
 ### Kuratierung
 
+### v0.1.2 — 2026-10-23
+
+| Feld | Wert |
+|---|---|
+| Image | `ghcr.io/januaport/agent-runner` |
+| Tag | `agent-runner-v0.1.2` (Image-Tag `0.1.2`) |
+| Digest (OCI-Index) | `sha256:f5cb7c700943e1dc764a916b50856e2f41eb5245fb4a3f218729ca4140e900cc` |
+| Plattform | `linux/amd64` (`sha256:4553e83e5fe02fe97d4519a917b1a703ee1395bef2a3b6401874070cd16be3ed`), sonst keine |
+| Art | `service`, eigener Build (Plugins-Repo) |
+| Geprüft mit | JanuaPort v0.82.0, live auf dem Showcase (Lauf `end=ok`, 5,1 s, 3 Werkzeugaufrufe) |
+| Benötigter Commit von Compose | `19ea160` (`docker-compose.yml`, unverändert seit 0.1.0) |
+| Lauf der Sonden | Release-Lauf `39945504947`, hat genau diesen Digest geprüft (SEC C1) |
+
+**Änderung gegenüber 0.1.1:** nur Go 1.26.10 (Build-Image per Digest gepinnt, derselbe Pin wie in
+`deploy/keycloak-probe`). Das Verhalten ist unverändert.
+
+**Scan:** Trivy, Scan vom 2026-10-23T11:23Z: **0 critical · 0 high** · 2 unknown. Die beiden Funde
+sind dieselben wie in 0.1.1: CVE-2026-39824 in `golang.org/x/sys/windows`, im `linux/amd64`-Binary
+nicht gebaut, und DSA-6572-1 in `ca-certificates` der Basis, vom Läufer nicht benutzt.
+CVE-2026-111943 ist mit Go 1.26.10 behoben.
+
+**Entscheid:** löst 0.1.1 auf dem Showcase ab (per Digest, Sicherung `.env.vor-0.1.2`). Katalogfähig
+nach dem Sub-Agent-Beleg (#1099). Den Eintrag setzt VENDOR mit PO-Go.
+
 ### v0.1.1 — 2026-10-23
 
 | Feld | Wert |
