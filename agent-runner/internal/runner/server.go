@@ -62,7 +62,7 @@ func (r *Runner) key() string {
 	return key
 }
 func (r *Runner) Handler() http.Handler {
-	s := mcp.NewServer(&mcp.Implementation{Name: "agent-runner", Version: "0.1.1"}, &mcp.ServerOptions{Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}}})
+	s := mcp.NewServer(&mcp.Implementation{Name: "agent-runner", Version: "0.1.2"}, &mcp.ServerOptions{Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}}})
 	s.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
 			switch method {
