@@ -18,6 +18,23 @@ import (
 // hier ist eine Vertragsänderung und braucht eine neue Fassung im Ticket.
 var update = flag.Bool("update", false, "Golden-Dateien neu schreiben")
 
+func TestDesktopPinStatusRequiredIdentity(t *testing.T) {
+	// Required wire fields must also be present for pending/invalid or empty values.
+	b, err := json.Marshal(DesktopPinStatus{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(b, &fields); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"name", "commit", "path", "algo"} {
+		if value, ok := fields[name]; !ok || string(value) != `""` {
+			t.Errorf("required desktop identity field %s missing or not a string: %s", name, b)
+		}
+	}
+}
+
 const goldenDir = "../../contract/golden"
 
 func golden(t *testing.T, name string, v any) {
