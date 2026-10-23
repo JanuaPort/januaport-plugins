@@ -109,6 +109,9 @@ func CheckPrivateACL(root string) error {
 		return e
 	}
 	// One explicit allow ACE, no inherited or alternative principal.
+	return checkPrivateDescriptor(sd, sid)
+}
+func checkPrivateDescriptor(sd *windows.SECURITY_DESCRIPTOR, sid *windows.SID) error {
 	s := sd.String()
 	if !strings.Contains(s, "D:P") || strings.Count(s, "(") != 1 || !strings.Contains(s, ";;;"+sid.String()+")") {
 		return errPlatform
