@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.2 — Datum beim Release
+## 0.1.2 — 2026-10-23
 
 **Go 1.26.10.** JanuaPort/januaport#1099.
 
