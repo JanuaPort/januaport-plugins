@@ -27,6 +27,21 @@ Drei dauerhafte Dienste und ein kurzer Init-Dienst aus einem Image, neben dem Ga
 | `script-runner-fetcher` | prüft Pins gegen den Standard-Zweig und holt Objekte per ssh mit einem Nur-Lese-Deploy-Key | eigenes Netz mit Ausgang, kein Weg zum Gateway |
 | `script-runner-init` | legt die Bibliotheksordner an und beendet sich erfolgreich, bevor die Sandbox startet | **kein Netz**, nur das Volume `libs` |
 
+Für den **Desktop-Läufer** (#1165 D2b) stellt der Beisteller zusätzlich
+geprüfte Pakete bereit. JanuaPort schreibt `desktop-pins.json` atomar neben
+`pins.json`; beide nutzen dasselbe Skript-Repository und dieselbe Prüfung
+gegen den Standard-Zweig. Das Desktop-Manifest heißt `jnpt-desktop.yaml`
+(einschließlich `python`, Timeout 1–86400 Sekunden).
+Der interne Abruf `GET /desktop/package?commit=…&path=…` verlangt den
+runtime-key und einen aktuell freigegebenen Desktop-Pin, maximal 128 MiB.
+Status/Manifestwerte stehen in `tools/list` unter `desktop_pins`.
+Desktop-Pins laufen auf dem Gerät: Der Beisteller startet dafür keine
+Sandbox und entpackt keine Windows-Wheels. Auch Zeitpläne taktet das Gerät
+aus seinem signierten Manifest. Details: [Weg A und Dateiformat](contract/README.md#desktop-pins-und-paketabruf-auf-weg-a-1165-d2b).
+
+Die folgenden Sandbox-/Laufgrenzen und Bibliotheksregeln gelten für lokale
+Skript-Pins.
+
 - **Nur gepinnter Code läuft.** Ein Pin ist Name, Pfad im Repository und voller
   Commit-Hash. Pinbar sind ausschließlich Commits, die Vorfahr des aktuellen
   Kopfes des Remote-Standard-Zweigs sind, einschließlich des Kopfes selbst.
@@ -240,7 +255,7 @@ fertige Verzeichnis einmal gegen sein Manifest und verwirft Abweichungen.
 - **Umgebung:** `JNPT_SCRIPT_RUNNER_IMAGE` (Pflicht), `JNPT_SCRIPT_RUNNER_RUNTIME`
   (Standard `runc`, mit gVisor `runsc-jnpt`), `JNPT_GATEWAY_URL` (Standard
   `http://jnpt:8484`).
-- **Schlüssel:** JanuaPort legt sie selbst ab — `runtime-key` und `pins.json` in
+- **Schlüssel und Pins:** JanuaPort legt sie selbst ab — `runtime-key`, `pins.json` und gegebenenfalls `desktop-pins.json` in
   `/run/jnpt/plugins/script-runner/`, den Deploy-Key in
   `/run/jnpt/plugins/script-runner-git/`. Die Ordner entstehen über
   systemd-tmpfiles; Beispiel: `deploy/jnpt-plugins-script-runner.conf.example`.
@@ -274,7 +289,7 @@ fertige Verzeichnis einmal gegen sein Manifest und verwirft Abweichungen.
 - **Zeitpläne** (JanuaPort/januaport#1039, im Bau): Angelegt und verwaltet
   werden sie in JanuaPort (Einstellungen › Plugins › Skript-Läufer, REST oder
   Admin-MCP), nicht hier. JanuaPort legt sie als `schedules.json` neben
-  `pins.json` ab — ohne Token, ohne Eingabe, ohne Secret. Der Läufer meldet
+  `pins.json` ab — ohne Token, ohne Eingabe, ohne Secret. Für lokale Skript-Pins meldet der Läufer
   einen fälligen Termin an JanuaPort; JanuaPort prüft Fälligkeit, Identity und
   Rechte und startet den Lauf auf dem normalen Weg. Ist der Läufer gerade
   belegt, wird der Termin übersprungen und gezählt. **Kein Nachholen:** Ein

@@ -32,6 +32,11 @@ const triggerTimeout = 35 * time.Second
 // Abgleich wartet nie auf das Gateway. Nur aus pollLoop aufrufen.
 func (m *Mediator) tickSchedules(ctx context.Context) {
 	entries := m.readSchedules()
+	m.mu.Lock()
+	for i := range entries {
+		entries[i].External = m.desktopNameLocked(entries[i].Pin)
+	}
+	m.mu.Unlock()
 	ready := m.readyPins()
 	isReady := func(pin, commit string) bool { return ready[pin] == commit }
 	for _, d := range m.ticker.Tick(m.cfg.Now(), entries, isReady) {
@@ -99,17 +104,19 @@ func (m *Mediator) noteSchedules(code string, ignored int) {
 	}
 }
 
-// readyPins: Pin-Name → Commit für jeden Pin, der wie in tools/list
-// bereit ist (ohne gültige Isolation ist keiner bereit).
+// readyPins: Pin-Name → Commit wie in tools/list. Lokale Skript-Pins brauchen
+// gültige Isolation; Desktop-Pins sind davon unabhängig und werden nur gemeldet.
 func (m *Mediator) readyPins() map[string]string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	ready := map[string]string{}
-	if m.isolation == contract.IsolationInvalid {
-		return ready
+	for _, p := range m.desktopPins {
+		if p.pin.Invalid == "" && p.state == contract.StateReady {
+			ready[p.pin.Name] = p.pin.Commit
+		}
 	}
 	for _, p := range m.pins {
-		if p.pin.Invalid == "" && p.state == contract.StateReady {
+		if !m.desktopNameLocked(p.pin.Name) && m.isolation != contract.IsolationInvalid && p.pin.Invalid == "" && p.state == contract.StateReady {
 			ready[p.pin.Name] = p.pin.Commit
 		}
 	}

@@ -20,6 +20,10 @@ meldet ausschließlich 2.
 
 ## Kopfzeile auf Weg A
 
+Weg A verwendet `Authorization: Bearer <runtime-key>` auf dem internen
+Listener `:8090`: `POST /mcp` und zusätzlich `GET /desktop/package` (D2b).
+Der folgende Laufgrenzen-Header gilt für lokale Skript-Läufe über MCP.
+
 Zusätzlich zu Lauf-Token, Lauf-ID und Pin-Commit sendet das Gateway bei
 `tools/call` für Kennung 2:
 
@@ -58,7 +62,97 @@ sind Konstanten im Läufer und durch Literal-Tests geschützt (SEC L8).
 Wandzeitdecke bei 25 Sekunden. Vor längeren Läufen muss der vermittler seinen
 Internet-Ausgang verlieren (#1069); die Freigabe und das optionale Manifestfeld
 gehören zu P4/P5. Auch die bereits gehärtete Compose hebt diese Kappe nicht auf.
-`timeout_s` bleibt Pflicht mit 1..25. Die Eingabe bleibt auf 256 KiB begrenzt.
+`timeout_s` bleibt für `jnpt-script.yaml` Pflicht mit 1..25. Die Eingabe bleibt auf 256 KiB begrenzt.
+
+## Desktop-Pins und Paketabruf auf Weg A (#1165 D2b)
+
+Der Kern schreibt **atomar** `desktop-pins.json` neben `pins.json` in den
+Plugin-Schlüsselordner. `pins.json` bleibt unverändert bei Version 1; ein
+älterer vermittler ignoriert die neue Datei. Der Umschlag lautet:
+
+```json
+{"version":1,"repo_url":"ssh://git@example.org/org/scripts.git","pins":[{"name":"desktop_demo","commit":"0123456789012345678901234567890123456789","path":"desktop/demo","target_device":"device-123","algo":"sha1"}]}
+```
+
+`name` folgt der Skript-Pin-Regel, `commit` ist kleingeschriebenes Hex
+(40 Zeichen für `sha1`, 64 für `sha256`). `target_device` ist die Geräte-ID
+ohne `geraet:`; der Materialisierungsleser erlaubt 1–128 ASCII-Zeichen aus
+`A–Z`, `a–z`, `0–9`, `_`, `-`. Pfade sind relativ, mit portablen
+Windows-Namensregeln des [Desktop-Vertrags](../../desktop-runner/contract/README.md#paketformat-applicationvndjnptgitobjectsv1)
+und der bestehenden `.git`-Sperre. Höchstens 1 MiB für diese Steuerdatei.
+Unbekannte Felder, falsche Version, kaputtes JSON oder Daten danach ergeben
+keine Desktop-Pins; ungültige Zeilen und doppelte Namen sind `invalid`.
+Alle Gründe sind feste Codes ohne Echo der fehlerhaften Werte.
+
+Beide Listen beziehen sich auf **dasselbe Repository**. Ohne `pins.json`
+genügt die Desktop-Datei; abweichende Repository-URLs sperren Desktop-Pins.
+Ihre gültigen Commits werden mit den Skript-Pins in `wanted/<sha>` vereinigt,
+nach atomarer Veröffentlichung von `repo_url`. Der vorhandene Abholer prüft
+V2/M7 und Standard-Zweig-Abstammung L3 unverändert. Vorhandene Objekte allein
+erteilen keine Freigabe. `failed/` hat Vorrang; Freigaben sind URL-gebunden.
+
+`tools/list` ergänzt `_meta["januaport.ai/runner"].desktop_pins` je Pin um
+`{name,state,reason,declared_tools,timeout_s,input_schema,description}`.
+Ohne Desktop-Pins fehlt der Schlüssel. Metadaten stammen ausschließlich aus
+dem nachgerechneten `jnpt-desktop.yaml`; nur bei `ready` werden die gelesenen
+Manifestwerte veröffentlicht. Die sechs Basisfelder plus `python` sind
+Pflicht, `timeout_s` ist 1–86400, `requirements` optional ausschließlich
+`requirements.lock`. Einstieg, Python-ZIP und gegebenenfalls Lock müssen im
+Pin liegen. Unbekannte YAML-Felder, weitere YAML-Dokumente und ungültige
+Felder werden mit festen Gründen abgewiesen. Textfelder und Werkzeugnamen
+verlangen YAML-Strings, `timeout_s` eine YAML-Ganzzahl; keine stillschweigende
+Umwandlung von Booleschen Werten oder Bruchteilen. Paket-/Runtime-/Wheel-Prüfungen
+auf dem Gerät bleiben wie im Desktop-Vertrag vorgeschrieben.
+
+Desktop-Pins sind **keine MCP-Werkzeuge** und unabhängig von der lokalen
+Sandbox-Isolation bereit. Auch ein gleichnamiger Eintrag in `pins.json`
+öffnet keinen zweiten Ausführungsweg: er ist ungültig, `tools/call` lehnt den
+Namen mit `refused/pin` ab. Es werden weder Sandbox-Jobs gesendet noch
+Bibliotheken vorbereitet oder Windows-Wheels entpackt.
+
+```text
+GET /desktop/package?commit=<hex>&path=<relativer-pin-ordner>
+Authorization: Bearer <runtime-key>
+```
+
+Genau ein `commit` und ein `path`, keine weiteren Parameter. Die Route liest
+die aktuelle Desktop-Datei und die Zweigfreigabe; ausschließlich ein dort
+freigegebenes Paar wird geliefert. Pin und Freigabe werden nach dem Tree-Walk
+erneut geprüft, das gelistete `ready` ist keine Abrufberechtigung.
+
+- **200:** `Content-Type: application/vnd.jnpt.gitobjects.v1`, binäres Paket
+  wie im Desktop-Vertrag: Commit, Bäume bis zum Pin und alle Objekte darunter,
+  IDs selbst nachgerechnet, jedes Objekt einmal, ohne Eltern-Commits und
+  Geschwisterinhalte. Deterministische Reihenfolge: Commit, Vorfahrenbäume,
+  dann Tiefensuche in Git-Baumreihenfolge. Windows-Namen, Faltungskollisionen,
+  falsche Typen/Modi, Symlink, Gitlink und mehr als 256 Kanten werden geprüft.
+- **404:** unbekanntes/fremdes Paar, fehlender oder widerrufener Pin,
+  Manifest-/Objektfehler oder falsche Query. Immer derselbe JSON-Körper
+  `{"error":{"class":"not_found","message":"Der Auftrag oder das Paket wurde nicht gefunden."}}`
+  mit LF, `Content-Type: application/json`; keine internen Fehlertexte.
+- **413:** mehr als **128 MiB einschließlich Kopf und aller Rahmen**.
+  Größenprüfung vor Objektallokation; keine teilweise geprüfte HTTP-Ausgabe.
+  JSON: `{"error":{"class":"too_large","message":"Die Anfrage überschreitet die zulässige Größe."}}`
+  mit LF, `Content-Type: application/json`.
+- Bearer-Prüfung wie `/mcp` (401 bei fehlendem/falschem Schlüssel).
+  Paketantworten und ihre 404/413 tragen `Cache-Control: no-store`.
+
+Der interne Abruf verwendet den runtime-key. Geräte-/Auftragsbindung des
+äußeren Gerätezugsangs bleibt Aufgabe des Kerns; Weg A nimmt kein Geräte-
+oder Lauf-Token entgegen.
+
+Zeitpläne für Desktop-Pins zählen als bekannt und können `ready` melden.
+Der lokale Taktgeber **feuert sie nicht**, zählt für sie keine verpassten
+Läufe und meldet kein lokales Laufergebnis. Den Takt übernimmt das Gerät
+aus seinem signierten Manifest; `schedules.json` behält sein Format.
+
+Nachweise: `internal/mediator/desktop_test.go` (echte HTTP-/MCP-/Unix-/Git-
+Adapter), `internal/store/desktop_test.go` (Gitobjekte, Grenzen, Namen,
+Objektmenge). `TestDesktopPackageGolden` importiert die unveränderten
+`desktop-runner/contract/golden/package_{sha1,sha256}.bin` in echte
+Objektdatenbanken und verlangt byte-gleiche Ausgabe von `DesktopPackage`.
+Die Formatbeispiele enthalten bewusst kein startbares Manifest; die
+HTTP-Prüfung nutzt zusätzlich vollständige Desktop-Pins.
 
 ## Ausgabe, Aufrufe und Rahmen
 

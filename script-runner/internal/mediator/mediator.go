@@ -30,7 +30,7 @@ import (
 // Vertrag.
 type Config struct {
 	SocketPath     string       // Unix-Socket für den Wächter (Weg C)
-	KeyDir         string       // Plugin-Ordner mit runtime-key und pins.json
+	KeyDir         string       // Plugin-Ordner mit runtime-key, pins.json und desktop-pins.json
 	StoreDir       string       // gemeinsames Volume mit dem abholer (Weg D)
 	LibsDir        string       // Volume mit den entpackten Python-Bibliotheken (#1041); leer = keine Bibliotheken
 	LibsStagingDir string       // private sibling in the same volume, never mounted in sandbox (#1096)
@@ -38,7 +38,7 @@ type Config struct {
 	GatewayURL     string       // Basis für Weg B, ohne /mcp
 	Logger         *slog.Logger
 	BusyWait       time.Duration    // Vertrag §5: 3 s
-	PollInterval   time.Duration    // Abstand für pins.json, runtime-key, Store
+	PollInterval   time.Duration    // Abstand für beide Pin-Dateien, runtime-key, Store
 	Now            func() time.Time // Uhr des Taktgebers (#1039); Standard time.Now
 	TriggerTimeout time.Duration    // HTTP-Frist des Auslöse-Aufrufs; Standard 35 s
 }
@@ -51,13 +51,15 @@ type Mediator struct {
 	sb    *sandboxes
 	libs  *libs.Manager // nil ohne LibsDir
 
-	mu        sync.Mutex
-	key       string
-	pins      []pinState
-	repoURL   string
-	isolation string
-	cache     map[cacheKey]verdict
-	libsURL   string // zuletzt gelesene Repository-URL einer gültigen pins.json (#1041)
+	mu           sync.Mutex
+	key          string
+	pins         []pinState
+	desktopPins  []desktopState
+	desktopCache map[cacheKey]verdict
+	repoURL      string
+	isolation    string
+	cache        map[cacheKey]verdict
+	libsURL      string // zuletzt gelesene Repository-URL einer gültigen pins.json (#1041)
 
 	ticker     *ticker.Ticker
 	trigger    *gatewayTrigger
@@ -85,13 +87,14 @@ func New(cfg Config) (*Mediator, error) {
 		cfg.TriggerTimeout = triggerTimeout
 	}
 	m := &Mediator{
-		cfg:       cfg,
-		store:     store.Open(filepath.Join(cfg.StoreDir, "store.git")),
-		log:       cfg.Logger,
-		isolation: contract.IsolationInvalid,
-		cache:     map[cacheKey]verdict{},
-		ticker:    ticker.New(cfg.Logger),
-		trigger:   newGatewayTrigger(cfg.GatewayURL, filepath.Join(cfg.KeyDir, "runtime-key"), cfg.TriggerTimeout),
+		cfg:          cfg,
+		store:        store.Open(filepath.Join(cfg.StoreDir, "store.git")),
+		log:          cfg.Logger,
+		isolation:    contract.IsolationInvalid,
+		cache:        map[cacheKey]verdict{},
+		desktopCache: map[cacheKey]verdict{},
+		ticker:       ticker.New(cfg.Logger),
+		trigger:      newGatewayTrigger(cfg.GatewayURL, filepath.Join(cfg.KeyDir, "runtime-key"), cfg.TriggerTimeout),
 	}
 	m.sb = newSandboxes(m.onHello, m.log)
 	m.libs = openLibs(cfg)
@@ -152,7 +155,7 @@ func (m *Mediator) onHello(isolation string, seccomp int, profile string) bool {
 	return ok
 }
 
-// Handler ist Weg A: POST /mcp mit Bearer runtime-key (R13).
+// Handler ist Weg A: POST /mcp und GET /desktop/package mit Bearer runtime-key (R13).
 func (m *Mediator) Handler() http.Handler {
 	server := mcp.NewServer(&mcp.Implementation{Name: "januaport-script-runner", Version: "1"},
 		&mcp.ServerOptions{Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}}})
@@ -167,6 +170,7 @@ func (m *Mediator) Handler() http.Handler {
 		&mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true, PropagateRequestCancellation: true})
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", m.auth(h))
+	mux.Handle("GET /desktop/package", m.auth(http.HandlerFunc(m.desktopPackage)))
 	return mux
 }
 
@@ -224,9 +228,19 @@ func (m *Mediator) toolsList() *mcp.ListToolsResult {
 	defer m.mu.Unlock()
 	listed := make([]contract.ListedPin, 0, len(m.pins))
 	for _, p := range m.pins {
-		listed = append(listed, p.listed())
+		lp := p.listed()
+		if m.desktopNameLocked(p.pin.Name) {
+			lp.State, lp.Reason, lp.Script = contract.StateInvalid, contract.ReasonManifestInvalid, nil
+		}
+		listed = append(listed, lp)
 	}
-	return contract.ToolsList(listed, m.isolation, sched)
+	res := contract.ToolsList(listed, m.isolation, sched)
+	meta := res.Meta[contract.MetaRunner].(contract.RunnerMeta)
+	for _, p := range m.desktopPins {
+		meta.DesktopPins = append(meta.DesktopPins, p.listed())
+	}
+	res.Meta[contract.MetaRunner] = meta
+	return res
 }
 
 // openLibs öffnet libs/ und prüft dabei jedes Verzeichnis gegen sein Manifest

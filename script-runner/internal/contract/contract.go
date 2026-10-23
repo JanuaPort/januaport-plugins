@@ -62,7 +62,8 @@ const (
 )
 
 // Isolation der Sandbox (Vertrag §2, §5). `invalid` heißt: keine Sandbox
-// mit Seccomp-Modus 2 gemeldet, der Läufer bedient nicht.
+// mit Seccomp-Modus 2 gemeldet; lokale Skript-Läufe sind gesperrt.
+// Desktop-Pins und ihr Paketabruf sind davon unabhängig.
 const (
 	IsolationGVisor   = "gvisor"
 	IsolationStandard = "standard"
@@ -233,13 +234,25 @@ type ScheduleStatus struct {
 }
 
 // RunnerMeta ist `_meta["januaport.ai/runner"]` auf dem tools/list-Ergebnis.
-// `schedules` fehlt ohne Zeitpläne; die Pin-/Werkzeugform bleibt wie zuvor,
-// während `contract` mit Fassung 5 auf 2 steigt.
+// `schedules` fehlt ohne Zeitpläne, `desktop_pins` ohne Desktop-Pins.
+// Die lokale Pin-/Werkzeugform und Kennung 2 bleiben erhalten.
 type RunnerMeta struct {
-	Contract  int              `json:"contract"`
-	Isolation string           `json:"isolation"`
-	Pins      []PinStatus      `json:"pins"`
-	Schedules []ScheduleStatus `json:"schedules,omitempty"`
+	Contract    int                `json:"contract"`
+	Isolation   string             `json:"isolation"`
+	Pins        []PinStatus        `json:"pins"`
+	Schedules   []ScheduleStatus   `json:"schedules,omitempty"`
+	DesktopPins []DesktopPinStatus `json:"desktop_pins,omitempty"`
+}
+
+// DesktopPinStatus is metadata for the Desktop-Läufer, never an MCP tool.
+type DesktopPinStatus struct {
+	Name          string         `json:"name"`
+	State         string         `json:"state"`
+	Reason        string         `json:"reason"`
+	DeclaredTools []string       `json:"declared_tools"`
+	TimeoutS      int            `json:"timeout_s"`
+	InputSchema   map[string]any `json:"input_schema"`
+	Description   string         `json:"description"`
 }
 
 // ListedPin ist ein Pin, wie ihn tools/list braucht. Script, Description
@@ -255,7 +268,7 @@ type ListedPin struct {
 }
 
 // ToolsList baut das tools/list-Ergebnis (Vertrag §2). Werkzeuge gibt es
-// nur für Pins im Zustand `ready` und nie bei isolation `invalid`. Die
+// nur für lokale Skript-Pins im Zustand `ready` und nie bei isolation `invalid`. Die
 // Zeitpläne meldet der Taktgeber (#1039), höchstens MaxSchedules.
 func ToolsList(pins []ListedPin, isolation string, schedules []ScheduleStatus) *mcp.ListToolsResult {
 	meta := RunnerMeta{Contract: Version, Isolation: isolation, Pins: []PinStatus{}, Schedules: schedules[:min(len(schedules), MaxSchedules)]}
@@ -263,7 +276,7 @@ func ToolsList(pins []ListedPin, isolation string, schedules []ScheduleStatus) *
 	for _, p := range pins {
 		state := p.State
 		if state == StateReady && isolation == IsolationInvalid {
-			// Vertrag §5: ohne Sandbox mit Seccomp 2 ist kein Pin ready.
+			// Vertrag §5: ohne Sandbox mit Seccomp 2 ist kein lokaler Skript-Pin ready.
 			state = StatePending
 		}
 		meta.Pins = append(meta.Pins, PinStatus{Name: p.Name, Commit: p.Commit, State: state, Reason: p.Reason})
