@@ -106,7 +106,7 @@ gegen jemanden mit Zugriff auf diese Sitzung (C4).
 | Cron/DST, Offline-Grenze und Journal | TestCronZeitzoneUndSlots, TestOfflineRegel, TestOfflineVerweigertWirdJournalisiert |
 | E4: Ciphertext-Deckel, Bestätigung, Neustart | TestJournalDeckelBestaetigungNeustart, TestJournalMisstVerschluesselteBytes, TestWindowsNeustartInterrupted, TestErgebnisrueckstauUndAtomarerSlot |
 | Widerruf an allen Wegen, keine Wiederbelebung | TestWiderrufAnAllenHTTPWegen, TestWiderrufAllesWeg |
-| Native DPAPI/ACL/Entropie/Prozessbaum | TestDPAPIUndACL, TestWindowsDPAPIBrauchtEntropie, TestWindowsSuspendBisJobZuordnung, TestWindowsJobCloseBeendetEnkel |
+| Native DPAPI/ACL/Entropie/Prozessbaum | TestWindowsFehlerBehaltenUrsache, TestPrivateACLAliasUndVerbote, TestPrivateACLAmDateisystem, TestSecureRootVerweigertJunction, TestDPAPIUndACL, TestWindowsDPAPIBrauchtEntropie, TestWindowsSuspendBisJobZuordnung, TestWindowsJobCloseBeendetEnkel |
 | Task ohne Admin und begrenzter Rückfall | TestWindowsAufgabeOhneAdmin, TestAutostartRueckfallNurBeiRichtlinie |
 | Hygiene | TestLoggerDeckelUndFesteCodes, TestStriktesJSONAmAdapter, TestFrameGrenzen, TestReleaseUndWindowsCI |
 
@@ -136,6 +136,17 @@ verwaiste Ersatzdateien werden beim exklusiven Start entfernt. Credential,
 Config/Manifest und Umgebungsseals liegen in DPAPI-Dateien. Nur Paket- und
 Laufzeitcode liegt im Klartext. Status prüft Dateiexistenz und Autostart,
 ohne den Journalbestand zu öffnen oder zu bereinigen.
+
+DACLs werden strukturell geprüft: geschützt, genau eine explizite Allow-ACE,
+eigene binäre SID, volle Dateirechte und ausschließlich OI/CI-Vererbung.
+SDDL-Aliase (etwa SY/BA) sind keine andere Identität; ein Textvergleich
+von SID-Darstellungen ist unzulässig. Reparse-Punkte bleiben
+auf allen bestehenden Pfadkomponenten gesperrt. Windows-Diagnosen enthalten
+nur feste Operationsnamen und OS-Fehlernummer/-text, keine Pfade oder Konten.
+Die CLI-Dienstausgabe bleibt unverändert beim festen Fehlercode.
+TestWindowsCIContext protokolliert nur erhöhte Rechte und Volumen-Gleichheit;
+kein Test benötigt einen interaktiven Desktop. Die Standardkonto-Taskprobe
+bleibt separat und verweigert weiterhin erhöhte Ausführung.
 
 Diese Fassung verwirft stdout/stderr und januaport.log; log auf dem Draht
 ist leer. Das Job Object ist keine Benutzer-/Netzwerksandbox (C4).

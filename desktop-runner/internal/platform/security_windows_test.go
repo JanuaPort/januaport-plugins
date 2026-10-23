@@ -3,13 +3,23 @@ package platform
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
+
+func TestWindowsCIContext(t *testing.T) {
+	elevated := windows.GetCurrentProcessToken().IsElevated()
+	t.Logf("elevated=%t temp_on_profile_volume=%t", elevated, strings.EqualFold(filepath.VolumeName(os.TempDir()), filepath.VolumeName(os.Getenv("LOCALAPPDATA"))))
+	if os.Getenv("DESKTOP_EXPECT_ELEVATED") == "1" && !elevated {
+		t.Fatal("erhöhter Kontext erwartet")
+	}
+}
 
 func TestWindowsFehlerBehaltenUrsache(t *testing.T) {
 	_, err := (DPAPI{}).Open([]byte("invalid ciphertext"))
@@ -17,11 +27,13 @@ func TestWindowsFehlerBehaltenUrsache(t *testing.T) {
 	if !errors.As(err, &errno) || errno == 0 {
 		t.Fatalf("CryptUnprotectData verliert Windows-Fehler: %v", err)
 	}
- if !strings.Contains(err.Error(),"CryptUnprotectData") { t.Fatal("Operation fehlt",err) }
- err=CheckPrivateACL(filepath.Join(t.TempDir(),"PRIVATE_PATH","missing"))
- if !errors.As(err,&errno) || !strings.Contains(err.Error(),"GetNamedSecurityInfo") || strings.Contains(err.Error(),"PRIVATE_PATH") {
-  t.Fatal("Diagnose enthält keinen sicheren Operations-/Fehlercode")
- }
+	if !strings.Contains(err.Error(), "CryptUnprotectData") {
+		t.Fatal("Operation fehlt", err)
+	}
+	err = CheckPrivateACL(filepath.Join(t.TempDir(), "PRIVATE_PATH", "missing"))
+	if !errors.As(err, &errno) || !strings.Contains(err.Error(), "GetNamedSecurityInfo") || strings.Contains(err.Error(), "PRIVATE_PATH") {
+		t.Fatal("Diagnose enthält keinen sicheren Operations-/Fehlercode")
+	}
 }
 
 func TestPrivateACLAliasUndVerbote(t *testing.T) {
@@ -70,6 +82,10 @@ func TestPrivateACLAmDateisystem(t *testing.T) {
 	if err := SecureRoot(root); err != nil {
 		t.Fatal(err)
 	}
+	child := filepath.Join(root, "child")
+	if err := os.Mkdir(child, 0700); err != nil {
+		t.Fatal(err)
+	}
 	sid, err := userSID()
 	if err != nil {
 		t.Fatal(err)
@@ -93,9 +109,39 @@ func TestPrivateACLAmDateisystem(t *testing.T) {
 			t.Fatal("Reparatur", err)
 		}
 	}
-	// Non-default paths and existing children must still inherit only the user.
-	child := filepath.Join(root, "child")
-	if err = os.Mkdir(child, 0700); err != nil {
+	// Repair must also remove the additional inherited grants from this child.
+	sd, err := windows.GetNamedSecurityInfo(child, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
+	if err != nil {
 		t.Fatal(err)
+	}
+	acl, _, err := sd.DACL()
+	if err != nil || acl == nil || acl.AceCount != 1 {
+		t.Fatal("geerbte ACL nicht repariert", err)
+	}
+	var ace *windows.ACCESS_ALLOWED_ACE
+	if err = windows.GetAce(acl, 0, &ace); err != nil {
+		t.Fatal(err)
+	}
+	if ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE || !sid.Equals((*windows.SID)(unsafe.Pointer(&ace.SidStart))) {
+		t.Fatal("fremde geerbte Berechtigung")
+	}
+}
+
+func TestSecureRootVerweigertJunction(t *testing.T) {
+	base := t.TempDir()
+	target := filepath.Join(base, "target")
+	link := filepath.Join(base, "link")
+	if err := os.Mkdir(target, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// Directory junction creation needs no symlink privilege.
+	if err := exec.Command("cmd.exe", "/c", "mklink", "/J", link, target).Run(); err != nil {
+		t.Fatal("Test-Junction", err)
+	}
+	if err := SecureRoot(filepath.Join(link, "private")); err == nil || !strings.Contains(err.Error(), "RootReparsePoint") {
+		t.Fatal("Junction nicht abgewiesen", err)
+	}
+	if _, err := os.Stat(filepath.Join(target, "private")); !os.IsNotExist(err) {
+		t.Fatal("vor Abweisung geschrieben")
 	}
 }

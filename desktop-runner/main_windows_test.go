@@ -6,11 +6,14 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/client"
@@ -31,7 +34,13 @@ func TestPairRFC8032PubkeySpeichertNichts(t *testing.T) {
 }
 func pairStorageProbe(t *testing.T, forbidden string) {
 	t.Helper()
-	t.Setenv("LOCALAPPDATA", t.TempDir())
+	// Honor the caller's profile volume while keeping each probe isolated.
+	profile, err := os.MkdirTemp(os.Getenv("LOCALAPPDATA"), "jnpt-pair-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(profile)
+	t.Setenv("LOCALAPPDATA", profile)
 	key := forbidden
 	hits := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -42,11 +51,12 @@ func pairStorageProbe(t *testing.T, forbidden string) {
 	}))
 	defer srv.Close()
 	args := []string{"pair", "--url", srv.URL, "--code", "0123456789abcdef.ABCD-EFGH-JKMN"}
-	if err := run(args, io.Discard); err == nil {
+	pairErr := run(args, io.Discard)
+	if pairErr == nil {
 		t.Fatal("verbotener Pubkey akzeptiert")
 	}
 	if hits != 1 {
-		t.Fatal("Pubkey-Prüfung nicht erreicht")
+		t.Fatalf("Pubkey-Prüfung nicht erreicht: %v", pairErr)
 	}
 	root, err := platform.Root()
 	if err != nil {
@@ -76,5 +86,18 @@ func pairStorageProbe(t *testing.T, forbidden string) {
 	after, err := os.ReadFile(path)
 	if err != nil || !bytes.Equal(before, after) {
 		t.Fatal("bestehendes Credential verändert", err)
+	}
+}
+
+func TestPairVorbedingungNenntUrsache(t *testing.T) {
+	profile := filepath.Join(t.TempDir(), "PRIVATE_PATH")
+	if err := os.WriteFile(profile, []byte("not a directory"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LOCALAPPDATA", profile)
+	err := run([]string{"pair", "--url", "http://127.0.0.1", "--code", "0123456789abcdef.ABCD-EFGH-JKMN"}, io.Discard)
+	var errno syscall.Errno
+	if !errors.As(err, &errno) || errno == 0 || !strings.Contains(err.Error(), "CreateRootParents") || strings.Contains(err.Error(), "PRIVATE_PATH") {
+		t.Fatalf("Vorbedingung ohne sichere Operation/Errno: %v", err)
 	}
 }

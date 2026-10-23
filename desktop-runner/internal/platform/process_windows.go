@@ -2,6 +2,7 @@ package platform
 
 import (
 	"context"
+	"fmt"
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/client"
 	"golang.org/x/sys/windows"
 	"io"
@@ -28,12 +29,18 @@ func (p *process) Output() io.ReadCloser { return p.output }
 func (p *process) Wait() error {
 	p.once.Do(func() {
 		_, e := windows.WaitForSingleObject(p.proc, windows.INFINITE)
+		if e != nil {
+			p.waitErr = winError("WaitForSingleObject", e)
+		}
 		var code uint32
 		if e == nil {
 			e = windows.GetExitCodeProcess(p.proc, &code)
+			if e != nil {
+				p.waitErr = winError("GetExitCodeProcess", e)
+			}
 		}
-		if e != nil || code != 0 {
-			p.waitErr = errPlatform
+		if e == nil && code != 0 {
+			p.waitErr = fmt.Errorf("windows_operation: ProcessExit code=%d", code)
 		}
 		close(p.done)
 	})
@@ -131,7 +138,7 @@ func spawn(ctx context.Context, l client.Launch, beforeAssign func(windows.Proce
 	argv = append(argv, l.Args...)
 	for i, s := range argv {
 		if strings.ContainsRune(s, 0) {
-			return nil, errPlatform
+			return nil, winError("ProcessArgumentNUL", nil)
 		}
 		argv[i] = windows.EscapeArg(s)
 	}

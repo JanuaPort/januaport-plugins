@@ -34,7 +34,11 @@ Umleitungen und Umgebungsproxys sind gesperrt. Kein Abschaltschalter für TLS.
 
 Credential und Ed25519-Key liegen DPAPI-CurrentUser-verschlüsselt mit Entropie
 unter <code>%LOCALAPPDATA%\JanuaPort\desktop-runner\</code>. Der DACL erlaubt
-ausschließlich dem eigenen Nutzer Zugriff. Ein leerer Anlagenschlüssel oder
+ausschließlich dem eigenen Nutzer Zugriff; die Prüfung vergleicht binäre SIDs,
+Rechte und Vererbungsflags unabhängig von SDDL-Aliasnamen. Adminrechte sind
+für Kopplung und DPAPI nicht erforderlich und werden dort nicht abgewiesen.
+Junctions in bestehenden Pfadkomponenten werden abgewiesen.
+Ein leerer Anlagenschlüssel oder
 der öffentliche RFC-8032-Testschlüssel aus den Goldens wird abgewiesen;
 dabei wird nichts gespeichert und eine bestehende Kopplung bleibt unverändert.
 Erneutes erfolgreiches Koppeln

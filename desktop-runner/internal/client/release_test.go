@@ -43,7 +43,7 @@ func TestReleaseUndWindowsCI(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	for _, v := range []string{"windows-latest", "task-standard-user.ps1", "go test -count=1 ./...", "go test -race -count=1 ./...", "python-3.12.10-embed-amd64.zip"} {
+	for _, v := range []string{"windows-latest", "task-standard-user.ps1", "go test -count=1 ./...", "go test -race -count=1 ./...", "python-3.12.10-embed-amd64.zip", "if: failure()", "go test -count=1 -v ./internal/platform ."} {
 		if !strings.Contains(string(b), v) {
 			t.Fatal("Windows-CI", v)
 		}

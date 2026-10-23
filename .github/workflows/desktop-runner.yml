@@ -75,5 +75,17 @@ jobs:
       - run: go vet ./...
       - name: DPAPI, Job Object, echter Python-Start und interrupted
         run: go test -count=1 ./...
+      - name: Erhöhte Windows-Proben mit anderen Profil- und Temp-Pfaden
+        run: |
+          $env:DESKTOP_EXPECT_ELEVATED = '1'
+          $probeBase = Join-Path $env:RUNNER_TEMP 'desktop-runner-paths'
+          $env:TEMP = Join-Path $probeBase 'temp'
+          $env:TMP = $env:TEMP
+          $env:LOCALAPPDATA = Join-Path $probeBase 'profile'
+          New-Item -ItemType Directory -Force $env:TEMP, $env:LOCALAPPDATA | Out-Null
+          go test -count=1 -v ./internal/platform .
       - name: Benutzeraufgabe im echten Standardkonto
         run: ./probe/task-standard-user.ps1
+      - name: Windows-Diagnose bei fehlgeschlagenen Tests
+        if: failure()
+        run: go test -count=1 -v ./internal/platform .
