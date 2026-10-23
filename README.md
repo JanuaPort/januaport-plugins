@@ -2,7 +2,7 @@
 
 **English** · [Deutsch](README.de.md)
 
-Sidecars for JanuaPort: small, separate services that run next to the gateway, not inside it.
+Sidecars and the Desktop-Läufer for JanuaPort: separate components next to the gateway or on a device.
 
 JanuaPort is a self-hosted MCP gateway. It connects AI assistants to a company's existing systems with
 fine-grained permissions and records access in an append-only audit log. The core of JanuaPort is
@@ -20,9 +20,10 @@ No customer data, no keys, no operator values in this repository.
 ## Why sidecars
 
 The JanuaPort gateway is a single static binary in a minimal container. Anything that needs a different
-runtime, its own schedule or its own credentials runs as a separate sidecar next to it. A sidecar reaches
-JanuaPort only through documented interfaces: a shared directory, or the MCP endpoint with its
-own token. It can be switched off without touching the gateway.
+runtime, its own schedule or its own credentials runs as a separate sidecar next to it, or as the
+Desktop-Läufer on a device. These components reach JanuaPort through documented interfaces:
+a shared directory, the MCP endpoint with their own token, or the device API. They can be
+switched off without touching the gateway.
 
 ## Included sidecars
 
@@ -37,6 +38,7 @@ Status labels: **Built** · **In progress** · **Planned**. Each entry says what
 | [`script-runner/`](script-runner/) | Runs pinned Python scripts from the operator's Git repository when an AI calls them through JanuaPort. A script may use JanuaPort tools itself, with the caller's permissions and only the tools it declares, and optional Python libraries (numpy, pandas, …) shipped as hash-checked wheels in the operator's own repository, mounted read-only (no pip, no download). Three services from one image: a mediator next to the gateway, a sandbox without network (one run per instance, gVisor where available) and an ssh fetcher with a read-only deploy key. | **In progress.** Tested with unit tests and Docker probes against a stub gateway and a local Git server, under runc and under gVisor (runsc). The gateway side (pins, run token, audit), release and catalog entry are not built yet; not yet run on an installation. |
 | [`google-reporting/`](google-reporting/) | Fixed GSC/GA4 reports plus three write handles (GA4 annotation, GSC sitemap, GA4 channel group, #1148) through a private Python REST service, one credential object per scope, approved public pages, bounded process workers. | **Built, live integration pending.** Synthetic SDK/HTTP/cancellation/privacy/audit contracts verified. Query text disabled by default (operator switch). Version 1.0.0 is prepared with a release workflow (image `ghcr.io/januaport/google-reporting`), not yet tagged; no signed catalog entry yet. |
 | [`agent-runner/`](agent-runner/) | Runs an agent's model/tool loop through JanuaPort's model and MCP gateways. Anthropic Messages, local step/call/time limits, content-free run log; internal network, no provider key. | **Built, live integration pending.** B1 verified with a local fake core, contract and negative tests; no live provider calls. |
+| [`desktop-runner/`](desktop-runner/) | Desktop-Läufer for `geraet:<id>` pins: the device pulls everything (path B), pairs and verifies a signed manifest, schedules locally, runs offline without tools within the grace period, and reports later from a DPAPI journal. | **In progress.** #1163 D0: extended contract v1, goldens and a Go artifact test; runtime adapters and live verification are pending. |
 
 ## Releases
 

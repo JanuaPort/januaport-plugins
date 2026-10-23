@@ -1,0 +1,8 @@
+{
+  "method": "POST",
+  "path": "/api/device/v1/jobs/7d95f836-ded8-4a37-9017-3cebc3c4ee27/start",
+  "headers": {
+    "Authorization": "Bearer jnpt_example_<secret>",
+    "X-Jnpt-Desktop-Contract": "1"
+  }
+}

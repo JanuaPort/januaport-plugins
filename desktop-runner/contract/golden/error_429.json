@@ -1,0 +1,14 @@
+{
+  "status": 429,
+  "headers": {
+    "Cache-Control": "no-store",
+    "Retry-After": "60",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "error": {
+      "class": "rate_limited",
+      "message": "Es sind zu viele Anfragen eingegangen."
+    }
+  }
+}

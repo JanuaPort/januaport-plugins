@@ -1,0 +1,25 @@
+{
+  "status": 200,
+  "headers": {
+    "Cache-Control": "no-store",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "job": {
+      "job_id": "7d95f836-ded8-4a37-9017-3cebc3c4ee27",
+      "pin": "demo",
+      "commit": "aa5b88780339d2adc033e65d48a023f583f318e5",
+      "path": "demo",
+      "algo": "sha1",
+      "input": {
+        "example": true
+      },
+      "limits": {
+        "wall_s": 900,
+        "tool_calls": 50
+      },
+      "start_by": "2026-10-23T10:10:00Z",
+      "manifest_seq": 42
+    }
+  }
+}

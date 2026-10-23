@@ -1,0 +1,6 @@
+{
+  "test_only": true,
+  "note": "NUR TEST: öffentlicher RFC-8032-Testvektor 1; niemals für eine Anlage verwenden.",
+  "seed_hex": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+  "public_key_base64": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
+}

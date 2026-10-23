@@ -1,0 +1,8 @@
+{
+  "status": 200,
+  "headers": {
+    "Cache-Control": "no-store",
+    "Content-Type": "application/vnd.jnpt.gitobjects.v1"
+  },
+  "body_file": "package_sha1.bin"
+}

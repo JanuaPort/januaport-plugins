@@ -1,0 +1,13 @@
+{
+  "status": 400,
+  "headers": {
+    "Cache-Control": "no-store",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "error": {
+      "class": "contract",
+      "message": "Die Vertragsfassung wird nicht unterstützt."
+    }
+  }
+}

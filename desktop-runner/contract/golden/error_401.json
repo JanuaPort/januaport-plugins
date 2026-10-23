@@ -1,0 +1,13 @@
+{
+  "status": 401,
+  "headers": {
+    "Cache-Control": "no-store",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "error": {
+      "class": "unauthorized",
+      "message": "Die Anmeldung ist fehlgeschlagen."
+    }
+  }
+}

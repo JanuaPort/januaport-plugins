@@ -2,7 +2,7 @@
 
 [English](README.md) · **Deutsch**
 
-Beisteller für JanuaPort: kleine, eigenständige Dienste, die neben dem Gateway laufen, nicht in ihm.
+Beisteller und Desktop-Läufer für JanuaPort: eigenständige Komponenten neben dem Gateway oder auf einem Gerät.
 
 JanuaPort ist ein self-hosted MCP-Gateway. Es verbindet KI-Assistenten fein berechtigt mit den
 bestehenden Systemen eines Unternehmens und protokolliert die Zugriffe in einem append-only Audit-Log. Der
@@ -19,9 +19,10 @@ Keine Kundendaten, keine Schlüssel, keine Betreiberwerte in diesem Repository.
 ## Warum Beisteller
 
 Das JanuaPort-Gateway ist ein einziges statisches Binary in einem schlanken Container. Was eine andere
-Laufzeit, einen eigenen Zeitplan oder eigene Zugangsdaten braucht, läuft als eigener Beisteller daneben.
-Ein Beisteller erreicht JanuaPort nur über dokumentierte Schnittstellen: ein gemeinsames Verzeichnis
-oder den MCP-Endpunkt mit eigenem Token. Er lässt sich abschalten, ohne das Gateway anzufassen.
+Laufzeit, einen eigenen Zeitplan oder eigene Zugangsdaten braucht, läuft als eigener Beisteller daneben
+oder als Desktop-Läufer auf einem Gerät. Die Komponenten erreichen JanuaPort über dokumentierte
+Schnittstellen: ein gemeinsames Verzeichnis, den MCP-Endpunkt mit eigenem Token oder die Geräte-API.
+Sie lassen sich abschalten, ohne das Gateway anzufassen.
 
 ## Enthaltene Beisteller
 
@@ -36,6 +37,7 @@ Kennzeichnung: **Gebaut** · **Im Bau** · **Geplant**. Jeder Eintrag sagt, was 
 | [`script-runner/`](script-runner/) | Führt gepinnte Python-Skripte aus dem Git-Repository des Betreibers aus, wenn eine KI sie über JanuaPort aufruft. Ein Skript darf selbst JanuaPort-Werkzeuge nutzen, mit den Rechten des Aufrufers und nur die deklarierten, und optional Python-Bibliotheken (numpy, pandas, …) als hash-geprüfte Wheels aus dem eigenen Repository des Betreibers nutzen, nur lesend eingehängt (kein pip, kein Download). Drei Dienste aus einem Image: ein vermittler neben dem Gateway, eine Sandbox ohne Netz (ein Lauf je Instanz, gVisor wo vorhanden) und ein abholer per ssh mit Nur-Lese-Deploy-Key. | **Im Bau.** Mit Unit-Tests und Docker-Sonden gegen einen Stub-Gateway und einen lokalen Git-Server geprüft, unter runc und unter gVisor (runsc). Die Gateway-Seite (Pins, Lauf-Token, Audit), Auslieferung und Katalogeintrag fehlen noch; noch nicht auf einer Anlage gelaufen. |
 | [`google-reporting/`](google-reporting/) | Feste GSC-/GA4-Berichte und drei Schreibhandgriffe (#1148: Annotation, Sitemap, Kanalgruppe) über privaten Python-REST-Dienst, je Scope ein eigenes Credential, öffentliche Seitenliste, begrenzte Prozessworker. | **Gebaut, Live-Abnahme offen.** Synthetische SDK-/HTTP-/Abbruch-/Privacy-/Audit-Verträge geprüft. Query-Freitext standardmäßig gesperrt (Betreiberschalter). Fassung 1.0.0 mit Release-Workflow vorbereitet (Image `ghcr.io/januaport/google-reporting`), noch nicht getaggt; kein signierter Katalogeintrag. |
 | [`agent-runner/`](agent-runner/) | Führt die Modell-/Werkzeugschleife eines Agenten über Modell- und MCP-Durchgang des Kerns aus. Anthropic Messages, lokale Schritt-/Aufruf-/Zeitgrenzen, inhaltfreies Lauf-Protokoll; internes Netz, kein Modell-Schlüssel. | **Gebaut, Live-Durchstich ausstehend.** B1 gegen einen lokalen Fake-Kern, Vertrag und Negativfälle geprüft; keine Live-Anbieteraufrufe. |
+| [`desktop-runner/`](desktop-runner/) | Desktop-Läufer für `geraet:<id>`-Pins: Gerät holt alles ab (Weg B), Kopplung und signiertes Manifest, Zeitplantakt auf dem Gerät; werkzeuglos innerhalb der Gnadenfrist offline, spätes Melden aus DPAPI-Journal. | **Im Bau.** #1163 D0: erweiterter Vertrag v1, Goldens und Go-Artefakttest; Laufzeitadapter und Live-Abnahme stehen aus. |
 
 ## Releases
 

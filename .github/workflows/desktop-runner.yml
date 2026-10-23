@@ -1,0 +1,35 @@
+# Tests des Desktop-Läufers (JanuaPort/januaport#1163).
+#
+# contract: Draht-Vertrag v1 (Goldens, Pakete, signiertes Manifest,
+#           Python-Allowlist), go vet, Race-Detector.
+# Der Client (D4, #1167) ergänzt hier seine Jobs (Linux-Unit, windows-latest).
+name: desktop-runner
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop-runner/**'
+      - '.github/workflows/desktop-runner.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Test (desktop-runner, Vertrag)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop-runner/contract
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop-runner/contract/go.mod
+          cache-dependency-path: desktop-runner/contract/go.sum
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test -count=1 -race ./...

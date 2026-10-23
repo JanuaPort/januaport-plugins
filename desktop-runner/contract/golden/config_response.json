@@ -1,0 +1,22 @@
+{
+  "status": 200,
+  "headers": {
+    "Cache-Control": "no-store",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "contract": 1,
+    "device": {
+      "id": "device-example",
+      "name": "Beispielgerät",
+      "kind": "workstation"
+    },
+    "expected_account": "EXAMPLE\\desktop",
+    "start_policy": {
+      "mode": "idle",
+      "idle_minutes": 10
+    },
+    "heartbeat_s": 60,
+    "poll_hold_s": 25
+  }
+}

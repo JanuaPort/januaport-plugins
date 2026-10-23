@@ -1,0 +1,12 @@
+{
+  "status": 200,
+  "headers": {
+    "Cache-Control": "no-store",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "run_token": "<lauf-token>",
+    "expires_at": "2026-10-23T10:16:05Z",
+    "mcp_path": "/api/device/v1/mcp"
+  }
+}

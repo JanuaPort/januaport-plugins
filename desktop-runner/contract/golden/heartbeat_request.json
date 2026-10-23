@@ -1,0 +1,15 @@
+{
+  "method": "POST",
+  "path": "/api/device/v1/heartbeat",
+  "headers": {
+    "Authorization": "Bearer jnpt_example_<secret>",
+    "X-Jnpt-Desktop-Contract": "1",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "contract": 1,
+    "ready": true,
+    "runner_version": "0.0.0",
+    "manifest_seq": 40
+  }
+}
