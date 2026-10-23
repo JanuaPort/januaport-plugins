@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.2 — Datum beim Release
+
+**Go 1.26.10.** JanuaPort/januaport#1099.
+
+- Build-Image `golang:1.26.10`, per Digest gepinnt, `go.mod` auf 1.26.10. Damit
+  ist CVE-2026-111943 (crypto/x509 in der stdlib 1.26.9, Trivy HIGH) behoben.
+  Der Läufer nutzt kein TLS, die Lücke war deshalb nicht erreichbar. Laut
+  Kuratierung muss der Bump aber vor dem Katalogeintrag kommen.
+- MCP-Implementierungsversion 0.1.2. Sonst keine Änderung.
+
 ## 0.1.1 — 2026-10-23
 
 **Fix für den Live-Durchstich.** JanuaPort/januaport#1099.
