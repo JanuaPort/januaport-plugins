@@ -111,9 +111,14 @@ func ValidateContent(raw json.RawMessage) error {
 		case "redacted_thinking":
 			fields = "type data"
 		case "tool_use":
-			fields = "type id name input"
+			fields = "type id name input caller"
 			var input map[string]json.RawMessage
 			if str(b["id"]) == "" || str(b["name"]) == "" || json.Unmarshal(b["input"], &input) != nil || input == nil {
+				return errPayload
+			}
+			// Anthropic marks every tool_use with its caller; anything but a direct
+			// call would stem from code execution, which the core never allows.
+			if raw, ok := b["caller"]; ok && !directCaller(raw) {
 				return errPayload
 			}
 		case "tool_result":
@@ -183,4 +188,9 @@ func ToolResult(id string, raw json.RawMessage) json.RawMessage {
 	}
 	b, _ := json.Marshal(map[string]any{"type": "tool_result", "tool_use_id": id, "content": blocks, "is_error": result.IsError})
 	return b
+}
+
+func directCaller(raw json.RawMessage) bool {
+	var c map[string]json.RawMessage
+	return json.Unmarshal(raw, &c) == nil && only(c, "type") && str(c["type"]) == "direct"
 }

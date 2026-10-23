@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.1 — Datum beim Release
+
+**Fix für den Live-Durchstich.** JanuaPort/januaport#1099.
+
+- Anthropic liefert seit Oktober 2026 in jedem `tool_use`-Block das Feld
+  `caller`. 0.1.0 wies es ab, und jeder Lauf endete im ersten Schritt mit
+  `error/gateway`. Zugelassen ist genau `{"type":"direct"}`. Andere Aufrufer
+  (Code-Ausführung) und weitere Felder scheitern weiterhin. Der Block bleibt
+  unverändert in der Historie.
+- Neue Felder oben in der Antwort (`container`, `stop_details`) liest der Läufer
+  nicht. Ein Test hält das fest.
+- MCP-Implementierungsversion 0.1.1.
+
 ## 0.1.0 — 2026-10-17
 
 **Gebaut, Live-Durchstich ausstehend.** JanuaPort/januaport#1099 B1.
