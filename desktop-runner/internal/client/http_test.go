@@ -51,7 +51,7 @@ func TestPairTLSUndLeererPubkey(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = api.Pair(context.Background(), "ABCD-EFGH-JKMN", "test"); e == nil || hits != 0 {
+	if _, e = api.Pair(context.Background(), "0123456789abcdef.ABCD-EFGH-JKMN", "test"); e == nil || hits != 0 {
 		t.Fatalf("ungültiges TLS: %v hits=%d", e, hits)
 	}
 	hash := sha256.Sum256(srv.Certificate().Raw)
@@ -59,11 +59,11 @@ func TestPairTLSUndLeererPubkey(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = api.Pair(context.Background(), "ABCD-EFGH-JKMN", "test"); e == nil {
+	if _, e = api.Pair(context.Background(), "0123456789abcdef.ABCD-EFGH-JKMN", "test"); e == nil {
 		t.Fatal("leerer Pubkey akzeptiert")
 	}
 	key = base64.StdEncoding.EncodeToString(make([]byte, 32))
-	if _, e = api.Pair(context.Background(), "ABCD-EFGH-JKMN", "test"); e != nil {
+	if _, e = api.Pair(context.Background(), "0123456789abcdef.ABCD-EFGH-JKMN", "test"); e != nil {
 		t.Fatal(e)
 	}
 }
@@ -118,7 +118,7 @@ func TestRedirectUndRemoteHTTPAbgewiesen(t *testing.T) {
 	src := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, target.URL, 307) }))
 	defer src.Close()
 	a, _ := NewAPI(Trust{URL: src.URL}, "secret", nil)
-	if _, e := a.Pair(context.Background(), "ABCD-EFGH-JKMN", "test"); e == nil || hits != 0 {
+	if _, e := a.Pair(context.Background(), "0123456789abcdef.ABCD-EFGH-JKMN", "test"); e == nil || hits != 0 {
 		t.Fatal("Redirect gefolgt")
 	}
 	if _, e := NewAPI(Trust{URL: "http://192.0.2.1"}, "", nil); e == nil {

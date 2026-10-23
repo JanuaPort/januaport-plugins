@@ -112,14 +112,14 @@ func TestCAFingerprintProxyUndURL(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer a.Close()
-	if _, e = a.Pair(context.Background(), "ABCD-EFGH-JKMN", "test"); e != nil {
+	if _, e = a.Pair(context.Background(), "0123456789abcdef.ABCD-EFGH-JKMN", "test"); e != nil {
 		t.Fatal(e)
 	}
 	a, e = NewAPI(Trust{URL: srv.URL, Fingerprint: strings.Repeat("0", 64)}, "", nil)
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = a.Pair(context.Background(), "ABCD-EFGH-JKMN", "test"); e == nil || hits != 1 {
+	if _, e = a.Pair(context.Background(), "0123456789abcdef.ABCD-EFGH-JKMN", "test"); e == nil || hits != 1 {
 		t.Fatal("falscher Fingerprint")
 	}
 	a.Close()
@@ -137,7 +137,7 @@ func TestCAFingerprintProxyUndURL(t *testing.T) {
 	t.Setenv("HTTPS_PROXY", proxy.URL)
 	a, _ = NewAPI(Trust{URL: srv.URL, CA: ca}, "", nil)
 	defer a.Close()
-	if _, e = a.Pair(context.Background(), "ABCD-EFGH-JKMN", "test"); e != nil || proxyHits != 0 {
+	if _, e = a.Pair(context.Background(), "0123456789abcdef.ABCD-EFGH-JKMN", "test"); e != nil || proxyHits != 0 {
 		t.Fatal("Umgebungsproxy", e)
 	}
 }
