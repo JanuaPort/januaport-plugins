@@ -5,8 +5,9 @@ erweiterten und von SEC freigegebenen Deltas E1–E4; Vertragskennung **1**.
 Pins haben einen Ausführungsort **`lokal | geraet:<id>`**. Nur Pins mit
 `geraet` als Ausführungsort erscheinen in diesem Vertrag, jeweils für das
 zugeordnete Gerät; lokale Pins gehören nicht in sein Manifest oder seine Aufträge.
-Status: **im Bau**. D0 liefert Vertrag, Goldens und einen Go-Artefakttest
-mit Generator, noch keinen Kern-/Geräteadapter oder laufenden Dienst.
+D0 liefert diesen Vertrag, Goldens und einen Go-Artefakttest mit Generator.
+D4 (#1167) ergänzt den [Windows-Client](../README.md) mit eigenen Adaptertests;
+Kernimplementierung und gemeinsame Live-Abnahme liegen außerhalb dieses Moduls.
 
 ## Richtung und Erreichbarkeit
 
@@ -513,7 +514,8 @@ Manifest sowie Offline-Grenze, Ergebnisbindungen und Prüfsummen.
 **Implementierungsgrenze von D0:** Die Artefaktprüfungen ersetzen keine
 Laufzeitadapter-Abnahme. E3/CA/Fingerprint, Code-Verbrauch/Fehlversuche/Bremse,
 Widerrufslöschung, echte Box-Neustarts, Slot-/Zeitplanprüfung, historischer
-Freigabevergleich, vetLog und DPAPI-/Kapazitätsverhalten brauchen später
-Verbotsproben und Mutationen an den echten Kern-/Geräteadaptern. Ebenso
-bleiben die bisherigen Prozess-, Konto-, Wheel-/ZIP-/Umgebungsprüfungen
-Aufgaben der Implementierung. Es wird kein Ersatzadapter in D0 eingeführt.
+Freigabevergleich, vetLog und DPAPI-/Kapazitätsverhalten brauchen
+Verbotsproben und Mutationen an echten Kern-/Geräteadaptern. Die Geräteadapter
+und ihre Prozess-, Konto-, Wheel-/ZIP-/Umgebungsprüfungen liegen seit D4 in
+../internal/; tragende Tests nennt ../CLAUDE.md. Die Kernabnahme bleibt separat.
+Es wird kein Ersatzadapter in D0 eingeführt.
