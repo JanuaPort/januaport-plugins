@@ -49,6 +49,9 @@ type Entry struct {
 	Cron     string
 	Timezone string
 	Enabled  bool
+	// External is set by the mediator for Desktop-Pins, never read from JSON.
+	// The device owns their clock; the local ticker reports them only.
+	External bool
 	spec     *cron.SpecSchedule
 }
 

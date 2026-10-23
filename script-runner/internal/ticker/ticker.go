@@ -93,7 +93,8 @@ func New(log *slog.Logger) *Ticker {
 
 // Tick gleicht mit den Einträgen aus schedules.json ab und liefert die
 // jetzt fälligen Termine. ready sagt, ob der Pin bereit ist und den Commit
-// des Zeitplans trägt. Zeitpläne, die fehlen, werden vergessen.
+// des Zeitplans trägt. External-Zeitpläne werden ausschließlich gemeldet:
+// das Gerät taktet sie selbst. Zeitpläne, die fehlen, werden vergessen.
 func (t *Ticker) Tick(now time.Time, entries []schedules.Entry, ready func(pin, commit string) bool) []Due {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -127,6 +128,10 @@ func (t *Ticker) Tick(now time.Time, entries []schedules.Entry, ready func(pin, 
 // rückwärts, bleibt der Cursor stehen.
 func (it *item) advance(now time.Time) (slot time.Time, fire bool, late, gap int) {
 	if now.Before(it.cursor) {
+		return time.Time{}, false, 0, 0
+	}
+	if it.entry.External {
+		it.cursor, it.next = now, it.entry.Next(now)
 		return time.Time{}, false, 0, 0
 	}
 	occ := it.entry.Next(it.cursor)

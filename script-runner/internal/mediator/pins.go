@@ -50,38 +50,48 @@ func (p pinState) listed() contract.ListedPin {
 	return lp
 }
 
-// refresh liest runtime-key und pins.json, meldet dem abholer die
+// refresh liest runtime-key und beide Pin-Dateien, meldet dem abholer die
 // gewünschten Commits und bewertet jeden Pin. Die Dateien sind klein; sie
 // werden bei jedem Durchlauf gelesen, das deckt „bei jeder Änderung“ und
 // „alle 60 s“ aus Nachtrag 2a ab.
 func (m *Mediator) refresh(ctx context.Context) {
 	key := readKey(filepath.Join(m.cfg.KeyDir, "runtime-key"))
-	var f pins.File
-	parsedOK := false
-	if b, err := os.ReadFile(filepath.Join(m.cfg.KeyDir, "pins.json")); err == nil {
-		if parsed, err := pins.Parse(b); err == nil {
-			f, parsedOK = parsed, true
-		}
+	f, desktop, parsedOK := m.readPinFiles()
+	wanted := pins.File{RepoURL: f.RepoURL, Pins: append([]pins.Pin(nil), f.Pins...)}
+	for _, p := range desktop.Pins {
+		wanted.Pins = append(wanted.Pins, p.Pin)
 	}
-	m.writeWanted(f)
+	m.writeWanted(wanted)
 
 	m.mu.Lock()
 	if f.RepoURL != m.repoURL {
 		m.cache = map[cacheKey]verdict{}
+		m.desktopCache = map[cacheKey]verdict{}
 		m.repoURL = f.RepoURL
 	}
 	cache := m.cache
+	desktopCache := m.desktopCache
 	m.mu.Unlock()
 	m.resetLibsOnURLChange(f, parsedOK)
 
 	states := make([]pinState, 0, len(f.Pins))
 	for _, p := range f.Pins {
+		for _, d := range desktop.Pins {
+			if d.Name == p.Name {
+				p.Invalid = contract.ReasonManifestInvalid
+			}
+		}
 		states = append(states, pinState{pin: p, verdict: m.evaluate(ctx, p, cache)})
+	}
+	desktopStates := make([]desktopState, 0, len(desktop.Pins))
+	for _, p := range desktop.Pins {
+		desktopStates = append(desktopStates, desktopState{pin: p, verdict: m.evaluateDesktop(ctx, p, desktopCache)})
 	}
 
 	m.mu.Lock()
 	m.key = key
 	m.pins = states
+	m.desktopPins = desktopStates
 	m.mu.Unlock()
 	if parsedOK {
 		m.pruneLibs(states)
@@ -129,6 +139,13 @@ func (m *Mediator) evaluate(ctx context.Context, p pins.Pin, cache map[cacheKey]
 // vor Freigaben; leere alte failed-Marken bedeuten weiterhin fetch_failed.
 // Die repo_url-Bindung verhindert Freigaben aus dem vorherigen Repository.
 func (m *Mediator) fetchVerdict(sha string) verdict {
+	m.mu.Lock()
+	url := m.repoURL
+	m.mu.Unlock()
+	return m.fetchVerdictFor(sha, url)
+}
+
+func (m *Mediator) fetchVerdictFor(sha, url string) verdict {
 	b, err := os.ReadFile(filepath.Join(m.cfg.StoreDir, "failed", sha))
 	if err == nil || !errors.Is(err, os.ErrNotExist) {
 		reason := contract.ReasonFetchFailed
@@ -138,9 +155,6 @@ func (m *Mediator) fetchVerdict(sha string) verdict {
 		return verdict{state: contract.StateInvalid, reason: reason}
 	}
 	b, err = os.ReadFile(filepath.Join(m.cfg.StoreDir, "approved", sha))
-	m.mu.Lock()
-	url := m.repoURL
-	m.mu.Unlock()
 	if err != nil || url == "" || string(b) != url {
 		return verdict{state: contract.StatePending}
 	}
@@ -245,10 +259,13 @@ func writeIfChanged(path, content string) error {
 	return os.Rename(tmp, path)
 }
 
-// readyPin liefert einen Pin für einen Lauf.
+// findPin liefert ausschließlich einen lokalen Skript-Pin für einen Lauf.
 func (m *Mediator) findPin(name string) (pinState, string, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.desktopNameLocked(name) {
+		return pinState{}, m.isolation, false
+	}
 	for _, p := range m.pins {
 		if p.pin.Name == name && p.pin.Invalid == "" {
 			return p, m.isolation, true

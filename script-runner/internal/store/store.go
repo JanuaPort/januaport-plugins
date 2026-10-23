@@ -3,6 +3,8 @@
 // rechnet dabei den Hash JEDES gelesenen Objekts selbst nach, vom Commit über
 // jeden Baum bis zu jedem Blob. Symlinks (120000) und Gitlinks (160000) weist
 // sie ab, ebenso Namen, die aus dem Pin-Ordner führen könnten.
+// DesktopPackage nutzt dieselbe Objekt-DB und Hash-Nachrechnung, mit den
+// zusätzlichen Windows-Namensregeln und Drahtgrenzen des Desktop-Vertrags.
 package store
 
 import (

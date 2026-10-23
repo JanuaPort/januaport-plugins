@@ -76,6 +76,10 @@ func Parse(data []byte, pinName string) (Manifest, error) {
 }
 
 func check(m Manifest, pinName string) error {
+	return checkWithTimeout(m, pinName, MaxTimeoutS)
+}
+
+func checkWithTimeout(m Manifest, pinName string, maxTimeout int) error {
 	switch {
 	case m.Name != pinName:
 		return invalid("name weicht vom Pin ab")
@@ -87,8 +91,8 @@ func check(m Manifest, pinName string) error {
 		return invalid("input_schema ist kein Objekt-Schema")
 	case !validRequirements(m.Requirements):
 		return invalid("requirements ist nicht \"" + RequirementsFile + "\"")
-	case m.TimeoutS < 1 || m.TimeoutS > MaxTimeoutS:
-		return invalid(fmt.Sprintf("timeout_s nicht in 1..%d", MaxTimeoutS))
+	case m.TimeoutS < 1 || m.TimeoutS > maxTimeout:
+		return invalid(fmt.Sprintf("timeout_s nicht in 1..%d", maxTimeout))
 	}
 	seen := map[string]bool{}
 	for _, t := range m.Tools {

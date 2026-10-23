@@ -18,7 +18,7 @@ Kommentaren und Tests verweisen darauf.
 
 | Unterbefehl | Dienst | Verantwortung |
 |---|---|---|
-| `mediator` | `script-runner` | vermittler: MCP-Server für das Gateway (Weg A, `:8090` im internen Netz `jnpt_plugins`), prüft `runtime-key` (R13), liest `pins.json`, einzige Senke für Code (R6, M5), hält den einen Slot, misst Wandzeit und Größen selbst (M2, M4), ruft innere Werkzeuge mit dem Lauf-Token (Weg B), `/healthz` auf `:8091`; Taktgeber für Zeitpläne (#1039 S1, liest `schedules.json`, löst über das Gateway aus) |
+| `mediator` | `script-runner` | vermittler: MCP-Server für das Gateway (Weg A, `:8090` im internen Netz `jnpt_plugins`), prüft `runtime-key` (R13), liest `pins.json` und `desktop-pins.json`, einzige Senke für Code (R6, M5), hält den einen Slot, misst Wandzeit und Größen selbst (M2, M4), ruft innere Werkzeuge mit dem Lauf-Token (Weg B), `/healthz` auf `:8091`; Taktgeber für Zeitpläne (#1039 S1, liest `schedules.json`, löst über das Gateway aus) |
 | `guard` | `script-runner-sandbox` | Wächter: PID 1 der Sandbox, `PR_SET_DUMPABLE 0`, meldet `hello`, nimmt **genau einen** job, startet `python -I`, räumt den Prozessbaum ab (V1/V3), hält die Instanz 10,5 s (B1) |
 | `fetcher` | `script-runner-fetcher` | abholer: prüft Pins gegen den Standard-Zweig und holt Objekte per ssh in den Bare-Store, prüft `wanted/` und `repo_url` selbst (V2, M7) |
 | `init-libs` | `script-runner-init` | kurzlebiger Volume-Init als 65532, ohne Netz; legt `ready` (0755) und `staging` (0700) an und beendet sich vor dem Sandbox-Start |
@@ -42,11 +42,11 @@ und `fetch` gelesen.
 | `internal/contract` | Draht-Vertrag: Namen, Ende-Klassen, feste Sätze, `tools/list`, Header-Prüfung |
 | `internal/frame` | Rahmenprotokoll (Weg C): 4 Byte Länge BE + JSON |
 | `internal/gitref` | Allowlist-Prüfer: Commit (40/64 Hex), ssh-URL (M7), Pin-Pfad, Pin-Name |
-| `internal/pins` | Leser für `pins.json` (Nachtrag 2a) |
+| `internal/pins` | Leser für `pins.json` (Nachtrag 2a) und separate `desktop-pins.json` (#1165 D2b) |
 | `internal/schedules` | Leser für `schedules.json` (#1039): streng, fail-closed, höchstens 20, Cron wie der Kern (`robfig/cron/v3`), `time/tzdata`, Sommerzeit-Lücken |
 | `internal/ticker` | Taktgeber (#1039 S1): reine Logik — fällige Termine, Merker, `missed`/`skipped_busy`, gespiegelte Pausen, `_meta.schedules` |
-| `internal/manifest` | Leser für `jnpt-script.yaml` |
-| `internal/store` | Senke: Tree-Walk mit Hash-Nachrechnung jedes Objekts (M5); `LoadSkippingWheels`, `ListWheels`, `CopyBlob` für die Wheels (#1041) |
+| `internal/manifest` | Leser für `jnpt-script.yaml` und `jnpt-desktop.yaml` |
+| `internal/store` | Senke: Tree-Walk mit Hash-Nachrechnung jedes Objekts (M5); `LoadSkippingWheels`, `ListWheels`, `CopyBlob` für lokale Wheels (#1041), `DesktopPackage` für Desktop-Pakete (#1165) |
 | `internal/libs` | Python-Bibliotheken (#1041): Lock-Parser, Wheel-Tags, 1:1-Plan, gehärtetes Entpacken, `.jnpt-manifest`, Cache `libs/<lockhash>/` (`Manager`); kennt weder Git noch Netz |
 | `internal/mediator` | vermittler: MCP, Auth, Pins, Slot/V1, Lauf, Weg B |
 | `internal/guard` | Wächter (`guard_linux.go`; anderswo nur ein Platzhalter) |
@@ -64,11 +64,12 @@ und `fetch` gelesen.
   `Authorization: Bearer <runtime-key>`. MCP stateless, JSON-Antworten.
   `tools/list` und `tools/call` beantwortet eine Receiving-Middleware selbst
   (die Werkzeuge hängen an den Pins, nicht an einer festen Registrierung).
-- **`tools/list`:** je `ready`-Pin ein Werkzeug (Name = Pin-Name,
+- **`tools/list`:** je lokalem `ready`-Skript-Pin ein Werkzeug (Name = Pin-Name,
   `_meta["januaport.ai/script"]`), auf dem Ergebnis
   `_meta["januaport.ai/runner"]` mit `contract: 2`, `isolation` und **allen**
-  Pins samt Zustand. Ist `isolation` `invalid`, erscheint kein Werkzeug und
-  jeder sonst bereite Pin als `pending` (§5: „dann ist kein Pin ready“).
+  lokalen Pins samt Zustand. Ist `isolation` `invalid`, erscheint kein Werkzeug und
+  jeder sonst bereite lokale Pin als `pending` (§5). Desktop-Pins stehen
+  separat in `desktop_pins`, unabhängig von dieser Sandbox-Isolation.
   Mit Zeitplänen trägt `_meta["januaport.ai/runner"]` zusätzlich `schedules`
   (#1039, siehe „Taktgeber“); ohne Zeitpläne fehlt der Schlüssel.
 - **`tools/call`:** Header `X-Jnpt-Run-Token` (`jnptrun_` + 43 base64url),
@@ -164,6 +165,59 @@ Ausgabe auf stdout, Werkzeuge per `januaport.call(name, arguments)` → dict
 und `vendor/` darin (reines Python, R12), dazu — mit `requirements` — hinten
 angehängt `/libs/<lockhash>` (Wheels, auch native; nur lesend).
 
+## Desktop-Pins (#1165 D2b, Epic #1163)
+
+Der vermittler liefert die Beisteller-Seite für den **Desktop-Läufer**.
+Maßgeblich sind [Weg A](contract/README.md#desktop-pins-und-paketabruf-auf-weg-a-1165-d2b)
+und der [Desktop-Vertrag](../desktop-runner/contract/README.md), insbesondere
+Paketformat und `jnpt-desktop.yaml`. Kern-/Geräteadapter liegen außerhalb
+dieses Moduls. Der Kern schreibt `desktop-pins.json` atomar neben `pins.json`;
+das alte Dateiformat und die Kennung 2 bleiben erhalten.
+
+`internal/pins.ParseDesktop` liest einen separaten Version-1-Umschlag mit
+`repo_url` und Pins `{name,commit,path,target_device,algo}` (höchstens 1 MiB).
+Der gemeinsame `wanted/`-Satz ist die Vereinigung beider Listen, nicht der
+zuletzt gelesenen Liste. Vor seiner Veröffentlichung steht `repo_url` atomar
+bereit. Zwei verschiedene Repository-URLs ergeben keine Desktop-Freigabe.
+`internal/manifest.ParseDesktop` prüft die sechs Basisfelder plus `python`,
+Timeout 1–86400, optional ausschließlich `requirements.lock`, relative
+Windows-kompatible Pfade, unbekannte Felder und weitere YAML-Dokumente.
+YAML-Typen werden ausdrücklich geprüft: Text und Werkzeugnamen als Strings,
+Timeout als Ganzzahl, ohne Bool-/Bruchzahl-Konvertierung durch yaml.v3.
+Fehler bleiben feste Codes/Sätze ohne Echo. Nur bei `ready` werden die
+Manifestwerte in `_meta["januaport.ai/runner"].desktop_pins` veröffentlicht.
+
+`store.DesktopPackage` rechnet Commit, Vorfahrenbäume und den ganzen Pin neu
+nach; Windows-Wheels und Python-ZIP sind dabei opake Blobs. Es gibt keine
+Linux-4-MiB-Codegrenze für Desktop-Pakete, sondern 128 MiB für den gesamten
+Drahtkörper. Das interne `DesktopTree` hält einen Objektgraphen und löst
+Dateien darin auf; geteilte Bäume werden nicht exponentiell in Pfadlisten
+expandiert. Die Paketreihenfolge ist deterministisch (siehe Vertrag).
+
+| Invariante / zweiter Berechtigungsweg | Test am echten Adapter |
+|---|---|
+| V2/M7/L3 gelten auch für Desktop: nur Standard-Zweig-Abstammung; vorhandenes Objekt ist keine Freigabe | `TestDesktopPRCommitNoApprovalNoPackage`, `TestDesktopFetcherRechecksM7V2AtRealGitAdapter` |
+| Beide Listen teilen `wanted/`; Freigaben bleiben URL-gebunden; abweichende URLs sperren | `TestDesktopSharedWantedAndRepositoryBinding`, `TestDesktopFailurePrecedesCachedApprovalAtHTTP`, `TestWantedWaitsForRepositoryURLPublication` |
+| Paket ausschließlich für aktuellen Desktop-Pin und frische Freigabe, runtime-key auf Weg A; unbekannt/fremd byte-gleiche 404 | `TestDesktopPackageAuthorizationAtHTTP`, `TestDesktopRevocationDuringRealTreeWalkAtHTTP`, `TestDesktopPinFileFailsClosedAtHTTP`, `TestDesktopQueryRejectsMalformedAtHTTP` |
+| M5 vor jedem Paket: kein Cache ersetzt Hashprüfung von Commit/Baum/Blob; nur benötigte Objekte, einmal je ID | `TestDesktopPackageRechecksEveryObjectAtHTTP`, `TestDesktopPackageExactObjectSet` |
+| Symlink/Gitlink/falscher Modus, unsichere Windows-Namen, Faltungskollision und mehr als 256 Kanten werden abgewiesen | `TestDesktopPackageNoSymlinkAtHTTP`, `TestDesktopPackageRejectsUnsafeObjects`, `TestDesktopPackageCaseCollisionAndDepth`, `TestDesktopPackageUnicodeCollision` |
+| ≤ 128 MiB einschließlich Kopf/Rahmen, darüber 413, vor Allokation prüfen | `TestDesktopPackageLimitAtHTTP`, `TestDesktopPackageLimitIncludesFraming` (exakt Grenze und Grenze + 1), `TestDesktopPackageSizeCheckedBeforeAllocation` (Allokationszähler) |
+| Ungültiges Manifest/fehlende Pflichtdatei öffnet keinen Paketweg; Fehler ohne Echo | `TestDesktopInvalidManifestAtHTTP`, `TestDesktopMissingRequiredFilesAtHTTP` |
+| Desktop-Pins sind keine MCP-Werkzeuge und senden keinen Sandbox-Job; auch ein gleichnamiger lokaler Pin öffnet keinen Weg | `TestDesktopMetadataAndNoSandboxOrWheelExtraction` (zählender Unix-Adapter: 0 Jobs) |
+| Kein Aufruf des Bibliotheksadapters und kein Entpacken, auch nicht für Windows-Wheels | `TestDesktopWheelPreparationSeamZero` (Windows und `any`, 0 Vorbereitungen, leere Ready-/Staging-Ordner) |
+| Kein Download-Client in neuem Quellcode | unverändertes `TestNoDownloadClientInSource` |
+| Desktop-Pins zählen als bekannt; Zeitpläne werden lokal nur gemeldet, das Gerät taktet aus dem Manifest | `TestDesktopTickerNeverFiresAtHTTP` (keine HTTP-Auslösung und keine lokalen Lauf-/Missed-/Busy-Werte) |
+| SHA-1 und SHA-256; unveränderte Goldens sind byte-gleich | `TestDesktopSHA256AtHTTP`, `TestDesktopPackageGolden` (direkter Import beider Golden-Pakete in echte Git-Objektdatenbanken) |
+
+Die Trennung betrifft alle Kompositionsstellen: `refresh` vereinigt Wünsche,
+prüft Namensüberschneidungen **vor** lokaler Bibliotheksaufbereitung und hält
+Desktop-Zustände separat. `toolsList`, `findPin` und `readyPins` beachten die
+reservierten Desktop-Namen. `tickSchedules` setzt ein ausschließlich internes
+`Entry.External`; der JSON-Zeitplanvertrag bekommt kein neues Feld.
+`ticker.advance` aktualisiert dafür nur den nächsten Termin und erzeugt
+weder Auslösung noch lokale Verpasst-Zählung. Desktop-Bereitschaft hängt
+nicht von `isolation` ab; `/healthz` behält seine lokale Sandbox-Bedeutung.
+
 ## Invarianten (die tragen die Sicherheit)
 
 1. **V1 — höchstens eine Sandbox-Verbindung.** `sandboxes.accept` nimmt eine
@@ -215,8 +269,9 @@ angehängt `/libs/<lockhash>` (Wheels, auch native; nur lesend).
    (haengen, Instanz gerade erst gestartet); zweiter Lauf fertig 3,0–3,1 s
    bzw. 10,6 s. Ohne die Option (rot): Platz frei erst nach 19,2 s bzw.
    24,7 s, der Lauf endete regulär bzw. an der Wandzeit.
-4. **M5 / R6 — eine Senke.** Code kommt nur aus `store.Load` (bzw.
-   `LoadSkippingWheels`): Tree-Walk aus der Objekt-DB, jeder Hash (Commit,
+4. **M5 / R6 — eine Senke.** Lokaler Code kommt nur aus `store.Load` (bzw.
+   `LoadSkippingWheels`), Desktop-Pakete aus `store.DesktopPackage`:
+   Tree-Walk aus der Objekt-DB, jeder Hash (Commit,
    Bäume, Blobs) selbst nachgerechnet, 120000 / 160000 / unzulässige Namen
    abgewiesen — vor **jeder** Übergabe neu, nicht aus dem Zustands-Cache. Ohne
    Pin kein Lauf. **Auch die Wheels** (#1041) kommen nur über die Senke:
@@ -241,7 +296,8 @@ angehängt `/libs/<lockhash>` (Wheels, auch native; nur lesend).
    Paketnamen, Hashes oder Pfade (`TestLibsPinBecomesReadyAndJobCarriesLockHash`).
 6. **S2 / B2 — fail-closed.** Nur `hello` mit `seccomp: 2` **und**
    `profile: "jnpt"` und bekannter Isolation kommt in den Slot; sonst
-   `isolation: invalid`, Pins `pending`, kein Werkzeug, `/healthz` 503.
+   `isolation: invalid`, lokale Skript-Pins `pending`, kein Werkzeug, `/healthz` 503.
+   Desktop-Metadaten und Paketabruf benötigen keine lokale Sandbox.
    `profile` ist der Selbsttest des Wächters vor `hello`:
    `process_vm_readv(0, NULL, 0, NULL, 0, 0)` → nur **genau EPERM** ergibt
    `jnpt` (EINVAL = Docker-Standard, der Aufruf erreicht den Kernel; Erfolg
@@ -251,7 +307,8 @@ angehängt `/libs/<lockhash>` (Wheels, auch native; nur lesend).
 7. **V2 / M7 / L3 — der abholer vertraut niemandem.** Jede `wanted/`-Zeile
    und die `repo_url` prüft er selbst (Allowlist), bevor Git läuft. Jeder
    gewünschte Commit muss Vorfahr (oder gleich) dem Kopf des
-   Remote-Standard-Zweigs sein, für Pins von Menschen und KI gleichermaßen.
+   Remote-Standard-Zweigs sein, für Pins von Menschen und KI gleichermaßen,
+   einschließlich aller Desktop-Pins aus der zweiten Materialisierungsdatei.
    Bei jedem Durchlauf mit gewünschten Commits:
    `git ls-remote --symref origin HEAD` mit Deploy-Key frisch auflösen,
    exakt den angekündigten Kopf-Hash holen und
@@ -380,6 +437,10 @@ Weiterleitung), `TestLogInvalidUTF8AndBoundary`, `TestRunLogOnlyInMetaNeverInSlo
 `TestRunLogAbsentBeforeStart`, `TestRunLogGolden`, Docker-Pin `log_canary`.
 
 ## Python-Bibliotheken (#1041 P1 + #1096 Staging)
+
+Dieser Abschnitt beschreibt ausschließlich lokale Skript-Pins. Desktop-Pins
+erreichen diesen Aufbereitungspfad nicht; ihre Windows-Wheels und Python-ZIP
+werden als hashgeprüfte Gitobjekte an das Gerät geliefert (Abschnitt Desktop-Pins).
 
 Verbindlich: Plan-First v1 (JanuaPort/januaport#1041, Kommentar 6176737741),
 SEC-Auflagen B1–B7 (6176765349) und die PO-Entscheide vom 15.10.2026
@@ -612,7 +673,7 @@ gewählte Identity; er entscheidet über Fälligkeit (eigene Uhr, 30 s Toleranz,
   Wochentags- und Monatsnamen), Pflicht-Zeitzone (IANA, nie `Local`),
   Mindestabstand fünf Minuten — dieselben Regeln wie `scriptschedule.parse`.
   `time/tzdata` ist eingebettet; das Image bringt keine Zonendateien mit.
-- **Auslösen:** nur `enabled:true` und Pin `ready` (wie in `tools/list`, also
+- **Auslösen:** nur lokale Skript-Pins, `enabled:true` und Pin `ready` (wie in `tools/list`, also
   nie bei `isolation: invalid`) mit genau dem Commit des Zeitplans.
   `POST <JNPT_GATEWAY_URL>/api/plugin/script-runner/schedules/{name}/run`,
   kein Body, `Authorization: Bearer <runtime-key>` frisch aus der Datei
@@ -655,8 +716,8 @@ gewählte Identity; er entscheidet über Fälligkeit (eigene Uhr, 30 s Toleranz,
 5. **fail-closed beim Lesen** (oben), auch über 64 KiB. `TestParseInvalidFailsClosed`,
    `TestInvalidSchedulesFileFailsClosedWithFixedCode`,
    `TestSchedulesFileOverSixtyFourKiBFailsClosed`.
-6. **Nur bereit und aktiv löst aus.** `TestNotEnabledOrPinNotReadyNeverFires`,
-   `TestCommitMismatchOrDisabledNeverTriggers`.
+6. **Nur lokal, bereit und aktiv löst aus.** `TestNotEnabledOrPinNotReadyNeverFires`,
+   `TestCommitMismatchOrDisabledNeverTriggers`, `TestDesktopTickerNeverFiresAtHTTP`.
 7. **Sommerzeit-Lücke:** Termine, die es an diesem Tag nicht gibt (Europe/Berlin,
    letzter Sonntag im März, 02:30), laufen nicht und zählen in `missed`.
    `TestDSTGapNoRunCounted`, `TestDSTGapEuropeBerlin`.
@@ -691,7 +752,7 @@ gewählte Identity; er entscheidet über Fälligkeit (eigene Uhr, 30 s Toleranz,
 Diese Auslegungen aus dem Bau von P2 hat LEAD in Fassung 3 bestätigt —
 **ratifiziert (F3)**, damit Vertrag:
 
-- `isolation: invalid` → sonst bereite Pins werden als `pending` gemeldet
+- `isolation: invalid` → sonst bereite lokale Skript-Pins werden als `pending` gemeldet
   (§5 „kein Pin ready“; das Gateway registriert nach §2(a) nichts). —
   ratifiziert (F3)
 - `error_at` = `<pin-pfad>/<datei>:<zeile>`, relativ zum Repository. —
@@ -700,7 +761,7 @@ Diese Auslegungen aus dem Bau von P2 hat LEAD in Fassung 3 bestätigt —
   (Protokollverstoß). — ratifiziert (F3)
 - `pins.json`: ungültiger Name oder Commit → `manifest_invalid`, ungültiger
   Pfad → `bad_path`. — ratifiziert (F3)
-- Grenze v1: gepinnter Ordner ≤ 4 MiB und ≤ 1000 Dateien, sonst
+- Grenze v1 für lokale Skript-Pins: gepinnter Ordner ≤ 4 MiB und ≤ 1000 Dateien, sonst
   `manifest_invalid`. Mit `requirements` (#1041) gilt das für den Code ohne
   `wheels/`; die Wheels haben eigene Grenzen (`libs.DefaultLimits`). — ratifiziert (F3)
 - OOM = SIGKILL, das nicht vom Wächter kam → `limit/memory`. — ratifiziert (F3)
@@ -722,7 +783,7 @@ Diese Auslegungen aus dem Bau von P2 hat LEAD in Fassung 3 bestätigt —
   `tools/call` vollständig selbst; das SDK macht nur Transport und Protokoll.
 - **Stateless-MCP.** Das Gateway öffnet je Aufruf eine frische Sitzung; der
   vermittler hält keinen Sitzungszustand.
-- **`pins.json` und Schlüssel bei jedem Abgleich lesen** (2 s). Das deckt „bei
+- **`pins.json`, `desktop-pins.json` und Schlüssel bei jedem Abgleich lesen** (2 s). Das deckt „bei
   jeder Änderung“ und „alle 60 s“ ab und macht einen Neustart nach einem
   Schlüsselwechsel überflüssig. Die Prüfung an der Senke wird je
   (Name, Pfad, Commit) gecacht; vor jedem Lauf wird trotzdem neu gerechnet.
