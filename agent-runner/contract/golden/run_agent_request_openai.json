@@ -1,0 +1,33 @@
+{
+  "arguments": {
+    "contract": 1,
+    "gateway": {
+      "mcp_path": "/api/plugin/agent-runner/mcp",
+      "model_path": "/api/plugin/agent-runner/model"
+    },
+    "input": "Prüfe die Rechnungen von heute.",
+    "instructions": "Prüfe Rechnungen. KANARIE-ANWEISUNG-1099",
+    "limits": {
+      "steps": 20,
+      "tokens_in": 200000,
+      "tokens_out": 20000,
+      "tool_calls": 50,
+      "wall_s": 25
+    },
+    "model": {
+      "binding": "openai-firma",
+      "model_id": "gpt-5",
+      "protocol": "openai"
+    },
+    "run": {
+      "id": "<lauf-id>",
+      "profile": "rechnungspruefer",
+      "revision": 1
+    }
+  },
+  "headers": {
+    "X-Jnpt-Run-Id": "<lauf-id>",
+    "X-Jnpt-Run-Token": "<lauf-token>"
+  },
+  "tool": "run_agent"
+}

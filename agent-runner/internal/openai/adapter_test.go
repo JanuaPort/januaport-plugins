@@ -1,0 +1,101 @@
+package openai
+
+import (
+	"encoding/json"
+	"os"
+	"reflect"
+	"strings"
+	"testing"
+)
+
+func TestRequestAndGolden(t *testing.T) {
+	b, err := os.ReadFile("../../contract/golden/model_request_openai.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct{ Body json.RawMessage }
+	if err := json.Unmarshal(b, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	r := NewRequest("Prüfe Rechnungen.", "Prüfe die Rechnungen von heute.", []Tool{{Type: "function", Function: Definition{Name: "erp_list_things", Description: "Lists things.", Parameters: json.RawMessage(`{"type":"object"}`)}}}, 1024)
+	got, err := json.Marshal(r)
+	if err != nil || Validate(got) != nil {
+		t.Fatalf("request: %s %v", got, err)
+	}
+	var x, y any
+	_ = json.Unmarshal(got, &x)
+	_ = json.Unmarshal(fixture.Body, &y)
+	if !reflect.DeepEqual(x, y) {
+		t.Fatalf("golden: %s", got)
+	}
+	for _, key := range []string{"model", "stream", "tool_choice", "system"} {
+		if _, exists := x.(map[string]any)[key]; exists {
+			t.Fatalf("forbidden generated field: %s", key)
+		}
+	}
+}
+
+func TestResponseTable(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, reason, text string
+		calls                    int
+		bad                      bool
+	}{
+		{"text", `{"choices":[{"message":{"role":"assistant","content":"fertig"},"finish_reason":"stop"}]}`, "stop", "fertig", 0, false},
+		{"tool", `{"choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"a","type":"function","function":{"name":"erp_list_things","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}`, "tool_calls", "", 1, false},
+		{"multiple", `{"choices":[{"message":{"role":"assistant","content":"suche","tool_calls":[{"id":"a","type":"function","function":{"name":"erp_list_things","arguments":"{}"}},{"id":"b","type":"function","function":{"name":"erp_list_things","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}`, "tool_calls", "suche", 2, false},
+		{"invalid arguments retained for error reply", `{"choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"a","type":"function","function":{"name":"erp_list_things","arguments":"{"}}]},"finish_reason":"tool_calls"}]}`, "tool_calls", "", 1, false},
+		{"length", `{"choices":[{"message":{"role":"assistant","content":"halb"},"finish_reason":"length"}]}`, "length", "halb", 0, false},
+		{"empty choices", `{"choices":[]}`, "", "", 0, true},
+		{"bad content", `{"choices":[{"message":{"role":"assistant","content":{"url":"SECRET"}},"finish_reason":"stop"}]}`, "", "", 0, true},
+		{"missing id", `{"choices":[{"message":{"role":"assistant","tool_calls":[{"type":"function","function":{"name":"x","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}`, "", "", 0, true},
+		{"provider tool", `{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"a","type":"web_search","function":{"name":"x","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}`, "", "", 0, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, err := ParseResponse([]byte(tc.body))
+			if (err != nil) != tc.bad {
+				t.Fatalf("error: %v", err)
+			}
+			if tc.bad {
+				return
+			}
+			var text string
+			_ = json.Unmarshal(r.Message.Content, &text)
+			if r.FinishReason != tc.reason || text != tc.text || len(r.Message.ToolCalls) != tc.calls {
+				t.Fatalf("response: %+v", r)
+			}
+		})
+	}
+}
+
+func TestForbiddenRequests(t *testing.T) {
+	base := `{"messages":[{"role":"user","content":"x"}],"max_tokens":1}`
+	for _, extra := range []string{`"model":"secret"`, `"stream":false`, `"tool_choice":"required"`, `"tools":[{"type":"web_search"}]`, `"tools":[{"type":"function","function":{"name":"x","parameters":{},"url":"secret"}}]`, `"system":"x"`} {
+		t.Run(extra, func(t *testing.T) {
+			if Validate([]byte(strings.Replace(base, `"max_tokens":1`, `"max_tokens":1,`+extra, 1))) == nil {
+				t.Fatal("forbidden request accepted")
+			}
+		})
+	}
+	for _, msg := range []string{`{"role":"tool","content":"x"}`, `{"role":"tool","tool_call_id":"","content":"x"}`, `{"role":"user","content":{"url":"secret"}}`, `{"role":"admin","content":"x"}`, `{"role":"user","content":"x","url":"secret"}`} {
+		if Validate([]byte(`{"messages":[`+msg+`],"max_tokens":1}`)) == nil {
+			t.Fatalf("forbidden message accepted: %s", msg)
+		}
+	}
+}
+
+func TestToolResultTextProjection(t *testing.T) {
+	for _, raw := range []string{`{"content":[{"type":"text","text":"ok"}],"structuredContent":{"n":1}}`, `{"content":[{"type":"image","url":"SECRET"}]}`, `{"isError":true,"content":[{"type":"text","text":"Fehler"}]}`} {
+		m := ToolResult("a", json.RawMessage(raw))
+		b, _ := json.Marshal(Request{Messages: []Message{m}, MaxTokens: 1})
+		if Validate(b) != nil || m.Role != "tool" || m.ToolCallID != "a" || strings.Contains(string(b), "SECRET") {
+			t.Fatalf("tool projection: %s", b)
+		}
+		if strings.Contains(raw, `"n"`) && !strings.Contains(string(m.Content), `\"n\":1`) {
+			t.Fatal("structured result lost")
+		}
+		if strings.Contains(raw, "SECRET") && !strings.Contains(string(m.Content), Placeholder) {
+			t.Fatal("missing placeholder")
+		}
+	}
+}

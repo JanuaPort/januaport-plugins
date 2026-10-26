@@ -52,12 +52,12 @@ func equalJSON(t *testing.T, a, b []byte) {
 
 func TestCoreGoldenSHA256(t *testing.T) {
 	manifest := sha256.Sum256(golden(t, "SHA256SUMS"))
-	if hex.EncodeToString(manifest[:]) != "102cf8da1799928b02b38d24863fe14956eec56e1b5ff28e29ec0878d6a148bf" {
+	if hex.EncodeToString(manifest[:]) != "331229d8114067fd401808e7e338f6d0a13d6944927e292a6139a33cf459a5dd" {
 		t.Fatal("core manifest changed")
 	}
 	sums := strings.Fields(string(golden(t, "SHA256SUMS")))
-	if len(sums) != 14 {
-		t.Fatal("seven immutable fixtures required")
+	if len(sums) != 20 {
+		t.Fatal("seven original and three OpenAI fixtures required")
 	}
 	for i := 0; i < len(sums); i += 2 {
 		sum := sha256.Sum256(golden(t, strings.TrimPrefix(sums[i+1], "*")))
@@ -465,12 +465,14 @@ func TestRunnerAdvertisementAndHealth(t *testing.T) {
 		Result struct {
 			Tools []struct{ Name string }
 			Meta  map[string]struct {
-				MaxWallS int `json:"max_wall_s"`
+				MaxWallS  int      `json:"max_wall_s"`
+				Contract  int      `json:"contract"`
+				Protocols []string `json:"protocols"`
 			} `json:"_meta"`
 		}
 	}
 	_ = json.Unmarshal(w.Body.Bytes(), &rpc)
-	if len(rpc.Result.Tools) != 1 || rpc.Result.Tools[0].Name != "run_agent" || rpc.Result.Meta["januaport.ai/runner"].MaxWallS != 300 {
+	if len(rpc.Result.Tools) != 1 || rpc.Result.Tools[0].Name != "run_agent" || rpc.Result.Meta["januaport.ai/runner"].MaxWallS != 300 || rpc.Result.Meta["januaport.ai/runner"].Contract != 1 || !reflect.DeepEqual(rpc.Result.Meta["januaport.ai/runner"].Protocols, []string{"anthropic", "openai"}) {
 		t.Fatal(w.Body.String())
 	}
 	_ = os.Remove(key)
