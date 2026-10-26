@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.0 — Unveröffentlicht
+
+JanuaPort/januaport#1193 (Epic #1191).
+
+- OpenAI Chat Completions neben Anthropic Messages: System-Nachricht,
+  Funktionswerkzeuge, mehrere korrelierte Werkzeugergebnisse, angehängte Historie.
+- Optionales `model.protocol`; fehlend bleibt Anthropic. Unbekannte oder
+  ungültige Werte scheitern vor dem Lauf mit festem Fehler ohne Echo.
+- `tools/list` ergänzt `protocols: ["anthropic","openai"]`; Contract bleibt 1,
+  MCP-Implementierungsversion 0.2.0.
+- `stop` endet erfolgreich, `length` als `limit/tokens_out`; ungültige
+  JSON-Argumente erhalten ein lokales Werkzeug-Fehlerergebnis.
+- Drei OpenAI-Goldens und erweitertes SHA256SUMS; alte Goldens byte-identisch.
+- Adaptertabellen, Fake-Kern-Schleife mit zwei Werkzeugaufrufen, Negativ-
+  und Mutationsproben; keine Live-Anbieterabnahme.
+
+OpenAI-Format braucht JanuaPort mit `model.protocol` (Version folgt); ein älterer Kern schickt kein Protokoll, dann gilt Anthropic.
+
 ## 0.1.2 — 2026-10-23
 
 **Go 1.26.10.** JanuaPort/januaport#1099.

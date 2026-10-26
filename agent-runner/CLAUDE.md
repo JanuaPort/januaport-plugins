@@ -4,8 +4,11 @@
 
 Beisteller für die Schleife Modell ↔ Werkzeuge, JanuaPort/januaport#1099 B1,
 Apache 2.0 wie das Repository. Ein statisches Go-Binary, ein Dienst.
-Anthropic Messages ist der implementierte Adapter. OpenAI gehört zu B2;
-Zeitpläne/Ticker zu Release B. Betreiberanleitung: `README.md`.
+Anthropic Messages und OpenAI Chat Completions sind die implementierten
+Adapter ab 0.2.0 (unveröffentlicht), JanuaPort/januaport#1193, Epic #1191.
+Zeitpläne/Ticker gehören zu Release B. Betreiberanleitung: `README.md`.
+
+OpenAI-Format braucht JanuaPort mit `model.protocol` (Version folgt); ein älterer Kern schickt kein Protokoll, dann gilt Anthropic.
 
 ## Aufbau
 
@@ -16,24 +19,31 @@ Zeitpläne/Ticker zu Release B. Betreiberanleitung: `README.md`.
 | `internal/runner/server.go` | MCP, runtime-key, genau `run_agent`, `/healthz` |
 | `internal/runner/loop.go` | Historie, Grenzen, MCP-Sitzung und Werkzeugfreigabe |
 | `internal/runner/gateway.go` | Modell-Durchgang, Lauf-Token, beschränkter HTTP-Transport |
+| `internal/runner/conversation.go` | Protokollwahl, Adapter und angehängte Historie |
+| `internal/openai` | Chat-Completions-Projektion, Prüfung und Werkzeugtexte |
 | `internal/anthropic` | Messages-Projektion, Prüfung, Cache, Werkzeugergebnisse |
 | `internal/runlog` | Inhaltfreies JSON-Protokoll auf stdout |
 | `internal/hygiene` | Strenge Compose-Prüfung und Dockerfile-Gegenproben |
 | `contract/golden` | Byte-identische Referenzdateien des Kerns, SHA256SUMS |
 | `contract/proposed` | Neue Ende-Antworten und Lauf-Protokoll zur Kernübernahme |
-| `probe/mutations.py` | Reproduzierbare Mutationen mit Wiederherstellung |
+| `probe/mutations.py`, `probe/openai_mutations.py` | Reproduzierbare Mutationen mit Wiederherstellung |
 | `internal/hygiene/release_test.go` | Release-Auslöser, Rechte, SHA-Pins und Digest-Bindung |
 
 ## Draht-Vertrag
 
-Maßgeblich sind die sieben Kern-Dateien unter `contract/golden/`; sie werden
-nicht regeneriert. Der Test pinnt zusätzlich den Hash ihrer SHA256SUMS.
-Neue Beispiele gehören nach `contract/proposed/`, nicht zu den Kern-Goldens.
+Die sieben ursprünglichen Kern-Dateien unter `contract/golden/` bleiben
+byte-identisch. #1193 ergänzt dort drei OpenAI-Beispiele und erweitert
+SHA256SUMS; der Test pinnt deren neuen Hash. Ende-Vorschläge bleiben in
+`contract/proposed/`.
 Details: `contract/README.md`.
 
 Weg A: `POST /mcp`, Bearer runtime-key. `tools/call run_agent` trägt
 `X-Jnpt-Run-Token` und `X-Jnpt-Run-Id`; die ID stimmt mit `arguments.run.id`
-überein. Der Token steht nicht in arguments. MCP-SDK 1.7.0, zustandslos,
+überein. Der Token steht nicht in arguments. `model.protocol` ist optional: fehlt es,
+gilt Anthropic; angegeben sind nur `anthropic` und `openai` zulässig. Leere,
+null und unbekannte Werte scheitern vor dem Lauf mit festem Fehler.
+`tools/list` meldet Contract 1, max_wall_s und
+`protocols: ["anthropic","openai"]`. MCP-SDK 1.7.0, zustandslos,
 JSON-Antworten, `PropagateRequestCancellation: true`. Aktueller Kern und Tests
 sprechen MCP 2026-07-28 samt den SDK-Metadaten und Mcp-Method/Mcp-Name.
 
@@ -49,10 +59,12 @@ Lauf-Token an derselben Betreiberadresse `JNPT_GATEWAY_URL`.
 | R13: runtime-key je Anfrage frisch aus Ordner-Mount; fehlend/falsch/mehrfach → 401; Rotation wirkt unmittelbar | `TestAuthHeadersAndPathsAtAdapter`, `TestConfigAndKeyFailClosed` |
 | Anfrage hat Contract 1, feste Gateway-Pfade, gültige Grenzen und passende eindeutige Header; unbekannte Argumente scheitern | `TestAuthHeadersAndPathsAtAdapter`, `TestMalformedArgumentsAtAdapter` |
 | Modell nur über Kern; HTTP-Umleitungen und Umgebungsproxy gesperrt | `TestNoRedirectsOrProxyAtEitherGateway` |
-| Messages ohne model/stream, keine erzwungene Werkzeugwahl, nur erlaubte Nachrichten/Blöcke, Medien base64, keine Anbieter-Werkzeuge | `TestForbiddenModelPayloads`, `TestModelWireGuards`, `TestUnsafeResponseAndUnknownToolAtAdapter` |
+| Anthropic Messages ohne model/stream, keine erzwungene Werkzeugwahl, nur erlaubte Nachrichten/Blöcke, Medien base64, keine Anbieter-Werkzeuge | `TestForbiddenModelPayloads`, `TestModelWireGuards`, `TestUnsafeResponseAndUnknownToolAtAdapter` |
+| OpenAI ohne model/stream, System als Nachricht, nur Funktionswerkzeuge und Text, tool-Ergebnisse mit tool_call_id; ungültige arguments werden lokaler Fehlertext | `TestRequestAndGolden`, `TestForbiddenRequests`, `TestOpenAIOutgoingGuardsAtAdapter`, `TestOpenAILoopTable` |
+| Fehlendes Protokoll erhält byte-identische Anthropic-Anfrage; unbekannte/ungültige Werte scheitern vor dem Lauf ohne Echo | `TestLegacyAnthropicRequestBytes`, `TestRunRequestGoldenRoundTrip`, `TestProtocolDefaultAndUnknownAtAdapter`, `TestInvalidProtocolValuesAtAdapter` |
 | tool_use darf `caller` nur als `{"type":"direct"}` tragen (Anthropic seit 10/2026); jeder andere caller (Code-Ausführung) oder jedes weitere Feld scheitert; der Block bleibt unverändert in der Historie | `TestToolUseCaller`, `TestLoopToolUseCaller`, `TestLoopProgrammaticCallerRejected` |
 | Thinking und redacted_thinking bleiben in der angehängten Historie erhalten | `TestLoopGoldenThinkingAndLog`, `TestThinkingAndCache` |
-| Bilder nur base64 mit image/png, image/jpeg, image/gif oder image/webp; andere MCP-Bilder/URL-Bilder werden fester Platzhalter | `TestImageMediaTypesAtAdapter`, `TestURLImageToolResultAtAdapter`, `TestToolResultSanitization` |
+| Anthropic-Bilder nur base64 mit image/png, image/jpeg, image/gif oder image/webp; andere MCP-Bilder/URL-Bilder werden fester Platzhalter. OpenAI projiziert alle Nichttext-Blöcke zum Platzhalter | `TestImageMediaTypesAtAdapter`, `TestURLImageToolResultAtAdapter`, `TestToolResultSanitization`, `TestToolResultTextProjection` |
 | error/rejected nennt unabhängig vom Feld die abgewiesene Läuferanfrage | `TestRejectedMessageAtAdapter`, `TestAllResultGoldens` |
 | Antworten auf beiden Gateway-Pfaden höchstens 4 MiB, ohne Fristablauf abgewiesen | `TestResponseBody4MiBLimitAtAdapter` |
 | AG8: Fehlertext und unbekannte Fehlerdetails gelangen nicht in Antwort/Protokoll | `TestGatewayErrorsFixed`, `TestLogErrorContentAbsent`, `TestRevocationAtBothGateways` |
@@ -69,14 +81,14 @@ Lauf-Token an derselben Betreiberadresse `JNPT_GATEWAY_URL`.
   script-runner, kein externes Ausgangsnetz.
 - Der script-runner enthält Python/Git; dieses Image nutzt distroless/static.
   Der Healthcheck wird vom eigenen Binary ausgeführt.
-- Cache-Breakpoint am letzten Werkzeug (deckt die Werkzeugliste ab) und am
+- Nur Anthropic: Cache-Breakpoint am letzten Werkzeug (deckt die Werkzeugliste ab) und am
   System; damit bleiben auch große Werkzeuglisten unter vier Breakpoints.
 - `max_tokens = min(1024, limits.tokens_out)` je Modellaufruf. Die tatsächlichen
   Token-Summen prüft ausschließlich der Kern, auch Cache-Tokens.
 - 4 MiB je eingehender HTTP-Anfrage und je HTTP-Antwort auf beiden
   Gateway-Pfaden (Bearer-Transport), 1024 Werkzeugdefinitionen und
   höchstens 1024 unterschiedliche Folgeseiten sind Protokollschutz.
-- Die Erfolgsausgabe besteht aus finalen Textblöcken; Thinking steht nur in
+- Die Erfolgsausgabe besteht aus finalem Text; Anthropic-Thinking steht nur in
   der Modellhistorie. Fehler-Antworten verwenden die feste Satzliste.
 - Bei abgerissenem Relay kann die HTTP-Endantwort den Aufrufer nicht mehr
   erreichen. Der Lauf endet trotzdem, das Protokoll meldet `cancelled`.
@@ -122,5 +134,6 @@ docker build -t agent-runner:test .
 ```
 
 Mutationen nur bei exklusivem Zugriff auf diesen Worktree ausführen;
-`probe/mutations.py` ändert Dateien vorübergehend und setzt sie byte-genau
+`probe/mutations.py` und `probe/openai_mutations.py` ändern Dateien
+vorübergehend und setzen sie byte-genau
 zurück. Der Abschlussbericht hält Ergebnisse und verbleibende Grenzen fest.

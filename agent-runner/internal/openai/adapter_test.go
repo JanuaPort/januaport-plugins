@@ -50,6 +50,7 @@ func TestResponseTable(t *testing.T) {
 		{"bad content", `{"choices":[{"message":{"role":"assistant","content":{"url":"SECRET"}},"finish_reason":"stop"}]}`, "", "", 0, true},
 		{"missing id", `{"choices":[{"message":{"role":"assistant","tool_calls":[{"type":"function","function":{"name":"x","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}`, "", "", 0, true},
 		{"provider tool", `{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"a","type":"web_search","function":{"name":"x","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}`, "", "", 0, true},
+		{"first choice only", `{"choices":[{"message":{"role":"assistant","content":"erste","refusal":null},"finish_reason":"stop"},{"message":{"role":"assistant","content":"zweite"},"finish_reason":"length"}]}`, "stop", "erste", 0, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r, err := ParseResponse([]byte(tc.body))
@@ -80,6 +81,37 @@ func TestForbiddenRequests(t *testing.T) {
 	for _, msg := range []string{`{"role":"tool","content":"x"}`, `{"role":"tool","tool_call_id":"","content":"x"}`, `{"role":"user","content":{"url":"secret"}}`, `{"role":"admin","content":"x"}`, `{"role":"user","content":"x","url":"secret"}`} {
 		if Validate([]byte(`{"messages":[`+msg+`],"max_tokens":1}`)) == nil {
 			t.Fatalf("forbidden message accepted: %s", msg)
+		}
+	}
+	for _, raw := range []string{
+		`null`, `[]`, `{"messages":[]}`, `{"messages":null}`,
+		`{"messages":[{"role":"user","content":"x"}],"tools":null}`,
+		`{"messages":[{"role":"user","content":"x"}],"tools":[{"type":"function","function":{"name":"x","parameters":null}}]}`,
+	} {
+		if Validate([]byte(raw)) == nil {
+			t.Fatalf("invalid shape accepted: %s", raw)
+		}
+	}
+	for _, call := range []string{
+		`null`, `[{"id":"a","type":"function","function":{"name":"x","arguments":null}}]`,
+		`[{"id":"a","type":"function","function":{"name":"x","arguments":{}}}]`,
+		`[{"id":"a","type":"function","function":{"name":"x","arguments":"{}","url":"SECRET"}}]`,
+		`[{"id":"a","type":"function","function":{"name":"","arguments":"{}"}}]`,
+		`[{"id":"a","type":"function","function":{"name":"x","arguments":"{}"},"url":"SECRET"}]`,
+	} {
+		if Validate([]byte(`{"messages":[{"role":"assistant","tool_calls":`+call+`}]}`)) == nil {
+			t.Fatalf("invalid call accepted: %s", call)
+		}
+	}
+}
+
+func TestAllowedRequestVocabulary(t *testing.T) {
+	for _, role := range []string{"system", "developer", "user", "assistant", "tool"} {
+		for _, choice := range []string{"auto", "none"} {
+			raw := `{"messages":[{"role":"` + role + `","name":"x","content":"x","tool_call_id":"a"}],"max_completion_tokens":1,"temperature":0.2,"top_p":1,"stop":["END"],"tool_choice":"` + choice + `"}`
+			if Validate([]byte(raw)) != nil {
+				t.Fatalf("allowed request rejected: %s", raw)
+			}
 		}
 	}
 }

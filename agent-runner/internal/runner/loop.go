@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -36,7 +35,7 @@ func (r *Runner) run(parent context.Context, a Arguments, token string) (out *mc
 	defer func() { record.DurationMS = time.Since(start).Milliseconds(); r.log.Write(record) }()
 	client := r.client(token)
 	client.Transport = bearer{token: token, base: r.transport, revoked: &revoked, scope: ctx}
-	mc := mcp.NewClient(&mcp.Implementation{Name: "agent-runner", Version: "0.1.2"}, nil)
+	mc := mcp.NewClient(&mcp.Implementation{Name: "agent-runner", Version: "0.2.0"}, nil)
 	session, e := mc.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: r.cfg.GatewayURL + MCPPath, HTTPClient: client, DisableStandaloneSSE: true}, nil)
 	if e != nil {
 		return finish("error", "gateway", "")
@@ -73,51 +72,28 @@ func (r *Runner) run(parent context.Context, a Arguments, token string) (out *mc
 		}
 		seen[cursor] = true
 	}
-	request := anthropic.NewRequest(a.Instructions, a.Input, tools, min(1024, a.Limits.TokensOut))
+	history := newConversation(a, tools)
 	for record.Steps < a.Limits.Steps {
 		if ctx.Err() != nil {
 			return finish("cancelled", "", "")
 		}
 		record.Steps++
-		response, end, detail := r.model(ctx, client, request)
+		response, end, detail := history.next(ctx, r, client)
 		if end != "" {
 			return finish(end, detail, "")
 		}
-		// Keep the complete assistant content, including signed opaque thinking.
-		request.Messages = append(request.Messages, anthropic.Message{Role: "assistant", Content: response.Content})
-		var blocks []struct {
-			Type  string          `json:"type"`
-			Text  string          `json:"text"`
-			ID    string          `json:"id"`
-			Name  string          `json:"name"`
-			Input json.RawMessage `json:"input"`
+		if response.Stop == "end_turn" && len(response.Calls) == 0 {
+			return finish("ok", "", response.Text)
 		}
-		if json.Unmarshal(response.Content, &blocks) != nil {
-			return finish("error", "gateway", "")
-		}
-		var text strings.Builder
-		var uses []int
-		for i, b := range blocks {
-			if b.Type == "text" {
-				text.WriteString(b.Text)
-			}
-			if b.Type == "tool_use" {
-				uses = append(uses, i)
-			}
-		}
-		if response.StopReason == "end_turn" && len(uses) == 0 {
-			return finish("ok", "", text.String())
-		}
-		if response.StopReason == "max_tokens" {
+		if response.Stop == "max_tokens" {
 			return finish("limit", "tokens_out", "")
 		}
-		if response.StopReason != "tool_use" || len(uses) == 0 {
+		if response.Stop != "tool_use" || len(response.Calls) == 0 {
 			return finish("error", "gateway", "")
 		}
-		results := []json.RawMessage{}
+		results := []toolResult{}
 		ids := map[string]bool{}
-		for _, i := range uses {
-			b := blocks[i]
+		for _, b := range response.Calls {
 			if !allowed[b.Name] || ids[b.ID] {
 				return finish("error", "rejected", "")
 			}
@@ -130,18 +106,25 @@ func (r *Runner) run(parent context.Context, a Arguments, token string) (out *mc
 			}
 			record.ToolCalls++
 			record.Tools = append(record.Tools, b.Name)
-			res, e := session.CallTool(ctx, &mcp.CallToolParams{Name: b.Name, Arguments: b.Input})
-			if e != nil {
-				return finish("error", "gateway", "")
+			var input map[string]json.RawMessage
+			var raw json.RawMessage
+			if json.Unmarshal(b.Input, &input) != nil || input == nil {
+				// OpenAI arguments are a JSON string. Give the model a fixed
+				// MCP-style error result instead of sending invalid tool input.
+				raw = json.RawMessage(`{"isError":true,"content":[{"type":"text","text":"Werkzeug-Eingabe ist kein gültiges JSON-Objekt."}]}`)
+			} else {
+				res, e := session.CallTool(ctx, &mcp.CallToolParams{Name: b.Name, Arguments: b.Input})
+				if e != nil {
+					return finish("error", "gateway", "")
+				}
+				raw, e = json.Marshal(res)
+				if e != nil {
+					return finish("error", "gateway", "")
+				}
 			}
-			raw, e := json.Marshal(res)
-			if e != nil {
-				return finish("error", "gateway", "")
-			}
-			results = append(results, anthropic.ToolResult(b.ID, raw))
+			results = append(results, toolResult{ID: b.ID, Raw: raw})
 		}
-		raw, _ := json.Marshal(results)
-		request.Messages = append(request.Messages, anthropic.Message{Role: "user", Content: raw})
+		history.appendResults(results)
 	}
 	return finish("limit", "steps", "")
 }
