@@ -106,13 +106,33 @@ func TestForbiddenRequests(t *testing.T) {
 }
 
 func TestAllowedRequestVocabulary(t *testing.T) {
-	for _, role := range []string{"system", "developer", "user", "assistant", "tool"} {
-		for _, choice := range []string{"auto", "none"} {
-			raw := `{"messages":[{"role":"` + role + `","name":"x","content":"x","tool_call_id":"a"}],"max_completion_tokens":1,"temperature":0.2,"top_p":1,"stop":["END"],"tool_choice":"` + choice + `"}`
-			if Validate([]byte(raw)) != nil {
-				t.Fatalf("allowed request rejected: %s", raw)
-			}
+	for _, role := range []string{"system", "user", "assistant", "tool"} {
+		raw := `{"messages":[{"role":"` + role + `","content":"x","tool_call_id":"a"}],"max_tokens":1}`
+		if Validate([]byte(raw)) != nil {
+			t.Fatalf("allowed request rejected: %s", raw)
 		}
+	}
+}
+
+func TestRunnerVocabularyRejected(t *testing.T) {
+	for _, tc := range []struct{ name, fields string }{
+		{"developer", `"messages":[{"role":"developer","content":"x"}]`},
+		{"image parts", `"messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,YQ=="}}]}]`},
+		{"text parts", `"messages":[{"role":"user","content":[{"type":"text","text":"x"}]}]`},
+		{"provider tool", `"messages":[{"role":"user","content":"x"}],"tools":[{"type":"web_search"}]`},
+		{"message name", `"messages":[{"role":"user","content":"x","name":"x"}]`},
+		{"max completion tokens", `"messages":[{"role":"user","content":"x"}],"max_completion_tokens":1`},
+		{"temperature", `"messages":[{"role":"user","content":"x"}],"temperature":0.2`},
+		{"top p", `"messages":[{"role":"user","content":"x"}],"top_p":1`},
+		{"stop", `"messages":[{"role":"user","content":"x"}],"stop":["END"]`},
+		{"choice auto", `"messages":[{"role":"user","content":"x"}],"tool_choice":"auto"`},
+		{"choice none", `"messages":[{"role":"user","content":"x"}],"tool_choice":"none"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if Validate([]byte(`{"max_tokens":1,`+tc.fields+`}`)) == nil {
+				t.Fatal("runner accepted vocabulary it does not generate")
+			}
+		})
 	}
 }
 

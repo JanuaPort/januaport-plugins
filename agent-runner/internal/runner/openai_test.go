@@ -207,6 +207,10 @@ func TestInvalidProtocolValuesAtAdapter(t *testing.T) {
 
 func TestOpenAIOutgoingGuardsAtAdapter(t *testing.T) {
 	for _, payload := range []string{
+		`{"messages":[{"role":"developer","content":"x"}],"max_tokens":1}`,
+		`{"messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,YQ=="}}]}],"max_tokens":1}`,
+		`{"messages":[{"role":"user","content":"x","name":"x"}],"max_tokens":1}`,
+		`{"messages":[{"role":"user","content":"x"}],"max_completion_tokens":1}`,
 		`{"messages":[{"role":"user","content":"x"}],"model":"SECRET","max_tokens":1}`,
 		`{"messages":[{"role":"user","content":"x"}],"stream":false,"max_tokens":1}`,
 		`{"messages":[{"role":"tool","content":"x"}],"max_tokens":1}`,
@@ -302,6 +306,44 @@ func TestOpenAIToolAuthorizationAndLimits(t *testing.T) {
 			end(t, out, tc.want, tc.wantSteps)
 			if core.calls != tc.wantCalls || !strings.Contains(string(out), `"detail":"`+tc.detail+`"`) {
 				t.Fatal(string(out))
+			}
+		})
+	}
+}
+
+func TestOpenAIFinishDetailsAtAdapter(t *testing.T) {
+	for _, tc := range []struct{ reason, end, detail string }{
+		{"content_filter", "limit", "content_filter"},
+		{"length", "limit", "tokens_out"},
+		{"UNKNOWN", "error", "gateway"},
+	} {
+		t.Run(tc.reason, func(t *testing.T) {
+			core := &fakeCore{model: func(w http.ResponseWriter, r *http.Request, n int) {
+				// Even a filtered answer containing tool calls must not execute them.
+				openAIReply(w, `{"role":"assistant","content":"`+secret+`","tool_calls":[`+openAIUse("a", `{"q":"`+secret+`"}`)+`]}`, tc.reason)
+			}}
+			r, _, logs := setup(t, core)
+			_, out := invoke(t, r, context.Background(), requestFixture(t), protocolEdit("openai"))
+			end(t, out, tc.end, 1)
+			var result struct {
+				Meta    map[string]struct{ Detail string } `json:"_meta"`
+				IsError bool                               `json:"isError"`
+			}
+			if err := json.Unmarshal(out, &result); err != nil {
+				t.Fatal(err)
+			}
+			var record struct {
+				End, Detail      string
+				Steps, ToolCalls int
+			}
+			if err := json.Unmarshal(logs.Bytes(), &record); err != nil {
+				t.Fatal(err)
+			}
+			if result.Meta["januaport.ai/run"].Detail != tc.detail || !result.IsError || record.End != tc.end || record.Detail != tc.detail || record.Steps != 1 || record.ToolCalls != 0 || core.calls != 0 || len(core.requests) != 1 {
+				t.Fatalf("wrong finish detail: result=%s log=%s", out, logs.String())
+			}
+			if strings.Contains(string(out)+logs.String(), secret) || strings.Contains(logs.String(), "UNKNOWN") {
+				t.Fatal("provider content leaked")
 			}
 		})
 	}
