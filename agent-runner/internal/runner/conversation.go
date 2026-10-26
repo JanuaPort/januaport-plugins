@@ -96,6 +96,8 @@ func (c *openAIConversation) next(ctx context.Context, r *Runner, client *http.C
 		out.Stop = "end_turn"
 	case "length":
 		out.Stop = "max_tokens"
+	case "content_filter":
+		return turn{}, "limit", "content_filter"
 	case "tool_calls":
 		out.Stop = "tool_use"
 	}

@@ -60,7 +60,7 @@ Lauf-Token an derselben Betreiberadresse `JNPT_GATEWAY_URL`.
 | Anfrage hat Contract 1, feste Gateway-Pfade, gültige Grenzen und passende eindeutige Header; unbekannte Argumente scheitern | `TestAuthHeadersAndPathsAtAdapter`, `TestMalformedArgumentsAtAdapter` |
 | Modell nur über Kern; HTTP-Umleitungen und Umgebungsproxy gesperrt | `TestNoRedirectsOrProxyAtEitherGateway` |
 | Anthropic Messages ohne model/stream, keine erzwungene Werkzeugwahl, nur erlaubte Nachrichten/Blöcke, Medien base64, keine Anbieter-Werkzeuge | `TestForbiddenModelPayloads`, `TestModelWireGuards`, `TestUnsafeResponseAndUnknownToolAtAdapter` |
-| OpenAI ohne model/stream, System als Nachricht, nur Funktionswerkzeuge und Text, tool-Ergebnisse mit tool_call_id; ungültige arguments werden lokaler Fehlertext | `TestRequestAndGolden`, `TestForbiddenRequests`, `TestOpenAIOutgoingGuardsAtAdapter`, `TestOpenAILoopTable` |
+| OpenAI nur messages/tools/max_tokens, Rollen system/user/assistant/tool, keine developer-Rolle, keine benannten Nachrichten oder Inhaltsteile; nur Funktionswerkzeuge und Text, tool-Ergebnisse mit tool_call_id; ungültige arguments werden lokaler Fehlertext | `TestRequestAndGolden`, `TestForbiddenRequests`, `TestRunnerVocabularyRejected`, `TestOpenAIOutgoingGuardsAtAdapter`, `TestOpenAILoopTable` |
 | Fehlendes Protokoll erhält byte-identische Anthropic-Anfrage; unbekannte/ungültige Werte scheitern vor dem Lauf ohne Echo | `TestLegacyAnthropicRequestBytes`, `TestRunRequestGoldenRoundTrip`, `TestProtocolDefaultAndUnknownAtAdapter`, `TestInvalidProtocolValuesAtAdapter` |
 | tool_use darf `caller` nur als `{"type":"direct"}` tragen (Anthropic seit 10/2026); jeder andere caller (Code-Ausführung) oder jedes weitere Feld scheitert; der Block bleibt unverändert in der Historie | `TestToolUseCaller`, `TestLoopToolUseCaller`, `TestLoopProgrammaticCallerRejected` |
 | Thinking und redacted_thinking bleiben in der angehängten Historie erhalten | `TestLoopGoldenThinkingAndLog`, `TestThinkingAndCache` |
@@ -70,7 +70,8 @@ Lauf-Token an derselben Betreiberadresse `JNPT_GATEWAY_URL`.
 | AG8: Fehlertext und unbekannte Fehlerdetails gelangen nicht in Antwort/Protokoll | `TestGatewayErrorsFixed`, `TestLogErrorContentAbsent`, `TestRevocationAtBothGateways` |
 | Werkzeugaufrufe nur aus tools/list; eindeutige IDs, gültige Namen, begrenzte Liste/Pagination | `TestUnsafeResponseAndUnknownToolAtAdapter`, `TestToolListAndMultiToolGuards`, `TestToolListSizeLimit` |
 | Schritte/Aufrufe lokal begrenzt, Wandzeit = min(Anfrage, Meldung), Standard 300 s; Context-Abbruch beendet laufendes HTTP samt SDK-Cleanup, cancel vor Close | `TestLimitsAtAdapter`, `TestCancellationAndWallAtAdapter`, `TestAdvertisedWallCapEnforcedAtAdapter`, `TestCleanupWithinWallAtAdapter`, `TestCancelBeforeSessionCloseAtAdapter` |
-| Lauf-Protokoll enthält nur Schritte, Anzahl und Namen der Werkzeuge, Ende-Klasse, Dauer | `TestLoopGoldenThinkingAndLog` gegen `run_log_ok.json` |
+| Lauf-Protokoll enthält nur Schritte, Anzahl und Namen der Werkzeuge, Ende-Klasse, optional festes Ende-Detail, Dauer | `TestLoopGoldenThinkingAndLog` gegen `run_log_ok.json`, `TestOpenAIFinishDetailsAtAdapter` |
+| OpenAI content_filter endet limit/content_filter, unterscheidbar von length (limit/tokens_out) und error; keine Ausgabe gefilterter Inhalte und keine Werkzeugausführung | `TestOpenAIFinishDetailsAtAdapter` |
 | #1069: genau internes jnpt_plugins, kein Host-Port, kein zusätzliches Ausgangsnetz | `TestCompose`, `TestComposeForbiddenPaths` |
 | Distroless, statisch, UID 65532, read-only, cap_drop ALL, no-new-privileges, nur Schlüsselordner ro | `TestDockerNonRootStatic`, `TestComposeForbiddenPaths` |
 

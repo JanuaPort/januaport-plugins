@@ -6,6 +6,11 @@ JanuaPort/januaport#1193 (Epic #1191).
 
 - OpenAI Chat Completions neben Anthropic Messages: System-Nachricht,
   Funktionswerkzeuge, mehrere korrelierte Werkzeugergebnisse, angehängte Historie.
+- SEC-R4 H1: eigene OpenAI-Prüfung auf erzeugte Felder und Rollen eingeengt;
+  keine developer-Rolle, benannten Nachrichten oder Inhaltsteile, nur Funktionswerkzeuge.
+- SEC-R4 H2: `content_filter` endet mit bestehender Klasse `limit` und eigenem
+  Detail `content_filter`; das Lauf-Log trägt optional das feste Ende-Detail.
+  Der aktuelle Kern filtert dieses neue Detail bei der Übernahme noch heraus.
 - Optionales `model.protocol`; fehlend bleibt Anthropic. Unbekannte oder
   ungültige Werte scheitern vor dem Lauf mit festem Fehler ohne Echo.
 - `tools/list` ergänzt `protocols: ["anthropic","openai"]`; Contract bleibt 1,

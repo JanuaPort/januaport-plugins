@@ -82,10 +82,16 @@ Der OpenAI-Pfad übergibt Werkzeugtext und strukturierte Ergebnisse als Text;
 andere Inhaltsblöcke werden ebenfalls zum Platzhalter. Werkzeugergebnisse
 stehen dort als `role: tool` mit `tool_call_id` in der Historie. Ungültige
 JSON-Argumente erhalten lokal einen festen Fehlertext als Werkzeugergebnis.
-`finish_reason: stop` beendet erfolgreich, `length` ergibt `limit/tokens_out`.
+Die eigene OpenAI-Prüfung erlaubt nur `messages`, `tools`, `max_tokens`,
+die Rollen `system`, `user`, `assistant`, `tool` und Funktionswerkzeuge.
+`developer`, benannte Nachrichten und Inhaltsteile (auch Bilder) werden abgewiesen.
+`finish_reason: stop` beendet erfolgreich, `length` ergibt `limit/tokens_out`,
+`content_filter` ergibt `limit/content_filter`. Gefilterter Text und etwaige
+Werkzeugaufrufe werden dabei nicht ausgegeben bzw. ausgeführt.
 
 Eine JSON-Zeile je Lauf auf stdout: `steps`, `tool_calls`, `tools`, `end`,
-`duration_ms`. Darin stehen **keine Inhalte**: keine Eingabe, Anweisungen,
+`duration_ms` und optional das feste Ende-`detail` (auch `content_filter`).
+Darin stehen **keine Inhalte**: keine Eingabe, Anweisungen,
 Modellantworten, Werkzeugargumente/-ergebnisse oder Token. Werkzeugnamen
 sind Teil dieses Betriebsprotokolls. Ende-Klassen: `ok`, `limit`, `cancelled`,
 `revoked`, `error`. Fehler liefern feste Sätze; Text des Durchgangs wird

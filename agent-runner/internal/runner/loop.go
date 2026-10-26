@@ -30,6 +30,7 @@ func (r *Runner) run(parent context.Context, a Arguments, token string) (out *mc
 			end, detail, text = "cancelled", "", ""
 		}
 		record.End = end
+		record.Detail = detail
 		return result(end, detail, text, record.Steps)
 	}
 	defer func() { record.DurationMS = time.Since(start).Milliseconds(); r.log.Write(record) }()

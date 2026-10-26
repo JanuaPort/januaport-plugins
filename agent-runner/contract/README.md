@@ -80,7 +80,10 @@ Die Kern-Allowlist lässt außerdem `max_completion_tokens`, `temperature`,
 `top_p`, `stop` sowie `tool_choice: auto|none` zu
 (`internal/modelgate/request.go`, `content.go`). Rollen dort:
 system/developer/user/assistant/tool; Nachrichtenfelder:
-role/content/name/tool_calls/tool_call_id.
+role/content/name/tool_calls/tool_call_id. Die eigene Läuferprüfung ist enger:
+nur `messages`, `tools`, `max_tokens`; nur Rollen system/user/assistant/tool,
+Nachrichtenfelder role/content/tool_calls/tool_call_id und Text statt Inhaltsteilen.
+`developer`, Bild-/Textteile und andere zusätzliche Kern-Felder werden abgewiesen.
 
 `model_response_openai_ok.json` zeigt den unveränderten Gateway-Umschlag:
 `response.choices[0].message`, `finish_reason` am ersten Choice. Der Läufer
@@ -102,7 +105,13 @@ bereits beim Lesen der Modellantwort ab.
 `stop` ohne Werkzeugaufrufe beendet mit `ok`; `tool_calls` führt die
 aufgelisteten Werkzeuge aus; `length` ergibt `limit/tokens_out`. Leere
 `choices`, unbekannte Stop-Gründe und unzulässige Nachrichten ergeben
-`error/gateway`. Werkzeugfreigabe, ID-Eindeutigkeit, Grenzen, Fehlerklassen
+`error/gateway`. `content_filter` nutzt die bestehende Ende-Klasse `limit`
+mit dem Detail `content_filter` in `_meta["januaport.ai/run"]` und im Lauf-Log;
+Text und Werkzeugaufrufe einer solchen Antwort werden verworfen. Contract 1
+und die Ende-Klassen bleiben unverändert. Der aktuelle Kern übernimmt nur
+seine bekannten Grenzdetails; `content_filter` bleibt daher im Runner-Ergebnis
+und Runner-Log unterscheidbar, wird vom Kern-Audit noch nicht übernommen.
+Werkzeugfreigabe, ID-Eindeutigkeit, Grenzen, Fehlerklassen
 und Lauf-Protokoll sind für beide Adapter dieselben.
 Der Kern liest Nutzung aus `response.usage.prompt_tokens` und
 `completion_tokens` der Anbieterantwort und gibt sie im äußeren `usage`
@@ -143,6 +152,10 @@ Beide ausgehenden HTTP-Pfade begrenzen Antwortkörper im Bearer-Transport auf
 4 MiB. Diese Sperre gilt beim Lesen und benötigt keinen Fristablauf. Vor
 `session.Close()` wird der Lauf-Kontext abgebrochen, auch nach erfolgreichem
 Lauf; dadurch endet das vom SDK abgekoppelte Cleanup innerhalb des Laufs.
+
+Das Lauf-Log enthält zusätzlich optional `detail`: ausschließlich das feste,
+bereits klassifizierte Ende-Detail, keine Anbietertexte oder unbekannten Werte.
+Bei Erfolg fehlt das Feld; `run_log_ok.json` bleibt byte-identisch.
 
 Die sechs Ende-Beispiele sind Vorschläge für den Kern, keine nachträgliche
 Änderung seines gelieferten Vertrags. Eine Live-Abnahme steht aus.

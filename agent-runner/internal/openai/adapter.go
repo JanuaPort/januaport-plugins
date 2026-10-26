@@ -78,10 +78,7 @@ func str(raw json.RawMessage) string { var s string; _ = json.Unmarshal(raw, &s)
 // The runner emits text only; the core's richer image vocabulary is unnecessary.
 func Validate(raw []byte) error {
 	m, ok := object(raw)
-	if !ok || !only(m, "messages tools tool_choice max_tokens max_completion_tokens temperature top_p stop") {
-		return errPayload
-	}
-	if choice, has := m["tool_choice"]; has && str(choice) != "auto" && str(choice) != "none" {
+	if !ok || !only(m, "messages tools max_tokens") {
 		return errPayload
 	}
 	var messages []json.RawMessage
@@ -112,11 +109,11 @@ func Validate(raw []byte) error {
 
 func validateMessage(raw json.RawMessage) error {
 	m, ok := object(raw)
-	if !ok || !only(m, "role content name tool_calls tool_call_id") {
+	if !ok || !only(m, "role content tool_calls tool_call_id") {
 		return errPayload
 	}
 	switch str(m["role"]) {
-	case "system", "developer", "user", "assistant":
+	case "system", "user", "assistant":
 	case "tool":
 		if str(m["tool_call_id"]) == "" {
 			return errPayload

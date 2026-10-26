@@ -19,6 +19,9 @@ L = "internal/runner/loop.go"
 
 # Each guard mutation keeps the code compilable, so only behavioral failures count.
 CASES = [
+    ("H1 developer wieder erlaubt", "TestRunnerVocabularyRejected|TestOpenAIOutgoingGuardsAtAdapter", A, 'case "system", "user", "assistant":', 'case "system", "developer", "user", "assistant":'),
+    ("H2 content_filter wieder Fehler", "TestOpenAIFinishDetailsAtAdapter", H, 'case "content_filter":\n\t\treturn turn{}, "limit", "content_filter"', ''),
+    ("H2 Log-Detail fehlt", "TestOpenAIFinishDetailsAtAdapter", L, 'record.Detail = detail', '// detail removed'),
     ("model in Anfrage", "TestRequestAndGolden", A, 'type Request struct {', 'type Request struct {\n Model string `json:"model"`'),
     ("stream in Anfrage", "TestRequestAndGolden", A, 'type Request struct {', 'type Request struct {\n Stream bool `json:"stream"`'),
     ("tool_call_id fehlt", "TestOpenAILoopTable", A, 'ToolCallID: id', 'ToolCallID: ""'),
@@ -28,9 +31,9 @@ CASES = [
     ("Antwortpruefung entfernt", "TestOpenAIUnsafeResponsesAtAdapter", A, 'if validateMessage(b) != nil {', 'if false {'),
     ("Leere choices ungeprueft", "TestResponseTable", A, 'len(envelope.Choices) == 0', 'false'),
     ("Antwortrolle ungeprueft", "TestOpenAIUnsafeResponsesAtAdapter", A, 'str(m["role"]) != "assistant"', 'false'),
-    ("Top-Level-Allowlist entfernt", "TestForbiddenRequests", A, '!only(m, "messages tools tool_choice max_tokens max_completion_tokens temperature top_p stop")', 'false'),
-    ("Erzwungene Werkzeugwahl", "TestForbiddenRequests", A, 'has && str(choice) != "auto" && str(choice) != "none"', 'has && false && str(choice) != "auto" && str(choice) != "none"'),
-    ("Nachrichten-Zusatzfelder", "TestForbiddenRequests", A, '!only(m, "role content name tool_calls tool_call_id")', 'false'),
+    ("Top-Level-Allowlist entfernt", "TestForbiddenRequests|TestRunnerVocabularyRejected", A, '!only(m, "messages tools max_tokens")', 'false'),
+    ("Erzwungene Werkzeugwahl", "TestForbiddenRequests|TestRunnerVocabularyRejected", A, '"messages tools max_tokens"', '"messages tools max_tokens tool_choice"'),
+    ("Nachrichten-Zusatzfelder", "TestForbiddenRequests", A, '!only(m, "role content tool_calls tool_call_id")', 'false'),
     ("Unbekannte Rolle", "TestForbiddenRequests", A, 'default:\n\t\treturn errPayload', 'default:\n\t\t// guard removed'),
     ("Fehlende Werkzeugkorrelation akzeptiert", "TestForbiddenRequests|TestOpenAIOutgoingGuardsAtAdapter", A, 'str(m["tool_call_id"]) == ""', 'false'),
     ("Nichttext-Inhalt akzeptiert", "TestForbiddenRequests|TestResponseTable", A, 'if json.Unmarshal(content, &text) != nil {', 'if json.Unmarshal(content, &text) != nil && false {'),
