@@ -2,6 +2,10 @@
 
 ## 0.3.1 — 2026-10-26 (Go 1.26.10, CVE-2026-111943)
 
+- **Image:** `sha256:65bb4697333cc6a69185fb00a35f59a08d2702bb2d9348d0a307f522eb93cf43` (Index, nur `linux/amd64`; arm64-Ausnahme bis zur ersten Nachfrage, JanuaPort/januaport#928)
+- **Geprüft mit JanuaPort:** noch kein Live-Lauf; der Beleg folgt mit Schritt F auf der Showcase
+- **Scan:** Trivy 0.74.0 vom 26.10.2026, 0 Funde mit Fix; 1 CRITICAL und 54 HIGH ohne Fix fallen unter die Ausnahme JanuaPort/januaport#1059 bis 2027-01-08
+
 - Build mit Go 1.26.10, Build-Image per Digest gepinnt wie beim agent-runner 0.1.2
   (`golang:1.26.10@sha256:672c944c…`). Behebt CVE-2026-111943 (stdlib
   `crypto/x509`, HIGH), den der Trivy-Scan von 0.3.0 als einzigen Fund mit Fix
