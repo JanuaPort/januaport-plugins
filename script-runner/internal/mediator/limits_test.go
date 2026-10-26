@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -143,57 +141,57 @@ func TestRunLimitsWallAtAdapter(t *testing.T) {
 	}
 }
 
-// L6 must remain an independent runtime barrier even if a future manifest
-// parser admits longer runs. Freeze state after New (no pollLoop), inject a
-// 600-s manifest, then exercise the real HTTP/MCP and sandbox adapters.
-func TestRunLimitsL6CapAtAdapter(t *testing.T) {
-	fx := newFixture(t)
-	gw := newStubGateway(t)
-	sock := filepath.Join(t.TempDir(), "sb.sock")
-	e := &env{t: t, fx: fx, gw: gw, sock: sock, keys: t.TempDir()}
-	e.writeKey(testKey)
-	e.writePins(e.quickPin())
-	m, err := New(Config{SocketPath: sock, KeyDir: e.keys, StoreDir: fx.store, GatewayURL: gw.srv.URL})
-	if err != nil {
-		t.Fatal(err)
+// The timer records the actual duration passed by run after a real Git tree,
+// HTTP/MCP request and sandbox job; no wall-clock wait for long runs.
+func TestRunLimitsWallSelectionAtAdapter(t *testing.T) {
+	for _, tt := range []struct {
+		name, timeout, header string
+		maxWall, want         int
+	}{
+		{"header_without_manifest", "", "wall_s=300;output_bytes=1048576;tool_calls=50", 0, 300},
+		{"manifest_wins", "120", "wall_s=300;output_bytes=1048576;tool_calls=50", 0, 120},
+		{"header_wins", "600", "wall_s=300;output_bytes=1048576;tool_calls=50", 0, 300},
+		{"legacy_without_manifest", "", "", 0, 25},
+		{"legacy_long_manifest", "300", "", 0, 25},
+		{"legacy_short_manifest", "1", "", 0, 1},
+		{"technical_ceiling", "86400", "wall_s=86401;output_bytes=1048576;tool_calls=50", 0, 86400},
+		{"configured_ceiling", "600", "wall_s=600;output_bytes=1048576;tool_calls=50", 300, 300},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			fx := newFixtureWith(t, func(f *fixture) {
+				line := ""
+				if tt.timeout != "" {
+					line = "timeout_s: " + tt.timeout
+				}
+				f.write("quick/jnpt-script.yaml", strings.Replace(quickManifest, "timeout_s: 1", line, 1))
+			})
+			durations := make(chan time.Duration, 1)
+			e := newEnvFx(t, fx, nil, func(c *Config) {
+				c.MaxWallS = tt.maxWall
+				c.NewWallTimer = func(d time.Duration) *time.Timer {
+					durations <- d
+					return time.NewTimer(0)
+				}
+			})
+			e.writePins(e.quickPin())
+			done := e.oneRun("wall_selection", func(g *fakeGuard, _ frame.Job) { _ = g.waitEOF() })
+			e.waitReady("quick")
+			var headers []string
+			if tt.header != "" {
+				headers = []string{tt.header}
+			}
+			assertEnd(t, e.callLimits(t, "quick", headers...), contract.EndTimeout, "")
+			select {
+			case got := <-durations:
+				if got != time.Duration(tt.want)*time.Second {
+					t.Fatalf("wall=%v want=%ds", got, tt.want)
+				}
+			default:
+				t.Fatal("run did not create a wall timer")
+			}
+			<-done
+		})
 	}
-	for i := range m.pins {
-		if m.pins[i].pin.Name == "quick" {
-			m.pins[i].manifest.TimeoutS = 600
-		}
-	}
-	e.m = m
-	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: sock, Net: "unix"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	serveDone := make(chan struct{})
-	go func() { _ = m.sb.accept(ln); close(serveDone) }()
-	t.Cleanup(func() { _ = ln.Close(); <-serveDone })
-	e.srv = httptest.NewServer(m.Handler())
-	t.Cleanup(e.srv.Close)
-	done := e.oneRun("l6", func(g *fakeGuard, _ frame.Job) {
-		_ = g.conn.SetReadDeadline(time.Now().Add(28 * time.Second))
-		_, _ = frame.Read(g.conn, 64<<20)
-	})
-	e.waitReady("quick")
-	s, err := e.session(runLimitsHeaders(fx.commit, "wall_s=600;output_bytes=1048576;tool_calls=50"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 28*time.Second)
-	defer cancel()
-	start := time.Now()
-	res, err := s.CallTool(ctx, &mcp.CallToolParams{Name: "quick", Arguments: map[string]any{}})
-	if err != nil {
-		t.Fatalf("L6 did not end run: %v", err)
-	}
-	assertEnd(t, res, contract.EndTimeout, "")
-	if elapsed := time.Since(start); elapsed < 24*time.Second || elapsed > 27*time.Second {
-		t.Fatalf("L6 wall=%v", elapsed)
-	}
-	<-done
 }
 
 func runLimitsHeaders(commit, value string) http.Header {
@@ -290,8 +288,8 @@ func TestRunLimitsDoNotRaiseInputCeilingAtAdapter(t *testing.T) {
 	}
 }
 
-func TestRunLimitsManifestTimeoutStillRequiredAtAdapter(t *testing.T) {
-	for _, value := range []string{"missing", "0", "26"} {
+func TestRunLimitsInvalidManifestTimeoutAtAdapter(t *testing.T) {
+	for _, value := range []string{"0", "-1", "86401", "null", "1.5", "true", "\"300\""} {
 		t.Run(value, func(t *testing.T) {
 			fx := newFixtureWith(t, func(f *fixture) {
 				line := "timeout_s: " + value
@@ -301,12 +299,28 @@ func TestRunLimitsManifestTimeoutStillRequiredAtAdapter(t *testing.T) {
 				f.write("quick/jnpt-script.yaml", strings.Replace(quickManifest, "timeout_s: 1", line, 1))
 			})
 			e := newEnvFx(t, fx, []pinRow{{Name: "quick", Path: "quick", Commit: fx.commit}})
-			_ = dialGuard(t, e.sock, "manifest", 2)
+			g := dialGuard(t, e.sock, "manifest", 2)
+			jobs := make(chan bool, 1)
+			go func() {
+				_, err := frame.Read(g.conn, 8<<20)
+				if err == nil {
+					g.exited(0)
+				}
+				jobs <- err == nil
+			}()
 			state, reason := e.waitPinSettled("quick")
 			if state != contract.StateInvalid || reason != contract.ReasonManifestInvalid {
 				t.Fatalf("%s/%s", state, reason)
 			}
-			assertEnd(t, e.callLimits(t, "quick", "wall_s=600;output_bytes=2097152;tool_calls=60"), contract.EndRefused, contract.DetailState)
+			res := e.callLimits(t, "quick", "wall_s=600;output_bytes=2097152;tool_calls=60")
+			assertEnd(t, res, contract.EndRefused, contract.DetailState)
+			if got := res.Content[0].(*mcp.TextContent).Text; got != "Das Skript ist im Skript-Läufer noch nicht bereit." {
+				t.Fatal(got)
+			}
+			_ = g.conn.SetReadDeadline(time.Now().Add(10 * time.Millisecond))
+			if <-jobs {
+				t.Fatal("invalid manifest started a job")
+			}
 		})
 	}
 }

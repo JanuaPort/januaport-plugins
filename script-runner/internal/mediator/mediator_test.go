@@ -49,7 +49,7 @@ func TestToolsListWireMatchesGolden(t *testing.T) {
 	meta["januaport.ai/runner"].(map[string]any)["pins"].([]any)[2].(map[string]any)["commit"] = strings.Repeat("6", 40)
 	b, _ := json.Marshal(wire)
 	s = string(b)
-	want, err := os.ReadFile("../../contract/golden/tools_list.json")
+	want, err := os.ReadFile("../../contract/golden/tools_list_wall.json")
 	if err != nil {
 		t.Fatal(err)
 	}
