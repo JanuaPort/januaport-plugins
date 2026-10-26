@@ -172,9 +172,9 @@ func TestManifestWithoutRequirementsUnchanged(t *testing.T) {
 }
 
 func TestOptionalTimeout(t *testing.T) {
-	for _, value := range []string{"", "1", "26", "300", "86400"} {
+	for _, value := range []string{"", "1", "25", "26", "300", "86400"} {
 		t.Run(value, func(t *testing.T) {
-			line, want := "", 86400
+			line, want := "", 25
 			if value != "" {
 				line = "timeout_s: " + value + "\n"
 				want, _ = strconv.Atoi(value)

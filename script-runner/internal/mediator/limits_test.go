@@ -149,6 +149,8 @@ func TestRunLimitsWallSelectionAtAdapter(t *testing.T) {
 		maxWall, want         int
 	}{
 		{"header_without_manifest", "", "wall_s=300;output_bytes=1048576;tool_calls=50", 0, 300},
+		{"explicit_legacy_manifest", "25", "wall_s=300;output_bytes=1048576;tool_calls=50", 0, 25},
+		{"configured_without_manifest", "", "wall_s=600;output_bytes=1048576;tool_calls=50", 300, 300},
 		{"manifest_wins", "120", "wall_s=300;output_bytes=1048576;tool_calls=50", 0, 120},
 		{"header_wins", "600", "wall_s=300;output_bytes=1048576;tool_calls=50", 0, 300},
 		{"legacy_without_manifest", "", "", 0, 25},
@@ -185,8 +187,8 @@ func TestRunLimitsWallSelectionAtAdapter(t *testing.T) {
 				var meta struct {
 					TimeoutS int `json:"timeout_s"`
 				}
-				if err := json.Unmarshal(b, &meta); err != nil || meta.TimeoutS != 86400 {
-					t.Fatalf("core needs positive timeout_s: %s err=%v", b, err)
+				if err := json.Unmarshal(b, &meta); err != nil || meta.TimeoutS != 25 {
+					t.Errorf("missing timeout_s must report legacy 25 seconds: %s err=%v", b, err)
 				}
 			}
 			var headers []string
