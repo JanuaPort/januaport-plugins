@@ -34,9 +34,11 @@ type Manifest struct {
 	Entry       string         `yaml:"entry"`
 	InputSchema map[string]any `yaml:"input_schema"`
 	Tools       []string       `yaml:"tools"`
-	// TimeoutS ist normalisiert: Ohne Manifest-Vorschlag gilt die Decke,
-	// sodass allein der Laufgrenzen-Header (oder dessen Altgrenze) entscheidet.
-	TimeoutS int `yaml:"-"`
+	// TimeoutS meldet ohne Vorschlag die Altgrenze contract.DefaultWallS.
+	// HasTimeout unterscheidet diesen Metadaten-Ersatzwert von einer
+	// ausdrücklichen Manifestgrenze, die auch den Lauf begrenzt.
+	TimeoutS   int  `yaml:"-"`
+	HasTimeout bool `yaml:"-"`
 	// Requirements ist der Knoten des optionalen Felds; Kind 0 heißt: nicht
 	// vorhanden. Ein Knoten statt eines Strings, damit ein leeres oder null-Feld
 	// von einem fehlenden unterscheidbar bleibt.
@@ -74,8 +76,9 @@ func Parse(data []byte, pinName string) (Manifest, error) {
 		return Manifest{}, invalid("kein gültiges YAML")
 	}
 	m := raw.Manifest
-	m.TimeoutS = MaxTimeoutS
+	m.TimeoutS = contract.DefaultWallS
 	if raw.Timeout.Kind != 0 {
+		m.HasTimeout = true
 		if raw.Timeout.Kind != yaml.ScalarNode || raw.Timeout.Tag != "!!int" || raw.Timeout.Decode(&m.TimeoutS) != nil {
 			return Manifest{}, invalid("timeout_s ist keine Ganzzahl")
 		}

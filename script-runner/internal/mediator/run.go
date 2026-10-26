@@ -110,9 +110,12 @@ func (m *Mediator) run(ctx context.Context, p pinState, input json.RawMessage, r
 	if err := frame.Write(sc.c, frame.Job{Type: frame.TypeJob, Files: jobFiles(tree), Entry: p.manifest.Entry, Input: input, Libs: p.libs}); err != nil {
 		return contract.Run{End: contract.EndLimit, Detail: contract.DetailSandboxLost, Isolation: sc.isolation}, nil
 	}
-	// Der Parser normalisiert einen fehlenden Manifest-Vorschlag auf die
-	// technische Decke. Ohne Header liefert ParseRunHeaders weiterhin 25 s.
-	wall := min(limits.WallS, p.manifest.TimeoutS, m.cfg.MaxWallS)
+	// Der Metadaten-Ersatzwert ohne Manifest-Vorschlag ist keine Laufgrenze.
+	// Ohne Header liefert ParseRunHeaders weiterhin contract.DefaultWallS.
+	wall := min(limits.WallS, m.cfg.MaxWallS)
+	if p.manifest.HasTimeout {
+		wall = min(wall, p.manifest.TimeoutS)
+	}
 	return r.loop(ctx, m.cfg.NewWallTimer(time.Duration(wall)*time.Second))
 }
 

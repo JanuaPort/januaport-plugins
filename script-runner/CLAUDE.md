@@ -131,8 +131,14 @@ vermittler selbst je Lauf; die festen Sätze nennen die Grenze dieses Laufs.
 **SEC L6 / Schritt L:** Die eigene 25-s-Kappe entfällt. Wandzeit ist
 `min(wall_s, manifest.timeout_s)`, wenn das Manifest den Vorschlag enthält;
 ohne Vorschlag entscheidet der Header. Beide liegen unter der technischen
-24-h-Decke. `manifest.Parse` normalisiert ein fehlendes `timeout_s` auf 86400,
-auch für die positiven Werkzeug-Metadaten, die der aktuelle Kern verlangt.
+24-h-Decke. `manifest.Parse` setzt bei fehlendem `timeout_s` den
+Metadaten-Ersatzwert `contract.DefaultWallS` (25 s); `HasTimeout` unterscheidet
+ihn von einer ausdrücklich gesetzten Manifestgrenze. Nur diese begrenzt den
+Lauf zusätzlich zur Kopfzeile und `JNPT_SCRIPT_RUNNER_MAX_WALL_S`.
+Ohne `timeout_s` meldet der Läufer 25 s; längere Läufe wählt der Aufrufer ausdrücklich.
+Dafür dient `start_script_run(wall_s=…)`. Der synchrone Kern-Weg behandelt
+das Werkzeug-Metadatum als ausdrückliche Wahl; die technische Decke als
+Ersatzwert würde daher an Freigabe oder Anlagenobergrenze scheitern.
 Das optionale Feld akzeptiert ausschließlich ganze Sekunden in 1..86400;
 Null, negative Werte, Überdecke und andere YAML-Typen sind `manifest_invalid`.
 Desktop-Manifeste behalten ihr Pflichtfeld (gemeinsame Bereichsprüfung).

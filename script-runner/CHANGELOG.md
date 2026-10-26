@@ -7,6 +7,10 @@
 - Die eigene 25-s-Kappe entfällt. Die Kopfzeile entscheidet, begrenzt durch
   den optionalen Manifest-Vorschlag `timeout_s` in 1..86400 ganzen Sekunden.
   Ohne Kopfzeile bleiben 25 s / 1 MiB / 50 Aufrufe; bisherige Goldens unverändert.
+- Ohne `timeout_s` meldet der Läufer 25 s; längere Läufe wählt der Aufrufer ausdrücklich.
+  Werkzeug-Metadaten verwenden `contract.DefaultWallS`; der Lauf folgt bei
+  fehlendem Manifest-Vorschlag dem Header unter der konfigurierten Decke.
+  Lange Läufe über `start_script_run(wall_s=…)`; Mutationsprobe „Ersatzwert 86400“.
 - `JNPT_SCRIPT_RUNNER_MAX_WALL_S` konfiguriert die gemeldete und selbst
   eingehaltene Decke, Standard 86400. `tools/list` meldet `max_wall_s` in
   `_meta["januaport.ai/runner"]`; Vertragskennung bleibt 2.

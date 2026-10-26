@@ -74,8 +74,15 @@ die zusätzlich selbst eingehaltene Decke (1..86400; Standard 86400).
 Ungültige Konfiguration verhindert den Start mit festem Fehler ohne Wertecho.
 Die Env wird in der Compose an den vermittler durchgereicht.
 Bei fehlendem Manifest-Timeout melden die Werkzeug-Metadaten
-`_meta["januaport.ai/script"].timeout_s = 86400`, damit der aktuelle Kern den
-Pin zulässt; der Lauf ohne Header bleibt trotzdem bei höchstens 25 s.
+`_meta["januaport.ai/script"].timeout_s = 25` (`contract.DefaultWallS`).
+Ohne `timeout_s` meldet der Läufer 25 s; längere Läufe wählt der Aufrufer ausdrücklich.
+Dafür dient `start_script_run(wall_s=…)`; im Läufer entscheidet dann der
+Grenzheader unter der konfigurierten Decke. Der Metadaten-Ersatzwert ist
+keine zusätzliche Laufgrenze. Ein ausdrücklich gesetztes Manifest-Timeout
+begrenzt den Lauf weiterhin, auch beim Wert 25.
+Der synchrone Kern-Weg nimmt das Werkzeug-Metadatum als ausdrückliche Wahl
+(`syncRunLimits`); der Ersatzwert 86400 würde deshalb vor F und bei kleineren
+Anlagenobergrenzen abgewiesen. Ohne Header bleibt der Lauf bei höchstens 25 s.
 
 Die Kennung bleibt **2**, weil Header und Ende-Klassen gleich bleiben und
 `max_wall_s` additiv ist; eine neue Kennung sperrt der Kern. Maßgeblich sind

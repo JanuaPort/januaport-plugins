@@ -92,6 +92,9 @@ Protokollfehler abgewiesen. Details und Golden-Dateien: [Vertrag](contract/READM
 **Schritt L (0.3.0):** Die eigene 25-s-Kappe entfällt (SEC L6).
 `timeout_s` ist optional und schlägt 1..86400 ganze Sekunden vor; fehlt es,
 entscheidet die Kopfzeile. Ohne Kopfzeile bleiben höchstens 25 s.
+Ohne `timeout_s` meldet der Läufer 25 s; längere Läufe wählt der Aufrufer ausdrücklich.
+Dafür dient `start_script_run(wall_s=…)`. Der gemeldete Ersatzwert begrenzt
+den Lauf mit Kopfzeile nicht zusätzlich.
 `JNPT_SCRIPT_RUNNER_MAX_WALL_S` begrenzt den Läufer zusätzlich (1..86400,
 Standard 86400; ungültige Werte verhindern den Start). Der Läufer meldet
 diese Decke als `max_wall_s` in den Ergebnis-Metadaten von `tools/list`,
