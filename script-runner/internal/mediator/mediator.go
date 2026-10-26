@@ -37,10 +37,12 @@ type Config struct {
 	LibsLimits     *libs.Limits // Grenzen des Entpackens; nil = libs.DefaultLimits
 	GatewayURL     string       // Basis für Weg B, ohne /mcp
 	Logger         *slog.Logger
-	BusyWait       time.Duration    // Vertrag §5: 3 s
-	PollInterval   time.Duration    // Abstand für beide Pin-Dateien, runtime-key, Store
-	Now            func() time.Time // Uhr des Taktgebers (#1039); Standard time.Now
-	TriggerTimeout time.Duration    // HTTP-Frist des Auslöse-Aufrufs; Standard 35 s
+	BusyWait       time.Duration                   // Vertrag §5: 3 s
+	PollInterval   time.Duration                   // Abstand für beide Pin-Dateien, runtime-key, Store
+	Now            func() time.Time                // Uhr des Taktgebers (#1039); Standard time.Now
+	TriggerTimeout time.Duration                   // HTTP-Frist des Auslöse-Aufrufs; Standard 35 s
+	MaxWallS       int                             // gemeldete und eingehaltene Wandzeitdecke; 0 = contract.MaxWallS
+	NewWallTimer   func(time.Duration) *time.Timer // Lauf-Uhr; Standard time.NewTimer
 }
 
 // Mediator ist der vermittler.
@@ -70,6 +72,15 @@ type Mediator struct {
 func New(cfg Config) (*Mediator, error) {
 	if cfg.SocketPath == "" || cfg.KeyDir == "" || cfg.StoreDir == "" || cfg.GatewayURL == "" {
 		return nil, errors.New("mediator: Konfiguration unvollständig")
+	}
+	if cfg.MaxWallS == 0 {
+		cfg.MaxWallS = contract.MaxWallS
+	}
+	if cfg.MaxWallS < 1 || cfg.MaxWallS > contract.MaxWallS {
+		return nil, errors.New("mediator: max_wall_s nicht in 1..86400")
+	}
+	if cfg.NewWallTimer == nil {
+		cfg.NewWallTimer = time.NewTimer
 	}
 	if cfg.BusyWait == 0 {
 		cfg.BusyWait = 3 * time.Second
@@ -236,6 +247,7 @@ func (m *Mediator) toolsList() *mcp.ListToolsResult {
 	}
 	res := contract.ToolsList(listed, m.isolation, sched)
 	meta := res.Meta[contract.MetaRunner].(contract.RunnerMeta)
+	meta.MaxWallS = m.cfg.MaxWallS
 	for _, p := range m.desktopPins {
 		meta.DesktopPins = append(meta.DesktopPins, p.listed())
 	}

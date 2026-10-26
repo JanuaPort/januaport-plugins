@@ -17,9 +17,11 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
+	"github.com/januaport/januaport-plugins/script-runner/internal/contract"
 	"github.com/januaport/januaport-plugins/script-runner/internal/fetcher"
 	"github.com/januaport/januaport-plugins/script-runner/internal/guard"
 	"github.com/januaport/januaport-plugins/script-runner/internal/mediator"
@@ -83,12 +85,18 @@ func logger() *slog.Logger {
 
 func runMediator() int {
 	log := logger()
+	maxWallS, err := maxWallFromEnv()
+	if err != nil {
+		log.Error(err.Error())
+		return 1
+	}
 	gateway := os.Getenv("JNPT_GATEWAY_URL")
 	if gateway == "" {
 		gateway = "http://jnpt:8484"
 	}
 	m, err := mediator.New(mediator.Config{
 		SocketPath: socketPath, KeyDir: keyDir, StoreDir: storeDir, LibsDir: libsDir, LibsStagingDir: "/libs/staging", GatewayURL: gateway, Logger: log,
+		MaxWallS: maxWallS,
 	})
 	if err != nil {
 		log.Error("Start gescheitert")
@@ -116,6 +124,18 @@ func runMediator() int {
 	_ = mcpSrv.Shutdown(shutdown)
 	_ = healthSrv.Shutdown(shutdown)
 	return 0
+}
+
+func maxWallFromEnv() (int, error) {
+	value := os.Getenv("JNPT_SCRIPT_RUNNER_MAX_WALL_S")
+	if value == "" {
+		return contract.MaxWallS, nil
+	}
+	seconds, err := strconv.Atoi(value)
+	if err != nil || seconds < 1 || seconds > contract.MaxWallS {
+		return 0, errors.New("JNPT_SCRIPT_RUNNER_MAX_WALL_S nicht in 1..86400")
+	}
+	return seconds, nil
 }
 
 func runFetcher() int {

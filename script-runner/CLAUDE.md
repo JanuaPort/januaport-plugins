@@ -66,7 +66,7 @@ und `fetch` gelesen.
   (die Werkzeuge hängen an den Pins, nicht an einer festen Registrierung).
 - **`tools/list`:** je lokalem `ready`-Skript-Pin ein Werkzeug (Name = Pin-Name,
   `_meta["januaport.ai/script"]`), auf dem Ergebnis
-  `_meta["januaport.ai/runner"]` mit `contract: 2`, `isolation` und **allen**
+  `_meta["januaport.ai/runner"]` mit `contract: 2`, `max_wall_s`, `isolation` und **allen**
   lokalen Pins samt Zustand. Ist `isolation` `invalid`, erscheint kein Werkzeug und
   jeder sonst bereite lokale Pin als `pending` (§5). Desktop-Pins stehen
   separat in `desktop_pins`, unabhängig von dieser Sandbox-Isolation.
@@ -119,7 +119,7 @@ und `fetch` gelesen.
   `not_on_default_branch` kam hinzu (`ReasonNotOnDefaultBranch`). Das Gateway
   reicht Gründe als Text durch und hat keine geschlossene Liste.
 
-### Laufgrenzen und Kompatibilität (#1040 P3)
+### Laufgrenzen und Kompatibilität (#1040 P3 / Schritt L)
 
 Ohne Grenz-Header bleiben die Altgrenzen **25 s / 1 MiB / 50 Aufrufe**.
 Mit Header gilt je Wert `min(Vorgabe, technische Decke)`; die Decken sind
@@ -128,11 +128,32 @@ Mit Header gilt je Wert `min(Vorgabe, technische Decke)`; die Decken sind
 Eingabe weiterhin höchstens 256 KiB. Ausgabe und Werkzeugaufrufe misst der
 vermittler selbst je Lauf; die festen Sätze nennen die Grenze dieses Laufs.
 
-**SEC L6:** Wandzeit in P3 weiterhin `min(wall_s, manifest.timeout_s, 25 s)`.
-Die eigene Konstante `mediator.l6WallCap` ist keine technische Decke. Erst muss
-der Internet-Ausgang des vermittlers entfernt sein (#1069); längere Läufe und
-das optionale Manifestfeld werden erst in P4/P5 freigegeben. Auch mit der bereits
-gehärteten Compose wird die Kappe in P3 nicht angehoben.
+**SEC L6 / Schritt L:** Die eigene 25-s-Kappe entfällt. Wandzeit ist
+`min(wall_s, manifest.timeout_s)`, wenn das Manifest den Vorschlag enthält;
+ohne Vorschlag entscheidet der Header. Beide liegen unter der technischen
+24-h-Decke. `manifest.Parse` normalisiert ein fehlendes `timeout_s` auf 86400,
+auch für die positiven Werkzeug-Metadaten, die der aktuelle Kern verlangt.
+Das optionale Feld akzeptiert ausschließlich ganze Sekunden in 1..86400;
+Null, negative Werte, Überdecke und andere YAML-Typen sind `manifest_invalid`.
+Desktop-Manifeste behalten ihr Pflichtfeld (gemeinsame Bereichsprüfung).
+
+`JNPT_SCRIPT_RUNNER_MAX_WALL_S` konfiguriert die zusätzlich selbst eingehaltene
+Decke (1..86400, Standard 86400). Ungültige Werte verhindern den Start mit
+festem Fehler ohne Wert. `tools/list` meldet sie auf Ergebnisebene als
+`_meta["januaport.ai/runner"].max_wall_s`, auch ohne Pins/bei ungültiger Isolation.
+Die Kennung bleibt 2: additives Meldefeld, unveränderter Header-Vertrag;
+eine neue Kennung würde der Kern sperren. Der Kern liest die Meldung beim
+Abgleich (`cmd/jnpt/script_runtime.go`, `parseRunnerMeta` in
+`script_contract.go`) und glaubt ihr nur nach unten.
+**Wirkung erst mit JanuaPort-Schritt F, bis dahin bleibt der Kern-Riegel bei 25 s.**
+Die Freigabe braucht beide Schlüssel; die gehärtete Compose (#1069) erhält
+den entfernten Internet-Ausgang.
+
+Belege für L: `TestRunLimitsWallSelectionAtAdapter` (injizierter Lauf-Timer,
+HTTP/MCP und echte Git-Senke), `TestRunLimitsInvalidManifestTimeoutAtAdapter`,
+`TestMaxWallReportAtAdapter`, `TestToolsListWireMatchesGolden`
+(`tools_list_wall.json`), `TestInvalidMaxWallConfig`,
+`TestMediatorRejectsInvalidMaxWallEnv`. Vorhandene Goldens bleiben unverändert.
 
 **Benannte Kompatibilitätsgrenze:** Ein Läufer mit `contract: 2` braucht ein
 Gateway ab **0.77.0**. Ein älteres Gateway sperrt den Läufer ganz
@@ -151,7 +172,7 @@ Belege: `TestParseRunLimits`, `TestRunHeadersGoldenV1AndV2`,
 | `entry` | ja | relativer Pfad zu einer `.py`-Datei im Pin-Ordner |
 | `input_schema` | ja | JSON-Schema als YAML, `type: object` |
 | `tools` | ja (darf leer sein) | qualifizierte Werkzeugnamen `^[a-z][a-z0-9_-]{0,127}$`, keine Dopplung, nie `script_*`/`admin_*` (Vertrag F4: das Gateway registriert `script_<name>`); Basis-Werkzeuge (`catalog`, `memory_*` …) sind zulässig und müssen deklariert sein |
-| `timeout_s` | ja | 1–25 |
+| `timeout_s` | nein | Vorschlag in 1–86400 ganzen Sekunden; fehlt er, entscheidet die Kopfzeile (ohne Kopfzeile 25 s) |
 | `requirements` | nein (#1041) | nur der Wert `requirements.lock`: der Pin-Ordner bringt dann Lock und `wheels/*.whl` mit (siehe „Python-Bibliotheken“). Ein anderer Inhalt (auch leer, `null`, Liste) ist `manifest_invalid`; ohne das Feld verhält sich der Pin byte-gleich wie bisher. Ein alter Läufer weist das Feld als unbekannt ab (`manifest_invalid`), also fail-closed |
 
 Unbekannte Felder machen das Manifest ungültig (`manifest_invalid`). Ob ein

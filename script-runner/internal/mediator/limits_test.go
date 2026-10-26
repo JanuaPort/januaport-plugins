@@ -176,6 +176,19 @@ func TestRunLimitsWallSelectionAtAdapter(t *testing.T) {
 			e.writePins(e.quickPin())
 			done := e.oneRun("wall_selection", func(g *fakeGuard, _ frame.Job) { _ = g.waitEOF() })
 			e.waitReady("quick")
+			if tt.timeout == "" {
+				res := e.listTools()
+				b, err := json.Marshal(res.Tools[0].Meta[contract.MetaScript])
+				if err != nil {
+					t.Fatal(err)
+				}
+				var meta struct {
+					TimeoutS int `json:"timeout_s"`
+				}
+				if err := json.Unmarshal(b, &meta); err != nil || meta.TimeoutS != 86400 {
+					t.Fatalf("core needs positive timeout_s: %s err=%v", b, err)
+				}
+			}
 			var headers []string
 			if tt.header != "" {
 				headers = []string{tt.header}
@@ -293,9 +306,6 @@ func TestRunLimitsInvalidManifestTimeoutAtAdapter(t *testing.T) {
 		t.Run(value, func(t *testing.T) {
 			fx := newFixtureWith(t, func(f *fixture) {
 				line := "timeout_s: " + value
-				if value == "missing" {
-					line = ""
-				}
 				f.write("quick/jnpt-script.yaml", strings.Replace(quickManifest, "timeout_s: 1", line, 1))
 			})
 			e := newEnvFx(t, fx, []pinRow{{Name: "quick", Path: "quick", Commit: fx.commit}})
@@ -314,7 +324,7 @@ func TestRunLimitsInvalidManifestTimeoutAtAdapter(t *testing.T) {
 			}
 			res := e.callLimits(t, "quick", "wall_s=600;output_bytes=2097152;tool_calls=60")
 			assertEnd(t, res, contract.EndRefused, contract.DetailState)
-			if got := res.Content[0].(*mcp.TextContent).Text; got != "Das Skript ist im Skript-Läufer noch nicht bereit." {
+			if got := res.Content[0].(*mcp.TextContent).Text; got != "Dieses Skript ist nicht ausführbereit." {
 				t.Fatal(got)
 			}
 			_ = g.conn.SetReadDeadline(time.Now().Add(10 * time.Millisecond))

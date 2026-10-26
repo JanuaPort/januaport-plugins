@@ -405,9 +405,17 @@ func TestDeployDescriptor(t *testing.T) {
 // Plan P4a: Standard runc; runsc-jnpt nur als Kommentar.
 func TestEnvExample(t *testing.T) {
 	kv, comments := readKeyValues(t, "../../deploy/.env.example")
-	if len(kv) != 1 || kv["JNPT_SCRIPT_RUNNER_RUNTIME"] != "runc" {
-		t.Fatalf("aktive Zeilen %v, erwartet nur JNPT_SCRIPT_RUNNER_RUNTIME=runc", kv)
+	if len(kv) != 2 || kv["JNPT_SCRIPT_RUNNER_RUNTIME"] != "runc" || kv["JNPT_SCRIPT_RUNNER_MAX_WALL_S"] != "86400" {
+		t.Fatalf("aktive Zeilen %v, erwartet Runtime runc und Wandzeitdecke 86400", kv)
 	}
+	var c compose
+	if err := yaml.Unmarshal([]byte(readCompose(t)), &c); err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Services[mediator].Environment["JNPT_SCRIPT_RUNNER_MAX_WALL_S"]; got != "${JNPT_SCRIPT_RUNNER_MAX_WALL_S:-86400}" {
+		t.Fatalf("Compose reicht Wandzeitdecke nicht mit Standard durch: %q", got)
+	}
+
 	if !slices.ContainsFunc(comments, func(c string) bool {
 		return strings.Contains(c, "JNPT_SCRIPT_RUNNER_RUNTIME=runsc-jnpt")
 	}) {

@@ -24,9 +24,8 @@ const FileName = "jnpt-script.yaml"
 // Wheels liegen in `wheels/` daneben.
 const RequirementsFile = "requirements.lock"
 
-// MaxTimeoutS bleibt in P3 die Manifest-Obergrenze (Pflichtfeld 1..25).
-// Längere/optionale Manifestzeiten gehören zu P4/P5 (#1040, SEC L6).
-const MaxTimeoutS = 25
+// MaxTimeoutS ist die technische Wandzeitdecke (#1040 Schritt L).
+const MaxTimeoutS = contract.MaxWallS
 
 // Manifest beschreibt ein Skript.
 type Manifest struct {
@@ -35,7 +34,9 @@ type Manifest struct {
 	Entry       string         `yaml:"entry"`
 	InputSchema map[string]any `yaml:"input_schema"`
 	Tools       []string       `yaml:"tools"`
-	TimeoutS    int            `yaml:"timeout_s"`
+	// TimeoutS ist normalisiert: Ohne Manifest-Vorschlag gilt die Decke,
+	// sodass allein der Laufgrenzen-Header (oder dessen Altgrenze) entscheidet.
+	TimeoutS int `yaml:"-"`
 	// Requirements ist der Knoten des optionalen Felds; Kind 0 heißt: nicht
 	// vorhanden. Ein Knoten statt eines Strings, damit ein leeres oder null-Feld
 	// von einem fehlenden unterscheidbar bleibt.
@@ -63,11 +64,21 @@ func ValidToolName(s string) bool {
 // Parse liest und prüft ein Manifest. pinName ist der Name aus pins.json;
 // das Manifest muss denselben Namen tragen.
 func Parse(data []byte, pinName string) (Manifest, error) {
-	var m Manifest
+	var raw struct {
+		Manifest `yaml:",inline"`
+		Timeout  yaml.Node `yaml:"timeout_s"`
+	}
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
-	if err := dec.Decode(&m); err != nil {
+	if err := dec.Decode(&raw); err != nil {
 		return Manifest{}, invalid("kein gültiges YAML")
+	}
+	m := raw.Manifest
+	m.TimeoutS = MaxTimeoutS
+	if raw.Timeout.Kind != 0 {
+		if raw.Timeout.Kind != yaml.ScalarNode || raw.Timeout.Tag != "!!int" || raw.Timeout.Decode(&m.TimeoutS) != nil {
+			return Manifest{}, invalid("timeout_s ist keine Ganzzahl")
+		}
 	}
 	if err := check(m, pinName); err != nil {
 		return Manifest{}, err

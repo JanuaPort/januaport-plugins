@@ -1,6 +1,6 @@
 # Draht-Vertrag, Fassung 5 — Laufgrenzen
 
-JanuaPort/januaport#1040 P3, Plan 6176555886, SEC 6176617758 L1–L8.
+JanuaPort/januaport#1040 P3 und Schritt L (0.3.0), Plan 6176555886, SEC 6176617758 L1–L8.
 Die Vertragskennung im Draht ist **2** (`internal/contract.Version`), unabhängig
 von der Nummer dieser Textfassung. Bestehende Felder und Ende-Klassen gelten
 weiter; Referenzdaten stehen unter `golden/`.
@@ -8,8 +8,8 @@ weiter; Referenzdaten stehen unter `golden/`.
 ## Anmeldung und Kompatibilität
 
 `tools/list` meldet `_meta["januaport.ai/runner"].contract = 2`, auch ohne Pins
-oder bei ungültiger Isolation und auch mit Zeitplänen. Alle drei `tools_list*`
-Golden-Dateien tragen diese Kennung. Das Dateiformat von Zeitplänen bleibt
+oder bei ungültiger Isolation und auch mit Zeitplänen. Die bisherigen drei
+`tools_list*`-Goldens und das neue `tools_list_wall.json` tragen diese Kennung. Das Dateiformat von Zeitplänen bleibt
 unverändert bei Version 1; dies ist eine eigene Kennung.
 
 **Benannte Kompatibilitätsgrenze:** Ein Läufer mit `contract: 2` braucht ein
@@ -48,9 +48,9 @@ Fehlt die Kopfzeile vollständig, gelten unverändert die drei Altgrenzen.
 Die Prüfreihenfolge für fachliche Ablehnungen und die Form des Job-Rahmens
 werden durch diese Kopfzeile nicht geändert.
 
-| Größe | Ohne Header | Technische Decke | Wirksam in P3 |
+| Größe | Ohne Header | Technische Decke | Wirksam im Läufer |
 |---|---|---|---|
-| Wandzeit | 25 s | 86400 s (24 h) | `min(wall_s, manifest.timeout_s, 25 s)` |
+| Wandzeit | 25 s | 86400 s (24 h) | `min(wall_s, optionalem manifest.timeout_s, konfigurierter Decke)` |
 | Ausgabe | 1 MiB | 16777216 Byte (16 MiB) | `min(output_bytes, Decke)` |
 | Werkzeugaufrufe | 50 Aufrufe | 10000 | `min(tool_calls, Decke)` |
 
@@ -58,11 +58,37 @@ Werte über einer Decke werden **gekürzt**; nur der Zahlenüberlauf ist ein
 Formfehler. Die Konvertierung in `int` erfolgt nach dem Kürzen. Die drei Decken
 sind Konstanten im Läufer und durch Literal-Tests geschützt (SEC L8).
 
-**SEC L6:** `mediator.l6WallCap` hält P3 unabhängig von der technischen
-Wandzeitdecke bei 25 Sekunden. Vor längeren Läufen muss der vermittler seinen
-Internet-Ausgang verlieren (#1069); die Freigabe und das optionale Manifestfeld
-gehören zu P4/P5. Auch die bereits gehärtete Compose hebt diese Kappe nicht auf.
-`timeout_s` bleibt für `jnpt-script.yaml` Pflicht mit 1..25. Die Eingabe bleibt auf 256 KiB begrenzt.
+**SEC L6 / Schritt L:** Die eigene 25-s-Kappe entfällt. `timeout_s` in
+`jnpt-script.yaml` ist optional, ein Vorschlag in 1..86400 ganzen Sekunden.
+Mit Vorschlag gewinnt das Minimum aus Header und Manifest; fehlt er,
+entscheidet der Header. Ohne Header bleiben 25 s / 1 MiB / 50 Aufrufe
+(gegebenenfalls strengere Manifestzeit). Null, negative Werte, Überdecke,
+`null` und andere YAML-Typen sind `manifest_invalid`; `tools/call` liefert
+`refused/state` mit dem festen Satz „Dieses Skript ist nicht ausführbereit.“
+Die Eingabe bleibt auf 256 KiB begrenzt. Desktop-Timeouts bleiben Pflicht.
+
+Der vermittler meldet in **`tools/list` auf Ergebnisebene**:
+`_meta["januaport.ai/runner"] = {contract: 2, max_wall_s: 86400, isolation, pins, …}`.
+`JNPT_SCRIPT_RUNNER_MAX_WALL_S` setzt die positive ganzzahlige Meldung und
+die zusätzlich selbst eingehaltene Decke (1..86400; Standard 86400).
+Ungültige Konfiguration verhindert den Start mit festem Fehler ohne Wertecho.
+Die Env wird in der Compose an den vermittler durchgereicht.
+Bei fehlendem Manifest-Timeout melden die Werkzeug-Metadaten
+`_meta["januaport.ai/script"].timeout_s = 86400`, damit der aktuelle Kern den
+Pin zulässt; der Lauf ohne Header bleibt trotzdem bei höchstens 25 s.
+
+Die Kennung bleibt **2**, weil Header und Ende-Klassen gleich bleiben und
+`max_wall_s` additiv ist; eine neue Kennung sperrt der Kern. Maßgeblich sind
+`cmd/jnpt/script_runtime.go` (`DiscoverWithMeta` → `parseRunnerMeta`) und
+`script_contract.go` (`runnerMeta.MaxWallS`, `releasedWall`) auf origin/main.
+Der Kern glaubt nur positive ganze Sekunden nach unten:
+`min(scriptReleasedMaxWallS = 25 s, max_wall_s)`.
+**Wirkung erst mit JanuaPort-Schritt F, bis dahin bleibt der Kern-Riegel bei 25 s.**
+Eine explizite Wahl über der Kern-Freigabe wird abgewiesen. Die Entfernung
+des Internet-Ausgangs (#1069) bleibt Voraussetzung im ausgelieferten Aufbau.
+
+`golden/tools_list_wall.json` ergänzt die Meldung für 0.3.0; die bisherigen
+Goldens einschließlich `call_headers_v1.json` bleiben bytegleich.
 
 ## Desktop-Pins und Paketabruf auf Weg A (#1165 D2b)
 

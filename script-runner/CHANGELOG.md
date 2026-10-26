@@ -1,5 +1,20 @@
 # Changelog — script-runner
 
+## Unveröffentlicht
+
+### 0.3.0 — JanuaPort/januaport#1040 Schritt L (Epic #1191)
+
+- Die eigene 25-s-Kappe entfällt. Die Kopfzeile entscheidet, begrenzt durch
+  den optionalen Manifest-Vorschlag `timeout_s` in 1..86400 ganzen Sekunden.
+  Ohne Kopfzeile bleiben 25 s / 1 MiB / 50 Aufrufe; bisherige Goldens unverändert.
+- `JNPT_SCRIPT_RUNNER_MAX_WALL_S` konfiguriert die gemeldete und selbst
+  eingehaltene Decke, Standard 86400. `tools/list` meldet `max_wall_s` in
+  `_meta["januaport.ai/runner"]`; Vertragskennung bleibt 2.
+- Wirkung erst mit JanuaPort-Schritt F, bis dahin bleibt der Kern-Riegel bei 25 s.
+- Test-first: Adaptertests mit injiziertem Lauf-Timer, feste Fehler für
+  ungültige Manifest-/Konfigurationswerte, neue Golden-Datei `tools_list_wall.json`
+  und Mutationsproben für Kappe, Manifest, Meldung und Sperren.
+
 ## 0.2.0 — 2026-10-16 (JanuaPort/januaport#1040 P3, #1041 P1/P2, #1096, #1069)
 
 - **Image:** `sha256:a1e55aa3228e2eb21af2921d78bc4ad507877a53465f9a42b65b2b295dac698c` (Index, nur `linux/amd64`; arm64-Ausnahme bis zur ersten Nachfrage oder 0.3.0, JanuaPort/januaport#928)
