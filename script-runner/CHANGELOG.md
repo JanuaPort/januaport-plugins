@@ -15,6 +15,8 @@
   eingehaltene Decke, Standard 86400. `tools/list` meldet `max_wall_s` in
   `_meta["januaport.ai/runner"]`; Vertragskennung bleibt 2.
 - Wirkung erst mit JanuaPort-Schritt F, bis dahin bleibt der Kern-Riegel bei 25 s.
+- **Kompatibilität:** `timeout_s` über 25 erst ab Gateway 0.79.0. Ein älteres
+  Gateway verwirft einen solchen Pin stumm (SEC R4 H2).
 - Test-first: Adaptertests mit injiziertem Lauf-Timer, feste Fehler für
   ungültige Manifest-/Konfigurationswerte, neue Golden-Datei `tools_list_wall.json`
   und Mutationsproben für Kappe, Manifest, Meldung und Sperren.
