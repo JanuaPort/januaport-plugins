@@ -1,6 +1,21 @@
 # Changelog — script-runner
 
+## Unveröffentlicht
+
+### 0.3.1 — Go 1.26.10 (CVE-2026-111943)
+
+- Build mit Go 1.26.10, Build-Image per Digest gepinnt wie beim agent-runner 0.1.2
+  (`golang:1.26.10@sha256:672c944c…`). Behebt CVE-2026-111943 (stdlib
+  `crypto/x509`, HIGH), den der Trivy-Scan von 0.3.0 als einzigen Fund mit Fix
+  meldet. Sonst keine Änderung, Vertragskennung 2.
+- arm64: Die Ausnahme gilt weiter bis zur ersten Nachfrage (JanuaPort/januaport#928);
+  die Bindung an 0.3.0 entfällt.
+
 ## 0.3.0 — 2026-10-26 (JanuaPort/januaport#1040 Schritt L, Epic #1191)
+
+- **Image:** `sha256:67d1fd68ca0986f2fdf4e05daba179e3fc8e534f0a858fb0a2338d34fbf7a8d8` (Index, nur `linux/amd64`; arm64-Ausnahme siehe 0.3.1, JanuaPort/januaport#928)
+- **Geprüft mit JanuaPort:** noch kein Live-Lauf; der Beleg folgt mit Schritt F auf der Showcase (Showcase bleibt bis dahin auf 0.2.0)
+- **Scan:** Trivy 0.74.0 vom 26.10.2026: 1 HIGH mit Fix (CVE-2026-111943, Go-stdlib 1.26.9, behoben in 0.3.1); 1 CRITICAL und 54 HIGH ohne Fix fallen unter die Ausnahme JanuaPort/januaport#1059 bis 2027-01-08. **Statt 0.3.0 bitte 0.3.1 einsetzen.**
 
 - Die eigene 25-s-Kappe entfällt. Die Kopfzeile entscheidet, begrenzt durch
   den optionalen Manifest-Vorschlag `timeout_s` in 1..86400 ganzen Sekunden.

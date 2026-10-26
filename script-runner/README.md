@@ -323,7 +323,7 @@ verantwortet, Branch-Schutz, Prüfung vor dem Pinnen).
 
 ```sh
 # aus dem Repo-Root
-docker run --rm -v "$PWD":/repo -w /repo/script-runner golang:1.26.9 go test ./...
+docker run --rm -v "$PWD":/repo -w /repo/script-runner golang:1.26.10 go test ./...
 sh script-runner/probe/run.sh    # Docker-Sonden gegen den echten Stack (lädt numpy/pandas als Wheels per pip)
 sh script-runner/probe/measure-libs.sh  # Messung: Bibliotheken im Sandbox-Image
 ```

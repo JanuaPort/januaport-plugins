@@ -1009,12 +1009,12 @@ unterscheidet sich nicht auffällig vom Median.
 ```sh
 # Unit-Tests (in einem Linux-Container; auf Windows hängt lokales go test)
 # aus dem Repo-Root: der Release-Wächter liest .github/workflows/
-docker run --rm -v "$PWD":/repo -w /repo/script-runner golang:1.26.9 go test ./...
+docker run --rm -v "$PWD":/repo -w /repo/script-runner golang:1.26.10 go test ./...
 python3 script-runner/seccomp/derive.py --check
 # Messung P0 (Python-Bibliotheken); P0_RUNTIME=runsc-jnpt auf einem Host mit gVisor
 sh script-runner/probe/measure-libs.sh
 # Fuzz am Lock-Parser (Seeds laufen schon in go test)
-docker run --rm -v "$PWD":/repo -w /repo/script-runner golang:1.26.9 go test -run xxx -fuzz FuzzParseLock -fuzztime 60s ./internal/libs/
+docker run --rm -v "$PWD":/repo -w /repo/script-runner golang:1.26.10 go test -run xxx -fuzz FuzzParseLock -fuzztime 60s ./internal/libs/
 # Docker-Sonden gegen den echten Stack (P2_PREFIX, Standard p2-928, räumt Stacks auf)
 sh script-runner/probe/run.sh   # lädt numpy/pandas als Wheels per pip in einem Hilfscontainer; P2_WHEELS_DIR=<Ordner> nimmt vorab geladene Wheels
 # mit eigenen Container- und Netznamen für parallele Prüfaufträge
