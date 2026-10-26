@@ -1,8 +1,6 @@
 # Changelog — script-runner
 
-## Unveröffentlicht
-
-### 0.3.0 — JanuaPort/januaport#1040 Schritt L (Epic #1191)
+## 0.3.0 — 2026-10-26 (JanuaPort/januaport#1040 Schritt L, Epic #1191)
 
 - Die eigene 25-s-Kappe entfällt. Die Kopfzeile entscheidet, begrenzt durch
   den optionalen Manifest-Vorschlag `timeout_s` in 1..86400 ganzen Sekunden.
