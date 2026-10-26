@@ -1,8 +1,6 @@
 # Changelog — script-runner
 
-## Unveröffentlicht
-
-### 0.3.1 — Go 1.26.10 (CVE-2026-111943)
+## 0.3.1 — 2026-10-26 (Go 1.26.10, CVE-2026-111943)
 
 - Build mit Go 1.26.10, Build-Image per Digest gepinnt wie beim agent-runner 0.1.2
   (`golang:1.26.10@sha256:672c944c…`). Behebt CVE-2026-111943 (stdlib
