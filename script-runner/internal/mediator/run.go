@@ -19,11 +19,6 @@ import (
 	"github.com/januaport/januaport-plugins/script-runner/internal/store"
 )
 
-// l6WallCap bleibt in P3 unabhängig von der technischen 24-h-Decke bei 25 s.
-// SEC L6 (#1040): Erst den Internet-Ausgang des vermittlers entfernen (#1069),
-// dann in P4/P5 längere Läufe freigeben. Auch mit neuer Compose nicht hier anheben.
-const l6WallCap = 25 * time.Second
-
 // callTool ist tools/call (Vertrag §3, §4). Fachliches steht immer im
 // Ergebnis; ein JSON-RPC-Fehler bei fehlenden oder falsch geformten Lauf-Headern.
 func (m *Mediator) callTool(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -115,8 +110,13 @@ func (m *Mediator) run(ctx context.Context, p pinState, input json.RawMessage, r
 	if err := frame.Write(sc.c, frame.Job{Type: frame.TypeJob, Files: jobFiles(tree), Entry: p.manifest.Entry, Input: input, Libs: p.libs}); err != nil {
 		return contract.Run{End: contract.EndLimit, Detail: contract.DetailSandboxLost, Isolation: sc.isolation}, nil
 	}
-	wall := min(time.Duration(limits.WallS)*time.Second, time.Duration(p.manifest.TimeoutS)*time.Second, l6WallCap)
-	return r.loop(ctx, time.NewTimer(wall))
+	// Der Metadaten-Ersatzwert ohne Manifest-Vorschlag ist keine Laufgrenze.
+	// Ohne Header liefert ParseRunHeaders weiterhin contract.DefaultWallS.
+	wall := min(limits.WallS, m.cfg.MaxWallS)
+	if p.manifest.HasTimeout {
+		wall = min(wall, p.manifest.TimeoutS)
+	}
+	return r.loop(ctx, m.cfg.NewWallTimer(time.Duration(wall)*time.Second))
 }
 
 func jobFiles(t store.Tree) []frame.File {

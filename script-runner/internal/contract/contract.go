@@ -238,6 +238,7 @@ type ScheduleStatus struct {
 // Die lokale Pin-/Werkzeugform und Kennung 2 bleiben erhalten.
 type RunnerMeta struct {
 	Contract    int                `json:"contract"`
+	MaxWallS    int                `json:"max_wall_s,omitempty"`
 	Isolation   string             `json:"isolation"`
 	Pins        []PinStatus        `json:"pins"`
 	Schedules   []ScheduleStatus   `json:"schedules,omitempty"`

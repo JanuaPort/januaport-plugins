@@ -45,3 +45,32 @@ func TestInitLibsFailsOnBlockedDirectory(t *testing.T) {
 		t.Fatal("init succeeded despite blocked ready directory")
 	}
 }
+
+func TestMaxWallEnv(t *testing.T) {
+	for _, tt := range []struct {
+		value string
+		want  int
+	}{{"", 86400}, {"1", 1}, {"300", 300}, {"86400", 86400}} {
+		t.Run(tt.value, func(t *testing.T) {
+			t.Setenv("JNPT_SCRIPT_RUNNER_MAX_WALL_S", tt.value)
+			got, err := maxWallFromEnv()
+			if err != nil || got != tt.want {
+				t.Fatalf("got=%d err=%v", got, err)
+			}
+		})
+	}
+}
+
+func TestMediatorRejectsInvalidMaxWallEnv(t *testing.T) {
+	for _, value := range []string{"0", "-1", "86401", "1.5", "secret-invalid", "999999999999999999999999"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("JNPT_SCRIPT_RUNNER_MAX_WALL_S", value)
+			if _, err := maxWallFromEnv(); err == nil || err.Error() != "JNPT_SCRIPT_RUNNER_MAX_WALL_S nicht in 1..86400" {
+				t.Fatal(err)
+			}
+			if code := runMediator(); code != 1 {
+				t.Fatalf("invalid env started mediator: %d", code)
+			}
+		})
+	}
+}

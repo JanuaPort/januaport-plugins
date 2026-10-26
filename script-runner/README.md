@@ -68,7 +68,7 @@ Skript-Pins.
 
 ## Grenzen je Lauf (Vertragsfassung 5)
 
-Das Gateway übergibt die Laufgrenzen in `X-Jnpt-Run-Limits`. Ausgabe und
+Das Gateway übergibt die Laufgrenzen in `X-Jnpt-Run-Limits`. Wandzeit, Ausgabe und
 Werkzeugaufrufe sind je Lauf wählbar, bis zu den technischen Decken unten.
 Ohne diese Kopfzeile gelten die Altgrenzen 25 s / 1 MiB / 50 Aufrufe.
 Eine vorhandene, falsch geformte Kopfzeile wird vor dem Start als
@@ -76,7 +76,7 @@ Protokollfehler abgewiesen. Details und Golden-Dateien: [Vertrag](contract/READM
 
 | Grenze | Wert |
 |---|---|
-| Wandzeit je Lauf | Minimum aus Gateway-Vorgabe, Manifest und 25 s (SEC L6); technische Decke 24 h |
+| Wandzeit je Lauf | Minimum aus Gateway-Vorgabe, optionalem Manifest-Vorschlag und konfigurierter Decke; höchstens 24 h |
 | CPU / RAM / Prozesse | 1 / 512 MiB / 128 |
 | Arbeitsordner | 64 MiB `/work`, 16 MiB `/tmp` |
 | Eingabe / Ausgabe | ≤ 256 KiB / Gateway-Vorgabe, gekürzt auf höchstens 16 MiB |
@@ -89,9 +89,17 @@ Protokollfehler abgewiesen. Details und Golden-Dateien: [Vertrag](contract/READM
 | Sprache | Python 3.12 mit Standardbibliothek; reines Python unter `vendor/` im Skriptordner; Bibliotheken nur als geprüfte Wheels (siehe unten); **kein pip**, kein Download |
 | Git | nur ssh; ein Repository je Anlage |
 
-**Die 25-s-Kappe bleibt in P3 bestehen (SEC L6).** Erst muss der vermittler
-seinen Internet-Ausgang verlieren (#1069); das Anheben folgt mit P4/P5.
-`timeout_s` bleibt im Manifest Pflicht und liegt weiterhin in 1..25.
+**Schritt L (0.3.0):** Die eigene 25-s-Kappe entfällt (SEC L6).
+`timeout_s` ist optional und schlägt 1..86400 ganze Sekunden vor; fehlt es,
+entscheidet die Kopfzeile. Ohne Kopfzeile bleiben höchstens 25 s.
+Ohne `timeout_s` meldet der Läufer 25 s; längere Läufe wählt der Aufrufer ausdrücklich.
+Dafür dient `start_script_run(wall_s=…)`. Der gemeldete Ersatzwert begrenzt
+den Lauf mit Kopfzeile nicht zusätzlich.
+`JNPT_SCRIPT_RUNNER_MAX_WALL_S` begrenzt den Läufer zusätzlich (1..86400,
+Standard 86400; ungültige Werte verhindern den Start). Der Läufer meldet
+diese Decke als `max_wall_s` in den Ergebnis-Metadaten von `tools/list`,
+weiterhin mit `contract: 2`.
+**Wirkung erst mit JanuaPort-Schritt F, bis dahin bleibt der Kern-Riegel bei 25 s.**
 
 **Isolation:** Wo gVisor (Runtime `runsc-jnpt`) eingerichtet ist, läuft die
 Sandbox darin; sonst unter runc mit der Härtung oben und geteiltem Kernel.
@@ -114,7 +122,7 @@ input_schema:
     limit: {type: integer}
 tools:                          # abschließend: nur diese Werkzeuge
   - kartei_find
-timeout_s: 20                   # 1 bis 25
+timeout_s: 20                   # optionaler Vorschlag: 1 bis 86400 ganze Sekunden
 # requirements: requirements.lock   # optional: Python-Bibliotheken als Wheels, siehe unten
 ```
 

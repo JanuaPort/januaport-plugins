@@ -2,6 +2,7 @@ package manifest
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -48,8 +49,10 @@ func TestParseRules(t *testing.T) {
 		{"Einstieg kein .py", repl("entry: main.py", "entry: main.sh"), contract.ReasonManifestInvalid},
 		{"Schema kein Objekt", repl("  type: object", "  type: array"), contract.ReasonManifestInvalid},
 		{"Timeout 0", repl("timeout_s: 20", "timeout_s: 0"), contract.ReasonManifestInvalid},
-		{"Timeout 26", repl("timeout_s: 20", "timeout_s: 26"), contract.ReasonManifestInvalid},
-		{"Timeout fehlt", repl("timeout_s: 20\n", ""), contract.ReasonManifestInvalid},
+		{"Timeout negativ", repl("timeout_s: 20", "timeout_s: -1"), contract.ReasonManifestInvalid},
+		{"Timeout zu groß", repl("timeout_s: 20", "timeout_s: 86401"), contract.ReasonManifestInvalid},
+		{"Timeout null", repl("timeout_s: 20", "timeout_s: null"), contract.ReasonManifestInvalid},
+		{"Timeout gebrochen", repl("timeout_s: 20", "timeout_s: 1.5"), contract.ReasonManifestInvalid},
 		{"unbekanntes Feld", func(s string) string { return s + "network: true\n" }, contract.ReasonManifestInvalid},
 		{"Werkzeug mit Punkt", repl("  - kartei_find", "  - kartei.find"), contract.ReasonToolNotQualified},
 		{"Werkzeug groß", repl("  - kartei_find", "  - Kartei_Find"), contract.ReasonToolNotQualified},
@@ -165,5 +168,21 @@ func TestManifestWithoutRequirementsUnchanged(t *testing.T) {
 	}
 	if m.Name != "invoice_check" || m.Entry != "main.py" || m.TimeoutS != 20 || len(m.Tools) != 2 || m.Requirements.Kind != 0 {
 		t.Fatalf("Manifest = %+v", m)
+	}
+}
+
+func TestOptionalTimeout(t *testing.T) {
+	for _, value := range []string{"", "1", "25", "26", "300", "86400"} {
+		t.Run(value, func(t *testing.T) {
+			line, want := "", 25
+			if value != "" {
+				line = "timeout_s: " + value + "\n"
+				want, _ = strconv.Atoi(value)
+			}
+			m, err := Parse([]byte(strings.Replace(valid, "timeout_s: 20\n", line, 1)), "invoice_check")
+			if err != nil || m.TimeoutS != want {
+				t.Fatalf("timeout=%d want=%d err=%v", m.TimeoutS, want, err)
+			}
+		})
 	}
 }

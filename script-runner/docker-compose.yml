@@ -30,6 +30,7 @@ services:
     user: "65532:65532"
     environment:
       JNPT_GATEWAY_URL: ${JNPT_GATEWAY_URL:-http://jnpt:8484}
+      JNPT_SCRIPT_RUNNER_MAX_WALL_S: ${JNPT_SCRIPT_RUNNER_MAX_WALL_S:-86400}
     volumes:
       # runtime-key und pins.json; ein ORDNER-Mount, damit ein atomar
       # ersetzter Schlüssel ankommt.
