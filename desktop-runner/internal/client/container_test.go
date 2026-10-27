@@ -121,7 +121,7 @@ func TestDockerVerboteneOptionen(t *testing.T) {
 					imageAt = i
 				}
 			}
-			if a[len(a)-1] != option || imageAt != len(a)-7 {
+			if a[len(a)-1] != option || imageAt != len(a)-6 {
 				t.Fatal(a)
 			}
 		})

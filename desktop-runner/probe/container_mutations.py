@@ -15,6 +15,8 @@ args = parser.parse_args()
 prefix = (["docker", "exec", "-e", "TMPDIR=/go/tmp", args.container]
           if args.container else [])
 cases = [
+    ("fixed-entrypoint", "client/container.go", 'a = append(a, "--entrypoint", "/bin/sh")', '// fixed entrypoint removed', "client", "TestDockerEigenenEntrypointUeberschreiben"),
+    ("memory-swap", "client/container.go", '"--memory-swap", strconv.FormatInt(c.MemoryBytes, 10),', '', "client", "TestTokenNichtInInspect"),
     ("secret-regular-file", "client/container.go", "!info.Mode().IsRegular()", "(false && !info.Mode().IsRegular())", "client", "TestGeheimnisseNurDeklariertUndOhneSymlink"),
     ("secret-directory-symlink", "client/secrets_linux.go", "os.Lstat(p)", "os.Stat(p)", "client", "TestGeheimnisseNurDeklariertUndOhneSymlink"),
     ("cleanup-pending", "client/container.go", 'strings.TrimSpace(string(b)) == ""', '(strings.TrimSpace(string(b)) == "" || true)', "client", "TestContainerCleanupWartetAufEntfernung"),

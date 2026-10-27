@@ -219,18 +219,21 @@ Digest und Vergleich von `.RepoDigests` mit dem freigegebenen Digest; bei
 Abweichung `refused/hash`, ohne Jobstart. Der eigentliche Start verwendet
 `--pull never`, Nicht-root UID/GID 65532, read-only Wurzel, `cap-drop ALL`,
 `no-new-privileges`, 128 Prozesse, Pin-CPU/RAM/Wandzeit, `--init` und `--rm`.
+`--memory-swap` ist gleich `--memory`: Das gemeinsame RAM-plus-Swap-Limit
+entspricht dem RAM-Limit; zusätzlicher Swap ist damit ausgeschlossen.
 Die CPU-/RAM-/Wandzeit-Obergrenzen entsprechen K1: 16000 mCPU, 32 GiB, 86400 s.
 `/tmp` (64 MiB) und `/run/jnpt` (1 MiB) sind `noexec,nosuid,nodev`-tmpfs.
 Der Containername ist `jnpt-run-` plus den ersten 32 Hex-Zeichen von SHA256 des
 Laufschlüssels; das Label enthält den ursprünglichen Schlüssel.
 
-**Image-Voraussetzung:** `/bin/sh` und `tar`, kein eigener ENTRYPOINT, oder ein
-ENTRYPOINT, der die übergebenen Argumente unverändert ausführt. Der feste
-Startcode im Job entpackt einen vom Läufer erzeugten Tar-Stream aus stdin und
+**Image-Voraussetzung:** Das Job-Image muss `/bin/sh` und `tar` enthalten.
+Der Läufer setzt ausdrücklich `--entrypoint /bin/sh` und überschreibt damit
+auch einen eigenen Image-ENTRYPOINT. Der feste Startcode im Job entpackt einen
+vom Läufer erzeugten Tar-Stream aus stdin und
 führt anschließend den signierten Befehl mit `exec "$@"` aus. Pin-Argumente
 werden nicht in Shelltext eingesetzt. Der Host startet ausschließlich die CLI
-per Argumentliste; `--entrypoint` wird nicht verwendet. Das ist eine lokale
-Image-Konvention, keine Erweiterung des K1-Pin-JSON.
+per Argumentliste. Der Pin kann den festen ENTRYPOINT nicht überschreiben.
+Diese Image-Konvention erweitert das K1-Pin-JSON nicht.
 
 Der Stream enthält `/run/jnpt/input.json`, `/run/jnpt/token` und zuletzt `ready`,
 jeweils UID/GID 65532, Modus 0400. Vor dem signierten Befehl ist alles verfügbar.
@@ -253,10 +256,54 @@ Registry-Zugriff für den Digest-Pull ist auch bei einem Offline-Lauf erforderli
 Geheimnisse sind kernseitig ab Werk aus. Das Betreiber-Verzeichnis, beispielsweise
 `/etc/jnpt-runner/secrets`, gehört `jnpt-runner` mit Modus 0700. Eine reguläre Datei
 je Name; keine Symlinks, auch nicht im Verzeichnispfad. Die Datei muss für die
-Job-UID im Daemon-Namespace lesbar sein: etwa Modus 0444 innerhalb des 0700-
+Container-UID 65532 lesbar sein: etwa Modus 0444 innerhalb des 0700-
 Verzeichnisses oder passend zugeordnete UID. Werte werden nicht eingelesen oder
 als Env übertragen. Pro Name genau ein read-only Bind nach `/run/secrets/<name>`.
 Ein deklarierter und erlaubter, aber fehlender Eintrag ergibt `refused/secret`.
+
+Bei rootful Docker ohne zusätzliche Usernamespace-Abbildung entspricht
+Container-UID/GID 65532 der Host-UID/GID 65532. Rootless Docker und Podman bilden
+die IDs hingegen über die Bereiche aus `/etc/subuid` und `/etc/subgid` ab.
+Synthetisches Beispiel für beide Runtimes mit Standard-Abbildung:
+
+```text
+/etc/subuid:  jnpt-runner:100000:65536
+/etc/subgid:  jnpt-runner:100000:65536
+
+uid_map:     Container-ID  Host-ID  Anzahl
+                       0     1000       1
+                       1   100000   65536
+gid_map:               0     1000       1
+                       1   100000   65536
+```
+
+Bei dieser Abbildung gilt `Host-ID = 100000 + (Container-ID - 1)`:
+Container-UID/GID **65532 entspricht Host-UID/GID 165531**. UID 0 im Namespace
+entspricht hier dem Läufer-Nutzer mit Host-UID/GID 1000. Die Bereiche und
+Abbildungen sind installationsabhängig; bei abweichenden Sub-GIDs die GID
+getrennt berechnen. Maßgeblich ist die tatsächliche Abbildung des Jobs auf dem
+Linux-Host des Daemons. Für einen laufenden Job prüfen:
+
+```sh
+job_name=jnpt-run-... # tatsächlichen Containernamen einsetzen
+job_pid=$(docker inspect --format '{{.State.Pid}}' "$job_name")
+sudo cat "/proc/$job_pid/uid_map" "/proc/$job_pid/gid_map"
+```
+
+Bei Podman denselben Aufruf mit `podman inspect` verwenden. Auf diesem Host
+lassen sich die Rechte für die obige Beispiel-Abbildung so setzen:
+
+```sh
+sudo install -d -m 0700 -o jnpt-runner -g jnpt-runner /etc/jnpt-runner/secrets
+sudo install -m 0400 -o 165531 -g 165531 ./synthetic-secret /etc/jnpt-runner/secrets/alpha
+```
+
+Das Verzeichnis bleibt Eigentum des Läufer-Nutzers; nur die Geheimnis-Datei
+gehört der abgebildeten Job-UID. Bei lokalem rootless Podman kann alternativ
+als `jnpt-runner` außerhalb der gehärteten Unit `podman unshare chown 65532:65532
+/etc/jnpt-runner/secrets/alpha` und anschließend `podman unshare chmod 0400
+/etc/jnpt-runner/secrets/alpha` verwendet werden. Das gilt für die gezeigte
+Standard-Abbildung; bei weiteren Usernamespaces wieder die Job-Abbildung prüfen.
 
 Ad-hoc bindet ausschließlich `allowed_secret_names` ∩ signierte `secret_names`.
 Fehlende/leere Claim-Liste bindet nichts; lokale Konfiguration erweitert keine

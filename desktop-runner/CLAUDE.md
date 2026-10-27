@@ -193,12 +193,13 @@ Native Windows-Mutationen zusätzlich: probe/mutations-windows.ps1 (ohne Admin).
   nie Shell. Der feste Shell-Startcode IM Container entpackt ausschließlich den
   selbst erzeugten Tar-Stream; der signierte Befehl bleibt argv hinter `exec "$@"`.
   Kein freier Mount, Env, Socket, entrypoint oder Host-Namespace aus dem Pin.
+  Der Läufer setzt fest --entrypoint /bin/sh; Image-ENTRYPOINTs werden überschrieben.
   Read-only, UID/GID 65532, ALL-Cap-Drop, no-new-privileges, init, rm, pids=128,
-  Pin-Grenzen und noexec/nosuid/nodev-tmpfs sind fest. Pull nur Digest, Vergleich
+  memory-swap=memory, Pin-Grenzen und noexec/nosuid/nodev-tmpfs sind fest. Pull nur Digest, Vergleich
   der RepoDigests vor Start, danach pull=never. Vollständiges Argument-Golden.
 - D2/Frage 3: Kein Gerätetoken-/Läuferverzeichnis im Job. Lauf-Token kommt über
   stdin-Tar in /run/jnpt/token, 0400, UID/GID 65532, nur tmpfs; kein Token in
-  docker inspect. Image benötigt sh/tar und passenden ENTRYPOINT. docker cp ist
+  docker inspect. Image benötigt /bin/sh und tar; der ENTRYPOINT ist fest /bin/sh. docker cp ist
   wegen read-only/tmpfs-Semantik ungeeignet. Production führt kein docker exec aus;
   die Docker-Tests lesen damit die tatsächlichen Dateirechte im laufenden Job.
 - D3: Attached run vermeidet die --rm/docker-wait-Race. kill und rm bei Ende,
@@ -210,8 +211,10 @@ Native Windows-Mutationen zusätzlich: probe/mutations-windows.ps1 (ohne Admin).
 - D4: Nur Claim-Namen ∩ signierte Deklaration; Zeitplanfreigabe aus signiertem
   Manifest. Namen nach K1 (1–63, erster Buchstabe/Ziffer, kein .., max.16,
   eindeutig), lstat, reguläre Datei und symlinkfreier Betreiberpfad 0700/eigene UID.
-  Nur read-only Bind nach /run/secrets/<name>, nie Werte in Env. Ergebnis sendet
-  mounted_secret_names, auch []. Marker meldet für interrupted nur die leere, unbekannte Teilmenge;
+  Nur read-only Bind nach /run/secrets/<name>, nie Werte in Env.
+  Die Datei muss für Container-UID 65532 lesbar sein; rootless gelten die
+  tatsächlichen Sub-UID/Sub-GID-Abbildungen (Beispiel und Rechte im README).
+  Ergebnis sendet mounted_secret_names, auch []. Marker meldet für interrupted nur die leere, unbekannte Teilmenge;
   nachgewiesene Starts melden die tatsächlichen Mount-Namen.
 - D5: Runtime beim Start aus Docker SecurityOptions bzw. Podman host.security
   erkennen, unbekannt/zu alt → refused/runtime. Pair/Heartbeat melden das Merkmal
@@ -228,7 +231,7 @@ Native Windows-Mutationen zusätzlich: probe/mutations-windows.ps1 (ohne Admin).
 
 | Tragende Server-Invariante | Tests |
 |---|---|
-| Geschlossene Optionen, Limits, Digest | TestDockerArgumenteGolden, TestDockerVerboteneOptionen, TestContainerGrenzenAmExecutor, TestDigestVergleichNachPull, TestDockerCLIArgumenteOhneShell |
+| Geschlossene Optionen, Limits, Digest | TestDockerArgumenteGolden, TestDockerVerboteneOptionen, TestContainerGrenzenAmExecutor, TestDigestVergleichNachPull, TestDockerCLIArgumenteOhneShell, TestDockerEigenenEntrypointUeberschreiben (echter Docker) |
 | Token-tmpfs, kein Hostcredential/Socket | TestTokenNichtInInspect, TestJobLiestGeraetetokenNicht (echter Docker) |
 | Cleanup, kein Wiederstart | TestVerwaisteContainerNachNeustart, TestAbbruchUndWandzeitKillRm, TestContainerFehlgeschlageneBereinigungSperrtNeustart, TestContainerCleanupWartetAufEntfernung, TestContainerHeartbeatAbbruchAmHTTPAdapter, TestContainerWiderrufStopptVorLoeschen, TestDockerAbbruchWandzeitUndNeustart (auch echter Docker) |
 | Geheimnis-Schnittmenge, Symlink, kein Env | TestGeheimnisseNurDeklariertUndOhneSymlink, TestGeheimnisseNieAlsEnv, TestKeinGeheimnisMountBeiFehlgeschlagenemStart, TestDockerGeheimnisMountReadOnlyUndInspect (echter Docker) |

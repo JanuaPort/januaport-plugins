@@ -3,6 +3,8 @@
 package client
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -50,6 +52,7 @@ func realDocker(t *testing.T) (*DockerExecutor, Pin) {
 
 func TestTokenNichtInInspect(t *testing.T) {
 	d, p := realDocker(t)
+	p.Container.MemoryBytes = 64 << 20 // Deliberately differs from the argv golden.
 	key := "inspect-" + filepath.Base(t.TempDir())
 	token := "SYNTHETIC_RUN_TOKEN_1195"
 	// The job waits for delivery and verifies real ownership/mode, not a fake tar.
@@ -94,6 +97,8 @@ func TestTokenNichtInInspect(t *testing.T) {
 	}
 	var objects []struct {
 		HostConfig struct {
+			Memory         int64
+			MemorySwap     int64
 			ReadonlyRootfs bool
 			Privileged     bool
 			CapDrop        []string
@@ -103,6 +108,69 @@ func TestTokenNichtInInspect(t *testing.T) {
 	}
 	if json.Unmarshal(inspect, &objects) != nil || len(objects) != 1 || !objects[0].HostConfig.ReadonlyRootfs || objects[0].HostConfig.Privileged || objects[0].Config.User != "65532:65532" || len(objects[0].HostConfig.Tmpfs) != 2 {
 		t.Fatal("Sandbox fehlt")
+	}
+	if objects[0].HostConfig.Memory != p.Container.MemoryBytes || objects[0].HostConfig.MemorySwap != p.Container.MemoryBytes {
+		t.Fatal("RAM und RAM-plus-Swap müssen dem Pin-Limit entsprechen")
+	}
+}
+
+func TestDockerEigenenEntrypointUeberschreiben(t *testing.T) {
+	d, p := realDocker(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	key := "entrypoint-" + sum([]byte(t.TempDir()))[:16]
+	dockerfile := "FROM " + p.Container.Image + "\nLABEL ai.januaport.test=" + key + "\nENTRYPOINT [\"/bin/sh\",\"-c\",\"exit 73\"]\n"
+	var buildContext bytes.Buffer
+	w := tar.NewWriter(&buildContext)
+	if err := w.WriteHeader(&tar.Header{Name: "Dockerfile", Mode: 0600, Size: int64(len(dockerfile))}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(w, dockerfile); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	b, err := d.CLI.Call(ctx, &buildContext, "build", "--quiet", "--network", "none", "--pull=false", "-")
+	if err != nil {
+		t.Fatal("Mini-Image mit eigenem ENTRYPOINT bauen", err)
+	}
+	imageID := strings.TrimSpace(string(b))
+	if !strings.HasPrefix(imageID, "sha256:") || !validID("sha256", strings.TrimPrefix(imageID, "sha256:")) {
+		t.Fatal("Ungültige Build-Image-ID")
+	}
+	defer func() {
+		cleanupCtx, stop := context.WithTimeout(context.Background(), 15*time.Second)
+		defer stop()
+		if _, err := d.CLI.Call(cleanupCtx, nil, "image", "rm", imageID); err != nil {
+			t.Error("Mini-Image entfernen", err)
+		}
+	}()
+	defer func() {
+		if err := d.cleanup(containerName(key)); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	p.Container.Command = []string{"/bin/sh", "-c", `test "$(cat /run/jnpt/token)" = SYNTHETIC_ENTRYPOINT_TOKEN && test "$(cat /run/jnpt/input.json)" = '{"synthetic":true}' && test "$#" -eq 2 && test "$1" = 'a b' && test "$2" = '$(exit 72); --entrypoint /bad'`, "probe", "a b", "$(exit 72); --entrypoint /bad"}
+	args, err := dockerArguments(key, *p.Container, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// This unpublished test image has no registry digest. Exercise the real
+	// argv builder and exec adapter with its immutable local ID; Run's separate
+	// pull/digest verification remains covered by TestDigestVergleichNachPull.
+	for i := range args {
+		if args[i] == p.Container.Image {
+			args[i] = imageID
+		}
+	}
+	archive, err := jobArchive([]byte(`{"synthetic":true}`), "SYNTHETIC_ENTRYPOINT_TOKEN")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.CLI.Call(ctx, bytes.NewReader(archive), args...); err != nil {
+		t.Fatal("Eigener Image-ENTRYPOINT verhinderte Startcode oder unveränderten Pin-Befehl", err)
 	}
 }
 

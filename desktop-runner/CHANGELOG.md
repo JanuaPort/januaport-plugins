@@ -2,6 +2,11 @@
 
 ## Unveröffentlicht
 
+- Fester Container-ENTRYPOINT `/bin/sh`, auch bei eigenem Image-ENTRYPOINT;
+  Swap-Limit gleich RAM-Limit und Anleitung zur Lesbarkeit von Geheimnissen
+  für UID 65532 einschließlich rootless Sub-UID/Sub-GID-Beispiel
+  (JanuaPort/januaport#1195).
+
 - Linux-Server-Modus mit Vertrag 2 und signierten Container-Pins
   (JanuaPort/januaport#1195); Windows und Vertrag-1-Goldens bleiben unverändert.
 - Docker-CLI über eine testbare Naht, feste Sandbox-Argumente, Digestvergleich,

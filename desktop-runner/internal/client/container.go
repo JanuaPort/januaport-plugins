@@ -150,14 +150,15 @@ func dockerArguments(key string, c Container, mounts []secretMount) ([]string, e
 	if err := c.Validate(); err != nil {
 		return nil, err
 	}
-	a := []string{"run", "--interactive", "--rm", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--user", "65532:65532", "--pids-limit", "128", "--memory", strconv.FormatInt(c.MemoryBytes, 10), "--cpus", fmt.Sprintf("%d.%03d", c.CPUMillis/1000, c.CPUMillis%1000), "--network", c.Network, "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=67108864", "--tmpfs", "/run/jnpt:rw,noexec,nosuid,nodev,size=1048576,mode=0700,uid=65532,gid=65532", "--pull", "never", "--init", "--log-driver", "none", "--name", containerName(key), "--label", "ai.januaport.run=" + key}
+	a := []string{"run", "--interactive", "--rm", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--user", "65532:65532", "--pids-limit", "128", "--memory", strconv.FormatInt(c.MemoryBytes, 10), "--memory-swap", strconv.FormatInt(c.MemoryBytes, 10), "--cpus", fmt.Sprintf("%d.%03d", c.CPUMillis/1000, c.CPUMillis%1000), "--network", c.Network, "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=67108864", "--tmpfs", "/run/jnpt:rw,noexec,nosuid,nodev,size=1048576,mode=0700,uid=65532,gid=65532", "--pull", "never", "--init", "--log-driver", "none", "--name", containerName(key), "--label", "ai.januaport.run=" + key}
 	for _, m := range mounts {
 		if !secretNamesValid([]string{m.Name}) || !filepath.IsAbs(m.Path) || strings.ContainsAny(m.Path, ",\n\r") {
 			return nil, ErrSecret
 		}
 		a = append(a, "--mount", "type=bind,src="+m.Path+",dst=/run/secrets/"+m.Name+",readonly")
 	}
-	return append(append(a, c.Image, "/bin/sh", "-c", containerBootstrap, "jnpt-job"), c.Command...), nil
+	a = append(a, "--entrypoint", "/bin/sh")
+	return append(append(a, c.Image, "-c", containerBootstrap, "jnpt-job"), c.Command...), nil
 }
 
 func (d *DockerExecutor) mounts(p Pin, allowed []string) ([]secretMount, error) {

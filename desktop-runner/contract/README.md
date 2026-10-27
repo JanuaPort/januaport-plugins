@@ -46,8 +46,10 @@ akzeptiert noch weder Detail `secret` unter refused noch `wall` unter limit.
 Diese beiden beauftragten Resultate werden nicht umbenannt; der Kern muss
 nachgezogen werden. Bis dahin hält der Läufer HTTP-400-Ergebnisse im Journal.
 
-Lokale Container-Konvention: Das Image stellt sh/tar und einen passenden
-ENTRYPOINT bereit. Der feste Startcode entpackt privaten stdin-Tar auf tmpfs
+Lokale Container-Konvention: Das Image stellt /bin/sh und tar bereit. Der Läufer
+setzt --entrypoint /bin/sh ausdrücklich und überschreibt Image-ENTRYPOINTs.
+--memory-swap entspricht --memory und erlaubt keinen zusätzlichen Swap.
+Der feste Startcode entpackt privaten stdin-Tar auf tmpfs
 (`/run/jnpt/input.json`, `token`, `ready`, UID/GID 65532, 0400) und startet dann
 die signierte Befehlsliste. Token-Werte stehen nie in CLI-Args/Env/Labels.
 Werkzeuglose Zeitpläne haben eine leere Token-Datei. Diese Konvention erweitert
