@@ -1,0 +1,14 @@
+# Changelog
+
+## Unveröffentlicht
+
+- Linux-Server-Modus mit Vertrag 2 und signierten Container-Pins
+  (JanuaPort/januaport#1195); Windows und Vertrag-1-Goldens bleiben unverändert.
+- Docker-CLI über eine testbare Naht, feste Sandbox-Argumente, Digestvergleich,
+  tmpfs-Token über privaten stdin, read-only Betreiber-Geheimnisse und Rootless-Meldung.
+- Linux-Dateispeicher 0600/0700 mit HMAC-Integrität, bisherige Journaldeckel,
+  Abbruch-/Wandzeit-Bereinigung und Wiederanlauf als interrupted.
+- Gehärtete systemd-Vorlage, verpflichtende echte Docker-Proben in Linux-CI
+  und reproduzierbare Mutationsproben.
+- K1 muss noch `refused/secret` und `limit/wall` im Ergebnisadapter akzeptieren.
+  Release-Pakete, Signierung, C3, Objekt-URLs und cosign sind nicht enthalten.

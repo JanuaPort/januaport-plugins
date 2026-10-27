@@ -39,7 +39,13 @@ func realDocker(t *testing.T) (*DockerExecutor, Pin) {
 	p.Container.Image = image
 	_, p.Commit, _ = strings.Cut(image, "@sha256:")
 	p.Container.WallS = 30
-	return &DockerExecutor{CLI: cli}, p
+	return &DockerExecutor{CLI: cliFunction(func(ctx context.Context, in io.Reader, args ...string) ([]byte, error) {
+		b, err := cli.Call(ctx, in, args...)
+		if err != nil && args[0] != "inspect" && args[0] != "kill" && args[0] != "rm" {
+			t.Logf("Docker-Probe: %s: %v", args[0], err)
+		}
+		return b, err
+	})}, p
 }
 
 func TestTokenNichtInInspect(t *testing.T) {
@@ -69,18 +75,22 @@ func TestTokenNichtInInspect(t *testing.T) {
 	if strings.Contains(string(inspect), token) {
 		t.Fatal("Lauf-Token in docker inspect")
 	}
-	// docker cp reads the actual tmpfs file; archive header and value must match.
-	var archive []byte
+	// Test-only exec reads the live tmpfs; production never calls docker exec.
+	var contents []byte
 	for time.Now().Before(deadline) {
-		b, e := d.CLI.Call(context.Background(), nil, "cp", containerName(key)+":/run/jnpt/token", "-")
+		b, e := d.CLI.Call(context.Background(), nil, "exec", "--user", "65532:65532", containerName(key), "cat", "/run/jnpt/token")
 		if e == nil {
-			archive = b
+			contents = b
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if !strings.Contains(string(archive), token) {
+	if string(contents) != token {
 		t.Fatal("Token nicht im Job-tmpfs")
+	}
+	mode, e := d.CLI.Call(context.Background(), nil, "exec", "--user", "65532:65532", containerName(key), "stat", "-c", "%u:%g:%a", "/run/jnpt/token")
+	if e != nil || strings.TrimSpace(string(mode)) != "65532:65532:400" {
+		t.Fatal("Token-Dateirechte", string(mode), e)
 	}
 	var objects []struct {
 		HostConfig struct {
@@ -152,5 +162,125 @@ func TestDockerCLIArgumenteOhneShell(t *testing.T) {
 	}
 	if json.Unmarshal(b, &got) != nil || strings.Join(got.Args, "|") != strings.Join(args[1:], "|") || got.Input != "PRIVATE_STDIN" {
 		t.Fatal(string(b))
+	}
+}
+
+func TestDockerAbbruchWandzeitUndNeustart(t *testing.T) {
+	d, p := realDocker(t)
+	for _, wall := range []bool{false, true} {
+		key := "cleanup-" + filepath.Base(t.TempDir())
+		p.Container.Command = []string{"sleep", "60"}
+		p.Container.WallS = 20
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() { _, e := d.Run(ctx, key, p, nil, nil, ""); done <- e }()
+		deadline := time.Now().Add(15 * time.Second)
+		started := false
+		for time.Now().Before(deadline) {
+			b, e := d.CLI.Call(context.Background(), nil, "inspect", "--format", "{{.State.Running}}", containerName(key))
+			if e == nil && strings.TrimSpace(string(b)) == "true" {
+				started = true
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		if !wall {
+			cancel()
+		}
+		err := <-done
+		cancel()
+		if !started || wall && err != ErrWall || !wall && err != ErrInterrupted {
+			t.Fatal("Lauf/Abbruch", started, err)
+		}
+		b, e := d.CLI.Call(context.Background(), nil, "ps", "--all", "--quiet", "--filter", "name="+containerName(key))
+		if e != nil || len(strings.TrimSpace(string(b))) != 0 {
+			t.Fatal("Container verblieben", e)
+		}
+	}
+	// The test daemon must be dedicated, just like the production runner.
+	key := "orphan-" + filepath.Base(t.TempDir())
+	name := containerName(key)
+	_, err := d.CLI.Call(context.Background(), nil, "run", "--detach", "--rm", "--label", "ai.januaport.run="+key, "--name", name, p.Container.Image, "sleep", "60")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.cleanup(name)
+	st, _ := OpenState(t.TempDir(), testCipher{})
+	r := containerResult(Result{JobID: key, Commit: p.Commit, ManifestSeq: 42})
+	st.Mark(r, "started")
+	e := Engine{State: st, Container: d}
+	if err = e.recoverContainers(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	b, err := d.CLI.Call(context.Background(), nil, "ps", "--all", "--quiet", "--filter", "name="+name)
+	if err != nil || len(strings.TrimSpace(string(b))) != 0 || len(st.Journal().Results) != 1 || st.Journal().Results[0].End != "interrupted" {
+		t.Fatal("Verwaister Lauf nicht beendet", err)
+	}
+}
+
+func TestDockerGeheimnisMountReadOnlyUndInspect(t *testing.T) {
+	d, p := realDocker(t)
+	// In socket-based local CI /tmp is mounted at the same path in the test
+	// container and daemon host. GitHub's native Linux runner shares it already.
+	root, err := os.MkdirTemp("/tmp", "jnpt-secret-1195-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	if err = os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	secret := "SYNTHETIC_OPERATOR_SECRET_1195"
+	if err = os.WriteFile(filepath.Join(root, "alpha"), []byte(secret), 0444); err != nil {
+		t.Fatal(err)
+	}
+	d.SecretsDir = root
+	p.Container.SecretNames = []string{"alpha"}
+	key := "secret-" + filepath.Base(root)
+	p.Container.Command = []string{"/bin/sh", "-c", `test -s /run/secrets/alpha && ! (echo forbidden > /run/secrets/alpha) && sleep 20`}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { _, e := d.Run(ctx, key, p, []string{"alpha"}, nil, ""); done <- e }()
+	defer func() { cancel(); <-done }()
+	deadline := time.Now().Add(12 * time.Second)
+	var b []byte
+	for time.Now().Before(deadline) {
+		v, e := d.CLI.Call(context.Background(), nil, "inspect", containerName(key))
+		if e == nil {
+			b = v
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if len(b) == 0 || strings.Contains(string(b), secret) {
+		t.Fatal("Mount fehlt oder Geheimniswert in Inspect")
+	}
+	var objects []struct {
+		Mounts []struct {
+			Source, Destination string
+			RW                  bool
+		}
+	}
+	if json.Unmarshal(b, &objects) != nil || len(objects) != 1 {
+		t.Fatal("Inspect-Form")
+	}
+	found := false
+	for _, m := range objects[0].Mounts {
+		if m.Destination == "/run/secrets/alpha" {
+			found = true
+			if m.RW || m.Source != filepath.Join(root, "alpha") {
+				t.Fatal("Geheimnis nicht read-only")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("Deklarierter Mount fehlt")
+	}
+	value, e := d.CLI.Call(context.Background(), nil, "exec", "--user", "65532:65532", containerName(key), "cat", "/run/secrets/alpha")
+	if e != nil || string(value) != secret {
+		t.Fatal("Geheimnis im Job nicht lesbar", e)
+	}
+	if _, e = d.CLI.Call(context.Background(), nil, "exec", "--user", "65532:65532", containerName(key), "touch", "/run/secrets/alpha"); e == nil {
+		t.Fatal("Geheimnis im Job schreibbar")
 	}
 }

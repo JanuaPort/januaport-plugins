@@ -1,0 +1,6 @@
+{
+  "mode": "container",
+  "docker_path": "/usr/bin/docker",
+  "state_dir": "/var/lib/jnpt-runner/state",
+  "secrets_dir": "/etc/jnpt-runner/secrets"
+}

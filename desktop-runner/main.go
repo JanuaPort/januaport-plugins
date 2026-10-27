@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/client"
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/platform"
@@ -24,6 +25,9 @@ func main() {
 	}
 }
 func run(args []string, out io.Writer) error {
+	if runtime.GOOS == "linux" {
+		return runServer(args, out)
+	}
 	if len(args) == 0 {
 		return client.ErrProtocol
 	}

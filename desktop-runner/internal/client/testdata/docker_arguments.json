@@ -1,6 +1,6 @@
 [
   "run",
-  "--detach",
+  "--interactive",
   "--rm",
   "--read-only",
   "--cap-drop",
@@ -31,6 +31,10 @@
   "--label",
   "ai.januaport.run=probe",
   "registry.example/jobs/import@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "/bin/sh",
+  "-c",
+  "tar -xf - -C /run/jnpt || exit 125; exec \"$@\"",
+  "jnpt-job",
   "/app/import",
   "--synthetic"
 ]
