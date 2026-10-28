@@ -86,6 +86,25 @@ Getaggt als `agent-runner-v0.1.0` (Release-Lauf 38983345807, 17.10.2026).
 
 ### Kuratierung
 
+### v0.2.0 — 2026-10-28
+
+| Feld | Wert |
+|---|---|
+| Image | `ghcr.io/januaport/agent-runner` |
+| Tag | `agent-runner-v0.2.0` (Image-Tag `0.2.0`) auf `b769332` |
+| Digest (OCI-Index) | `sha256:71641777403c2e98cd08db94d99d0e119a3d57aac7b3313181d85eb1404b81ba` |
+| Plattform | `linux/amd64` (`sha256:4b3ef14eacb73ce9b6ee8cd6b263da22637a95e2165012ff1afa87c085e360b9`), sonst keine; dazu der Attestations-Eintrag `sha256:a26cd440…` |
+| Art | `service`, eigener Build (Plugins-Repo) |
+| Geprüft mit | JanuaPort 0.87.0, live auf dem Showcase (#1193: OpenAI-Lauf `9303701b-…` `end=ok`, 5,9 s, 1 Werkzeugaufruf; Anthropic-Profil `demo` unverändert) |
+| Benötigter Commit von Compose | `19ea160` (`docker-compose.yml`, unverändert seit 0.1.0) |
+| Lauf der Sonden | Release-Lauf `40716415185`, hat genau diesen Digest geprüft (SEC C1) |
+
+**Änderung gegenüber 0.1.2:** OpenAI-kompatibles Format neben Anthropic (#1193), mit SEC-R4 H1 (engere Prüfung) und H2 (`content_filter`).
+
+**Scan:** Trivy, Scan vom 2026-10-28T15:31Z, Debian 13.7: **0 critical · 0 high** · 2 unknown. Es sind dieselben zwei wie in 0.1.2: CVE-2026-39824 in `golang.org/x/sys/windows` (im `linux/amd64`-Binary nicht gebaut) und DSA-6572-1 in `ca-certificates` der Basis (vom Läufer nicht benutzt).
+
+**Entscheid:** löst 0.1.2 auf dem Showcase ab (per Digest, Sicherung `.env.vor-0.2.0`). Katalogfähig; den Eintrag setzt VENDOR mit PO-Go (PO-Go 28.10. im Fenster von VENDOR). Bekannte Grenze: Neuere OpenAI-Modelle (`gpt-5-nano`) verlangen `max_completion_tokens`, das kommt mit 0.2.1 (#1228).
+
 ### v0.1.2 — 2026-10-23
 
 | Feld | Wert |

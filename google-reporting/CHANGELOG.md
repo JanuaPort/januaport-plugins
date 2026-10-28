@@ -70,6 +70,27 @@ als Artefakt, kein Gate. SHA-Pins und Schreibrechte nach dem agent-runner-/scrip
 Die folgende Vorlage ist kein Release-Nachweis; GATE trägt die Werte nach dem grünen Release-Lauf
 und vor dem Katalogeintrag ein, nach dem Muster von agent-runner und script-runner.
 
+### Kuratierung v1.0.1 — 2026-10-28 (GATE)
+
+| Feld | Wert |
+|---|---|
+| Image | `ghcr.io/januaport/google-reporting` |
+| Tag | `google-reporting-v1.0.1` (Image-Tag `1.0.1`) auf `b769332` |
+| Digest (OCI-Index) | `sha256:797f59c787fff429e8ac8c0ce1c4276173c2481e787a2aa6c4f9db014b4cd651` |
+| Plattform | `linux/amd64` (`sha256:d3a87a685bfd8f6facc8a2c5107d5a7dab30403a8f57f9947394b213da9e0e9c`), sonst keine; dazu der Attestations-Eintrag `sha256:4ffa62f8…` |
+| Art | `service`, eigener Build (Plugins-Repo) |
+| Geprüft mit | JanuaPort 0.87.0 (Showcase, 28.10.2026) |
+| Benötigter Commit von Compose | `docker-compose.yml` wie seit `8c96724` unverändert |
+| Lauf der Sonden | Release-Lauf `40716415122`: hat genau diesen Digest geprüft (SEC C1) |
+
+**Änderung gegenüber 1.0.0:** nur `MAX_PATHS` 50 → 100 (#1176). Die Regex-Grenze von 4096 Zeichen bleibt fail-closed.
+
+**Scan:** Trivy, Scan vom 2026-10-28T15:31Z, Debian 13.7: **0 critical · 44 high**, alle **ohne behobene Fassung** in der Debian-Basis von `python:3.12-slim`. Es sind dieselben wie bei 1.0.0 (util-linux-Familie, libacl1, ncurses, libsystemd0/libudev1, perl-base). Mit Fix gibt es nur 5 medium und 1 low. Bewertung wie bei 1.0.0.
+
+**Live auf dem Showcase seit 28.10.2026 16:05Z** (Sicherung `.env.vor-1.0.1`): Container healthy, Konfiguration `januaport-2026-10-28` mit 45 Pfaden lädt. GSC `get_status` ready, `page_summary` über 28 Tage liefert 19 Zeilen.
+
+**Entscheid:** löst 1.0.0 auf dem Showcase ab. Katalogfähig; nur 1.0.1 kommt in den Katalog (#1219), den Eintrag setzt VENDOR mit PO-Go (PO-Go 28.10. im Fenster von VENDOR).
+
 ### Kuratierung v1.0.0 — 2026-10-22 (GATE)
 
 | Feld | Wert |
