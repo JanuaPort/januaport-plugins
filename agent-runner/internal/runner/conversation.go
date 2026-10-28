@@ -91,6 +91,7 @@ func (c *openAIConversation) next(ctx context.Context, r *Runner, client *http.C
 	c.request.Messages = append(c.request.Messages, response.Message)
 	out := turn{}
 	_ = json.Unmarshal(response.Message.Content, &out.Text)
+	// Shared stop reasons; the OpenAI request uses max_completion_tokens.
 	switch response.FinishReason {
 	case "stop":
 		out.Stop = "end_turn"

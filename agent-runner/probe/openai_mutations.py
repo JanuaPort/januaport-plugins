@@ -1,4 +1,4 @@
-"""#1193 mutation evidence; exclusive worktree access required.
+"""#1193/#1228 mutation evidence; exclusive worktree access required.
 
 python agent-runner/probe/openai_mutations.py [running-go-container]
 The container must mount the whole checkout and use agent-runner as its workdir.
@@ -19,6 +19,22 @@ L = "internal/runner/loop.go"
 
 # Each guard mutation keeps the code compilable, so only behavioral failures count.
 CASES = [
+    ("#1228 Altes Token-Feld wieder erlaubt", "TestCompletionTokenField|TestOpenAIOutgoingGuardsAtAdapter", A,
+     '"messages tools max_completion_tokens"', '"messages tools max_completion_tokens max_tokens"'),
+    ("#1228 OpenAI-Anfrage nutzt altes Feld", "TestCompletionTokenField|TestTokenBudgetAtAdapter", A,
+     '`json:"max_completion_tokens"`', '`json:"max_tokens"`'),
+    ("#1228 OpenAI-Deckel 1024 entfernt", "TestTokenBudgetAtAdapter", H,
+     'projected, min(1024, a.Limits.TokensOut)', 'projected, a.Limits.TokensOut'),
+    ("#1228 OpenAI ignoriert niedrigeres Budget", "TestTokenBudgetAtAdapter", H,
+     'projected, min(1024, a.Limits.TokensOut)', 'projected, 1024'),
+    ("#1228 Anthropic-Deckel 1024 entfernt", "TestTokenBudgetAtAdapter", H,
+     'tools, min(1024, a.Limits.TokensOut)', 'tools, a.Limits.TokensOut'),
+    ("#1228 Anthropic ignoriert niedrigeres Budget", "TestTokenBudgetAtAdapter", H,
+     'tools, min(1024, a.Limits.TokensOut)', 'tools, 1024'),
+    ("#1228 Wiederholung nach Anbieterfehler", "TestOpenAIUnknownCompletionTokensNoRetryAtAdapter", G,
+     'return response, end, detail\n\t}\n\tresponse, e = openai.ParseResponse(raw)',
+     'if end == "error" && detail == "provider" {\n\t\t\t_, _, _ = r.modelBody(ctx, c, bytes.Replace(b, []byte("max_completion_tokens"), []byte("max_tokens"), 1))\n\t\t}\n\t\treturn response, end, detail\n\t}\n\tresponse, e = openai.ParseResponse(raw)'),
+
     ("H1 developer wieder erlaubt", "TestRunnerVocabularyRejected|TestOpenAIOutgoingGuardsAtAdapter", A, 'case "system", "user", "assistant":', 'case "system", "developer", "user", "assistant":'),
     ("H2 content_filter wieder Fehler", "TestOpenAIFinishDetailsAtAdapter", H, 'case "content_filter":\n\t\treturn turn{}, "limit", "content_filter"', ''),
     ("H2 Log-Detail fehlt", "TestOpenAIFinishDetailsAtAdapter", L, 'record.Detail = detail', '// detail removed'),
@@ -31,8 +47,8 @@ CASES = [
     ("Antwortpruefung entfernt", "TestOpenAIUnsafeResponsesAtAdapter", A, 'if validateMessage(b) != nil {', 'if false {'),
     ("Leere choices ungeprueft", "TestResponseTable", A, 'len(envelope.Choices) == 0', 'false'),
     ("Antwortrolle ungeprueft", "TestOpenAIUnsafeResponsesAtAdapter", A, 'str(m["role"]) != "assistant"', 'false'),
-    ("Top-Level-Allowlist entfernt", "TestForbiddenRequests|TestRunnerVocabularyRejected", A, '!only(m, "messages tools max_tokens")', 'false'),
-    ("Erzwungene Werkzeugwahl", "TestForbiddenRequests|TestRunnerVocabularyRejected", A, '"messages tools max_tokens"', '"messages tools max_tokens tool_choice"'),
+    ("Top-Level-Allowlist entfernt", "TestForbiddenRequests|TestRunnerVocabularyRejected", A, '!only(m, "messages tools max_completion_tokens")', 'false'),
+    ("Erzwungene Werkzeugwahl", "TestForbiddenRequests|TestRunnerVocabularyRejected", A, '"messages tools max_completion_tokens"', '"messages tools max_completion_tokens tool_choice"'),
     ("Nachrichten-Zusatzfelder", "TestForbiddenRequests", A, '!only(m, "role content tool_calls tool_call_id")', 'false'),
     ("Unbekannte Rolle", "TestForbiddenRequests", A, 'default:\n\t\treturn errPayload', 'default:\n\t\t// guard removed'),
     ("Fehlende Werkzeugkorrelation akzeptiert", "TestForbiddenRequests|TestOpenAIOutgoingGuardsAtAdapter", A, 'str(m["tool_call_id"]) == ""', 'false'),

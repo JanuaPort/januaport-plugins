@@ -36,7 +36,7 @@ func (r *Runner) run(parent context.Context, a Arguments, token string) (out *mc
 	defer func() { record.DurationMS = time.Since(start).Milliseconds(); r.log.Write(record) }()
 	client := r.client(token)
 	client.Transport = bearer{token: token, base: r.transport, revoked: &revoked, scope: ctx}
-	mc := mcp.NewClient(&mcp.Implementation{Name: "agent-runner", Version: "0.2.0"}, nil)
+	mc := mcp.NewClient(&mcp.Implementation{Name: "agent-runner", Version: "0.2.1"}, nil)
 	session, e := mc.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: r.cfg.GatewayURL + MCPPath, HTTPClient: client, DisableStandaloneSSE: true}, nil)
 	if e != nil {
 		return finish("error", "gateway", "")

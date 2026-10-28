@@ -207,15 +207,16 @@ func TestInvalidProtocolValuesAtAdapter(t *testing.T) {
 
 func TestOpenAIOutgoingGuardsAtAdapter(t *testing.T) {
 	for _, payload := range []string{
-		`{"messages":[{"role":"developer","content":"x"}],"max_tokens":1}`,
-		`{"messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,YQ=="}}]}],"max_tokens":1}`,
-		`{"messages":[{"role":"user","content":"x","name":"x"}],"max_tokens":1}`,
-		`{"messages":[{"role":"user","content":"x"}],"max_completion_tokens":1}`,
-		`{"messages":[{"role":"user","content":"x"}],"model":"SECRET","max_tokens":1}`,
-		`{"messages":[{"role":"user","content":"x"}],"stream":false,"max_tokens":1}`,
-		`{"messages":[{"role":"tool","content":"x"}],"max_tokens":1}`,
-		`{"messages":[{"role":"user","content":"x"}],"tool_choice":"required","max_tokens":1}`,
-		`{"messages":[{"role":"user","content":"x"}],"tools":[{"type":"web_search"}],"max_tokens":1}`,
+		`{"messages":[{"role":"developer","content":"x"}],"max_completion_tokens":1}`,
+		`{"messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,YQ=="}}]}],"max_completion_tokens":1}`,
+		`{"messages":[{"role":"user","content":"x","name":"x"}],"max_completion_tokens":1}`,
+		`{"messages":[{"role":"user","content":"x"}],"max_tokens":1}`,
+		`{"messages":[{"role":"user","content":"x"}],"max_completion_tokens":1,"max_tokens":1}`,
+		`{"messages":[{"role":"user","content":"x"}],"model":"SECRET","max_completion_tokens":1}`,
+		`{"messages":[{"role":"user","content":"x"}],"stream":false,"max_completion_tokens":1}`,
+		`{"messages":[{"role":"tool","content":"x"}],"max_completion_tokens":1}`,
+		`{"messages":[{"role":"user","content":"x"}],"tool_choice":"required","max_completion_tokens":1}`,
+		`{"messages":[{"role":"user","content":"x"}],"tools":[{"type":"web_search"}],"max_completion_tokens":1}`,
 	} {
 		core := &fakeCore{}
 		r, _, _ := setup(t, core)
@@ -253,7 +254,13 @@ func TestOpenAIGoldensAtAdapter(t *testing.T) {
 		t.Fatal(string(out))
 	}
 	var request struct{ Body json.RawMessage }
-	_ = json.Unmarshal(golden(t, "model_request_openai.json"), &request)
+	proposed, err := os.ReadFile("../../contract/proposed/model_request_openai.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(proposed, &request); err != nil {
+		t.Fatal(err)
+	}
 	body, _ := json.Marshal(core.requests[0])
 	equalJSON(t, body, request.Body)
 }
@@ -346,5 +353,68 @@ func TestOpenAIFinishDetailsAtAdapter(t *testing.T) {
 				t.Fatal("provider content leaked")
 			}
 		})
+	}
+}
+
+// Exercise the real MCP handler, conversation and HTTP sender on every turn.
+func TestTokenBudgetAtAdapter(t *testing.T) {
+	for _, protocol := range []string{"openai", "anthropic", ""} {
+		for _, tc := range []struct{ limit, want int }{{1, 1}, {511, 511}, {1024, 1024}, {20000, 1024}} {
+			t.Run(fmt.Sprintf("%s/%d", protocol, tc.limit), func(t *testing.T) {
+				core := &fakeCore{model: func(w http.ResponseWriter, r *http.Request, n int) {
+					if protocol == "openai" {
+						if n == 1 {
+							openAIReply(w, `{"role":"assistant","tool_calls":[`+openAIUse("a", `{"q":"`+secret+`"}`)+`]}`, "tool_calls")
+						} else {
+							openAIReply(w, `{"role":"assistant","content":"fertig"}`, "stop")
+						}
+					} else if n == 1 {
+						modelReply(w, `[{"type":"tool_use","id":"a","name":"erp_list_things","input":{"q":"`+secret+`"}}]`, "tool_use")
+					} else {
+						modelReply(w, `[{"type":"text","text":"fertig"}]`, "end_turn")
+					}
+				}}
+				r, _, _ := setup(t, core)
+				q := requestFixture(t)
+				q.Arguments.Model.Protocol = modelProtocol(protocol)
+				q.Arguments.Limits.TokensOut = tc.limit
+				_, out := invoke(t, r, context.Background(), q, nil)
+				end(t, out, "ok", 2)
+				if len(core.requests) != 2 || core.calls != 1 {
+					t.Fatalf("requests/calls: %d/%d", len(core.requests), core.calls)
+				}
+				field, forbidden := "max_tokens", "max_completion_tokens"
+				if protocol == "openai" {
+					field, forbidden = forbidden, field
+				}
+				for i, body := range core.requests {
+					if body[field] != float64(tc.want) {
+						t.Errorf("turn %d: %s = %v, want %d", i+1, field, body[field], tc.want)
+					}
+					if _, exists := body[forbidden]; exists {
+						t.Errorf("turn %d: forbidden field %s sent", i+1, forbidden)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestOpenAIUnknownCompletionTokensNoRetryAtAdapter(t *testing.T) {
+	core := &fakeCore{model: func(w http.ResponseWriter, r *http.Request, n int) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"error":{"class":"provider","message":"Unknown parameter: max_completion_tokens","provider_status":400}}`)
+	}}
+	r, _, logs := setup(t, core)
+	_, out := invoke(t, r, context.Background(), requestFixture(t), protocolEdit("openai"))
+	end(t, out, "error", 1)
+	if !strings.Contains(string(out), `"detail":"provider"`) || len(core.requests) != 1 || core.calls != 0 {
+		t.Fatalf("unexpected retry or result: %s; requests/calls %d/%d", out, len(core.requests), core.calls)
+	}
+	if core.requests[0]["max_completion_tokens"] != float64(1024) || core.requests[0]["max_tokens"] != nil {
+		t.Fatalf("wrong token field: %v", core.requests[0])
+	}
+	if strings.Contains(string(out)+logs.String(), "Unknown parameter") {
+		t.Fatal("upstream error text leaked")
 	}
 }
