@@ -2,6 +2,8 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('\A[0-9]+\.[0-9]+\.[0-9]+\z')][string]$Version = '0.1.0',
+    # Anlage für die Kopplung; die Geräte-API ist nur im Tailnet erreichbar (#1164).
+    [ValidatePattern('\Ahttps://[a-z0-9.-]+\z')][string]$Url = 'https://mcp.januaport.ai',
     [securestring]$Code,
     [switch]$CreateStandardUser,
     # Internal standard-account handoff: the pipe name contains no secret.
@@ -250,7 +252,7 @@ function Invoke-InstalltestWorker {
     Assert-InstalltestSignature $executable
     $runner = $null
     try {
-        Invoke-InstalltestCommand $executable @('pair', '--url', 'https://mcp.januaport.ai') $PairCode -Step 'pair' | Out-Null
+        Invoke-InstalltestCommand $executable @('pair', '--url', $Url) $PairCode -Step 'pair' | Out-Null
         Write-Host 'Installtest: gekoppelt.'
         Invoke-InstalltestCommand $executable @('install') -Step 'install' | Out-Null
         Write-Host 'Installtest: installiert.'
@@ -355,7 +357,7 @@ function Invoke-InstalltestStandardAccount {
         $pipeName = 'jnpt-installtest-' + [guid]::NewGuid().ToString('N')
         $pipe = New-InstalltestPipe $pipeName $user.SID
         $connection = $pipe.WaitForConnectionAsync()
-        $arguments = @('-NoProfile', '-File', $script, '-Version', $ReleaseVersion,
+        $arguments = @('-NoProfile', '-File', $script, '-Version', $ReleaseVersion, '-Url', $Url,
             '-PipeName', $pipeName, '-VerifiedDirectory', $Directory)
         try {
             $child = Start-InstalltestProcess (Join-Path $PSHOME 'pwsh.exe') $arguments -Credential $credential -ProfilePath $profilePath
