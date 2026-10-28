@@ -13,6 +13,16 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Get-InstalltestErrorClass gibt nur feste Klassen aus (eigene throw-Namen aus
+# Kleinbuchstaben und Unterstrich); alles andere wird zu „unbekannt“, damit nie
+# ein Exception-Text mit Code oder nativer Ausgabe im Log landet.
+function Get-InstalltestErrorClass {
+    param([Management.Automation.ErrorRecord]$Record)
+    $message = [string]$Record.Exception.Message
+    if ($message -cmatch '\A[a-z][a-z_]{2,40}\z') { return $message }
+    return 'unbekannt'
+}
+
 function Start-InstalltestProcess {
     param([string]$FilePath, [string[]]$Arguments, [securestring]$PairCode,
         [pscredential]$Credential)
@@ -90,7 +100,8 @@ function Invoke-InstalltestAttestation {
     $verifyArguments = @('attestation', 'verify', $Executable, '--bundle', $Bundle, '--repo', $repo,
         '--signer-workflow', "$repo/.github/workflows/desktop-runner-release.yml",
         '--source-ref', "refs/tags/desktop-runner-v$ReleaseVersion")
-    Invoke-InstalltestCommand 'gh' $verifyArguments | Out-Null
+    # Der erste Lauf lädt die Sigstore-Vertrauensbasis; 30 s reichen dafür nicht sicher.
+    Invoke-InstalltestCommand 'gh' $verifyArguments -TimeoutSeconds 120 | Out-Null
 }
 
 function Assert-InstalltestStandardUser {
@@ -340,12 +351,19 @@ function Invoke-Installtest {
         Write-Host 'Installtest: Release laden und SHA256, Herausgeber, Provenance prüfen.'
         $repo = 'JanuaPort/januaport-plugins'
         $tag = "desktop-runner-v$Version"
-        foreach ($asset in @('desktop-runner.exe', 'SHA256SUMS', 'provenance.jsonl')) {
-            Invoke-WebRequest "https://github.com/$repo/releases/download/$tag/$asset" -OutFile (Join-Path $directory $asset)
-        }
+        try {
+            foreach ($asset in @('desktop-runner.exe', 'SHA256SUMS', 'provenance.jsonl')) {
+                Invoke-WebRequest "https://github.com/$repo/releases/download/$tag/$asset" -OutFile (Join-Path $directory $asset)
+            }
+        } catch { throw 'download_failed' }
         Assert-InstalltestDigest $directory
+        Write-Host 'Installtest: SHA256 ok.'
         Assert-InstalltestSignature (Join-Path $directory 'desktop-runner.exe')
-        Invoke-InstalltestAttestation (Join-Path $directory 'desktop-runner.exe') (Join-Path $directory 'provenance.jsonl') $Version
+        Write-Host 'Installtest: Herausgeber ok.'
+        try {
+            Invoke-InstalltestAttestation (Join-Path $directory 'desktop-runner.exe') (Join-Path $directory 'provenance.jsonl') $Version
+        } catch { throw ('provenance_' + (Get-InstalltestErrorClass $_)) }
+        Write-Host 'Installtest: Provenance ok.'
         if ($CreateStandardUser) { Invoke-InstalltestStandardAccount $Version $Code $directory }
         else { Invoke-InstalltestWorker $Version $Code $directory }
         Write-Host 'Installtest: Standardkonto, Kopplung, Installation, 5 Minuten Betrieb und Deinstallation geprüft.'
@@ -361,7 +379,7 @@ if ($MyInvocation.InvocationName -ne '.') {
     catch {
         # Native output, argv and exception detail may contain the pairing code.
         # Emit only this fixed diagnostic, never $_ / an ErrorRecord.
-        Write-Host 'Installtest fehlgeschlagen; Releaseprüfung, Standardkonto, Betrieb oder Cleanup nicht bestanden.'
+        Write-Host ('Installtest fehlgeschlagen; Fehlerklasse: ' + (Get-InstalltestErrorClass $_) + '.')
         exit 1
     }
 }
