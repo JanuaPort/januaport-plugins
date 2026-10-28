@@ -62,12 +62,12 @@ func (r *Runner) key() string {
 	return key
 }
 func (r *Runner) Handler() http.Handler {
-	s := mcp.NewServer(&mcp.Implementation{Name: "agent-runner", Version: "0.1.2"}, &mcp.ServerOptions{Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}}})
+	s := mcp.NewServer(&mcp.Implementation{Name: "agent-runner", Version: "0.2.0"}, &mcp.ServerOptions{Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}}})
 	s.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
 			switch method {
 			case "tools/list":
-				return &mcp.ListToolsResult{Meta: mcp.Meta{"januaport.ai/runner": map[string]any{"contract": 1, "max_wall_s": r.cfg.MaxWallS}}, Tools: []*mcp.Tool{{Name: "run_agent", Description: "Führt ein freigegebenes Agenten-Profil über den Kern aus.", InputSchema: map[string]any{"type": "object", "required": []string{"contract", "gateway", "input", "instructions", "limits", "model", "run"}}}}}, nil
+				return &mcp.ListToolsResult{Meta: mcp.Meta{"januaport.ai/runner": map[string]any{"contract": 1, "max_wall_s": r.cfg.MaxWallS, "protocols": []string{"anthropic", "openai"}}}, Tools: []*mcp.Tool{{Name: "run_agent", Description: "Führt ein freigegebenes Agenten-Profil über den Kern aus.", InputSchema: map[string]any{"type": "object", "required": []string{"contract", "gateway", "input", "instructions", "limits", "model", "run"}}}}}, nil
 			case "tools/call":
 				call, ok := req.(*mcp.CallToolRequest)
 				if !ok || call.Params.Name != "run_agent" || call.Extra == nil {

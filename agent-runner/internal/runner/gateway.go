@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	"github.com/januaport/januaport-plugins/agent-runner/internal/anthropic"
+	"github.com/januaport/januaport-plugins/agent-runner/internal/openai"
 )
 
 type bearer struct {
@@ -81,6 +82,36 @@ func (r *Runner) model(ctx context.Context, c *http.Client, request anthropic.Re
 	if e != nil || anthropic.Validate(b) != nil {
 		return response, "error", "rejected"
 	}
+	raw, end, detail := r.modelBody(ctx, c, b)
+	if end != "" {
+		return response, end, detail
+	}
+	if json.Unmarshal(raw, &response) != nil || anthropic.ValidateContent(response.Content) != nil {
+		return response, "error", "gateway"
+	}
+	return response, "", ""
+}
+
+func (r *Runner) openAIModel(ctx context.Context, c *http.Client, request any) (openai.Response, string, string) {
+	var response openai.Response
+	b, e := json.Marshal(request)
+	if e != nil || openai.Validate(b) != nil {
+		return response, "error", "rejected"
+	}
+	raw, end, detail := r.modelBody(ctx, c, b)
+	if end != "" {
+		return response, end, detail
+	}
+	response, e = openai.ParseResponse(raw)
+	if e != nil {
+		return response, "error", "gateway"
+	}
+	return response, "", ""
+}
+
+// Both adapters use the same envelope, transport and fixed error classification.
+func (r *Runner) modelBody(ctx context.Context, c *http.Client, b []byte) (json.RawMessage, string, string) {
+	var response json.RawMessage
 	req, e := http.NewRequestWithContext(ctx, "POST", r.cfg.GatewayURL+ModelPath, bytes.NewReader(b))
 	if e != nil {
 		return response, "error", "gateway"
@@ -92,7 +123,7 @@ func (r *Runner) model(ctx context.Context, c *http.Client, request anthropic.Re
 	}
 	defer func() { _ = res.Body.Close() }()
 	var envelope struct {
-		Response modelResponse `json:"response"`
+		Response json.RawMessage `json:"response"`
 		Error    *struct {
 			Class  string `json:"class"`
 			Detail string `json:"detail"`
@@ -123,7 +154,7 @@ func (r *Runner) model(ctx context.Context, c *http.Client, request anthropic.Re
 		}
 		return response, "error", "gateway"
 	}
-	if res.StatusCode != 200 || anthropic.ValidateContent(envelope.Response.Content) != nil {
+	if res.StatusCode != 200 {
 		return response, "error", "gateway"
 	}
 	return envelope.Response, "", ""

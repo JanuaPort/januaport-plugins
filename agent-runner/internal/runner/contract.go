@@ -34,8 +34,9 @@ type Arguments struct {
 		WallS     int `json:"wall_s"`
 	} `json:"limits"`
 	Model struct {
-		Binding string `json:"binding"`
-		ModelID string `json:"model_id"`
+		Binding  string        `json:"binding"`
+		ModelID  string        `json:"model_id"`
+		Protocol modelProtocol `json:"protocol,omitempty"`
 	} `json:"model"`
 	Run struct {
 		ID       string `json:"id"`
@@ -45,6 +46,18 @@ type Arguments struct {
 }
 
 var errRequest = errors.New("Agenten-Anfrage ist nicht zulässig")
+
+type modelProtocol string
+
+// Only omission selects the legacy default; a supplied value must be known.
+func (p *modelProtocol) UnmarshalJSON(raw []byte) error {
+	var value string
+	if json.Unmarshal(raw, &value) != nil || (value != "anthropic" && value != "openai") {
+		return errRequest
+	}
+	*p = modelProtocol(value)
+	return nil
+}
 
 func parse(raw []byte, h http.Header) (Arguments, string, error) {
 	var a Arguments

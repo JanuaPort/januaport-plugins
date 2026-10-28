@@ -1,0 +1,28 @@
+{
+  "body": {
+    "response": {
+      "id": "chatcmpl_01",
+      "object": "chat.completion",
+      "model": "gpt-5",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "Drei Rechnungen geprüft."
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 1250,
+        "completion_tokens": 42
+      }
+    },
+    "usage": {
+      "tokens_in": 1250,
+      "tokens_out": 42
+    }
+  },
+  "status": 200
+}

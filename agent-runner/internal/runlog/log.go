@@ -12,6 +12,7 @@ type Record struct {
 	ToolCalls  int      `json:"tool_calls"`
 	Tools      []string `json:"tools"`
 	End        string   `json:"end"`
+	Detail     string   `json:"detail,omitempty"`
 	DurationMS int64    `json:"duration_ms"`
 }
 type Writer struct {

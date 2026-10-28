@@ -1,4 +1,4 @@
-# Agenten-Läufer 0.1.0
+# Agenten-Läufer 0.2.0 (unveröffentlicht)
 
 **Gebaut, Live-Durchstich ausstehend.** Der Beisteller führt ein vom Kern
 freigegebenes Agenten-Profil aus: Modell aufrufen, Werkzeuge ausführen,
@@ -6,7 +6,15 @@ Ergebnisse anhängen. Modell und Werkzeuge laufen über JanuaPort. Der Läufer
 kennt den Modell-Schlüssel nicht und hat im ausgelieferten Netz keinen
 Internet-Ausgang. Apache 2.0, siehe [LICENSE](../LICENSE).
 
-**Grenze in 0.1.0:** Der Läufer baut nur Anfragen im Format der Anthropic Messages API. Ein Agenten-Profil, das auf eine openai-kompatible Modell-Anbindung zeigt (OpenAI, Azure, Mistral, Ollama), scheitert in 0.1.0, weil der Kern die Anfrage abweist. Der OpenAI-Adapter folgt in einer späteren Version.
+Ab 0.2.0 unterstützt der Läufer Anthropic Messages und das OpenAI-Format
+(Chat Completions) für Anbindungen der Vorlage `openai-kompatibel`, etwa
+OpenAI, Azure, Mistral, Ollama und vLLM. Der Kern übergibt dafür
+`run_agent.arguments.model.protocol: "openai"`; `"anthropic"` wählt Messages.
+Ein unbekannter oder explizit leerer Protokollwert ergibt vor dem Lauf einen
+festen Fehler ohne Wiedergabe des Werts. Contract bleibt 1; `tools/list`
+meldet zusätzlich `protocols: ["anthropic","openai"]`.
+
+OpenAI-Format braucht JanuaPort mit `model.protocol` (Version folgt); ein älterer Kern schickt kein Protokoll, dann gilt Anthropic.
 
 ## Start
 
@@ -18,8 +26,8 @@ für UID/GID 65532 lesbar sein; der Schlüsselordner wird nur lesend gemountet.
 Der Ordner-Mount unterstützt atomare Schlüsselrotation.
 
 ```sh
-docker build -t agent-runner:0.1.0 .
-export JNPT_AGENT_RUNNER_IMAGE=agent-runner:0.1.0
+docker build -t agent-runner:0.2.0 .
+export JNPT_AGENT_RUNNER_IMAGE=agent-runner:0.2.0
 docker compose -f docker-compose.yml up -d
 docker compose -f docker-compose.yml ps
 ```
@@ -67,12 +75,23 @@ SDK-Cleanup kann den Lauf dadurch nicht verlängern. Der HTTP-Transport
 begrenzt Antworten auf Modell- und MCP-Pfad auf 4 MiB, unabhängig von der
 Wandzeit.
 
-Bilder werden nur als base64 mit `image/png`, `image/jpeg`, `image/gif`
+Im Anthropic-Pfad werden Bilder nur als base64 mit `image/png`, `image/jpeg`, `image/gif`
 oder `image/webp` weitergegeben. Andere Bild-Medientypen und URL-Bilder aus
 Werkzeugergebnissen werden zum festen Platzhalter aus dem Draht-Vertrag.
+Der OpenAI-Pfad übergibt Werkzeugtext und strukturierte Ergebnisse als Text;
+andere Inhaltsblöcke werden ebenfalls zum Platzhalter. Werkzeugergebnisse
+stehen dort als `role: tool` mit `tool_call_id` in der Historie. Ungültige
+JSON-Argumente erhalten lokal einen festen Fehlertext als Werkzeugergebnis.
+Die eigene OpenAI-Prüfung erlaubt nur `messages`, `tools`, `max_tokens`,
+die Rollen `system`, `user`, `assistant`, `tool` und Funktionswerkzeuge.
+`developer`, benannte Nachrichten und Inhaltsteile (auch Bilder) werden abgewiesen.
+`finish_reason: stop` beendet erfolgreich, `length` ergibt `limit/tokens_out`,
+`content_filter` ergibt `limit/content_filter`. Gefilterter Text und etwaige
+Werkzeugaufrufe werden dabei nicht ausgegeben bzw. ausgeführt.
 
 Eine JSON-Zeile je Lauf auf stdout: `steps`, `tool_calls`, `tools`, `end`,
-`duration_ms`. Darin stehen **keine Inhalte**: keine Eingabe, Anweisungen,
+`duration_ms` und optional das feste Ende-`detail` (auch `content_filter`).
+Darin stehen **keine Inhalte**: keine Eingabe, Anweisungen,
 Modellantworten, Werkzeugargumente/-ergebnisse oder Token. Werkzeugnamen
 sind Teil dieses Betriebsprotokolls. Ende-Klassen: `ok`, `limit`, `cancelled`,
 `revoked`, `error`. Fehler liefern feste Sätze; Text des Durchgangs wird
@@ -83,7 +102,9 @@ Anfrage des Agenten-Läufers abgewiesen.“
 
 Vertrag und neue Ende-Beispiele: [contract/README.md](contract/README.md).
 Die Tests benutzen ausschließlich einen lokalen Fake-Kern, keine Live-Modellaufrufe.
-Mutationsproben: `probe/mutations.py` (Bericht nach `<tmp>/agent-runner-mutations/`).
+Mutationsproben: `probe/mutations.py` und `probe/openai_mutations.py`
+(jeweils mit dem Namen eines laufenden Go-Prüfcontainers als Argument;
+Berichte nach `<tmp>/agent-runner-mutations/`).
 Die Release-Strecke verwendet die vorhandene `probe/smoke.ps1` mit `pwsh`
 auf Ubuntu: UID 65532, read-only Root-FS, `/healthz`, genau ein internes Netz,
 kein Host-Port und ein Testserver in einem fremden Netz (mit erreichbarer
