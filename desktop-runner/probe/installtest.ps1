@@ -213,6 +213,9 @@ function Invoke-InstalltestWorker {
     # Environment.SpecialFolder reads the loaded user's profile, not the CI
     # parent's inherited LOCALAPPDATA. Go's os.UserCacheDir uses LOCALAPPDATA.
     $env:LOCALAPPDATA = [Environment]::GetFolderPath('LocalApplicationData')
+    # Ohne geladenes Profil ist der Pfad leer; dann eigene Klasse statt copy_failed.
+    if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA) -or -not [IO.Path]::IsPathRooted($env:LOCALAPPDATA)) { throw 'profile_not_loaded' }
+    Write-Host 'Installtest: Profil geladen.'
     $stateRoot = Join-Path $env:LOCALAPPDATA 'JanuaPort/desktop-runner'
     $destination = Join-Path $env:LOCALAPPDATA "JanuaPort/installtest/$ReleaseVersion"
     $executable = Join-Path $destination 'desktop-runner.exe'
@@ -228,7 +231,7 @@ function Invoke-InstalltestWorker {
         Copy-Item -LiteralPath (Join-Path $Directory 'desktop-runner.exe') -Destination $executable
         Copy-Item -LiteralPath (Join-Path $Directory 'SHA256SUMS') -Destination $destination
     } catch { throw 'copy_failed' }
-    Write-Host 'Installtest: Läufer im Profil abgelegt.'
+    Write-Host 'Installtest: Laeufer im Profil abgelegt.'
     Assert-InstalltestDigest $destination
     Assert-InstalltestSignature $executable
     $runner = $null
@@ -281,6 +284,20 @@ function Send-InstalltestCode {
     } finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer) }
 }
 
+function New-InstalltestProfile {
+    param([string]$Sid, [string]$UserName)
+    if (-not ('JnptInstalltest.UserEnv' -as [type])) {
+        Add-Type -Namespace JnptInstalltest -Name UserEnv -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("userenv.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+public static extern int CreateProfile(string pszUserSid, string pszUserName, System.Text.StringBuilder pszProfilePath, uint cchProfilePath);
+'@
+    }
+    $path = [Text.StringBuilder]::new(260)
+    $hr = [JnptInstalltest.UserEnv]::CreateProfile($Sid, $UserName, $path, 260)
+    # 0x800700B7: Profil existiert bereits.
+    if ($hr -ne 0 -and $hr -ne -2147024713) { throw ('profile_create_failed_' + ('{0:x8}' -f $hr)) }
+}
+
 # Get-InstalltestWorkerClass liest aus der Ausgabe des Kind-Prozesses nur die
 # feste Fehlerzeile des eigenen Skripts.
 function Get-InstalltestWorkerClass {
@@ -305,6 +322,9 @@ function Invoke-InstalltestStandardAccount {
     $probeUser = 'JnptIT' + [guid]::NewGuid().ToString('N').Substring(0, 8)
     $password = ConvertTo-SecureString ([guid]::NewGuid().ToString('N') + '!Aa1') -AsPlainText -Force
     $user = New-LocalUser -Name $probeUser -Password $password -AccountNeverExpires
+    # Process.Start mit Credential lädt ein Profil nur, wenn es schon existiert.
+    # Beim frischen Konto legt CreateProfile (userenv) es vorher an.
+    New-InstalltestProfile $user.SID.Value $probeUser
     $pipe = $null
     $child = $null
     $credential = [pscredential]::new($probeUser, $password)
@@ -371,7 +391,7 @@ function Get-InstalltestCode {
 function Invoke-Installtest {
     if ($CleanupOnly) { Invoke-InstalltestWorker $Version -OnlyCleanup; return }
     if ($PipeName) {
-        Write-Host 'Installtest: Standardkonto läuft.'
+        Write-Host 'Installtest: Standardkonto laeuft.'
         try {
             $pipe = [IO.Pipes.NamedPipeClientStream]::new('.', $PipeName, 'In')
             try {
@@ -381,7 +401,7 @@ function Invoke-Installtest {
                 finally { $reader.Dispose() }
             } finally { $pipe.Dispose() }
         } catch { throw 'pipe_read_failed' }
-        Write-Host 'Installtest: Code übernommen.'
+        Write-Host 'Installtest: Code uebernommen.'
         Invoke-InstalltestWorker $Version $Code $VerifiedDirectory
         return
     }
