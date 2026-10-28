@@ -31,7 +31,7 @@ function Get-InstalltestErrorClass {
 
 function Start-InstalltestProcess {
     param([string]$FilePath, [string[]]$Arguments, [securestring]$PairCode,
-        [pscredential]$Credential)
+        [pscredential]$Credential, [string]$ProfilePath)
     $info = [Diagnostics.ProcessStartInfo]::new($FilePath)
     $info.UseShellExecute = $false
     $info.CreateNoWindow = $true
@@ -58,6 +58,19 @@ function Start-InstalltestProcess {
         $info.Domain = $env:COMPUTERNAME
         $info.Password = $Credential.Password
         $info.LoadUserProfile = $true
+        if ($ProfilePath) {
+            # Der Kind-Prozess erbt sonst die Profilvariablen des Elternkontos; die
+            # Shell-Ordner (AppData) werden aus %USERPROFILE% aufgelöst und zeigten
+            # dann ins fremde Profil (UnauthorizedAccess beim Anlegen).
+            $info.Environment['USERPROFILE'] = $ProfilePath
+            $info.Environment['HOMEDRIVE'] = [IO.Path]::GetPathRoot($ProfilePath).TrimEnd([char]92)
+            $info.Environment['HOMEPATH'] = $ProfilePath.Substring([IO.Path]::GetPathRoot($ProfilePath).Length - 1)
+            $info.Environment['APPDATA'] = Join-Path $ProfilePath 'AppData\Roaming'
+            $info.Environment['LOCALAPPDATA'] = Join-Path $ProfilePath 'AppData\Local'
+            $info.Environment['TEMP'] = Join-Path $ProfilePath 'AppData\Local\Temp'
+            $info.Environment['TMP'] = Join-Path $ProfilePath 'AppData\Local\Temp'
+            $info.Environment['USERNAME'] = $Credential.UserName
+        }
     }
     $process = [Diagnostics.Process]::new()
     $process.StartInfo = $info
@@ -297,6 +310,9 @@ public static extern int CreateProfile(string pszUserSid, string pszUserName, Sy
     $hr = [JnptInstalltest.UserEnv]::CreateProfile($Sid, $UserName, $path, 260)
     # 0x800700B7: Profil existiert bereits.
     if ($hr -ne 0 -and $hr -ne -2147024713) { throw ('profile_create_failed_' + ('{0:x8}' -f $hr)) }
+    $profilePath = (Get-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$Sid" -Name ProfileImagePath -ErrorAction SilentlyContinue).ProfileImagePath
+    if (-not $profilePath -or -not (Test-Path -LiteralPath $profilePath)) { throw 'profile_path_missing' }
+    return $profilePath
 }
 
 # Get-InstalltestWorkerClass liest aus der Ausgabe des Kind-Prozesses nur die
@@ -325,7 +341,7 @@ function Invoke-InstalltestStandardAccount {
     $user = New-LocalUser -Name $probeUser -Password $password -AccountNeverExpires
     # Process.Start mit Credential lädt ein Profil nur, wenn es schon existiert.
     # Beim frischen Konto legt CreateProfile (userenv) es vorher an.
-    New-InstalltestProfile $user.SID.Value $probeUser
+    $profilePath = New-InstalltestProfile $user.SID.Value $probeUser
     $pipe = $null
     $child = $null
     $credential = [pscredential]::new($probeUser, $password)
@@ -342,7 +358,7 @@ function Invoke-InstalltestStandardAccount {
         $arguments = @('-NoProfile', '-File', $script, '-Version', $ReleaseVersion,
             '-PipeName', $pipeName, '-VerifiedDirectory', $Directory)
         try {
-            $child = Start-InstalltestProcess (Join-Path $PSHOME 'pwsh.exe') $arguments -Credential $credential
+            $child = Start-InstalltestProcess (Join-Path $PSHOME 'pwsh.exe') $arguments -Credential $credential -ProfilePath $profilePath
         } catch { throw 'worker_start_failed' }
         $childOutput = $child.StandardOutput.ReadToEndAsync()
         $null = $child.StandardError.ReadToEndAsync()
@@ -366,7 +382,7 @@ function Invoke-InstalltestStandardAccount {
             # A bounded second cleanup also covers a killed/failed worker.
             if (Test-Path -LiteralPath (Join-Path $Directory 'installtest.ps1')) {
                 $cleanup = Start-InstalltestProcess (Join-Path $PSHOME 'pwsh.exe') @('-NoProfile', '-File',
-                    (Join-Path $Directory 'installtest.ps1'), '-Version', $ReleaseVersion, '-CleanupOnly') -Credential $credential
+                    (Join-Path $Directory 'installtest.ps1'), '-Version', $ReleaseVersion, '-CleanupOnly') -Credential $credential -ProfilePath $profilePath
                 Complete-InstalltestProcess $cleanup 45 | Out-Null
             }
         } finally { Remove-LocalUser -Name $probeUser }
