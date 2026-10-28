@@ -146,10 +146,12 @@ Fehlercodes dieser Routen: `invalid_input`, `personal_data_rejected` (400), `rou
 (1–80 Zeichen, Vorgabe „KI-Assistenten“): Name der einen Kanalgruppe, die der Dienst anlegen
 und ändern darf. Pflicht: feste GSC-Property,
 GA4-Property-ID ohne `properties/`, IANA-Zeitzone, exakte kanonische Hosts,
-drei disjunkte Gruppen mit zusammen 1–50 öffentlichen Pfaden und explizite
-vollständige GSC-URLs je Pfad/Host. Keine Querystrings, Fragmente, dynamischen
-Nutzerpfade. Pfade höchstens 512 Zeichen, GSC-Regex höchstens 4096 Zeichen;
-Überschreitung schlägt fehl, kein ungefilterter Fallback. GSC-URLs müssen zur
+drei disjunkte Gruppen mit zusammen 1–100 öffentlichen Pfaden (seit 1.0.1, vorher 50) und
+explizite vollständige GSC-URLs je Pfad/Host. Keine Querystrings, Fragmente, dynamischen
+Nutzerpfade, keine Präfixe. Pfade höchstens 512 Zeichen, GSC-Regex über alle URLs höchstens
+4096 Zeichen; Überschreitung schlägt beim Laden fehl, kein ungefilterter Fallback. Die
+Regex-Grenze kann vor der Pfadgrenze greifen: Bei einem Host und Pfaden wie
+`/integrationen/<name>` passen rund 90 Pfade, bei zwei Hosts je Pfad etwa die Hälfte. GSC-URLs müssen zur
 Property gehören. GA4 filtert **immer** sowohl landingPage-Werteliste als auch
 hostName-Werteliste, auch bei gemischten Properties. Deren Kompatibilität bleibt
 vor Live-Freigabe zu bestätigen; keine stillen Ersatzmetriken.

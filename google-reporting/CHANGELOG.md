@@ -1,5 +1,16 @@
 # Änderungen — Google Reporting
 
+## 1.0.1 — 2026-10-28
+
+- JanuaPort/januaport#1176: Die Betreiberkonfiguration nimmt zusammen bis zu **100** öffentliche
+  Pfade statt 50 (`MAX_PATHS`), für die Integrationsseiten-Serie. Es bleibt bei exakten Pfaden
+  ohne Präfix. Die GSC-Regex-Grenze von 4096 Zeichen über alle URLs bleibt unverändert und
+  fail-closed: Eine Konfiguration darüber lädt nicht und läuft nie ungefiltert. Mit einem Host und Pfaden wie
+  `/integrationen/<name>` passen rund 90 Pfade. Tests: 100 laden, 101 abgewiesen (die Regex liegt
+  dabei unter der Grenze), lange Pfade scheitern an der Regex-Grenze, der Segmentfilter trifft jeden
+  der 100 Pfade exakt und keinen Unterpfad. Keine neue Abhängigkeit, keine Änderung an Routen
+  oder Antworten.
+
 ## 1.0.0 — 2026-10-22
 
 **Erste Release-Fassung.** Sie umfasst JanuaPort/januaport#1130 (Berichte),

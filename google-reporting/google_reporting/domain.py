@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 
 MAX_RESPONSE = 512 * 1024
 MAX_REGEX = 4096
+MAX_PATHS = 100
 REPORTS = {
     "gsc": {"get_status", "performance_overview", "query_summary", "page_summary"},
     "ga4": {"get_status", "traffic_summary", "landing_pages", "key_events"},
@@ -113,7 +114,7 @@ class Config:
             for group in cfg.segments.values():
                 require(isinstance(group, list) and all(public_path(p) for p in group))
                 paths.extend(group)
-            require(1 <= len(paths) <= 50 and len(set(paths)) == len(paths))
+            require(1 <= len(paths) <= MAX_PATHS and len(set(paths)) == len(paths))
             require(set(cfg.gsc_urls) == set(paths))
             urls = []
             for p, values in cfg.gsc_urls.items():
