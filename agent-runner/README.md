@@ -1,4 +1,4 @@
-# Agenten-Läufer 0.2.0 (unveröffentlicht)
+# Agenten-Läufer 0.2.1 (unveröffentlicht)
 
 **Gebaut, Live-Durchstich ausstehend.** Der Beisteller führt ein vom Kern
 freigegebenes Agenten-Profil aus: Modell aufrufen, Werkzeuge ausführen,
@@ -13,6 +13,8 @@ OpenAI, Azure, Mistral, Ollama und vLLM. Der Kern übergibt dafür
 Ein unbekannter oder explizit leerer Protokollwert ergibt vor dem Lauf einen
 festen Fehler ohne Wiedergabe des Werts. Contract bleibt 1; `tools/list`
 meldet zusätzlich `protocols: ["anthropic","openai"]`.
+Anbieterquellen zum Token-Feld und die noch unbelegte Ollama-Unterstützung
+stehen im [Draht-Vertrag](contract/README.md#openai-chat-completions).
 
 OpenAI-Format braucht JanuaPort mit `model.protocol` (Version folgt); ein älterer Kern schickt kein Protokoll, dann gilt Anthropic.
 
@@ -26,8 +28,8 @@ für UID/GID 65532 lesbar sein; der Schlüsselordner wird nur lesend gemountet.
 Der Ordner-Mount unterstützt atomare Schlüsselrotation.
 
 ```sh
-docker build -t agent-runner:0.2.0 .
-export JNPT_AGENT_RUNNER_IMAGE=agent-runner:0.2.0
+docker build -t agent-runner:0.2.1 .
+export JNPT_AGENT_RUNNER_IMAGE=agent-runner:0.2.1
 docker compose -f docker-compose.yml up -d
 docker compose -f docker-compose.yml ps
 ```
@@ -68,8 +70,11 @@ nicht vorgesehen.
 Schritte und Werkzeugaufrufe werden nach den Anfragegrenzen im Runner
 gezählt. Die Wandzeit umfasst Werkzeugsuche, Modell- und Werkzeugaufrufe;
 sie ist das Minimum aus Anfrage und eigener Meldung (Standard 300 s).
-Die Token-Budgets verwaltet der Kern. Beendet der Kern den Relay-Kontext,
-endet der laufende HTTP-Aufruf ebenfalls.
+Je Modellaufruf gilt `min(1024, limits.tokens_out)`: OpenAI sendet
+`max_completion_tokens`, Anthropic weiterhin `max_tokens`. Die Token-Summen
+und Budgetdeckel verwaltet der Kern. Im Lauf gibt es keinen automatischen
+Wechsel auf `max_tokens`, auch bei HTTP 400 wegen eines unbekannten Felds.
+Beendet der Kern den Relay-Kontext, endet der laufende HTTP-Aufruf ebenfalls.
 Vor dem Schließen der MCP-Sitzung wird der Lauf-Kontext abgebrochen; das
 SDK-Cleanup kann den Lauf dadurch nicht verlängern. Der HTTP-Transport
 begrenzt Antworten auf Modell- und MCP-Pfad auf 4 MiB, unabhängig von der
@@ -82,7 +87,7 @@ Der OpenAI-Pfad übergibt Werkzeugtext und strukturierte Ergebnisse als Text;
 andere Inhaltsblöcke werden ebenfalls zum Platzhalter. Werkzeugergebnisse
 stehen dort als `role: tool` mit `tool_call_id` in der Historie. Ungültige
 JSON-Argumente erhalten lokal einen festen Fehlertext als Werkzeugergebnis.
-Die eigene OpenAI-Prüfung erlaubt nur `messages`, `tools`, `max_tokens`,
+Die eigene OpenAI-Prüfung erlaubt nur `messages`, `tools`, `max_completion_tokens`,
 die Rollen `system`, `user`, `assistant`, `tool` und Funktionswerkzeuge.
 `developer`, benannte Nachrichten und Inhaltsteile (auch Bilder) werden abgewiesen.
 `finish_reason: stop` beendet erfolgreich, `length` ergibt `limit/tokens_out`,

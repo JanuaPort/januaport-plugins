@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.1 — 2026-10-28
+
+#1228.
+
+- OpenAI-Anfragen senden `max_completion_tokens`; die eigene Prüfung weist
+  `max_tokens` auch zusammen mit dem neuen Feld ab. Anthropic nutzt weiterhin
+  `max_tokens`. Kein automatischer Feldwechsel im Lauf bei Anbieterfehlern.
+- Der Deckel `min(1024, limits.tokens_out)` bleibt bei jedem Modellaufruf
+  wirksam; Adapter- und Lauf-Tests prüfen beide Protokolle samt Folgeaufruf.
+- MCP-Implementierungsversion 0.2.1. Anbieterquellen und Grenzen im
+  Draht-Vertrag; bisherige Kern-Goldens unverändert.
+
 ## 0.2.0 — 2026-10-28
 
 JanuaPort/januaport#1193 (Epic #1191).

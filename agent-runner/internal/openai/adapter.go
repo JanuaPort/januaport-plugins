@@ -41,9 +41,9 @@ type Tool struct {
 }
 
 type Request struct {
-	Messages  []Message `json:"messages"`
-	Tools     []Tool    `json:"tools,omitempty"`
-	MaxTokens int       `json:"max_tokens"`
+	Messages            []Message `json:"messages"`
+	Tools               []Tool    `json:"tools,omitempty"`
+	MaxCompletionTokens int       `json:"max_completion_tokens"`
 }
 
 type Response struct {
@@ -51,10 +51,10 @@ type Response struct {
 	FinishReason string
 }
 
-func NewRequest(instructions, input string, tools []Tool, maxTokens int) Request {
+func NewRequest(instructions, input string, tools []Tool, maxCompletionTokens int) Request {
 	system, _ := json.Marshal(instructions)
 	user, _ := json.Marshal(input)
-	return Request{Messages: []Message{{Role: "system", Content: system}, {Role: "user", Content: user}}, Tools: tools, MaxTokens: maxTokens}
+	return Request{Messages: []Message{{Role: "system", Content: system}, {Role: "user", Content: user}}, Tools: tools, MaxCompletionTokens: maxCompletionTokens}
 }
 
 func object(raw json.RawMessage) (map[string]json.RawMessage, bool) {
@@ -78,7 +78,7 @@ func str(raw json.RawMessage) string { var s string; _ = json.Unmarshal(raw, &s)
 // The runner emits text only; the core's richer image vocabulary is unnecessary.
 func Validate(raw []byte) error {
 	m, ok := object(raw)
-	if !ok || !only(m, "messages tools max_tokens") {
+	if !ok || !only(m, "messages tools max_completion_tokens") {
 		return errPayload
 	}
 	var messages []json.RawMessage

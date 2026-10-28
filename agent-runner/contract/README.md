@@ -1,4 +1,4 @@
-# Draht-Vertrag — agent-runner 0.2.0 (Contract 1)
+# Draht-Vertrag — agent-runner 0.2.1 (Contract 1)
 
 Maßgeblich: `cmd/jnpt/testdata/agent-runner-contract/` des Kerns, geliefert
 für JanuaPort/januaport#1099. Die sieben JSON-Dateien und SHA256SUMS wurden
@@ -74,16 +74,39 @@ angehängt; Werkzeugergebnisse folgen als eine neue user-Nachricht.
 
 `model_request_openai.json` zeigt `messages` mit zuerst einer `system`- und
 einer `user`-Nachricht, `tools` als `type: function` mit
-`function.{name,description,parameters}` und `max_tokens`. Der Läufer setzt
+`function.{name,description,parameters}` und historisch `max_tokens`. Dieses
+Kern-Golden bleibt byte-identisch. Seit 0.2.1 (#1228) erzeugt der Läufer
+`max_completion_tokens`; das aktuelle Beispiel steht in
+`proposed/model_request_openai.json`. Der Läufer setzt
 weder `model` noch `stream` noch `tool_choice`; der Kern besitzt model/stream.
-Die Kern-Allowlist lässt außerdem `max_completion_tokens`, `temperature`,
+Die Kern-Allowlist lässt beide Token-Felder zu, außerdem `temperature`,
 `top_p`, `stop` sowie `tool_choice: auto|none` zu
 (`internal/modelgate/request.go`, `content.go`). Rollen dort:
 system/developer/user/assistant/tool; Nachrichtenfelder:
 role/content/name/tool_calls/tool_call_id. Die eigene Läuferprüfung ist enger:
-nur `messages`, `tools`, `max_tokens`; nur Rollen system/user/assistant/tool,
-Nachrichtenfelder role/content/tool_calls/tool_call_id und Text statt Inhaltsteilen.
+nur `messages`, `tools`, `max_completion_tokens`; `max_tokens` wird allein und
+zusammen mit dem neuen Feld vor dem Versand abgewiesen; nur Rollen
+system/user/assistant/tool, Nachrichtenfelder role/content/tool_calls/tool_call_id und Text statt Inhaltsteilen.
 `developer`, Bild-/Textteile und andere zusätzliche Kern-Felder werden abgewiesen.
+
+Je Modellaufruf gilt `min(1024, limits.tokens_out)`, auch nach angehängten
+Werkzeugergebnissen. OpenAI sendet dafür ausschließlich `max_completion_tokens`,
+Anthropic weiterhin `max_tokens`. Die tatsächlichen Token-Summen und Deckel
+prüft der Kern. Ein HTTP-400-Fehler wegen eines unbekannten Felds beendet den
+Lauf; es gibt keinen automatischen Wiederholungsaufruf mit `max_tokens`.
+
+Anbieterquellen (abgerufen am 2026-10-28):
+
+- [OpenAI Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create):
+  `max_completion_tokens` begrenzt Ausgabe einschließlich Reasoning-Tokens;
+  `max_tokens` ist zugunsten dieses Felds veraltet.
+- [vLLM ChatCompletionRequest](https://docs.vllm.ai/en/latest/api/vllm/entrypoints/openai/chat_completion/protocol/):
+  dokumentiert `max_completion_tokens`; `max_tokens` ist veraltet.
+- [Ollama OpenAI-Kompatibilität](https://docs.ollama.com/api/openai-compatibility):
+  nennt bisher nur `max_tokens`. Auch der abgerufene
+  [Request-Typ](https://github.com/ollama/ollama/blob/main/openai/openai.go)
+  enthält nur dieses Feld. Unterstützung und wirksame Begrenzung durch
+  `max_completion_tokens` sind damit für Ollama nicht belegt.
 
 `model_response_openai_ok.json` zeigt den unveränderten Gateway-Umschlag:
 `response.choices[0].message`, `finish_reason` am ersten Choice. Der Läufer
@@ -124,7 +147,8 @@ Server-Identität in `_meta`; der fachliche Golden-Test entfernt ausschließlich
 `io.modelcontextprotocol/serverInfo` (wie der script-runner-Vertrag).
 Ein zusätzlicher Test vergleicht den Ergebnis-Erzeuger ohne Transport exakt.
 
-Diese **neuen Vorschläge** stehen separat in `proposed/`:
+Das OpenAI-Anfragebeispiel unter `proposed/model_request_openai.json` zeigt
+den Feldwechsel aus #1228. Die Ende-Vorschläge stehen ebenfalls in `proposed/`:
 
 | Datei | Ende / Detail |
 |---|---|

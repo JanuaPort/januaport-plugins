@@ -5,7 +5,7 @@
 Beisteller für die Schleife Modell ↔ Werkzeuge, JanuaPort/januaport#1099 B1,
 Apache 2.0 wie das Repository. Ein statisches Go-Binary, ein Dienst.
 Anthropic Messages und OpenAI Chat Completions sind die implementierten
-Adapter ab 0.2.0 (unveröffentlicht), JanuaPort/januaport#1193, Epic #1191.
+Adapter seit 0.2.0, aktuell 0.2.1 (unveröffentlicht), JanuaPort/januaport#1193, Epic #1191.
 Zeitpläne/Ticker gehören zu Release B. Betreiberanleitung: `README.md`.
 
 OpenAI-Format braucht JanuaPort mit `model.protocol` (Version folgt); ein älterer Kern schickt kein Protokoll, dann gilt Anthropic.
@@ -34,7 +34,8 @@ OpenAI-Format braucht JanuaPort mit `model.protocol` (Version folgt); ein älter
 Die sieben ursprünglichen Kern-Dateien unter `contract/golden/` bleiben
 byte-identisch. #1193 ergänzt dort drei OpenAI-Beispiele und erweitert
 SHA256SUMS; der Test pinnt deren neuen Hash. Ende-Vorschläge bleiben in
-`contract/proposed/`.
+`contract/proposed/`. #1228 ergänzt dort das neue OpenAI-Anfragebeispiel;
+das ältere Kern-Golden mit `max_tokens` bleibt als Referenz byte-identisch.
 Details: `contract/README.md`.
 
 Weg A: `POST /mcp`, Bearer runtime-key. `tools/call run_agent` trägt
@@ -60,7 +61,8 @@ Lauf-Token an derselben Betreiberadresse `JNPT_GATEWAY_URL`.
 | Anfrage hat Contract 1, feste Gateway-Pfade, gültige Grenzen und passende eindeutige Header; unbekannte Argumente scheitern | `TestAuthHeadersAndPathsAtAdapter`, `TestMalformedArgumentsAtAdapter` |
 | Modell nur über Kern; HTTP-Umleitungen und Umgebungsproxy gesperrt | `TestNoRedirectsOrProxyAtEitherGateway` |
 | Anthropic Messages ohne model/stream, keine erzwungene Werkzeugwahl, nur erlaubte Nachrichten/Blöcke, Medien base64, keine Anbieter-Werkzeuge | `TestForbiddenModelPayloads`, `TestModelWireGuards`, `TestUnsafeResponseAndUnknownToolAtAdapter` |
-| OpenAI nur messages/tools/max_tokens, Rollen system/user/assistant/tool, keine developer-Rolle, keine benannten Nachrichten oder Inhaltsteile; nur Funktionswerkzeuge und Text, tool-Ergebnisse mit tool_call_id; ungültige arguments werden lokaler Fehlertext | `TestRequestAndGolden`, `TestForbiddenRequests`, `TestRunnerVocabularyRejected`, `TestOpenAIOutgoingGuardsAtAdapter`, `TestOpenAILoopTable` |
+| OpenAI nur messages/tools/max_completion_tokens; max_tokens allein und zusammen mit dem neuen Feld wird abgewiesen, Rollen system/user/assistant/tool, keine developer-Rolle, keine benannten Nachrichten oder Inhaltsteile; nur Funktionswerkzeuge und Text, tool-Ergebnisse mit tool_call_id; ungültige arguments werden lokaler Fehlertext | `TestRequestAndGolden`, `TestForbiddenRequests`, `TestRunnerVocabularyRejected`, `TestOpenAIOutgoingGuardsAtAdapter`, `TestCompletionTokenField`, `TestOpenAILoopTable` |
+| Je Modellaufruf min(1024, limits.tokens_out): OpenAI max_completion_tokens, Anthropic max_tokens; auch nach Werkzeugergebnissen. Kein automatischer Feldwechsel oder Wiederholungsaufruf bei HTTP 400 | `TestTokenBudgetAtAdapter`, `TestOpenAIUnknownCompletionTokensNoRetryAtAdapter` |
 | Fehlendes Protokoll erhält byte-identische Anthropic-Anfrage; unbekannte/ungültige Werte scheitern vor dem Lauf ohne Echo | `TestLegacyAnthropicRequestBytes`, `TestRunRequestGoldenRoundTrip`, `TestProtocolDefaultAndUnknownAtAdapter`, `TestInvalidProtocolValuesAtAdapter` |
 | tool_use darf `caller` nur als `{"type":"direct"}` tragen (Anthropic seit 10/2026); jeder andere caller (Code-Ausführung) oder jedes weitere Feld scheitert; der Block bleibt unverändert in der Historie | `TestToolUseCaller`, `TestLoopToolUseCaller`, `TestLoopProgrammaticCallerRejected` |
 | Thinking und redacted_thinking bleiben in der angehängten Historie erhalten | `TestLoopGoldenThinkingAndLog`, `TestThinkingAndCache` |
@@ -84,8 +86,12 @@ Lauf-Token an derselben Betreiberadresse `JNPT_GATEWAY_URL`.
   Der Healthcheck wird vom eigenen Binary ausgeführt.
 - Nur Anthropic: Cache-Breakpoint am letzten Werkzeug (deckt die Werkzeugliste ab) und am
   System; damit bleiben auch große Werkzeuglisten unter vier Breakpoints.
-- `max_tokens = min(1024, limits.tokens_out)` je Modellaufruf. Die tatsächlichen
-  Token-Summen prüft ausschließlich der Kern, auch Cache-Tokens.
+- Je Modellaufruf `min(1024, limits.tokens_out)`: OpenAI sendet ausschließlich
+  `max_completion_tokens`, Anthropic weiterhin `max_tokens`. Die tatsächlichen
+  Token-Summen prüft ausschließlich der Kern, auch Cache-Tokens. Ein unbekanntes
+  Feld beim Anbieter führt im Lauf zum Fehler, ohne Wiederholung mit `max_tokens`.
+  `max_tokens` als interner Stop-Grund (auch für OpenAI-`length`) bleibt bestehen.
+  Anbieterquellen und ihre Grenzen: `contract/README.md`.
 - 4 MiB je eingehender HTTP-Anfrage und je HTTP-Antwort auf beiden
   Gateway-Pfaden (Bearer-Transport), 1024 Werkzeugdefinitionen und
   höchstens 1024 unterschiedliche Folgeseiten sind Protokollschutz.
