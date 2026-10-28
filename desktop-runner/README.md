@@ -155,11 +155,11 @@ einzeln, verlangt echte rote Tests und stellt Quellen byte-genau wieder her;
 nur bei exklusivem Zugriff ausführen. task-standard-user.ps1 erzeugt nur auf
 GitHub-Runnern ein temporäres Standardkonto.
 
-Tag desktop-runner-vX.Y.Z: ein Build ohne CGO, optional Azure OIDC/Microsoft
-Artifact Signing im Environment release-signing, danach signtool verify /pa,
-SHA256SUMS und Provenance der finalen EXE. Ohne SIGNING_PROFILE bleibt die
-EXE unsigniert und die Release-Notiz sagt das ausdrücklich. Fehler bei
-gesetztem Profil brechen das Release ab.
+Tag desktop-runner-vX.Y.Z: ein Build ohne CGO, dann Pflicht-Signatur über Azure
+OIDC/Microsoft Artifact Signing im Environment release-signing (nur für Tags
+desktop-runner-v* freigegeben), danach signtool verify /pa, SHA256SUMS und
+Provenance der finalen EXE. Fehlt SIGNING_PROFILE oder scheitert ein Schritt,
+bricht das Release ab; ein unsigniertes Release gibt es nicht.
 
 Native Windows-Mutationen zusätzlich: probe/mutations-windows.ps1 (ohne Admin).
 
