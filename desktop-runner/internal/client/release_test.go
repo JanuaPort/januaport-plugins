@@ -23,13 +23,13 @@ func TestReleaseUndWindowsCI(t *testing.T) {
 		t.Fatal("Signierberechtigung")
 	}
 	text := string(b)
-	for _, v := range []string{"desktop-runner-v*", "^desktop-runner-v[0-9]+\\.[0-9]+\\.[0-9]+$", "GOOS: windows", "GOARCH: amd64", "CGO_ENABLED: '0'", "https://neu.codesigning.azure.net/", "signing-account-name: januaport-signing", "certificate-profile-name: ${{ env.SIGNING_PROFILE }}", "AZURE_CLIENT_ID", "AZURE_TENANT_ID", "AZURE_SUBSCRIPTION_ID", "verify /pa", "UNSIGNIERT: SIGNING_PROFILE fehlt", "SHA256SUMS", "actions/attest-build-provenance@", "needs: sign"} {
+	for _, v := range []string{"desktop-runner-v*", "^desktop-runner-v[0-9]+\\.[0-9]+\\.[0-9]+$", "GOOS: windows", "GOARCH: amd64", "CGO_ENABLED: '0'", "https://neu.codesigning.azure.net/", "signing-account-name: januaport-signing", "certificate-profile-name: ${{ env.SIGNING_PROFILE }}", "AZURE_CLIENT_ID", "AZURE_TENANT_ID", "AZURE_SUBSCRIPTION_ID", "verify /pa", "signing_profile_missing", "Authenticode-signiert", "SHA256SUMS", "actions/attest-build-provenance@", "needs: sign"} {
 		if !strings.Contains(text, v) {
 			t.Fatal("Release-Vertrag", v)
 		}
 	}
-	if strings.Count(text, "if: env.SIGNING_PROFILE != ''") != 2 {
-		t.Fatal("optionale Signatur")
+	if strings.Contains(text, "if: env.SIGNING_PROFILE") || strings.Contains(text, "UNSIGNIERT") {
+		t.Fatal("Signatur muss Pflicht sein")
 	}
 	for _, m := range regexp.MustCompile(`uses:\s+([^\s]+)`).FindAllStringSubmatch(text, -1) {
 		if strings.HasPrefix(m[1], "./") {
