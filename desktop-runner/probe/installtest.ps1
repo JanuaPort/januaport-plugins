@@ -157,6 +157,26 @@ function Assert-InstalltestSignature {
     }
 }
 
+# Assert-InstalltestTailnetLimits belegt die Tailscale-ACL vom getaggten Runner
+# aus (SEC N2, #1233): Auf dem Geräte-Port antwortet nur /api/device/v1/, die
+# volle Instanz auf :443 ist nicht erreichbar. Nur bei einer URL mit eigenem Port.
+function Assert-InstalltestTailnetLimits {
+    param([string]$TargetUrl)
+    $uri = [Uri]$TargetUrl
+    if ($uri.IsDefaultPort) { return }
+    try {
+        $response = Invoke-WebRequest -Uri ($TargetUrl + '/admin/mcp') -Method Get -SkipHttpErrorCheck -TimeoutSec 15
+    } catch { throw 'probe_device_port_unreachable' }
+    if ($response.StatusCode -ne 404) { throw ('probe_admin_on_device_port_' + $response.StatusCode) }
+    $client = [Net.Sockets.TcpClient]::new()
+    try {
+        $connect = $client.ConnectAsync($uri.Host, 443)
+        $open = $connect.Wait(8000) -and $client.Connected
+    } catch { $open = $false } finally { $client.Dispose() }
+    if ($open) { throw 'probe_full_instance_reachable' }
+    Write-Host 'Installtest: Tailnet-Grenzen ok (nur Geraete-Port, kein :443).'
+}
+
 function Get-InstalltestAutostart {
     param([string]$TaskName, [string]$RunValue = 'JanuaPortDesktopLaeufer')
     # Enumerate through the real COM adapter; access errors must propagate.
@@ -448,6 +468,7 @@ function Invoke-Installtest {
             Invoke-InstalltestAttestation (Join-Path $directory 'desktop-runner.exe') (Join-Path $directory 'provenance.jsonl') $Version
         } catch { throw ('provenance_' + (Get-InstalltestErrorClass $_)) }
         Write-Host 'Installtest: Provenance ok.'
+        Assert-InstalltestTailnetLimits $Url
         if ($CreateStandardUser) { Invoke-InstalltestStandardAccount $Version $Code $directory }
         else { Invoke-InstalltestWorker $Version $Code $directory }
         Write-Host 'Installtest: Standardkonto, Kopplung, Installation, 5 Minuten Betrieb und Deinstallation geprüft.'
