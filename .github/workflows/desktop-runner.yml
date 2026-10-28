@@ -93,6 +93,8 @@ jobs:
           go test -count=1 -v ./internal/platform .
       - name: Benutzeraufgabe im echten Standardkonto
         run: ./probe/task-standard-user.ps1
+      - name: Installationstest offline am Windows-Adapter mit Mutationen
+        run: ./probe/installtest-mutations.ps1
       - name: Windows-Diagnose bei fehlgeschlagenen Tests
         if: failure()
         run: go test -count=1 -v ./internal/platform .

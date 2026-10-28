@@ -88,7 +88,9 @@ Authorization: Bearer jnpt_<id>_<secret>
 ```
 
 `pair` trägt **keinen Authorization-Header**, auch keinen leeren. Die
-Kopplung ersetzt eine Tokenübergabe per stdin. Nur MCP verlangt zusätzlich
+Kopplung ersetzt die manuelle Tokenübergabe. Der Windows-Befehl `pair --code`
+nimmt den Kopplungscode per argv an; nur der Linux-Server liest ihn per stdin.
+Nur MCP verlangt zusätzlich
 `X-Jnpt-Run-Token`; das Lauf-Token ersetzt das Läufer-Token nicht.
 `runs/start` bindet den synchronisierten Stand zusätzlich mit
 `X-Jnpt-Manifest-Seq: <seq>` (positive uint64-Dezimalzahl ohne führende Nullen).

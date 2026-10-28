@@ -49,3 +49,54 @@ func TestReleaseUndWindowsCI(t *testing.T) {
 		}
 	}
 }
+
+func TestInstalltestWorkflow(t *testing.T) {
+	b, err := os.ReadFile("../../../.github/workflows/desktop-runner-installtest.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var w map[string]any
+	if err := yaml.Unmarshal(b, &w); err != nil {
+		t.Fatal(err)
+	}
+	on := w["on"].(map[string]any)
+	if len(on) != 1 {
+		t.Fatal("Installationstest ausschließlich manuell")
+	}
+	version := on["workflow_dispatch"].(map[string]any)["inputs"].(map[string]any)["version"].(map[string]any)
+	if version["default"] != "0.1.0" || version["type"] != "string" || version["required"] != true {
+		t.Fatal("Release-Auswahl")
+	}
+	permissions := w["permissions"].(map[string]any)
+	if len(permissions) != 2 || permissions["contents"] != "read" || permissions["attestations"] != "read" {
+		t.Fatal("Installationstest-Berechtigungen")
+	}
+	job := w["jobs"].(map[string]any)["installtest"].(map[string]any)
+	if job["environment"] != "showcase-installtest" || job["runs-on"] != "windows-latest" || job["timeout-minutes"] != 15 {
+		t.Fatal("Abnahmeumgebung")
+	}
+	if job["defaults"].(map[string]any)["run"].(map[string]any)["shell"] != "pwsh" {
+		t.Fatal("Windows-Shell")
+	}
+	for _, raw := range job["steps"].([]any) {
+		step := raw.(map[string]any)
+		if uses, ok := step["uses"].(string); ok {
+			if !regexp.MustCompile(`^[\w/-]+@[0-9a-f]{40}$`).MatchString(uses) {
+				t.Fatal("ungepinnte Action", uses)
+			}
+			continue
+		}
+		run := step["run"].(string)
+		if strings.Contains(run, "${{") || !strings.Contains(run, "-CreateStandardUser") {
+			t.Fatal("Eingaben nur über Env, Standardkonto ist Pflicht")
+		}
+		env := step["env"].(map[string]any)
+		if env["SHOWCASE_PAIR_CODE"] != "${{ secrets.SHOWCASE_PAIR_CODE }}" || env["INSTALLTEST_VERSION"] != "${{ inputs.version }}" {
+			t.Fatal("Kopplungscode und Version")
+		}
+	}
+	ci, err := os.ReadFile("../../../.github/workflows/desktop-runner.yml")
+	if err != nil || !strings.Contains(string(ci), "./probe/installtest-mutations.ps1") {
+		t.Fatal("Offline-Adaptertests mit Mutationen fehlen im Windows-CI")
+	}
+}
