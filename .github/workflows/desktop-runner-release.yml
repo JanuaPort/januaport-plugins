@@ -1,4 +1,4 @@
-# One unsigned build; optional Azure signature; sums/provenance bind final bytes.
+# One unsigned build; mandatory Azure signature; sums/provenance bind final bytes.
 name: desktop-runner-release
 on:
   push:
@@ -47,19 +47,22 @@ jobs:
       AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       SIGNING_PROFILE: ${{ vars.SIGNING_PROFILE }}
     steps:
+      - name: Signierprofil ist Pflicht
+        shell: pwsh
+        run: |
+          # Ein Release ohne Profil wäre still unsigniert; seit es das Profil gibt, ist das ein Fehler.
+          if ([string]::IsNullOrWhiteSpace($env:SIGNING_PROFILE)) { throw 'signing_profile_missing' }
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: unsigned-windows-amd64
           path: release
       - name: Azure OIDC
-        if: env.SIGNING_PROFILE != ''
-        uses: azure/login@487024fc392f1f60cc70bc8a48233c14bc1de77f
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ env.AZURE_CLIENT_ID }}
           tenant-id: ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
       - name: Microsoft Artifact Signing
-        if: env.SIGNING_PROFILE != ''
         uses: azure/artifact-signing-action@29de24bf030cfee71b1ad0207ab4d69e74514a42
         with:
           endpoint: https://neu.codesigning.azure.net/
@@ -74,15 +77,11 @@ jobs:
       - name: Signatursonde, endgültige Prüfsumme und Notiz
         shell: pwsh
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:SIGNING_PROFILE)) {
-            $note = 'UNSIGNIERT: SIGNING_PROFILE fehlt. Dieses Release hat keine Authenticode-Signatur.'
-          } else {
-            $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' | Sort-Object FullName -Descending | Select-Object -First 1
-            if (-not $signtool) { throw 'signtool_missing' }
-            & $signtool.FullName verify /pa release/desktop-runner.exe
-            if ($LASTEXITCODE -ne 0) { throw 'signature_invalid' }
-            $note = 'Authenticode-signiert mit Microsoft Artifact Signing; signtool verify /pa bestanden.'
-          }
+          $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $signtool) { throw 'signtool_missing' }
+          & $signtool.FullName verify /pa release/desktop-runner.exe
+          if ($LASTEXITCODE -ne 0) { throw 'signature_invalid' }
+          $note = 'Authenticode-signiert mit Microsoft Artifact Signing; signtool verify /pa bestanden.'
           $hash = (Get-FileHash release/desktop-runner.exe -Algorithm SHA256).Hash.ToLowerInvariant()
           [IO.File]::WriteAllText("$pwd/release/SHA256SUMS", "$hash *desktop-runner.exe`n", [Text.UTF8Encoding]::new($false))
           [IO.File]::WriteAllText("$pwd/release/RELEASE-NOTES.txt", "Desktop-Läufer für Windows/amd64.`n`n$note`n", [Text.UTF8Encoding]::new($false))
