@@ -1,13 +1,13 @@
-# Offline only. Mutate isolated script copies, execute the real Windows adapters,
+# Offline by default. Mutate isolated copies, execute the real Windows adapters,
 # require a red target test, then remove copies. Production source stays byte-identical.
 [CmdletBinding()]
-param()
+param([string]$ReleaseDirectory, [string]$ReleaseVersion = '0.1.0')
 $ErrorActionPreference = 'Stop'
 $sourcePath = Join-Path $PSScriptRoot 'installtest.ps1'
 $testPath = Join-Path $PSScriptRoot 'installtest-tests.ps1'
 $original = [IO.File]::ReadAllBytes($sourcePath)
 $source = [Text.Encoding]::UTF8.GetString($original)
-& $testPath
+& $testPath -ReleaseDirectory $ReleaseDirectory -ReleaseVersion $ReleaseVersion
 $mutations = @(
     @('version', "[ValidatePattern('\A[0-9]+\.[0-9]+\.[0-9]+\z')]", ''),
     @('checksum_format', "throw 'checksum_format'", 'return'),
@@ -31,6 +31,9 @@ $mutations = @(
     @('life_timeout', "throw 'life_timeout'", 'return'),
     @('ci_only', "throw 'ci_only'", 'return')
 )
+if ($ReleaseDirectory) {
+    $mutations += ,@('provenance_invalid', "Invoke-InstalltestCommand 'gh' `$verifyArguments | Out-Null", 'return')
+} else { Write-Host 'SKIP mutation provenance_invalid: needs explicit release assets/gh.' }
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 try {
     if (@($identity.Groups.Value) -contains 'S-1-5-32-544') {
@@ -49,7 +52,7 @@ try {
         # Parser errors are never a successful red mutation.
         [ScriptBlock]::Create([IO.File]::ReadAllText($mutant)) | Out-Null
         $red = $false
-        try { & $testPath -ScriptPath $mutant -Only $name }
+        try { & $testPath -ScriptPath $mutant -Only $name -ReleaseDirectory $ReleaseDirectory -ReleaseVersion $ReleaseVersion }
         catch { $red = $true }
         if (-not $red) { throw "mutation_survived: $name" }
         Write-Host "RED $name"

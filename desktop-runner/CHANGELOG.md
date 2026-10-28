@@ -7,6 +7,7 @@
   Showcase-Kopplung, Installation, fünf Minuten Anlagenkontakt und Deinstallation
   einschließlich Prüfung beider Autostartwege (#1233).
 - Offline-Adaptertests und isolierte Mutationsproben für die Testsperren;
+  separate Provenance-Negativprobe samt Mutation mit echten Release-Assets und `gh`;
   Dokumentation der Grenzen: Windows-Code nur per argv, kein zuverlässig lokal
   abrufbarer Auftragsabschluss, WTS/Kontobindung auf Hosted-CI und
   `cancelled` beim Admin-Abbruch gegenüber `interrupted` beim Wiederanlauf.

@@ -185,6 +185,8 @@ nicht umgangen. Admin-Abbruch liefert aktuell cancelled; interrupted ist Wiedera
 Offline: probe/installtest-tests.ps1, probe/installtest-mutations.ps1. Der Admin-
 Negativtest samt Mutation braucht Admin-/UAC-Mitgliedschaft, sonst sichtbarer Skip;
 Windows-CI führt die Offline-Adaptertests mit Mutationen aus.
+Die echte Provenance-Negativprobe samt Mutation braucht explizit -ReleaseDirectory
+mit Release-EXE/Bundle und gh-Zugang; sie führt die Release-EXE nicht aus.
 
 Mutationen nur bei exklusivem Worktree-Zugriff: python probe/mutations.py.
 Ein Mutant muss kompilieren und sein Zieltest tatsächlich fehlschlagen;

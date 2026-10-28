@@ -258,6 +258,14 @@ Offline-Verifikation ohne Release-/Showcase-Zugriff:
 der Produktionsquelltext bleibt bytegleich. Der negative Admin-Kontotest samt Mutation
 braucht ein Admin-/UAC-Konto und läuft im Windows-CI; lokale Standardkonten melden einen Skip.
 
+GATE prüft die Provenance-Abweisung separat am echten `gh`-Adapter: Release-EXE und
+`provenance.jsonl` in einem Verzeichnis bereitstellen, dann mit GitHub-CLI-Zugang
+`./probe/installtest-mutations.ps1 -ReleaseDirectory C:\Probe\release -ReleaseVersion 0.1.0`
+aufrufen. Erst muss die unveränderte EXE die Herkunftsprüfung bestehen; anschließend
+muss eine Kopie mit angehängtem Byte abgewiesen werden. Der entsprechende Mutant
+überspringt die Herkunftsprüfung und muss rot werden. Diese optionale Probe führt
+`gh`, aber keine Release-EXE aus; ohne `-ReleaseDirectory` bleibt sie sichtbar übersprungen.
+
 ## Linux-Server-Modus
 
 Nur Geräteart `server`, Startpolicy `always`, Vertrag 2. Der Läufer holt Manifest,

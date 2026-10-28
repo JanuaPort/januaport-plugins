@@ -84,6 +84,15 @@ function Invoke-InstalltestCommand {
     Complete-InstalltestProcess (Start-InstalltestProcess $FilePath $Arguments $PairCode) $TimeoutSeconds
 }
 
+function Invoke-InstalltestAttestation {
+    param([string]$Executable, [string]$Bundle, [string]$ReleaseVersion)
+    $repo = 'JanuaPort/januaport-plugins'
+    $verifyArguments = @('attestation', 'verify', $Executable, '--bundle', $Bundle, '--repo', $repo,
+        '--signer-workflow', "$repo/.github/workflows/desktop-runner-release.yml",
+        '--source-ref', "refs/tags/desktop-runner-v$ReleaseVersion")
+    Invoke-InstalltestCommand 'gh' $verifyArguments | Out-Null
+}
+
 function Assert-InstalltestStandardUser {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     try {
@@ -336,10 +345,7 @@ function Invoke-Installtest {
         }
         Assert-InstalltestDigest $directory
         Assert-InstalltestSignature (Join-Path $directory 'desktop-runner.exe')
-        Invoke-InstalltestCommand 'gh' @('attestation', 'verify', (Join-Path $directory 'desktop-runner.exe'),
-            '--bundle', (Join-Path $directory 'provenance.jsonl'), '--repo', $repo,
-            '--signer-workflow', "$repo/.github/workflows/desktop-runner-release.yml",
-            '--source-ref', "refs/tags/$tag") | Out-Null
+        Invoke-InstalltestAttestation (Join-Path $directory 'desktop-runner.exe') (Join-Path $directory 'provenance.jsonl') $Version
         if ($CreateStandardUser) { Invoke-InstalltestStandardAccount $Version $Code $directory }
         else { Invoke-InstalltestWorker $Version $Code $directory }
         Write-Host 'Installtest: Standardkonto, Kopplung, Installation, 5 Minuten Betrieb und Deinstallation geprüft.'

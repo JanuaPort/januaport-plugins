@@ -1,8 +1,9 @@
 # Offline adapter tests only: synthetic files/processes/DPAPI/COM/HKCU/pipes.
-# Never invokes gh, the released runner, downloads or the Showcase.
+# Default: no gh, runner, downloads or Showcase. -ReleaseDirectory explicitly
+# enables only the real gh provenance adapter (never executes the released EXE).
 [CmdletBinding()]
 param([string]$ScriptPath = (Join-Path $PSScriptRoot 'installtest.ps1'),
-    [string]$Only = '*')
+    [string]$Only = '*', [string]$ReleaseDirectory, [string]$ReleaseVersion = '0.1.0')
 $ErrorActionPreference = 'Stop'
 . $ScriptPath
 $Fixture = Join-Path $PSHOME 'pwsh.exe'
@@ -234,6 +235,23 @@ try {
                 Assert-Rejected { Invoke-InstalltestStandardAccount '0.1.0' $null $testRoot } 'ci_only'
             } finally { $env:GITHUB_ACTIONS = $previous }
         }
+    }
+    if ($ReleaseDirectory) {
+        $tests['provenance_invalid'] = {
+            $releaseExe = Join-Path $ReleaseDirectory 'desktop-runner.exe'
+            $bundle = Join-Path $ReleaseDirectory 'provenance.jsonl'
+            # Positive control must pass first: authentication, trust roots,
+            # workflow and tag cannot be the cause of the subsequent rejection.
+            Invoke-InstalltestAttestation $releaseExe $bundle $ReleaseVersion
+            $tampered = Join-Path $testRoot 'tampered.exe'
+            Copy-Item -LiteralPath $releaseExe -Destination $tampered
+            Invoke-InstalltestAttestation $tampered $bundle $ReleaseVersion
+            $stream = [IO.File]::Open($tampered, [IO.FileMode]::Append)
+            try { $stream.WriteByte(0) } finally { $stream.Dispose() }
+            Assert-Rejected { Invoke-InstalltestAttestation $tampered $bundle $ReleaseVersion } 'process_failed'
+        }
+    } elseif ($Only -eq '*' -or $Only -eq 'provenance_invalid') {
+        Write-Host 'SKIP provenance_invalid: real release assets/gh require explicit -ReleaseDirectory.'
     }
     foreach ($test in $tests.GetEnumerator()) {
         if ($test.Key -like $Only) {
