@@ -1,8 +1,8 @@
 # Google Reporting 1.0.1 — #1130, #1176
 
 Stufe 1 „Sicher verbinden“. Gebaut und synthetisch geprüft; **noch nicht live
-abgenommen oder produktiv provisioniert**, die Fassung 1.0.0 (#1130, #1148, #1150) ist
-**noch nicht getaggt**: Der Release-Workflow steht, den Tag setzt GATE. Apache 2.0.
+abgenommen oder produktiv provisioniert**. Fassung 1.0.1 (#1130, #1148, #1150, #1176); den Tag
+`google-reporting-vX.Y.Z` setzt GATE über den Release-Workflow. Apache 2.0.
 Ein privater Python-Beisteller übersetzt acht feste GET-Berichte in offizielle
 Google-REST-Aufrufe. JanuaPort behält Rechte, Audit und Pseudonymisierung.
 Keine Accountsuche, freien Dimensionen/Metriken, Nutzer-/Session-/Lead-IDs,
