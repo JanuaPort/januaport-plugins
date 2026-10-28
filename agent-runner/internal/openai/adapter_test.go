@@ -9,7 +9,7 @@ import (
 )
 
 func TestRequestAndGolden(t *testing.T) {
-	b, err := os.ReadFile("../../contract/golden/model_request_openai.json")
+	b, err := os.ReadFile("../../contract/proposed/model_request_openai.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,6 +31,32 @@ func TestRequestAndGolden(t *testing.T) {
 	for _, key := range []string{"model", "stream", "tool_choice", "system"} {
 		if _, exists := x.(map[string]any)[key]; exists {
 			t.Fatalf("forbidden generated field: %s", key)
+		}
+	}
+}
+
+func TestCompletionTokenField(t *testing.T) {
+	r := NewRequest("system", "user", nil, 37)
+	b, err := json.Marshal(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(b, &body); err != nil {
+		t.Fatal(err)
+	}
+	if string(body["max_completion_tokens"]) != "37" || body["max_tokens"] != nil {
+		t.Fatalf("completion token field: %s", b)
+	}
+	if err := Validate(b); err != nil {
+		t.Fatalf("generated request rejected: %v", err)
+	}
+	for _, raw := range []string{
+		`{"messages":[{"role":"user","content":"x"}],"max_tokens":37}`,
+		`{"messages":[{"role":"user","content":"x"}],"max_completion_tokens":37,"max_tokens":37}`,
+	} {
+		if Validate([]byte(raw)) == nil {
+			t.Fatalf("legacy token field accepted: %s", raw)
 		}
 	}
 }
@@ -70,16 +96,16 @@ func TestResponseTable(t *testing.T) {
 }
 
 func TestForbiddenRequests(t *testing.T) {
-	base := `{"messages":[{"role":"user","content":"x"}],"max_tokens":1}`
+	base := `{"messages":[{"role":"user","content":"x"}],"max_completion_tokens":1}`
 	for _, extra := range []string{`"model":"secret"`, `"stream":false`, `"tool_choice":"required"`, `"tools":[{"type":"web_search"}]`, `"tools":[{"type":"function","function":{"name":"x","parameters":{},"url":"secret"}}]`, `"system":"x"`} {
 		t.Run(extra, func(t *testing.T) {
-			if Validate([]byte(strings.Replace(base, `"max_tokens":1`, `"max_tokens":1,`+extra, 1))) == nil {
+			if Validate([]byte(strings.Replace(base, `"max_completion_tokens":1`, `"max_completion_tokens":1,`+extra, 1))) == nil {
 				t.Fatal("forbidden request accepted")
 			}
 		})
 	}
 	for _, msg := range []string{`{"role":"tool","content":"x"}`, `{"role":"tool","tool_call_id":"","content":"x"}`, `{"role":"user","content":{"url":"secret"}}`, `{"role":"admin","content":"x"}`, `{"role":"user","content":"x","url":"secret"}`} {
-		if Validate([]byte(`{"messages":[`+msg+`],"max_tokens":1}`)) == nil {
+		if Validate([]byte(`{"messages":[`+msg+`],"max_completion_tokens":1}`)) == nil {
 			t.Fatalf("forbidden message accepted: %s", msg)
 		}
 	}
@@ -107,7 +133,7 @@ func TestForbiddenRequests(t *testing.T) {
 
 func TestAllowedRequestVocabulary(t *testing.T) {
 	for _, role := range []string{"system", "user", "assistant", "tool"} {
-		raw := `{"messages":[{"role":"` + role + `","content":"x","tool_call_id":"a"}],"max_tokens":1}`
+		raw := `{"messages":[{"role":"` + role + `","content":"x","tool_call_id":"a"}],"max_completion_tokens":1}`
 		if Validate([]byte(raw)) != nil {
 			t.Fatalf("allowed request rejected: %s", raw)
 		}
@@ -121,7 +147,7 @@ func TestRunnerVocabularyRejected(t *testing.T) {
 		{"text parts", `"messages":[{"role":"user","content":[{"type":"text","text":"x"}]}]`},
 		{"provider tool", `"messages":[{"role":"user","content":"x"}],"tools":[{"type":"web_search"}]`},
 		{"message name", `"messages":[{"role":"user","content":"x","name":"x"}]`},
-		{"max completion tokens", `"messages":[{"role":"user","content":"x"}],"max_completion_tokens":1`},
+		{"legacy max tokens", `"messages":[{"role":"user","content":"x"}],"max_tokens":1`},
 		{"temperature", `"messages":[{"role":"user","content":"x"}],"temperature":0.2`},
 		{"top p", `"messages":[{"role":"user","content":"x"}],"top_p":1`},
 		{"stop", `"messages":[{"role":"user","content":"x"}],"stop":["END"]`},
@@ -129,7 +155,7 @@ func TestRunnerVocabularyRejected(t *testing.T) {
 		{"choice none", `"messages":[{"role":"user","content":"x"}],"tool_choice":"none"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if Validate([]byte(`{"max_tokens":1,`+tc.fields+`}`)) == nil {
+			if Validate([]byte(`{"max_completion_tokens":1,`+tc.fields+`}`)) == nil {
 				t.Fatal("runner accepted vocabulary it does not generate")
 			}
 		})
@@ -139,7 +165,9 @@ func TestRunnerVocabularyRejected(t *testing.T) {
 func TestToolResultTextProjection(t *testing.T) {
 	for _, raw := range []string{`{"content":[{"type":"text","text":"ok"}],"structuredContent":{"n":1}}`, `{"content":[{"type":"image","url":"SECRET"}]}`, `{"isError":true,"content":[{"type":"text","text":"Fehler"}]}`} {
 		m := ToolResult("a", json.RawMessage(raw))
-		b, _ := json.Marshal(Request{Messages: []Message{m}, MaxTokens: 1})
+		r := NewRequest("", "", nil, 1)
+		r.Messages = []Message{m}
+		b, _ := json.Marshal(r)
 		if Validate(b) != nil || m.Role != "tool" || m.ToolCallID != "a" || strings.Contains(string(b), "SECRET") {
 			t.Fatalf("tool projection: %s", b)
 		}
