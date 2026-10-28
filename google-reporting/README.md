@@ -1,4 +1,4 @@
-# Google Reporting 1.0.0 — #1130
+# Google Reporting 1.0.1 — #1130, #1176
 
 Stufe 1 „Sicher verbinden“. Gebaut und synthetisch geprüft; **noch nicht live
 abgenommen oder produktiv provisioniert**, die Fassung 1.0.0 (#1130, #1148, #1150) ist
