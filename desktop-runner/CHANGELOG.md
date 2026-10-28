@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Manueller Installationstest des signierten Windows-Releases in einem frischen
+  Standardkonto, mit SHA-256, Authenticode/Herausgeber und GitHub-Provenance,
+  Showcase-Kopplung, Installation, fünf Minuten Anlagenkontakt und Deinstallation
+  einschließlich Prüfung beider Autostartwege (#1233).
+- Offline-Adaptertests und isolierte Mutationsproben für die Testsperren;
+  Dokumentation der Grenzen: Windows-Code nur per argv, kein zuverlässig lokal
+  abrufbarer Auftragsabschluss, WTS/Kontobindung auf Hosted-CI und
+  `cancelled` beim Admin-Abbruch gegenüber `interrupted` beim Wiederanlauf.
+
 ## 0.1.0 — 2026-10-28
 
 Erstes Release: `desktop-runner.exe` für Windows amd64, Authenticode-signiert

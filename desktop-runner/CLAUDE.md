@@ -5,7 +5,8 @@
 Desktop-Läufer für JanuaPort #1167 / #1163 D4, Windows/amd64 und Linux-Server ohne CGO.
 Kopplung, signiertes Manifest, lokaler Takt, Paket-/Runtimeprüfung,
 COM-Autostart und DPAPI-Journal sind implementiert. Fake-Kern, Linux-Race-Tests
-und native Windows-Sonden; Live-Anlage und Azure-Release stehen aus.
+und native Windows-Sonden; signiertes Windows-Release `desktop-runner-v0.1.0`
+vorhanden, Live-Anlage steht aus. Manueller Installationstest: README „Installationstest“.
 Maßgeblich: [Draht-Vertrag v1/v2](contract/README.md).
 
 ## Aufbau
@@ -25,6 +26,7 @@ Maßgeblich: [Draht-Vertrag v1/v2](contract/README.md).
 | container.go, container_engine.go, secrets_linux.go | Docker-CLI, Startwege und Geheimnisgrenze |
 | internal/testfixture | Synthetische Gitpakete nur für Tests |
 | probe/mutations.py | Negativtests unter entfernten Sperren, exakte Wiederherstellung |
+| probe/installtest*.ps1 | Manueller Release-Installationstest, Offline-Adaptertests und isolierte Mutationen |
 | contract/ | Vertrag/Goldens, eigenständiges D0-Testmodul |
 | .github/workflows/desktop-runner*.yml (Repo-Root) | Linux-/Windows-CI und optional signiertes Release |
 
@@ -35,7 +37,8 @@ Maßgeblich: [Draht-Vertrag v1/v2](contract/README.md).
    `/api/device/v1/`, Contract-Header je Anfrage, no-store je Antwort.
    Läufer-Token überall **außer `pair`**, dort kein Authorization-Header.
    Standard LAN/Tunnel, öffentlich nur Opt-in mit Allowlist und Bremse (C2).
-2. Kopplung ersetzt Token per stdin: Code 15 min/einmalig/60 Bit,
+2. Kopplung ersetzt die manuelle Tokenübergabe: Code 15 min/einmalig/60 Bit,
+   Windows `pair --code` nur per argv; Linux-Server liest den Code per stdin.
    Format `<device_id>.XXXX-XXXX-XXXX` (16 kleine Hex-Zeichen,
    Crockford-Gruppen), nach 5 Fehlversuchen verbrannt, globale 429-Bremse.
    E3: nur gültiges HTTPS oder echter Loopback; selbstsigniert nur mit
@@ -171,7 +174,17 @@ Native Taskprobe ausdrücklich per -run TestWindowsAufgabeOhneAdmin aktivieren,
 ohne erhöhte Rechte. Python-Probe braucht die kuratierte ZIP in .probe/;
 fehlende ZIP ergibt einen sichtbaren Skip. Windows-CI beschafft sie und
 führt die Taskprobe in einem temporären Standardkonto aus.
-Azure OIDC/Authenticode und reale Kernintegration brauchen externe Abnahme.
+Reale Kernintegration braucht externe Abnahme. Der Installationstest prüft das
+signierte Release, ohne die Windows-CLI zu erweitern: Code nicht ausgeben,
+argv-Sichtbarkeit ausdrücklich benennen. Status zeigt nur zwei Bools;
+Journal entfernt bestätigte Ergebnisse sofort. Lokaler Lebensnachweis daher
+über erfolgreichen Manifest-Sync, Auftrags-/Heartbeatbelege separat durch GATE.
+Beide Autostartwege (COM und HKCU Run) in finally prüfen. Standardkonto ist Pflicht;
+vorhandene Kopplung/Autostart erhalten. Aktive WTS-Sitzung/Kontobindung werden
+nicht umgangen. Admin-Abbruch liefert aktuell cancelled; interrupted ist Wiederanlauf.
+Offline: probe/installtest-tests.ps1, probe/installtest-mutations.ps1. Der Admin-
+Negativtest samt Mutation braucht Admin-/UAC-Mitgliedschaft, sonst sichtbarer Skip;
+Windows-CI führt die Offline-Adaptertests mit Mutationen aus.
 
 Mutationen nur bei exklusivem Worktree-Zugriff: python probe/mutations.py.
 Ein Mutant muss kompilieren und sein Zieltest tatsächlich fehlschlagen;

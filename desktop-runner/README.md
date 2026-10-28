@@ -3,7 +3,8 @@
 Windows/amd64-Client und Linux-Server-Läufer für JanuaPort, Go ohne CGO.
 Der Server-Modus ergänzt Container-Pins (JanuaPort/januaport#1195).
 Implementiert und mit Fake-Kern, Linux-Race-Tests und nativen Windows-Sonden
-geprüft. Gemeinsame Live-Abnahme mit der Anlage und Azure-Signierung stehen aus.
+geprüft. Signiertes Windows-Release: `desktop-runner-v0.1.0` (#1163 D4).
+Gemeinsame Live-Abnahme mit der Anlage steht aus.
 Maßgeblich ist der [Draht-Vertrag](contract/README.md): v1 für Windows, v2 für Linux-Server.
 
 ## Einrichten unter Windows
@@ -162,6 +163,100 @@ Provenance der finalen EXE. Fehlt SIGNING_PROFILE oder scheitert ein Schritt,
 bricht das Release ab; ein unsigniertes Release gibt es nicht.
 
 Native Windows-Mutationen zusätzlich: probe/mutations-windows.ps1 (ohne Admin).
+
+## Installationstest
+
+Der manuelle Workflow `.github/workflows/desktop-runner-installtest.yml` prüft die
+Client-Installation ohne PO und ohne PO-Gerät auf einem frischen `windows-latest`.
+`workflow_dispatch` nimmt `version` ohne `v` entgegen, Standard `0.1.0`.
+Die Probe ist Stufe 2 „Gemeinsam bauen“, nicht release-blockierend; kein Zeitplan,
+Mehrgeräte- oder Lasttest. Die Logik liegt in `probe/installtest.ps1`.
+
+GATE richtet vor dem Lauf das Environment `showcase-installtest` ein: ausschließlich
+Branch `main` freigeben und einen erforderlichen Reviewer setzen (kein Selbstreview).
+Diese GitHub-Einstellungen sind Voraussetzung und werden nicht durch die YAML-Datei
+angelegt. Der Auftraggeber übernimmt Push und Dispatch von `main` nach Review.
+GATE legt auf dem Showcase ein frisches Windows-Gerät und einen Test-Pin mit
+synthetischem `print`, ohne Werkzeuge, Zugangsdaten oder Kundendaten an. Geräteart
+`workstation`/`dedicated`, Startpolicy `always`; ein Ad-hoc-Auftrag muss zusätzlich
+für das Gerät bereitstehen. Pin allein bedeutet noch keine Zustellung.
+Unmittelbar vor dem Lauf erzeugt GATE den einmaligen, kurz gültigen Kopplungscode
+per Showcase-CLI und setzt ihn als Environment-Secret `SHOWCASE_PAIR_CODE`.
+Danach löscht GATE das Secret auch bei fehlgeschlagenem/abgebrochenem Lauf.
+
+Die Probe lädt EXE, `SHA256SUMS` und `provenance.jsonl` aus dem öffentlichen Release
+in `JanuaPort/januaport-plugins`. Vor jeder Ausführung verlangt sie SHA-256,
+Authenticode-Status `Valid`, den Herausgeber `JanuaPort GmbH` und
+`gh attestation verify` mit Repository, Release-Workflow und Tag als Herkunft.
+GitHub-Tokenrechte: nur `contents: read` und `attestations: read`.
+Anschließend erstellt sie wie die Taskprobe ein temporäres Standardkonto,
+lädt dessen Profil und legt die geprüfte EXE dauerhaft unter
+`%LOCALAPPDATA%\JanuaPort\installtest\<version>\desktop-runner.exe` ab.
+Koppeln und Installieren laufen ohne Adminrechte; `status` muss
+`gekoppelt=true installiert=true` ausgeben. Beide Installationswege zählen:
+COM-Benutzeraufgabe und der vom Läufer gemeldete Richtlinien-Rückfall auf HKCU Run.
+
+Der Code liegt im Skript als `SecureString` vor und wird dem Standardkonto über
+eine Named Pipe übergeben, deren DACL nur dieses Konto und den CI-Hauptnutzer
+zulässt. Er wird nicht als Klartextdatei abgelegt und nicht ausgegeben;
+Prozessausgaben werden auch im Fehlerfall abgefangen, Fehler bleiben fest.
+**Grenze von Windows v0.1.0:** `pair` unterstützt ausschließlich `--code`, kein stdin.
+Der Code ist während dieses kurzen Prozessstarts in dessen Argumentliste sichtbar.
+Die stdin-Unterstützung im Linux-Server gilt nicht für die Windows-EXE.
+
+`install` startet den Läufer erst bei der nächsten Anmeldung. Deshalb startet die
+Probe zusätzlich `run` im selben Standardkonto und beobachtet ihn fünf Minuten.
+Sie prüft Prozess und `status` und liest ausschließlich das lokale DPAPI-geschützte
+Manifest, um einen erfolgreichen Sync als Lebenszeichen des Anlagenkontakts zu
+erkennen. Ohne Sync wird der Lauf rot. Das ist kein Nachweis eines bestätigten
+Heartbeats und kein `ready`-Nachweis. Der Beobachtungszeitraum bleibt für GATEs
+serverseitige Prüfungen offen.
+
+**Auftragsabschluss lokal nicht zuverlässig beobachtbar:** `status` zeigt nur die
+beiden Bools. Das DPAPI-Journal enthält unbestätigte Ergebnisse; nach HTTP 204 wird
+der Eintrag sofort gelöscht. Ein Polling könnte das `ok` verpassen. Die Probe liest
+deshalb keine Auftragsinhalte und behauptet keinen lokal belegten Auftragsabschluss.
+GATE belegt auf dem Showcase Lebenszeichen, Auftrag `ok`, Audit ohne Inhalt sowie
+den Admin-Abbruch eines zweiten, absichtlich langen Pins. Dessen tatsächliche
+Endklasse dokumentiert GATE: der aktuelle Heartbeat-Abbruchpfad liefert `cancelled`;
+`interrupted` bezeichnet im Windows-Code einen beim Neustart offenen Laufmarker.
+
+**Weitere Voraussetzung für die Auftragsbelege:** Der Läufer verlangt eine aktive
+WTS-Sitzung und ein exakt passendes `expected_account` (`DOMÄNE\Benutzer`). Das
+temporäre Konto heißt zufällig `JnptIT…`; die Hosted-CI garantiert keine aktive
+Benutzersitzung dafür. Diese Probe umgeht weder Konto- noch Sitzungsprüfung.
+Auftrags- und Abbruchbelege sind deshalb auf Hosted-CI nicht garantiert und müssen
+gegebenenfalls auf einem dafür eingerichteten Test-PC erfolgen. Die CLI sendet
+keinen Kontonamen; GATE muss die Konto-/Sitzungsvoraussetzungen separat herstellen.
+
+In `finally` laufen `uninstall`, das Beenden des explizit gestarteten Prozesses und
+die Abfrage der Aufgabenplanung über COM sowie von HKCU Run. Jede verbleibende
+eigene Autostartregistrierung macht den Test rot. Ein zweiter Cleanup im Standardkonto
+deckt auch einen vom Skript zeitlich abgebrochenen Worker ab. Harter Runnerverlust
+kann `finally` verhindern; GATE räumt dann das Showcase-Gerät trotzdem auf.
+GATE entfernt nach dem Lauf das Gerät und belegt, dass es verschwunden ist und
+seine Credentials ungültig sind. `uninstall` allein widerruft keine Credentials.
+
+Manuell auf einem frischen Windows/amd64-Testprofil ohne Administrator-Mitgliedschaft
+mit PowerShell 7 und aktueller GitHub CLI (`gh attestation verify` einschließlich
+`--source-ref` verfügbar):
+
+~~~powershell
+./probe/installtest.ps1 -Version 0.1.0 -Code (Read-Host 'Showcase-Code' -AsSecureString)
+~~~
+
+Ein bereits benutztes Läuferprofil oder vorhandener Autostart wird abgewiesen,
+damit eine bestehende Kopplung erhalten bleibt. EXE und lokaler Zustand bleiben
+nach Deinstallation im Testprofil; Showcase-Widerruf und Profilentsorgung sind
+Betreiberaufgaben. `-CreateStandardUser` ist ausschließlich für GitHub-CI gedacht.
+
+Nicht belegt: SmartScreen/Zertifikatreputation auf einem echten Arbeitsplatz-PC,
+Firewall, Proxy und Virenschutz beim Pilot sowie der Linux-Server-Läufer (#1195).
+Offline-Verifikation ohne Release-/Showcase-Zugriff:
+`./probe/installtest-tests.ps1`; Mutationen mit echten Windows-Adaptern:
+`./probe/installtest-mutations.ps1`. Mutanten laufen als isolierte Skriptkopien;
+der Produktionsquelltext bleibt bytegleich. Der negative Admin-Kontotest samt Mutation
+braucht ein Admin-/UAC-Konto und läuft im Windows-CI; lokale Standardkonten melden einen Skip.
 
 ## Linux-Server-Modus
 
