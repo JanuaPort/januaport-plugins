@@ -298,7 +298,7 @@ func TestDockerGeheimnisMountReadOnlyUndInspect(t *testing.T) {
 	if err = os.Chmod(root, 0700); err != nil {
 		t.Fatal(err)
 	}
-	secret := "SYNTHETIC_OPERATOR_SECRET_1195"
+	secret := "SYNTHETIC_OPERATOR_SECRET_1195" // gitleaks:allow synthetische Kanarie, kein Zugangsdatum
 	if err = os.WriteFile(filepath.Join(root, "alpha"), []byte(secret), 0444); err != nil {
 		t.Fatal(err)
 	}
