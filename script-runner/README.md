@@ -167,7 +167,9 @@ meine-auswertung/
     …
 ```
 
-**Lock bauen.** Wheels für genau diese Plattform laden — aus einem Index, den
+**Lock bauen.** Bequemer geht es mit dem offenen Rezept [Python-Bibliotheken bauen](https://github.com/JanuaPort/januaport-recipes/tree/main/rezepte/python-bibliotheken-bauen): `requirements.in` eingeben, Wheels und Hash-Lock beim Bauen erzeugen und als PR prüfen. Die Prüfregeln des Läufers und das Pinnen durch einen Menschen bleiben unverändert.
+
+**Lock von Hand bauen.** Wheels für genau diese Plattform laden — aus einem Index, den
 Sie benennen und prüfen (hier `pypi.org`; ein eigener Spiegel ist ebenso
 möglich), samt Abhängigkeiten, und die Hashes ins Lock schreiben:
 
