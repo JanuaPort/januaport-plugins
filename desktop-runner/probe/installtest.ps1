@@ -20,6 +20,12 @@ function Get-InstalltestErrorClass {
     param([Management.Automation.ErrorRecord]$Record)
     $message = [string]$Record.Exception.Message
     if ($message -cmatch '\A[a-z][a-z0-9_]{2,80}\z') { return $message }
+    # Fremde Fehler: nur Typname und Skriptzeile, nie der Text (er kann Ausgabe enthalten).
+    $type = ($Record.Exception.GetType().Name.ToLowerInvariant() -replace '[^a-z0-9]', '')
+    if ($type.Length -gt 48) { $type = $type.Substring(0, 48) }
+    $line = 0
+    if ($Record.InvocationInfo) { $line = $Record.InvocationInfo.ScriptLineNumber }
+    if ($type) { return ('ps_' + $type + '_l' + $line) }
     return 'unbekannt'
 }
 
@@ -217,16 +223,21 @@ function Invoke-InstalltestWorker {
     }
     Assert-InstalltestFresh $stateRoot $task
     Assert-InstalltestDigest $Directory
-    New-Item -ItemType Directory -Force $destination | Out-Null
-    Copy-Item -LiteralPath (Join-Path $Directory 'desktop-runner.exe') -Destination $executable
-    Copy-Item -LiteralPath (Join-Path $Directory 'SHA256SUMS') -Destination $destination
+    try {
+        New-Item -ItemType Directory -Force $destination | Out-Null
+        Copy-Item -LiteralPath (Join-Path $Directory 'desktop-runner.exe') -Destination $executable
+        Copy-Item -LiteralPath (Join-Path $Directory 'SHA256SUMS') -Destination $destination
+    } catch { throw 'copy_failed' }
+    Write-Host 'Installtest: Läufer im Profil abgelegt.'
     Assert-InstalltestDigest $destination
     Assert-InstalltestSignature $executable
     $runner = $null
     try {
         Invoke-InstalltestCommand $executable @('pair', '--url', 'https://mcp.januaport.ai') $PairCode -Step 'pair' | Out-Null
+        Write-Host 'Installtest: gekoppelt.'
         Invoke-InstalltestCommand $executable @('install') -Step 'install' | Out-Null
-        $runner = Start-InstalltestProcess $executable @('run')
+        Write-Host 'Installtest: installiert.'
+        try { $runner = Start-InstalltestProcess $executable @('run') } catch { throw 'run_start_failed' }
         # Drain silently; never let a full stdout/stderr pipe block the runner.
         $runner.BeginOutputReadLine()
         $runner.BeginErrorReadLine()
@@ -317,6 +328,7 @@ function Invoke-InstalltestStandardAccount {
         try { Wait-InstalltestProcessExit $child 480 'worker' }
         catch {
             # Nur feste Zeilen des eigenen Skripts weiterreichen, nie native Ausgabe.
+            Write-InstalltestWorkerLines $childOutput.GetAwaiter().GetResult()
             $class = Get-InstalltestWorkerClass $childOutput.GetAwaiter().GetResult()
             if ($class) { throw ('worker_' + $class) }
             throw
@@ -359,13 +371,17 @@ function Get-InstalltestCode {
 function Invoke-Installtest {
     if ($CleanupOnly) { Invoke-InstalltestWorker $Version -OnlyCleanup; return }
     if ($PipeName) {
-        $pipe = [IO.Pipes.NamedPipeClientStream]::new('.', $PipeName, 'In')
+        Write-Host 'Installtest: Standardkonto läuft.'
         try {
-            $pipe.Connect(30000)
-            $reader = [IO.StreamReader]::new($pipe)
-            try { $Code = ConvertTo-SecureString ($reader.ReadLine()) -AsPlainText -Force }
-            finally { $reader.Dispose() }
-        } finally { $pipe.Dispose() }
+            $pipe = [IO.Pipes.NamedPipeClientStream]::new('.', $PipeName, 'In')
+            try {
+                $pipe.Connect(30000)
+                $reader = [IO.StreamReader]::new($pipe)
+                try { $Code = ConvertTo-SecureString ($reader.ReadLine()) -AsPlainText -Force }
+                finally { $reader.Dispose() }
+            } finally { $pipe.Dispose() }
+        } catch { throw 'pipe_read_failed' }
+        Write-Host 'Installtest: Code übernommen.'
         Invoke-InstalltestWorker $Version $Code $VerifiedDirectory
         return
     }
