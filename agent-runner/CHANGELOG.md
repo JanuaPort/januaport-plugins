@@ -98,6 +98,25 @@ Getaggt als `agent-runner-v0.1.0` (Release-Lauf 38983345807, 17.10.2026).
 
 ### Kuratierung
 
+### v0.2.1 — 2026-10-28
+
+| Feld | Wert |
+|---|---|
+| Image | `ghcr.io/januaport/agent-runner` |
+| Tag | `agent-runner-v0.2.1` (Image-Tag `0.2.1`) auf `f5c2892` |
+| Digest (OCI-Index) | `sha256:c31fb81ee79a11cc518adcf5d70985e2b749bb27acffd64bed85529b53bcb23f` |
+| Plattform | `linux/amd64` (`sha256:8c01a6c36ad9f4c96e5c6fa7ee6ccfee2c3f2ed9e71579438264cd60edab4e17`), sonst keine; dazu der Attestations-Eintrag `sha256:61500f2a…` |
+| Art | `service`, eigener Build (Plugins-Repo) |
+| Geprüft mit | JanuaPort 0.87.0, live auf dem Showcase (#1228: `gpt-5-nano`, Lauf `b3a4da82-…` `end=ok`, 11,5 s, 1 Werkzeugaufruf) |
+| Benötigter Commit von Compose | `19ea160` (`docker-compose.yml`, unverändert seit 0.1.0) |
+| Lauf der Sonden | Release-Lauf `40724370294`, hat genau diesen Digest geprüft (SEC C1) |
+
+**Änderung gegenüber 0.2.0:** Beim OpenAI-Format geht `max_completion_tokens` statt `max_tokens` raus (#1228). Ohne das lehnen neuere OpenAI-Modelle ab. Der Kern 0.87.0 nimmt das Feld schon an.
+
+**Scan:** Trivy, Scan vom 2026-10-28T16:18Z: **0 critical · 0 high** · 2 unknown, dieselben wie in 0.2.0.
+
+**Entscheid:** löst 0.2.0 auf dem Showcase ab (Sicherung `.env.vor-0.2.1`). Katalogfähig; für den Katalog bevorzugt vor 0.2.0. Den Eintrag setzt VENDOR mit PO-Go.
+
 ### v0.2.0 — 2026-10-28
 
 | Feld | Wert |
