@@ -23,7 +23,7 @@ function Assert-Rejected {
     param([scriptblock]$Action, [string]$Reason)
     try { & $Action | Out-Null }
     catch {
-        if ($Reason -and $_.Exception.Message -ne $Reason) { throw "wrong_rejection: $($_.Exception.Message)" }
+        if ($Reason -and $_.Exception.Message -cnotlike $Reason) { throw "wrong_rejection: $($_.Exception.Message)" }
         return
     }
     throw 'forbidden_operation_accepted'
@@ -66,7 +66,7 @@ try {
                 try { Invoke-Fixture @('fail') $secret }
                 catch { $_.Exception.Message }
             } *>&1) -join "`n"
-            if ($captured.Contains($sentinel) -or $captured.Trim() -ne 'process_failed') { throw 'secret_or_failure_not_suppressed' }
+            if ($captured.Contains($sentinel) -or $captured.Trim() -cnotlike 'process_failed_cmd_*') { throw 'secret_or_failure_not_suppressed' }
             # Verify native argv escaping/transmission with a synthetic code.
             if ((Invoke-Fixture @('code') $secret) -ne $sentinel) { throw 'argv_handoff_failed' }
         }
@@ -91,13 +91,13 @@ try {
             Assert-Rejected {
                 Invoke-InstalltestCommand (Join-Path $env:WINDIR 'System32/icacls.exe') @(
                     (Join-Path $testRoot 'missing-directory'), '/grant', "${env:USERNAME}:(OI)(CI)RX")
-            } 'process_failed'
+            } 'process_failed_cmd_*'
         }
         process_timeout = {
             $process = Start-Fixture @('run')
             $idToCheck = $process.Id
             try {
-                Assert-Rejected { Complete-InstalltestProcess $process 1 } 'process_timeout'
+                Assert-Rejected { Complete-InstalltestProcess $process 1 } 'process_timeout_cmd'
                 if (Get-Process -Id $idToCheck -ErrorAction SilentlyContinue) { throw 'timed_out_process_survived' }
             } finally { Stop-Process -Id $idToCheck -Force -ErrorAction SilentlyContinue }
         }
@@ -248,7 +248,7 @@ try {
             Invoke-InstalltestAttestation $tampered $bundle $ReleaseVersion
             $stream = [IO.File]::Open($tampered, [IO.FileMode]::Append)
             try { $stream.WriteByte(0) } finally { $stream.Dispose() }
-            Assert-Rejected { Invoke-InstalltestAttestation $tampered $bundle $ReleaseVersion } 'process_failed'
+            Assert-Rejected { Invoke-InstalltestAttestation $tampered $bundle $ReleaseVersion } 'process_failed_gh_*'
         }
     } elseif ($Only -eq '*' -or $Only -eq 'provenance_invalid') {
         Write-Host 'SKIP provenance_invalid: real release assets/gh require explicit -ReleaseDirectory.'

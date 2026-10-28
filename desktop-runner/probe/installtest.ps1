@@ -19,7 +19,7 @@ $ErrorActionPreference = 'Stop'
 function Get-InstalltestErrorClass {
     param([Management.Automation.ErrorRecord]$Record)
     $message = [string]$Record.Exception.Message
-    if ($message -cmatch '\A[a-z][a-z_]{2,40}\z') { return $message }
+    if ($message -cmatch '\A[a-z][a-z0-9_]{2,80}\z') { return $message }
     return 'unbekannt'
 }
 
@@ -67,21 +67,22 @@ function Start-InstalltestProcess {
 }
 
 function Wait-InstalltestProcessExit {
-    param([Diagnostics.Process]$Process, [int]$TimeoutSeconds = 30)
+    param([Diagnostics.Process]$Process, [int]$TimeoutSeconds = 30, [string]$Step = 'cmd')
     if (-not $Process.WaitForExit($TimeoutSeconds * 1000)) {
         $Process.Kill($true)
         $Process.WaitForExit()
-        throw 'process_timeout'
+        throw ('process_timeout_' + $Step)
     }
-    if ($Process.ExitCode -ne 0) { throw 'process_failed' }
+    # Schritt und Exitcode (hex, ohne Ausgabe) machen den Fehler unterscheidbar.
+    if ($Process.ExitCode -ne 0) { throw ('process_failed_' + $Step + '_' + ('{0:x8}' -f $Process.ExitCode)) }
 }
 
 function Complete-InstalltestProcess {
-    param([Diagnostics.Process]$Process, [int]$TimeoutSeconds = 30)
+    param([Diagnostics.Process]$Process, [int]$TimeoutSeconds = 30, [string]$Step = 'cmd')
     $output = $Process.StandardOutput.ReadToEndAsync()
     $null = $Process.StandardError.ReadToEndAsync()
     try {
-        Wait-InstalltestProcessExit $Process $TimeoutSeconds
+        Wait-InstalltestProcessExit $Process $TimeoutSeconds $Step
         # Callers use only status output; pair output is discarded even on success.
         return $output.GetAwaiter().GetResult()
     } finally {
@@ -90,8 +91,8 @@ function Complete-InstalltestProcess {
 }
 
 function Invoke-InstalltestCommand {
-    param([string]$FilePath, [string[]]$Arguments, [securestring]$PairCode, [int]$TimeoutSeconds = 30)
-    Complete-InstalltestProcess (Start-InstalltestProcess $FilePath $Arguments $PairCode) $TimeoutSeconds
+    param([string]$FilePath, [string[]]$Arguments, [securestring]$PairCode, [int]$TimeoutSeconds = 30, [string]$Step = 'cmd')
+    Complete-InstalltestProcess (Start-InstalltestProcess $FilePath $Arguments $PairCode) $TimeoutSeconds $Step
 }
 
 function Invoke-InstalltestAttestation {
@@ -101,7 +102,7 @@ function Invoke-InstalltestAttestation {
         '--signer-workflow', "$repo/.github/workflows/desktop-runner-release.yml",
         '--source-ref', "refs/tags/desktop-runner-v$ReleaseVersion")
     # Der erste Lauf lädt die Sigstore-Vertrauensbasis; 30 s reichen dafür nicht sicher.
-    Invoke-InstalltestCommand 'gh' $verifyArguments -TimeoutSeconds 120 | Out-Null
+    Invoke-InstalltestCommand 'gh' $verifyArguments -TimeoutSeconds 120 -Step 'gh' | Out-Null
 }
 
 function Assert-InstalltestStandardUser {
@@ -188,7 +189,7 @@ function Wait-InstalltestLife {
     while ([DateTime]::UtcNow -lt $deadline) {
         if ($Runner.HasExited) { throw 'runner_exited' }
         $remaining = [Math]::Max(1, [int]($deadline - [DateTime]::UtcNow).TotalSeconds)
-        $status = Invoke-InstalltestCommand $Executable ($PrefixArguments + @('status')) -TimeoutSeconds $remaining
+        $status = Invoke-InstalltestCommand $Executable ($PrefixArguments + @('status')) -TimeoutSeconds $remaining -Step 'status'
         if ($status.Trim() -cne 'Desktop-Läufer: gekoppelt=true installiert=true') { throw 'status_invalid' }
         $manifest = Read-InstalltestManifest $StateRoot
         if ($manifest -and [DateTime]$manifest.manifest.last_sync -gt [DateTime]::MinValue) { $synced = $true }
@@ -210,7 +211,7 @@ function Invoke-InstalltestWorker {
     $destination = Join-Path $env:LOCALAPPDATA "JanuaPort/installtest/$ReleaseVersion"
     $executable = Join-Path $destination 'desktop-runner.exe'
     if ($OnlyCleanup) {
-        if (Test-Path -LiteralPath $executable) { Invoke-InstalltestCommand $executable @('uninstall') | Out-Null }
+        if (Test-Path -LiteralPath $executable) { Invoke-InstalltestCommand $executable @('uninstall') -Step 'uninstall' | Out-Null }
         Assert-InstalltestClean $task
         return
     }
@@ -223,15 +224,15 @@ function Invoke-InstalltestWorker {
     Assert-InstalltestSignature $executable
     $runner = $null
     try {
-        Invoke-InstalltestCommand $executable @('pair', '--url', 'https://mcp.januaport.ai') $PairCode | Out-Null
-        Invoke-InstalltestCommand $executable @('install') | Out-Null
+        Invoke-InstalltestCommand $executable @('pair', '--url', 'https://mcp.januaport.ai') $PairCode -Step 'pair' | Out-Null
+        Invoke-InstalltestCommand $executable @('install') -Step 'install' | Out-Null
         $runner = Start-InstalltestProcess $executable @('run')
         # Drain silently; never let a full stdout/stderr pipe block the runner.
         $runner.BeginOutputReadLine()
         $runner.BeginErrorReadLine()
         Wait-InstalltestLife $executable $stateRoot $runner
     } finally {
-        try { Invoke-InstalltestCommand $executable @('uninstall') | Out-Null }
+        try { Invoke-InstalltestCommand $executable @('uninstall') -Step 'uninstall' | Out-Null }
         finally {
             try {
                 # uninstall removes autostart, but does not stop a running runner.
@@ -269,6 +270,24 @@ function Send-InstalltestCode {
     } finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer) }
 }
 
+# Get-InstalltestWorkerClass liest aus der Ausgabe des Kind-Prozesses nur die
+# feste Fehlerzeile des eigenen Skripts.
+function Get-InstalltestWorkerClass {
+    param([string]$Output)
+    foreach ($line in ($Output -split "`r?`n")) {
+        if ($line -cmatch '\AInstalltest fehlgeschlagen; Fehlerklasse: ([a-z][a-z0-9_]{2,60})\.\z') { return $Matches[1] }
+    }
+    return $null
+}
+
+# Write-InstalltestWorkerLines reicht nur die festen Zwischenzeilen weiter.
+function Write-InstalltestWorkerLines {
+    param([string]$Output)
+    foreach ($line in ($Output -split "`r?`n")) {
+        if ($line -cmatch '\AInstalltest: [A-Za-zÄÖÜäöüß0-9 ,.;()-]{1,120}\z') { Write-Host $line }
+    }
+}
+
 function Invoke-InstalltestStandardAccount {
     param([string]$ReleaseVersion, [securestring]$PairCode, [string]$Directory)
     if ($env:GITHUB_ACTIONS -ne 'true') { throw 'ci_only' }
@@ -281,7 +300,7 @@ function Invoke-InstalltestStandardAccount {
     try {
         Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $user
         Invoke-InstalltestCommand (Join-Path $env:WINDIR 'System32/icacls.exe') @(
-            $Directory, '/grant', "${probeUser}:(OI)(CI)RX") | Out-Null
+            $Directory, '/grant', "${probeUser}:(OI)(CI)RX") -Step 'icacls' | Out-Null
         $script = Join-Path $Directory 'installtest.ps1'
         Copy-Item -LiteralPath $PSCommandPath -Destination $script
         $pipeName = 'jnpt-installtest-' + [guid]::NewGuid().ToString('N')
@@ -289,11 +308,20 @@ function Invoke-InstalltestStandardAccount {
         $connection = $pipe.WaitForConnectionAsync()
         $arguments = @('-NoProfile', '-File', $script, '-Version', $ReleaseVersion,
             '-PipeName', $pipeName, '-VerifiedDirectory', $Directory)
-        $child = Start-InstalltestProcess (Join-Path $PSHOME 'pwsh.exe') $arguments -Credential $credential
-        $child.BeginOutputReadLine()
-        $child.BeginErrorReadLine()
+        try {
+            $child = Start-InstalltestProcess (Join-Path $PSHOME 'pwsh.exe') $arguments -Credential $credential
+        } catch { throw 'worker_start_failed' }
+        $childOutput = $child.StandardOutput.ReadToEndAsync()
+        $null = $child.StandardError.ReadToEndAsync()
         Send-InstalltestCode $pipe $connection $PairCode
-        Wait-InstalltestProcessExit $child 480
+        try { Wait-InstalltestProcessExit $child 480 'worker' }
+        catch {
+            # Nur feste Zeilen des eigenen Skripts weiterreichen, nie native Ausgabe.
+            $class = Get-InstalltestWorkerClass $childOutput.GetAwaiter().GetResult()
+            if ($class) { throw ('worker_' + $class) }
+            throw
+        }
+        Write-InstalltestWorkerLines $childOutput.GetAwaiter().GetResult()
     } finally {
         try {
             if ($child) {
