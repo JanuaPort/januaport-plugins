@@ -14,7 +14,7 @@ $mutations = @(
     @('checksum_mismatch', "throw 'checksum_mismatch'", 'return'),
     @('signature_invalid', "throw 'signature_invalid'", 'return'),
     @('publisher_invalid', "throw 'publisher_invalid'", 'return'),
-    @('output_secret', "throw 'process_failed'", 'return'),
+    @('output_secret', 'if ($Process.ExitCode -ne 0) { throw (''process_failed_'' + $Step + ''_'' + (''{0:x8}'' -f $Process.ExitCode)) }', 'if ($Process.ExitCode -ne 0) { return }'),
     @('environment_secret', "`$info.Environment.Remove('SHOWCASE_PAIR_CODE') | Out-Null", ''),
     @('pair_code_missing', "throw 'pair_code_missing'", 'return'),
     @('process_start', "throw 'process_start_failed'", 'return'),
