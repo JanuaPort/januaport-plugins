@@ -9,6 +9,10 @@ on:
         required: true
         default: '0.1.0'
         type: string
+      url:
+        description: 'Anlage im Tailnet (https://<tailnet-name>), Geräte-API ist nicht öffentlich'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -26,9 +30,17 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      # SEC N1-N3 (#1233): ephemeral Key mit Tag, nur Showcase-Port per ACL,
+      # ohne accept-routes, Exit-Node und SSH.
+      - name: Tailnet beitreten (kurzlebig)
+        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4.2.0
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+          tags: tag:installtest
       - name: Signiertes Release im Standardkonto prüfen
         env:
           INSTALLTEST_VERSION: ${{ inputs.version }}
+          INSTALLTEST_URL: ${{ inputs.url }}
           SHOWCASE_PAIR_CODE: ${{ secrets.SHOWCASE_PAIR_CODE }}
           GH_TOKEN: ${{ github.token }}
-        run: ./desktop-runner/probe/installtest.ps1 -Version $env:INSTALLTEST_VERSION -CreateStandardUser
+        run: ./desktop-runner/probe/installtest.ps1 -Version $env:INSTALLTEST_VERSION -Url $env:INSTALLTEST_URL -CreateStandardUser
