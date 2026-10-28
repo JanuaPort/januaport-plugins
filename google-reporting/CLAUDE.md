@@ -1,4 +1,4 @@
-# google-reporting 1.0.0 — Modulvertrag (#1130, #1148, #1150)
+# google-reporting 1.0.1 — Modulvertrag (#1130, #1148, #1150, #1176)
 
 Privater Python-REST-Beisteller, Apache2.0. Stufe 1, gebaut/synthetisch geprüft,
 Live-Abnahme offen. Kein eigener MCP-Server oder Gateway-Auth-Typ.
@@ -60,7 +60,7 @@ Schreibhandgriffe (#1148, SEC-Auflagen P1–P4, W1–W6, H1–H3), Invarianten:
   kaputtes Datum bleibt `invalid_input`. Die Fehler-JSON trägt weiter nur `{"error": code}`.
 
 Invarianten an allen Code-/Dokuorten nachziehen:512 KiB Antwort,8 KiB Anfrage,
-Pfad 512,100 Rangzeilen/90 Tage,50 öffentliche Pfade/4096Regex,20 s/25 s,
+Pfad 512,100 Rangzeilen/90 Tage,100 öffentliche Pfade (1.0.1)/4096Regex,20 s/25 s,
 2 Worker/30 pro Quelle pro Minute/keine Retries,query_enabled=false als Auslieferungsvorgabe (Betreiberschalter, SEC V5),
 GA-Kleingruppenschwelle aus Messvertrag,Auditmetadaten je SSO/Token.
 Privacy-Scan heißt field:query, weil Gateway JSON-Schlüssel rekursiv scannt.
@@ -97,7 +97,7 @@ Mutationstests müssen Bridge-Key-Auth, Vorprüfung, Filter, Retries und Kill ab
 #1148 auch Scope-Trennung, Tagesdeckel, P1 (primary), P2 (Privacy-Scan) und das Titelpräfix.
 Signatur/Katalog/Deployment nicht Teil der Implementierung.
 
-Release (#1138): Version 1.0.0 steht im Kopf dieser Datei, im README-Titel und im CHANGELOG
+Release (#1138): Version 1.0.1 steht im Kopf dieser Datei, im README-Titel und im CHANGELOG
 (sonst nirgends: Deskriptor und Compose tragen keine Version, Anlagen beziehen per Digest aus dem
 Katalog). Das Image baut nur `.github/workflows/google-reporting-release.yml` auf den Tag
 `google-reporting-vX.Y.Z` (Tag setzt GATE, nie ein Branch). Es spiegelt agent-runner-release:

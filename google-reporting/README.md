@@ -1,8 +1,8 @@
-# Google Reporting 1.0.0 — #1130
+# Google Reporting 1.0.1 — #1130, #1176
 
 Stufe 1 „Sicher verbinden“. Gebaut und synthetisch geprüft; **noch nicht live
-abgenommen oder produktiv provisioniert**, die Fassung 1.0.0 (#1130, #1148, #1150) ist
-**noch nicht getaggt**: Der Release-Workflow steht, den Tag setzt GATE. Apache 2.0.
+abgenommen oder produktiv provisioniert**. Fassung 1.0.1 (#1130, #1148, #1150, #1176); den Tag
+`google-reporting-vX.Y.Z` setzt GATE über den Release-Workflow. Apache 2.0.
 Ein privater Python-Beisteller übersetzt acht feste GET-Berichte in offizielle
 Google-REST-Aufrufe. JanuaPort behält Rechte, Audit und Pseudonymisierung.
 Keine Accountsuche, freien Dimensionen/Metriken, Nutzer-/Session-/Lead-IDs,
@@ -146,10 +146,12 @@ Fehlercodes dieser Routen: `invalid_input`, `personal_data_rejected` (400), `rou
 (1–80 Zeichen, Vorgabe „KI-Assistenten“): Name der einen Kanalgruppe, die der Dienst anlegen
 und ändern darf. Pflicht: feste GSC-Property,
 GA4-Property-ID ohne `properties/`, IANA-Zeitzone, exakte kanonische Hosts,
-drei disjunkte Gruppen mit zusammen 1–50 öffentlichen Pfaden und explizite
-vollständige GSC-URLs je Pfad/Host. Keine Querystrings, Fragmente, dynamischen
-Nutzerpfade. Pfade höchstens 512 Zeichen, GSC-Regex höchstens 4096 Zeichen;
-Überschreitung schlägt fehl, kein ungefilterter Fallback. GSC-URLs müssen zur
+drei disjunkte Gruppen mit zusammen 1–100 öffentlichen Pfaden (seit 1.0.1, vorher 50) und
+explizite vollständige GSC-URLs je Pfad/Host. Keine Querystrings, Fragmente, dynamischen
+Nutzerpfade, keine Präfixe. Pfade höchstens 512 Zeichen, GSC-Regex über alle URLs höchstens
+4096 Zeichen; Überschreitung schlägt beim Laden fehl, kein ungefilterter Fallback. Die
+Regex-Grenze kann vor der Pfadgrenze greifen: Bei einem Host und Pfaden wie
+`/integrationen/<name>` passen rund 90 Pfade, bei zwei Hosts je Pfad etwa die Hälfte. GSC-URLs müssen zur
 Property gehören. GA4 filtert **immer** sowohl landingPage-Werteliste als auch
 hostName-Werteliste, auch bei gemischten Properties. Deren Kompatibilität bleibt
 vor Live-Freigabe zu bestätigen; keine stillen Ersatzmetriken.
