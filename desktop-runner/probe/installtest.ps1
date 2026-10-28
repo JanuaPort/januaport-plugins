@@ -226,11 +226,12 @@ function Invoke-InstalltestWorker {
     }
     Assert-InstalltestFresh $stateRoot $task
     Assert-InstalltestDigest $Directory
-    try {
-        New-Item -ItemType Directory -Force $destination | Out-Null
-        Copy-Item -LiteralPath (Join-Path $Directory 'desktop-runner.exe') -Destination $executable
-        Copy-Item -LiteralPath (Join-Path $Directory 'SHA256SUMS') -Destination $destination
-    } catch { throw 'copy_failed' }
+    try { New-Item -ItemType Directory -Force $destination | Out-Null }
+    catch { throw ('mkdir_failed_' + (Get-InstalltestErrorClass $_)) }
+    try { Copy-Item -LiteralPath (Join-Path $Directory 'desktop-runner.exe') -Destination $executable }
+    catch { throw ('copy_exe_failed_' + (Get-InstalltestErrorClass $_)) }
+    try { Copy-Item -LiteralPath (Join-Path $Directory 'SHA256SUMS') -Destination $destination }
+    catch { throw ('copy_sums_failed_' + (Get-InstalltestErrorClass $_)) }
     Write-Host 'Installtest: Laeufer im Profil abgelegt.'
     Assert-InstalltestDigest $destination
     Assert-InstalltestSignature $executable
@@ -331,7 +332,8 @@ function Invoke-InstalltestStandardAccount {
     try {
         Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $user
         Invoke-InstalltestCommand (Join-Path $env:WINDIR 'System32/icacls.exe') @(
-            $Directory, '/grant', "${probeUser}:(OI)(CI)RX") -Step 'icacls' | Out-Null
+            # /T: auch die schon heruntergeladenen Dateien bekommen das Leserecht.
+            $Directory, '/grant', "${probeUser}:(OI)(CI)RX", '/T') -Step 'icacls' | Out-Null
         $script = Join-Path $Directory 'installtest.ps1'
         Copy-Item -LiteralPath $PSCommandPath -Destination $script
         $pipeName = 'jnpt-installtest-' + [guid]::NewGuid().ToString('N')
