@@ -1,11 +1,12 @@
 # Desktop-Läufer
 
-Windows/amd64-Client für JanuaPort #1167 (Epic #1163 D4), Go ohne CGO.
+Windows/amd64-Client und Linux-Server-Läufer für JanuaPort, Go ohne CGO.
+Der Server-Modus ergänzt Container-Pins (JanuaPort/januaport#1195).
 Implementiert und mit Fake-Kern, Linux-Race-Tests und nativen Windows-Sonden
 geprüft. Gemeinsame Live-Abnahme mit der Anlage und Azure-Signierung stehen aus.
-Maßgeblich ist der [Draht-Vertrag v1](contract/README.md).
+Maßgeblich ist der [Draht-Vertrag](contract/README.md): v1 für Windows, v2 für Linux-Server.
 
-## Einrichten
+## Einrichten unter Windows
 
 Die EXE an einen dauerhaften Ort im Benutzerprofil legen. Die Installation
 registriert genau diese Datei; Verschieben erfordert erneutes Installieren.
@@ -55,7 +56,7 @@ Ergebnisse und beendet keinen bereits laufenden Prozess. Diesen nötigenfalls
 über die Aufgabenplanung beenden. Status zeigt nur Kopplungs-/Installations-Bools;
 Fehlerausgaben enthalten feste Codes.
 
-## Betrieb und Pakete
+## Betrieb und Python-Pakete unter Windows
 
 Pins gehören zu geraet:<device_id>. Das erwartete Konto ist ein Windows-Name
 (DOMÄNE\Benutzer). Konto, aktive WTS-Sitzung (auch gesperrt, nicht getrennt),
@@ -102,13 +103,14 @@ ein fehlgeschlagener Prozessstart wird als internal gemeldet.
 
 ## Ergebnisse, Neustart und C4
 
-Alle Ergebnisse gehen zuerst ins DPAPI-Journal und ausschließlich über
+Alle Ergebnisse gehen zuerst ins lokale Journal (Windows: DPAPI; Linux:
+HMAC-SHA256 und Dateirechte) und ausschließlich über
 runs/result zurück; jobs/{id}/result ist kein Alias. Erst 204 entfernt den
 Eintrag, Transportfehler und 409 behalten ihn. Der veröffentlichte Ciphertext
 einschließlich Marker, Slot-Merkern und Verlustzähler bleibt bei höchstens
 200 Ergebnissen/16 MiB. Verdrängung erhöht den dauerhaften Zähler.
 Atomare Dateierneuerung benötigt kurzzeitig zusätzlichen Platz für die
-verschlüsselte Ersatzdatei. Ein beim Neustart offener Lauf wird interrupted
+geschützte Ersatzdatei. Ein beim Neustart offener Lauf wird interrupted
 und nicht erneut gestartet.
 
 401 revoked stoppt laufende Prozesse und löscht Credential, Pakete, Umgebungen,
@@ -123,7 +125,7 @@ dieselbe Benutzersitzung, auch nicht vor Veränderungen während eines Skripts.
 Dienstlogs enthalten nur feste numerische Codes/Zähler, fünf Dateien zu je
 1 MiB; keine Eingaben, Skriptlogs, Token, Konten oder Leerlaufzeiten.
 
-**Ein Gerät ist eine Vertrauensdomäne (SEC D4 A1).** Ein Skript läuft als
+**Unter Windows ist ein Gerät eine Vertrauensdomäne (SEC D4 A1).** Ein Skript läuft als
 derselbe Nutzer wie der Läufer. Es kann deshalb den DPAPI-geschützten
 Geräte-Token öffnen und über einen eigenen Prozess `runs/start` für einen
 fälligen Slot eines anderen Pins auf demselben Gerät aufrufen. Alle Pins eines
@@ -160,3 +162,188 @@ EXE unsigniert und die Release-Notiz sagt das ausdrücklich. Fehler bei
 gesetztem Profil brechen das Release ab.
 
 Native Windows-Mutationen zusätzlich: probe/mutations-windows.ps1 (ohne Admin).
+
+## Linux-Server-Modus
+
+Nur Geräteart `server`, Startpolicy `always`, Vertrag 2. Der Läufer holt Manifest,
+Aufträge und Abbrüche selbst ab; er öffnet keinen Port. Ein gemeinsamer Laufplatz
+für Ad-hoc und Zeitpläne, pro Lauf ein eigener Container. Python, WTS und DPAPI
+werden auf diesem Weg nicht verwendet. `declared_tools` bleibt in K1 leer.
+
+### Installation mit rootless Docker oder Podman
+
+Standard ist ein eigener Systemnutzer `jnpt-runner` mit einem dedizierten
+rootless Docker-Daemon (Docker 20.10/API 1.41 oder neuer). Der Nutzer darf nicht
+root und nicht die feste Job-UID 65532 sein. Docker rootless gemäß dessen
+Installationsanleitung mit Sub-UID/Sub-GID-Bereichen und dauerhaftem Userdienst
+einrichten. Kein gemeinsam genutzter Daemon: Beim Neustart entfernt der Läufer
+alle Container mit Label `ai.januaport.run`.
+
+1. `CGO_ENABLED=0 go build -trimpath -o jnpt-runner .`, Binärdatei unter
+   `/usr/local/bin/jnpt-runner` installieren (Release-Pakete/Signatur folgen separat).
+2. [Konfigurationsvorlage](systemd/runner.example.json) nach
+   `/etc/jnpt-runner/runner.json` kopieren. `mode` muss `container` sein;
+   `docker_path`, `state_dir` und ein gesetztes `secrets_dir` sind absolute Pfade.
+   Zustand und Geheimnisverzeichnis dürfen sich nicht überlappen.
+3. `/var/lib/jnpt-runner` und `/var/lib/jnpt-runner/state` mit Eigentümer
+   `jnpt-runner`, Modus 0700 anlegen. Credential, Integritätsschlüssel, Manifest,
+   Journal und Sperrdatei erhalten 0600. Fremde Rechte oder Symlinks werden
+   abgewiesen. Der Sperr-Inode liegt außerhalb des bei Widerruf gelöschten `state`.
+4. [systemd-Unit](systemd/jnpt-runner.service) installieren. Ein Drop-in setzt
+   `Environment=DOCKER_HOST=unix:///run/user/<uid>/docker.sock` für den tatsächlichen
+   Nutzer. Die Unit läuft ohne Fähigkeiten, mit `NoNewPrivileges`, read-only
+   System und Schreibrecht ausschließlich im Zustandsverzeichnis. Keine
+   privilegierte Läufer-Installation; rootful erfordert allenfalls Socket-Gruppe.
+5. Als `jnpt-runner` vor Dienststart koppeln:
+   `jnpt-runner pair --config /etc/jnpt-runner/runner.json --url https://anlage.example`.
+   Den Code über stdin eingeben, danach EOF; dieselbe Docker-Umgebung wie im Dienst
+   setzen. `--ca` oder `--fingerprint` funktionieren wie unter Windows.
+   Dann `systemctl enable --now jnpt-runner` und
+   `jnpt-runner status --config /etc/jnpt-runner/runner.json` prüfen.
+
+Podman ab Version 4 kann als Docker-kompatibler CLI-Pfad konfiguriert werden.
+Für die gehärtete Unit einen separat gestarteten rootless Podman-API-Userdienst
+und `podman-remote` verwenden; `CONTAINER_HOST` zeigt auf dessen lokalen Socket.
+So benötigt der Läufer keine privilegierten Usernamespace-Helfer. Podman benötigt
+für `--init` auch seinen Init-Helfer. Die Rootless-Erkennung prüft Docker
+`SecurityOptions` bzw. Podman `host.security.rootless`, nicht den CLI-Namen.
+Kopplung und Heartbeat melden `rootless`/`rootful` ehrlich. Rootful bleibt erlaubt:
+Wer den Läufer samt rootful Socket übernimmt, kann den Host übernehmen.
+Die lokalen Docker-Belege verwenden rootful Docker; Podman/rootless-Erkennung
+ist über synthetische Runtime-Antworten geprüft, kein Live-Podman-Beleg.
+
+### Image, Eingabe und Lauf-Token
+
+Nur `repo@sha256:<64 kleine Hex-Zeichen>`, ohne Tag. Vor jedem Lauf Pull per
+Digest und Vergleich von `.RepoDigests` mit dem freigegebenen Digest; bei
+Abweichung `refused/hash`, ohne Jobstart. Der eigentliche Start verwendet
+`--pull never`, Nicht-root UID/GID 65532, read-only Wurzel, `cap-drop ALL`,
+`no-new-privileges`, 128 Prozesse, Pin-CPU/RAM/Wandzeit, `--init` und `--rm`.
+`--memory-swap` ist gleich `--memory`: Das gemeinsame RAM-plus-Swap-Limit
+entspricht dem RAM-Limit; zusätzlicher Swap ist damit ausgeschlossen.
+Die CPU-/RAM-/Wandzeit-Obergrenzen entsprechen K1: 16000 mCPU, 32 GiB, 86400 s.
+`/tmp` (64 MiB) und `/run/jnpt` (1 MiB) sind `noexec,nosuid,nodev`-tmpfs.
+Der Containername ist `jnpt-run-` plus den ersten 32 Hex-Zeichen von SHA256 des
+Laufschlüssels; das Label enthält den ursprünglichen Schlüssel.
+
+**Image-Voraussetzung:** Das Job-Image muss `/bin/sh` und `tar` enthalten.
+Der Läufer setzt ausdrücklich `--entrypoint /bin/sh` und überschreibt damit
+auch einen eigenen Image-ENTRYPOINT. Der feste Startcode im Job entpackt einen
+vom Läufer erzeugten Tar-Stream aus stdin und
+führt anschließend den signierten Befehl mit `exec "$@"` aus. Pin-Argumente
+werden nicht in Shelltext eingesetzt. Der Host startet ausschließlich die CLI
+per Argumentliste. Der Pin kann den festen ENTRYPOINT nicht überschreiben.
+Diese Image-Konvention erweitert das K1-Pin-JSON nicht.
+
+Der Stream enthält `/run/jnpt/input.json`, `/run/jnpt/token` und zuletzt `ready`,
+jeweils UID/GID 65532, Modus 0400. Vor dem signierten Befehl ist alles verfügbar.
+Der Lauf-Token steht weder in Env, Argumenten noch Labels und bleibt im Job-tmpfs.
+Der gewählte exec-freie Weg funktioniert auch bei rootless UID-Abbildung.
+`docker cp` ist hierfür ungeeignet: Docker verweigert das Schreiben bei read-only
+Wurzel mit `--tmpfs`; alternative Mount-Formen liefern keinen verlässlichen
+Zugriff auf das laufende tmpfs. Es gibt keinen Bind-Mount des Läufer-Verzeichnisses,
+Gerätetokens oder Docker-Sockets. Die echte Jobprobe belegt fehlenden Zugriff
+auf den Gerätetoken (im Job fehlt der Hostpfad) und beide üblichen Socketpfade.
+
+K1-Zeitpläne sind werkzeuglos und erhalten keinen Lauf-Token: K1 verweigert dann
+`runs/start`. Der Client startet aus dem signierten Manifest, auch offline nur
+innerhalb der bisherigen Gnadenfrist. Die Token-Datei ist dabei leer. Ad-hoc
+verwendet Claim → Start. Ausgabe wird verworfen, Docker-Logging ist abgeschaltet.
+Registry-Zugriff für den Digest-Pull ist auch bei einem Offline-Lauf erforderlich.
+
+### Betreiber-Geheimnisse und Netz
+
+Geheimnisse sind kernseitig ab Werk aus. Das Betreiber-Verzeichnis, beispielsweise
+`/etc/jnpt-runner/secrets`, gehört `jnpt-runner` mit Modus 0700. Eine reguläre Datei
+je Name; keine Symlinks, auch nicht im Verzeichnispfad. Die Datei muss für die
+Container-UID 65532 lesbar sein: etwa Modus 0444 innerhalb des 0700-
+Verzeichnisses oder passend zugeordnete UID. Werte werden nicht eingelesen oder
+als Env übertragen. Pro Name genau ein read-only Bind nach `/run/secrets/<name>`.
+Ein deklarierter und erlaubter, aber fehlender Eintrag ergibt `refused/secret`.
+
+Bei rootful Docker ohne zusätzliche Usernamespace-Abbildung entspricht
+Container-UID/GID 65532 der Host-UID/GID 65532. Rootless Docker und Podman bilden
+die IDs hingegen über die Bereiche aus `/etc/subuid` und `/etc/subgid` ab.
+Synthetisches Beispiel für beide Runtimes mit Standard-Abbildung:
+
+```text
+/etc/subuid:  jnpt-runner:100000:65536
+/etc/subgid:  jnpt-runner:100000:65536
+
+uid_map:     Container-ID  Host-ID  Anzahl
+                       0     1000       1
+                       1   100000   65536
+gid_map:               0     1000       1
+                       1   100000   65536
+```
+
+Bei dieser Abbildung gilt `Host-ID = 100000 + (Container-ID - 1)`:
+Container-UID/GID **65532 entspricht Host-UID/GID 165531**. UID 0 im Namespace
+entspricht hier dem Läufer-Nutzer mit Host-UID/GID 1000. Die Bereiche und
+Abbildungen sind installationsabhängig; bei abweichenden Sub-GIDs die GID
+getrennt berechnen. Maßgeblich ist die tatsächliche Abbildung des Jobs auf dem
+Linux-Host des Daemons. Für einen laufenden Job prüfen:
+
+```sh
+job_name=jnpt-run-... # tatsächlichen Containernamen einsetzen
+job_pid=$(docker inspect --format '{{.State.Pid}}' "$job_name")
+sudo cat "/proc/$job_pid/uid_map" "/proc/$job_pid/gid_map"
+```
+
+Bei Podman denselben Aufruf mit `podman inspect` verwenden. Auf diesem Host
+lassen sich die Rechte für die obige Beispiel-Abbildung so setzen:
+
+```sh
+sudo install -d -m 0700 -o jnpt-runner -g jnpt-runner /etc/jnpt-runner/secrets
+sudo install -m 0400 -o 165531 -g 165531 ./synthetic-secret /etc/jnpt-runner/secrets/alpha
+```
+
+Das Verzeichnis bleibt Eigentum des Läufer-Nutzers; nur die Geheimnis-Datei
+gehört der abgebildeten Job-UID. Bei lokalem rootless Podman kann alternativ
+als `jnpt-runner` außerhalb der gehärteten Unit `podman unshare chown 65532:65532
+/etc/jnpt-runner/secrets/alpha` und anschließend `podman unshare chmod 0400
+/etc/jnpt-runner/secrets/alpha` verwendet werden. Das gilt für die gezeigte
+Standard-Abbildung; bei weiteren Usernamespaces wieder die Job-Abbildung prüfen.
+
+Ad-hoc bindet ausschließlich `allowed_secret_names` ∩ signierte `secret_names`.
+Fehlende/leere Claim-Liste bindet nichts; lokale Konfiguration erweitert keine
+Freigabe. Zeitpläne verwenden die signierte Deklaration, auch im historischen
+Offline-Fenster. K1-Namen: `[a-z0-9][a-z0-9_.-]{0,62}`, kein `..`, eindeutig,
+höchstens 16.
+Ergebnisse senden `mounted_secret_names`, ausdrücklich auch `[]`. Nur nachgewiesene Starts melden Mount-Namen. Bei einem Absturz vor der
+Ergebnissicherung meldet der Marker die leere, unbekannte Teilmenge; die signierte
+Deklaration bleibt im Kern-Audit erhalten. Ein fehlgeschlagener Start wird nicht
+als ausgeführter Geheimnis-Mount ausgegeben.
+
+Netz: `none` oder ein vorab vom Betreiber angelegtes benanntes Netz. `host`,
+`bridge`, `default`, `private`, `pasta`, `slirp4netns`, `container:` und `ns:` sind
+gesperrt. Keine DNS-/Host-/IP-Zusatzoptionen. Beispiel:
+`docker network create --internal jnpt_jobs`; nur den Kern und diese Jobs mit
+diesem Netz verbinden. Das begrenzt externen Ausgang, ist aber keine Ziel-Allowlist:
+Andere Netzteilnehmer bleiben erreichbar. Weitere Ziele, Firewall und Routing
+verantwortet der Betreiber; der Kern prüft sie nicht. `none` isoliert das Netz.
+
+Abbruch, Wandzeit und normales Ende versuchen immer `kill` und `rm --force`.
+Neustart räumt zuerst gelabelte Container ab, dann journalisiert er offene Läufe
+als `interrupted`. Bei fehlgeschlagener Bereinigung startet der Dienst nicht.
+Keine Wiederholung alter Läufe. Ein fehlgeschlagener Cleanup sperrt weitere
+Containerstarts bis zum Neustart. Das Linux-Journal behält dieselben Deckel:
+200 Ergebnisse/16 MiB einschließlich HMAC, Markern und Zähler; HMAC prüft Integrität,
+Dateirechte schützen Vertraulichkeit. Der Integritätsschlüssel liegt separat 0600.
+
+### Server-Prüfung und K1-Abstimmung
+
+`go vet ./...`, `go test ./...` und unter Linux `go test -race -count=1 ./...`.
+`JNPT_DOCKER_REQUIRED=1` macht fehlendes Docker zum Fehler; im Linux-CI-Job ist
+das gesetzt. Ohne Docker überspringen die echten Proben sichtbar. Docker-Tests
+prüfen Token/Inspect, Gerätetoken-/Socket-Isolation, read-only Geheimnisse sowie
+Abbruch, Wandzeit und Wiederanlauf. Synthetisches Testimage: Alpine, nach Pull
+stets per Digest; optional `JNPT_TEST_IMAGE=repo@sha256:…` vorgeben.
+`python probe/container_mutations.py` prüft die neuen Sperren mit exakter
+Wiederherstellung, optional `--container <lokaler Linux-Prüfcontainer>`.
+
+**Bekannte K1-Lücke:** Auf `origin/feat/1195-server-container` verweigert
+`cmd/jnpt/desktop_routes.go:desktopResult.valid` noch `refused/secret` und
+`limit/wall`. Paket A sendet die beauftragten Klassen unverändert. Bis der Kern
+sie akzeptiert, bleiben diese Ergebnisse nach HTTP 400 im Journal. Keine stille
+Umdeutung in `hash` oder `timeout`; der Kern benötigt vor Live-Abnahme den Nachzug.

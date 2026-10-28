@@ -1,0 +1,34 @@
+[Unit]
+Description=JanuaPort Server-Läufer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jnpt-runner
+Group=jnpt-runner
+ExecStart=/usr/local/bin/jnpt-runner run --config /etc/jnpt-runner/runner.json
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=45
+UMask=0077
+StateDirectory=jnpt-runner
+StateDirectoryMode=0700
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/var/lib/jnpt-runner
+# Rootless socket path is operator-specific; set DOCKER_HOST in a drop-in.
+# Rootful requires a socket group via SupplementaryGroups, never User=root.
+
+[Install]
+WantedBy=multi-user.target

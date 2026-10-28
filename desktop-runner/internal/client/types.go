@@ -91,6 +91,7 @@ func required(b []byte, t reflect.Type) error {
 }
 
 type Pin struct {
+	Container     *Container `json:"container,omitempty"`
 	Pin           string     `json:"pin"`
 	Commit        string     `json:"commit"`
 	Path          string     `json:"path"`
@@ -146,29 +147,31 @@ type HeartbeatReply struct {
 	ManifestSeqCurrent uint64   `json:"manifest_seq_current"`
 }
 type Job struct {
-	JobID       string          `json:"job_id"`
-	Pin         string          `json:"pin"`
-	Commit      string          `json:"commit"`
-	Path        string          `json:"path"`
-	Algo        string          `json:"algo"`
-	ManifestSeq uint64          `json:"manifest_seq"`
-	Input       json.RawMessage `json:"input"`
-	Limits      struct {
+	AllowedSecretNames []string        `json:"allowed_secret_names,omitempty"`
+	JobID              string          `json:"job_id"`
+	Pin                string          `json:"pin"`
+	Commit             string          `json:"commit"`
+	Path               string          `json:"path"`
+	Algo               string          `json:"algo"`
+	ManifestSeq        uint64          `json:"manifest_seq"`
+	Input              json.RawMessage `json:"input"`
+	Limits             struct {
 		WallS     int `json:"wall_s"`
 		ToolCalls int `json:"tool_calls"`
 	} `json:"limits"`
 	StartBy string `json:"start_by"`
 }
 type Result struct {
-	RunKey      string `json:"run_key,omitempty"`
-	JobID       string `json:"job_id,omitempty"`
-	ManifestSeq uint64 `json:"manifest_seq"`
-	Commit      string `json:"commit"`
-	End         string `json:"end"`
-	Detail      string `json:"detail,omitempty"`
-	Log         string `json:"log"`
-	RanOffline  bool   `json:"ran_offline"`
-	FinishedAt  string `json:"finished_at"`
+	MountedSecretNames *[]string `json:"mounted_secret_names,omitempty"`
+	RunKey             string    `json:"run_key,omitempty"`
+	JobID              string    `json:"job_id,omitempty"`
+	ManifestSeq        uint64    `json:"manifest_seq"`
+	Commit             string    `json:"commit"`
+	End                string    `json:"end"`
+	Detail             string    `json:"detail,omitempty"`
+	Log                string    `json:"log"`
+	RanOffline         bool      `json:"ran_offline"`
+	FinishedAt         string    `json:"finished_at"`
 }
 
 func (r Result) Key() string {

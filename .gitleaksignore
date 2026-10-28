@@ -1,0 +1,3 @@
+# Fehlalarme mit Begründung (Fingerprint commit:datei:regel:zeile). Jede Zeile braucht eine SEC-Bestätigung.
+# #1195 Paket A: synthetische Kanarie SYNTHETIC_OPERATOR_SECRET_1195 im Test, kein Zugangsdatum (SEC 28.10.).
+4ed1d4c4b7f21714626b2585e84493b39d97b599:desktop-runner/internal/client/container_linux_test.go:generic-api-key:233

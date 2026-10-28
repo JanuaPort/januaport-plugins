@@ -28,12 +28,12 @@ func parseSchedule(s Schedule) (cron.Schedule, error) {
 }
 func ParseManifest(b []byte) (Manifest, error) {
 	var m Manifest
-	if strict(b, &m) != nil || m.Contract != 1 || m.DeviceID == "" || m.Seq == 0 || !utc(m.IssuedAt) || m.GraceHours < 1 || m.GraceHours > 72 || m.Pins == nil {
+	if strict(b, &m) != nil || (m.Contract != 1 && m.Contract != 2) || m.DeviceID == "" || m.Seq == 0 || !utc(m.IssuedAt) || m.GraceHours < 1 || m.GraceHours > 72 || m.Pins == nil {
 		return m, ErrManifest
 	}
 	names := map[string]bool{}
 	for _, p := range m.Pins {
-		if !safeName(p.Pin) || names[p.Pin] || !validID(p.Algo, p.Commit) || !safePath(p.Path) || p.DeclaredTools == nil || p.Schedules == nil {
+		if !safeName(p.Pin) || names[p.Pin] || !validID(p.Algo, p.Commit) || (m.Contract == 1 && (!safePath(p.Path) || p.Container != nil)) || (m.Contract == 2 && !validContainerPin(p)) || p.DeclaredTools == nil || p.Schedules == nil {
 			return m, ErrManifest
 		}
 		names[p.Pin] = true

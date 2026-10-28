@@ -19,6 +19,7 @@ type Bundle struct {
 	Environments map[string]Environment `json:"environments"`
 }
 type Engine struct {
+	Container    ContainerExecutor
 	State        *State
 	API          *API
 	Credential   Credential
@@ -33,6 +34,7 @@ type Engine struct {
 	active       Process
 	activeKey    string
 	activeCancel context.CancelFunc
+	activeDone   chan struct{}
 	cancel       context.CancelFunc
 	syncErr      error
 }
@@ -45,10 +47,17 @@ func (e *Engine) Revoke() error {
 		e.cancel()
 	}
 	p := e.active
+	done := e.activeDone
+	if e.Container != nil && e.activeCancel != nil {
+		e.activeCancel()
+	}
 	e.mu.Unlock()
 	if p != nil {
 		p.Kill()
 		p.Wait()
+	}
+	if done != nil {
+		<-done
 	}
 	return e.State.Revoke()
 }
@@ -77,8 +86,14 @@ func (e *Engine) Sync(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if m.Contract != e.API.Contract() || (m.Contract == 2) != (e.Container != nil) {
+		return ErrManifest
+	}
 	envs := map[string]Environment{}
 	for _, p := range m.Pins {
+		if p.Container != nil {
+			continue
+		}
 		key := envKey(p)
 		env, ok := old.Environments[key]
 		if !ok {
@@ -148,6 +163,9 @@ func (e *Engine) isReady() bool {
 	if len(b.Manifest.Envelope.Manifest) == 0 {
 		return false
 	}
+	if e.Container != nil {
+		return b.Config.Contract == 2 && b.Config.Device.Kind == "server" && b.Config.StartPolicy.Mode == "always"
+	}
 	s, err := e.Session()
 	if err != nil {
 		return false
@@ -199,6 +217,8 @@ func finish(r Result, end, detail string) Result {
 func refused(r Result, err error) Result {
 	detail := "hash"
 	switch {
+	case errors.Is(err, ErrSecret):
+		detail = "secret"
 	case errors.Is(err, ErrRuntime):
 		detail = "runtime"
 	case errors.Is(err, ErrAccount):
@@ -385,6 +405,9 @@ func (e *Engine) scheduled(ctx context.Context, p Pin, s Schedule, slot time.Tim
 		return err
 	}
 	r := Result{RunKey: RunKey(p, s, slot), ManifestSeq: m.Seq, Commit: p.Commit}
+	if p.Container != nil {
+		r = containerResult(r)
+	}
 	ok, err := e.State.ReserveRun(p.Pin+"/"+s.Name, r)
 	if err != nil || !ok {
 		return err
@@ -397,6 +420,9 @@ func (e *Engine) scheduled(ctx context.Context, p Pin, s Schedule, slot time.Tim
 			return e.report(refused(r, ErrOffline))
 		}
 		r.RanOffline = true
+	}
+	if p.Container != nil {
+		return e.scheduledContainer(ctx, r, p, s)
 	}
 	env, ok := b.Environments[envKey(p)]
 	if !ok {
@@ -473,6 +499,9 @@ func resolveSlot(m Manifest, pin, name string, slot time.Time) (Pin, Schedule, e
 }
 func (e *Engine) adhoc(ctx context.Context, j Job) error {
 	r := Result{JobID: j.JobID, ManifestSeq: j.ManifestSeq, Commit: j.Commit}
+	if e.Container != nil {
+		r = containerResult(r)
+	}
 	if err := e.State.Mark(r, "claimed"); err != nil {
 		return err
 	}
@@ -496,6 +525,13 @@ func (e *Engine) adhoc(ctx context.Context, j Job) error {
 	if pin == nil || m.Seq < j.ManifestSeq {
 		return e.report(refused(r, ErrManifest))
 	}
+	if pin.Container != nil {
+		start, err := e.API.Start(ctx, r)
+		if err != nil {
+			return e.report(refused(r, ErrRuntime))
+		}
+		return e.report(e.executeContainer(ctx, r, *pin, j.AllowedSecretNames, j.Input, start.RunToken, j.Limits.WallS))
+	}
 	env, ok := b.Environments[envKey(*pin)]
 	if !ok {
 		return e.report(refused(r, ErrRuntime))
@@ -512,12 +548,16 @@ func (e *Engine) Run(ctx context.Context) error {
 	e.mu.Lock()
 	e.cancel = cancel
 	e.mu.Unlock()
-	if err := e.State.Recover(time.Now()); err != nil {
+	if err := e.recoverContainers(ctx); err != nil {
 		return err
 	}
 	var cached Bundle
 	if err := e.State.Load("manifest", &cached); err == nil {
-		if _, err = VerifyManifest(cached.Manifest.Envelope, e.Credential.Pubkey, e.Credential.DeviceID, 0); err != nil {
+		if m, verifyErr := VerifyManifest(cached.Manifest.Envelope, e.Credential.Pubkey, e.Credential.DeviceID, 0); verifyErr != nil || m.Contract != e.API.Contract() {
+			if verifyErr == nil {
+				verifyErr = ErrManifest
+			}
+			err = verifyErr
 			return err
 		}
 		e.mu.Lock()
@@ -537,17 +577,9 @@ func (e *Engine) Run(ctx context.Context) error {
 			if m, err := ParseManifest(b.Manifest.Envelope.Manifest); err == nil {
 				seq = m.Seq
 			}
-			h, err := e.API.Heartbeat(ctx, Heartbeat{1, e.isReady(), e.Version, seq})
+			h, err := e.API.Heartbeat(ctx, Heartbeat{e.API.Contract(), e.isReady(), e.Version, seq})
 			if err == nil {
-				e.mu.Lock()
-				p, key, cancel := e.active, e.activeKey, e.activeCancel
-				e.mu.Unlock()
-				if p != nil && slices.Contains(h.Cancel, key) {
-					if cancel != nil {
-						cancel()
-					}
-					p.Kill()
-				}
+				e.applyCancellations(h)
 				if h.ManifestSeqCurrent > seq {
 					select {
 					case syncNeeded <- struct{}{}:
@@ -645,4 +677,18 @@ func (s *State) Use(fn func() error) error {
 		return ErrRevoked
 	}
 	return fn()
+}
+
+func (e *Engine) applyCancellations(h HeartbeatReply) {
+	e.mu.Lock()
+	p, key, cancel := e.active, e.activeKey, e.activeCancel
+	e.mu.Unlock()
+	if key != "" && slices.Contains(h.Cancel, key) {
+		if cancel != nil {
+			cancel()
+		}
+		if p != nil {
+			p.Kill()
+		}
+	}
 }

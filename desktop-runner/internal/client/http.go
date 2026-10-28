@@ -58,11 +58,13 @@ type HTTPError struct {
 func (e *HTTPError) Error() string { return "http_error" }
 
 type API struct {
-	base     string
-	token    string
-	http     *http.Client
-	revoked  atomic.Bool
-	onRevoke func() error
+	contract         int
+	containerRuntime string
+	base             string
+	token            string
+	http             *http.Client
+	revoked          atomic.Bool
+	onRevoke         func() error
 }
 
 func NewAPI(trust Trust, token string, onRevoke func() error) (*API, error) {
@@ -144,7 +146,7 @@ func (a *API) request(ctx context.Context, method, endpoint string, body any, se
 	if e != nil {
 		return nil, 0, ErrProtocol
 	}
-	req.Header.Set("X-Jnpt-Desktop-Contract", "1")
+	req.Header.Set("X-Jnpt-Desktop-Contract", strconv.Itoa(a.Contract()))
 	if endpoint != "pair" {
 		if a.token == "" {
 			return nil, 0, ErrProtocol
@@ -234,7 +236,8 @@ func (a *API) Pair(ctx context.Context, code, version string) (PairReply, error)
 		Contract int    `json:"contract"`
 		Code     string `json:"code"`
 		Version  string `json:"runner_version"`
-	}{1, code, version}, 0, "", 16<<10)
+		Runtime  string `json:"container_runtime,omitempty"`
+	}{a.Contract(), code, version, a.containerRuntime}, 0, "", 16<<10)
 	if e != nil {
 		return out, e
 	}
@@ -256,7 +259,7 @@ func (a *API) Config(ctx context.Context) (Config, error) {
 	if e != nil {
 		return out, e
 	}
-	if strict(b, &out) != nil || out.Contract != 1 || out.Device.ID == "" || out.ExpectedAccount == "" || (out.Device.Kind != "dedicated" && out.Device.Kind != "workstation") || (out.StartPolicy.Mode != "always" && out.StartPolicy.Mode != "idle") || out.StartPolicy.IdleMinutes < 0 || out.StartPolicy.IdleMinutes > 525600 || out.HeartbeatS != 60 || out.PollHoldS != 25 {
+	if strict(b, &out) != nil || out.Contract != a.Contract() || out.Device.ID == "" || !a.validDeviceConfig(out) || (out.StartPolicy.Mode != "always" && out.StartPolicy.Mode != "idle") || out.StartPolicy.IdleMinutes < 0 || out.StartPolicy.IdleMinutes > 525600 || out.HeartbeatS != 60 || out.PollHoldS != 25 {
 		return out, ErrProtocol
 	}
 	return out, nil
@@ -274,7 +277,17 @@ func (a *API) Manifest(ctx context.Context) (SignedManifest, error) {
 }
 func (a *API) Heartbeat(ctx context.Context, h Heartbeat) (HeartbeatReply, error) {
 	var out HeartbeatReply
-	b, _, e := a.request(ctx, "POST", "heartbeat", h, 0, "", 64<<10)
+	if h.Contract != a.Contract() {
+		return out, ErrProtocol
+	}
+	var body any = h
+	if a.Contract() == 2 {
+		body = struct {
+			Heartbeat
+			Runtime string `json:"container_runtime,omitempty"`
+		}{h, a.containerRuntime}
+	}
+	b, _, e := a.request(ctx, "POST", "heartbeat", body, 0, "", 64<<10)
 	if e != nil {
 		return out, e
 	}
@@ -308,7 +321,7 @@ func (a *API) Claim(ctx context.Context) (*Job, error) {
 		return nil, ErrProtocol
 	}
 	j := out.Job
-	if !uuidRE.MatchString(j.JobID) || !safeName(j.Pin) || !validID(j.Algo, j.Commit) || !safePath(j.Path) || j.ManifestSeq == 0 || !inputOK(j.Input) || !utc(j.StartBy) || j.Limits.WallS < 1 || j.Limits.WallS > 86400 || j.Limits.ToolCalls < 0 {
+	if !uuidRE.MatchString(j.JobID) || !safeName(j.Pin) || !validID(j.Algo, j.Commit) || ((a.Contract() == 1 && (!safePath(j.Path) || j.AllowedSecretNames != nil)) || (a.Contract() == 2 && (j.Path != "" || j.Algo != "sha256" || !secretNamesValid(j.AllowedSecretNames)))) || j.ManifestSeq == 0 || !inputOK(j.Input) || !utc(j.StartBy) || j.Limits.WallS < 1 || j.Limits.WallS > 86400 || j.Limits.ToolCalls < 0 {
 		return nil, ErrProtocol
 	}
 	return &j, nil
@@ -363,7 +376,7 @@ func (a *API) MCP(ctx context.Context, token string, id int64, name string, args
 	return reply.Result, nil
 }
 func (a *API) Report(ctx context.Context, r Result) error {
-	if r.Log != "" {
+	if r.Log != "" || (a.Contract() == 1 && r.MountedSecretNames != nil) || (a.Contract() == 2 && (r.MountedSecretNames == nil || *r.MountedSecretNames == nil || !secretNamesValid(*r.MountedSecretNames))) {
 		return ErrProtocol
 	}
 	_, s, e := a.request(ctx, "POST", "runs/result", r, 0, "", 80<<10)
@@ -376,3 +389,25 @@ func (a *API) Report(ctx context.Context, r Result) error {
 	return nil
 }
 func IsOffline(err error) bool { var ne net.Error; return errors.As(err, &ne) }
+
+// Server mode is fixed before the API is shared by heartbeat and execution.
+func (a *API) Server(runtime string) error {
+	if runtime != "rootless" && runtime != "rootful" {
+		return ErrRuntime
+	}
+	a.contract = 2
+	a.containerRuntime = runtime
+	return nil
+}
+func (a *API) Contract() int {
+	if a.contract == 2 {
+		return 2
+	}
+	return 1
+}
+func (a *API) validDeviceConfig(c Config) bool {
+	if a.Contract() == 2 {
+		return c.Device.Kind == "server" && c.StartPolicy.Mode == "always"
+	}
+	return c.ExpectedAccount != "" && (c.Device.Kind == "dedicated" || c.Device.Kind == "workstation")
+}

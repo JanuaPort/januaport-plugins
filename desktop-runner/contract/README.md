@@ -1,3 +1,61 @@
+> Vertrag 1 und seine vorhandenen Goldens gelten unverändert für Windows.
+> Linux-Geräte der Art `server` verwenden ausschließlich Vertrag 2; siehe
+> [Server-Vertrag 2](#server-vertrag-2). Die folgenden Python-/DPAPI-Regeln
+> beschreiben Vertrag 1, soweit dort keine gemeinsame Regel genannt wird.
+
+## Server-Vertrag 2
+
+K1-Quelle: `januaport`, `origin/feat/1195-server-container`, Abschnitt
+„Server-Geräte und Container-Pins“, `internal/scriptpins/container.go` und
+`internal/desktop/testdata/manifest_container_canonical.bin`.
+
+Vertrag 2 gilt ausschließlich für `server`/`always`. Pfade bleiben
+`/api/device/v1/…`, Weg B ohne Listener. Jede Anfrage trägt
+`X-Jnpt-Desktop-Contract: 2`; Manifest, Config, Pair und Heartbeat verwenden
+`contract: 2`. Pair und Heartbeat ergänzen optional `container_runtime` aus
+`rootless`/`rootful`; null und unbekannte Werte sind ungültig. Der Läufer sendet
+den beim Start erkannten Wert. Desktop-Vertrag 1 sendet das Feld weiterhin nicht.
+
+`pins[].container` enthält genau `image`, `command`, `network`, `cpu_millis`,
+`memory_bytes`, `wall_s`, `secret_names`. Commit ist der reine Image-SHA256-Digest,
+Algo `sha256`, Path leer, `declared_tools: []`. Kein Gitpaketabruf. Grenzen wie K1:
+Image nur repo@sha256 ohne Tag; Befehl 1–32 Argumente mit höchstens 1024 Bytes,
+kein NUL/ungültiges UTF-8; CPU 1–16000 mCPU, RAM 1–34359738368 Bytes, Wandzeit
+1–86400 s. Netz `[a-z0-9][a-z0-9_-]{0,62}`, ohne host/bridge/default/private/pasta/
+slirp4netns/container:/ns:. Max.16 eindeutige Geheimnisse nach
+`[a-z0-9][a-z0-9_.-]{0,62}`, ohne `..`.
+
+Das Container-Objekt gehört zu den Ed25519-signierten kanonischen Bytes.
+`golden-v2/manifest_container_canonical.bin` ist bytegleich aus K1 gespiegelt.
+Alle bisherigen Goldens einschließlich SHA256SUMS bleiben unverändert.
+`TestVertrag2ManifestGolden` prüft das neue Fixture am echten Manifestadapter;
+das D0-Testmodul bleibt der eingefrorene Vertrag-1-Wächter.
+
+Claim ergänzt optional `allowed_secret_names`: fehlend/leer bindet nichts,
+sonst nur Schnittmenge mit signiertem Pin. Ergebnis ergänzt verpflichtend
+`mounted_secret_names`, eindeutige Teilmenge, leere Liste ausdrücklich `[]`.
+Zeitpläne verwenden die signierte Deklaration. K1 verweigert bei leeren
+declared_tools `runs/start`; wie unter Vertrag 1 startet deshalb ein werkzeugloser
+Zeitplan ohne Lauf-Token und meldet anhand der historischen Manifestfreigabe nach.
+Ad-hoc bleibt Claim → Start. Die bisherigen Gnadenfristen gelten auch für Server.
+
+Zusätzliche Container-Fehler: `refused/hash`, `refused/runtime`, `refused/secret`,
+`limit/wall`, `interrupted`. Normales Ende bleibt `ok` oder `error`.
+**K1-Abweichung im Kerncode:** `cmd/jnpt/desktop_routes.go:desktopResult.valid`
+akzeptiert noch weder Detail `secret` unter refused noch `wall` unter limit.
+Diese beiden beauftragten Resultate werden nicht umbenannt; der Kern muss
+nachgezogen werden. Bis dahin hält der Läufer HTTP-400-Ergebnisse im Journal.
+
+Lokale Container-Konvention: Das Image stellt /bin/sh und tar bereit. Der Läufer
+setzt --entrypoint /bin/sh ausdrücklich und überschreibt Image-ENTRYPOINTs.
+--memory-swap entspricht --memory und erlaubt keinen zusätzlichen Swap.
+Der feste Startcode entpackt privaten stdin-Tar auf tmpfs
+(`/run/jnpt/input.json`, `token`, `ready`, UID/GID 65532, 0400) und startet dann
+die signierte Befehlsliste. Token-Werte stehen nie in CLI-Args/Env/Labels.
+Werkzeuglose Zeitpläne haben eine leere Token-Datei. Diese Konvention erweitert
+keine Drahtfelder; Details und Installationsvoraussetzungen stehen im
+[Server-Handbuch](../README.md#linux-server-modus).
+
 # Draht-Vertrag v1 — Desktop-Läufer
 
 Verbindlicher Vertrag für JanuaPort #1163 D0 einschließlich des vom PO

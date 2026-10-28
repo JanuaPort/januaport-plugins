@@ -86,7 +86,12 @@ func (s *State) Load(name string, v any) error {
 	if !info.Mode().IsRegular() || info.Size() > 20<<20 {
 		return ErrProtocol
 	}
-	raw, e := os.ReadFile(p)
+	var raw []byte
+	if reader, ok := s.cipher.(interface{ ReadFile(string) ([]byte, error) }); ok {
+		raw, e = reader.ReadFile(p)
+	} else {
+		raw, e = os.ReadFile(p)
+	}
 	if e != nil {
 		return e
 	}

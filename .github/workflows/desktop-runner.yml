@@ -36,6 +36,8 @@ jobs:
         run: go test -count=1 -race ./...
   unit:
     runs-on: ubuntu-latest
+    env:
+      JNPT_DOCKER_REQUIRED: '1'
     defaults:
       run:
         working-directory: desktop-runner
@@ -45,6 +47,11 @@ jobs:
         with:
           go-version-file: desktop-runner/go.mod
           cache-dependency-path: desktop-runner/go.sum
+      - name: Docker für verpflichtende Container-Proben
+        run: |
+          docker info
+          docker pull alpine:3.22
+          echo "JNPT_TEST_IMAGE=$(docker image inspect --format '{{index .RepoDigests 0}}' alpine:3.22)" >> "$GITHUB_ENV"
       - run: go build ./...
       - run: go vet ./...
       - run: go test -race -count=1 ./...
