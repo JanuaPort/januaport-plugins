@@ -1,6 +1,10 @@
 # Changelog
 
-## Unveröffentlicht
+## 0.1.0 — 2026-10-28
+
+Erstes Release: `desktop-runner.exe` für Windows amd64, Authenticode-signiert
+(JanuaPort/januaport#1163 D4). Der Linux-Server-Modus ist im Code, wird aber nicht als
+Artefakt ausgeliefert; sein Release braucht den Live-Beleg mit rootless Docker (#1195).
 
 - Fester Container-ENTRYPOINT `/bin/sh`, auch bei eigenem Image-ENTRYPOINT;
   Swap-Limit gleich RAM-Limit und Anleitung zur Lesbarkeit von Geheimnissen
