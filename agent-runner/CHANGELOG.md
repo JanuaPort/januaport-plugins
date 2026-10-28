@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 — Unveröffentlicht
+## 0.2.0 — 2026-10-28
 
 JanuaPort/januaport#1193 (Epic #1191).
 
