@@ -47,7 +47,9 @@ Maßgeblich: [Draht-Vertrag v1/v2](contract/README.md).
    speichern; leeren Key und RFC-8032-Testvektor 1 vor jeder Speicherung
    abweisen, bestehende Kopplung erhalten. Rotation v1 nur neue Kopplung (E2).
    Widerruf: 401 `revoked`
-   ohne message; Credential, Pakete/Umgebungen, Manifest und Journal löschen.
+   ohne message; Credential, Pakete/Umgebungen, Manifest und Journal löschen
+   (die Gesamtlöschung der Wurzel steigt wie das Lauf-TEMP-Aufräumen nie in
+   Junctions/Symlinks ein, Invariante 12; kein `os.RemoveAll`).
 3. E1: Geräte-Manifest mit Ed25519 über exakt kanonische Bytes prüfen:
    rekursiv sortierte UTF-8-Schlüssel, kein äußerer Leerraum/BOM/LF,
    Zahlentoken verlustfrei; genaue Escape-Regeln im Vertrag. Fremde Geräte-ID,
@@ -113,7 +115,7 @@ Maßgeblich: [Draht-Vertrag v1/v2](contract/README.md).
     Gelöscht wird nach dem Job-Teardown (`p.Close()`), nie währenddessen; der
     Besen beim Start räumt alles unter `tmp\` ab. Aufräumen und Besen steigen
     nie in Symlinks/Junctions/Reparse-Punkte ein (eigene Rekursion mit Lstat,
-    kein `os.RemoveAll`) und löschen sie nur als Verweis. Nichts überlebt einen
+    kein `os.RemoveAll`, auch nicht in `State.Revoke`) und löschen sie nur als Verweis. Nichts überlebt einen
     Lauf, keine Größenbremse (Wanduhr-Grenze, eigene Platte). Journal, Ergebnis und
     Geheimnisse liegen nie unter `tmp\`. Die Kind-Umgebung enthält kein
     `LOCALAPPDATA`/`USERPROFILE`/`APPDATA`/`HOME*`/`TMPDIR`; ein Wert aus diesen
@@ -141,7 +143,7 @@ gegen jemanden mit Zugriff auf diese Sitzung (C4).
 | B2/B3 Windows: keine Listener/Downloads, keine privaten Bodys/Kind-Token | TestKeineListenerDownloaderOderPip, TestNurAnlageUndKeinePrivatenBodys, TestWindowsPythonEchterStartUndManipulation, TestWindowsJobObjectEnkelUndToken |
 | Cron/DST, Offline-Grenze und Journal | TestCronZeitzoneUndSlots, TestOfflineRegel, TestOfflineVerweigertWirdJournalisiert |
 | E4: Ciphertext-Deckel, Bestätigung, Neustart | TestJournalDeckelBestaetigungNeustart, TestJournalMisstVerschluesselteBytes, TestWindowsNeustartInterrupted, TestErgebnisrueckstauUndAtomarerSlot |
-| Widerruf an allen Wegen, keine Wiederbelebung | TestWiderrufAnAllenHTTPWegen, TestWiderrufAllesWeg |
+| Widerruf an allen Wegen, keine Wiederbelebung | TestWiderrufAnAllenHTTPWegen, TestWiderrufAllesWeg, TestRevokeFolgtKeinemVerweisInTmp, TestRevokeFolgtKeinerJunctionInTmp (Windows) |
 | Native DPAPI/ACL/Entropie/Prozessbaum | TestWindowsFehlerBehaltenUrsache, TestPrivateACLAliasUndVerbote, TestPrivateACLAmDateisystem, TestSecureRootVerweigertJunction, TestDPAPIUndACL, TestWindowsDPAPIBrauchtEntropie, TestWindowsSuspendBisJobZuordnung, TestWindowsJobCloseBeendetEnkel |
 | Task ohne Admin und begrenzter Rückfall | TestWindowsAufgabeOhneAdmin, TestAutostartRueckfallNurBeiRichtlinie |
 | Hygiene | TestLoggerDeckelUndFesteCodes, TestStriktesJSONAmAdapter, TestFrameGrenzen, TestReleaseUndWindowsCI |
@@ -223,7 +225,9 @@ Abschlussbericht ausschließlich im Chat, keine Berichtsdatei im Repository.
 
 Native Windows-Mutationen zusätzlich: probe/mutations-windows.ps1 (ohne Admin).
 Mutationsfälle für #1245 L: idle-before-spawn, idle-remap-account, result-reject-jam,
-runid-format, runtemp-reuse, runtemp-follow-link, child-env-profile, windows-exclusive.
+runid-format, runtemp-reuse, runtemp-follow-link, revoke-follow-link, child-env-profile,
+windows-exclusive. Zu revoke: gegen `os.RemoveAll` bleibt der Test auf Go 1.26.10 und 1.27
+grün (dort link-sicher); der Wächter schützt vor einem Rückbau auf einen folgenden Löscher.
 Die Symlink-Tests von RunTemps überspringen unter Windows ohne Symlink-Recht sichtbar;
 dort belegt TestRunTempJunctionKanarienvogel das Aufräumen an einer echten Junction.
 

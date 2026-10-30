@@ -348,7 +348,8 @@ func (s *State) Revoke() error {
 	if s.Root == "" || filepath.Dir(s.Root) == s.Root {
 		return errors.New("state_root")
 	}
-	return os.RemoveAll(s.Root)
+	// Kein os.RemoveAll: Das Kind kann im tmp-Ordner Junctions/Symlinks anlegen (#1245 L5).
+	return removeTree(s.Root)
 }
 
 // Slot reservation and the claimed marker form one durable transaction.

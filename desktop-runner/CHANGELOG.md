@@ -17,6 +17,8 @@
   bleibt ohne `LOCALAPPDATA`/`USERPROFILE`/`APPDATA`. Behebt, dass Skripte ohne TEMP
   in die geprüfte Umgebung schrieben und der nächste Lauf mit `refused/hash` endete
   (Befund 6).
+- Widerruf löscht den Zustand mit demselben link-sicheren Löscher (kein `os.RemoveAll`),
+  damit eine vom Skript in `tmp\` angelegte Junction nie betreten wird (SEC R1).
 
 - Manueller Installationstest des signierten Windows-Releases in einem frischen
   Standardkonto, mit SHA-256, Authenticode/Herausgeber und GitHub-Provenance,

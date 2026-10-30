@@ -142,7 +142,8 @@ geschützte Ersatzdatei. Ein beim Neustart offener Lauf wird interrupted
 und nicht erneut gestartet.
 
 401 revoked stoppt laufende Prozesse und löscht Credential, Pakete, Umgebungen,
-Manifest und Journal. Offline wird Widerruf erst beim Kontakt bekannt; bis
+Manifest und Journal; die Löschung folgt keiner Junction und keinem Symlink, auch
+nicht in einem Lauf-Verzeichnis. Offline wird Widerruf erst beim Kontakt bekannt; bis
 dahin gilt die Gnadenfrist. Schlüsselrotation in v1 braucht neue Kopplung.
 
 **Workstation-Skripte handeln mit den Rechten der angemeldeten Person.**
