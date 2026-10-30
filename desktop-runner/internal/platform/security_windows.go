@@ -58,7 +58,14 @@ func PrivateSD() (*windows.SECURITY_DESCRIPTOR, error) {
 	}
 	return sd, nil
 }
-func SecureRoot(root string) error {
+func SecureRoot(root string) error { return secureDir(root, false) }
+
+// MkdirPrivate legt ein Verzeichnis mit der privaten DACL des Läufer-Ordners an
+// und prüft sie danach. exclusive: ein vorhandenes Verzeichnis wird abgewiesen,
+// bevor irgendetwas daran verändert wird (Laufverzeichnisse, #1245 L4).
+func MkdirPrivate(path string, exclusive bool) error { return secureDir(path, exclusive) }
+
+func secureDir(root string, exclusive bool) error {
 	abs, e := filepath.Abs(root)
 	if e != nil {
 		return winError("RootAbsolutePath", e)
@@ -93,6 +100,9 @@ func SecureRoot(root string) error {
 		return winError("RootPathUTF16", e)
 	}
 	e = windows.CreateDirectory(ptr, &sa)
+	if e == windows.ERROR_ALREADY_EXISTS && exclusive {
+		return winError("DirectoryExists", e)
+	}
 	if e != nil && e != windows.ERROR_ALREADY_EXISTS {
 		return winError("CreateDirectory", e)
 	}

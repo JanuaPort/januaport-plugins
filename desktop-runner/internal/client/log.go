@@ -15,6 +15,8 @@ const (
 	LogSyncFailed
 	LogRefused
 	LogCompleted
+	LogResultDropped // n = bisher verworfene Ergebnisse (Verdrängung und abgelehnte)
+	LogTempLeft      // Rest eines Laufverzeichnisses blieb liegen, der Besen räumt beim Start
 )
 
 type Logger struct {
@@ -23,7 +25,7 @@ type Logger struct {
 }
 
 func (l *Logger) Write(code LogCode, n uint64) error {
-	if code < LogStarted || code > LogCompleted {
+	if code < LogStarted || code > LogTempLeft {
 		return ErrProtocol
 	}
 	l.mu.Lock()

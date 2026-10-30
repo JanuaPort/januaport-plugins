@@ -62,6 +62,12 @@ Fehlerausgaben enthalten feste Codes.
 Pins gehören zu geraet:<device_id>. Das erwartete Konto ist ein Windows-Name
 (DOMÄNE\Benutzer). Konto, aktive WTS-Sitzung (auch gesperrt, nicht getrennt),
 optional Leerlauf und geprüfte Pakete werden ausschließlich lokal geprüft.
+Fehlt bei passendem Konto und aktiver Sitzung nur der Leerlauf der Startregel,
+lautet die Verweigerung `refused/idle`, sonst `refused/account`; beides vor
+jedem Prozessstart, Lauf-Verzeichnis und Laufmarker. **Voraussetzung: ein Kern
+mit #1245 K** (nimmt `idle` an); der Kern wird vor dem Läufer aktualisiert. Ein
+alter Kern antwortet 400 und der Läufer verwirft das Ergebnis nach zehn
+Versuchen gezählt (siehe „Ergebnisse“); er deutet `idle` nie in `account` um.
 Heartbeat alle 60 Sekunden: nur contract, ready, runner_version, manifest_seq.
 
 Ed25519, eigene Geräte-ID und steigende Sequenz sichern das Manifest.
@@ -90,6 +96,20 @@ und Job-Close beenden den Prozessbaum. Vor jedem Start werden Paket und
 Umgebungsdateien nachgerechnet; die Vergleichsliste liegt DPAPI-geschützt
 außerhalb der Umgebung. Zusätzliche/geänderte Dateien verweigern den Lauf.
 
+**Skripte bekommen ein privates TEMP.** Jeder Lauf erhält ein frisches, leeres
+Verzeichnis <code>%LOCALAPPDATA%\JanuaPort\desktop-runner\tmp\&lt;Lauf-ID&gt;\</code>
+(Lauf-ID: SHA-256 des Lauf-Schlüssels). Es ist <code>TEMP</code>, <code>TMP</code>
+und Arbeitsverzeichnis des Skripts, trägt dieselbe private DACL wie der
+Läufer-Ordner und wird nach dem Lauf **gelöscht**, nachdem der Prozessbaum beendet
+ist; Reste eines Absturzes räumt der Läufer beim Start ab. Nichts überlebt einen
+Lauf, es gibt keine Größenbremse (Wandzeit, eigene Platte). Wer Daten behalten
+will, übergibt sie als Ergebnis an Werkzeuge der Anlage. Aufräumen und Start-Besen
+steigen nie in Junctions oder Symlinks ein, auch nicht in solche, die das Skript
+selbst angelegt hat. Schreiben ins Pin-Verzeichnis oder die Umgebung bleibt
+verboten: die Prüfung vor jedem Start verweigert danach mit `refused/hash`.
+`LOCALAPPDATA`, `USERPROFILE` und `APPDATA` fehlen in der Kind-Umgebung; wer sie
+braucht, nimmt TEMP.
+
 januaport.input und januaport.call stehen zur Verfügung. MCP läuft über
 private vererbte Pipes und den Läufer. Lauf-Token bleiben außerhalb von
 Kind-Umgebung und Argumenten. stdout/stderr werden verworfen. januaport.log
@@ -107,7 +127,14 @@ ein fehlgeschlagener Prozessstart wird als internal gemeldet.
 Alle Ergebnisse gehen zuerst ins lokale Journal (Windows: DPAPI; Linux:
 HMAC-SHA256 und Dateirechte) und ausschließlich über
 runs/result zurück; jobs/{id}/result ist kein Alias. Erst 204 entfernt den
-Eintrag, Transportfehler und 409 behalten ihn. Der veröffentlichte Ciphertext
+Eintrag, Transportfehler und 409 behalten ihn. Ausnahme: Weist der Kern das
+älteste Ergebnis zehnmal in Folge mit HTTP 400 ab (es wird auch beim elften Mal
+abgewiesen, etwa weil ein alter Kern `refused/idle` nicht kennt), verwirft der
+Läufer genau dieses Ergebnis. Der Verlustzähler steigt, das Log erhält die feste
+Zeile `5 <Zähler>`, nachfolgende Ergebnisse werden zugestellt. Vor dieser Grenze
+blockierte ein solches Ergebnis den Rückstau dauerhaft. Der Versuchszähler lebt
+nur im Speicher. Jeder andere Fehler (409, 429, 503, Netz) setzt ihn zurück und
+verwirft nie. Der veröffentlichte Ciphertext
 einschließlich Marker, Slot-Merkern und Verlustzähler bleibt bei höchstens
 200 Ergebnissen/16 MiB. Verdrängung erhöht den dauerhaften Zähler.
 Atomare Dateierneuerung benötigt kurzzeitig zusätzlichen Platz für die
@@ -115,7 +142,8 @@ geschützte Ersatzdatei. Ein beim Neustart offener Lauf wird interrupted
 und nicht erneut gestartet.
 
 401 revoked stoppt laufende Prozesse und löscht Credential, Pakete, Umgebungen,
-Manifest und Journal. Offline wird Widerruf erst beim Kontakt bekannt; bis
+Manifest und Journal; die Löschung folgt keiner Junction und keinem Symlink, auch
+nicht in einem Lauf-Verzeichnis. Offline wird Widerruf erst beim Kontakt bekannt; bis
 dahin gilt die Gnadenfrist. Schlüsselrotation in v1 braucht neue Kopplung.
 
 **Workstation-Skripte handeln mit den Rechten der angemeldeten Person.**
@@ -124,7 +152,9 @@ kommuniziert nur mit seiner Anlage; Skriptcode hat weiterhin die OS- und
 Netzwerkrechte dieser Person. DPAPI CurrentUser schützt nicht vor Zugriff auf
 dieselbe Benutzersitzung, auch nicht vor Veränderungen während eines Skripts.
 Dienstlogs enthalten nur feste numerische Codes/Zähler, fünf Dateien zu je
-1 MiB; keine Eingaben, Skriptlogs, Token, Konten oder Leerlaufzeiten.
+1 MiB; keine Eingaben, Skriptlogs, Token, Konten oder Leerlaufzeiten. Codes:
+1 gestartet, 2 Sync fehlgeschlagen, 3 verweigert, 4 abgeschlossen, 5 Ergebnis
+verworfen (Zähler), 6 Rest eines Lauf-Verzeichnisses blieb liegen.
 
 **Unter Windows ist ein Gerät eine Vertrauensdomäne (SEC D4 A1).** Ein Skript läuft als
 derselbe Nutzer wie der Läufer. Es kann deshalb den DPAPI-geschützten
@@ -150,7 +180,8 @@ Pop-Location
 Native Taskprobe ausdrücklich mit
 <code>go test ./internal/platform -run TestWindowsAufgabeOhneAdmin</code>
 aktivieren, ohne erhöhte Rechte; sie erstellt und entfernt eine Testaufgabe.
-Die Python-Startprobe erwartet die unveränderte Allowlist-ZIP in .probe/.
+Die Python-Startproben (auch TEMP je Lauf samt Junction im Kind) erwarten die
+unveränderte Allowlist-ZIP in .probe/.
 Windows-CI beschafft und prüft sie. probe/mutations.py entfernt Sperren
 einzeln, verlangt echte rote Tests und stellt Quellen byte-genau wieder her;
 nur bei exklusivem Zugriff ausführen. task-standard-user.ps1 erzeugt nur auf
@@ -448,5 +479,7 @@ Wiederherstellung, optional `--container <lokaler Linux-Prüfcontainer>`.
 **Bekannte K1-Lücke:** Auf `origin/feat/1195-server-container` verweigert
 `cmd/jnpt/desktop_routes.go:desktopResult.valid` noch `refused/secret` und
 `limit/wall`. Paket A sendet die beauftragten Klassen unverändert. Bis der Kern
-sie akzeptiert, bleiben diese Ergebnisse nach HTTP 400 im Journal. Keine stille
-Umdeutung in `hash` oder `timeout`; der Kern benötigt vor Live-Abnahme den Nachzug.
+sie akzeptiert, wiederholt der Läufer diese Ergebnisse nach HTTP 400 zehnmal und
+verwirft sie dann gezählt (siehe „Ergebnisse“), damit der Rückstau nicht blockiert.
+Keine stille Umdeutung in `hash` oder `timeout`; der Kern benötigt vor Live-Abnahme
+den Nachzug.

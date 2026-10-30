@@ -30,9 +30,22 @@ type State struct {
 	mu      sync.Mutex
 	dead    bool
 	journal Journal
+	reject  rejectCount
+}
+
+// rejectCount zählt aufeinanderfolgende 400-Ablehnungen des ältesten Ergebnisses.
+// Nur im Speicher: ein Neustart beginnt neu, ein Verlust kostet höchstens Versuche.
+type rejectCount struct {
+	id string
+	n  int
 }
 
 const journalMax = 16 << 20
+
+// Ein Ergebnis, das der Kern zehnmal mit 400 abweist, wird es auch beim elften
+// Mal tun (z. B. alter Kern kennt refused/idle nicht). Es darf den Rückstau
+// nicht dauerhaft blockieren.
+const resultRejectLimit = 10
 
 func OpenState(root string, cipher Cipher) (*State, error) {
 	abs, e := filepath.Abs(root)
@@ -268,6 +281,14 @@ func (s *State) DeliverOne(send func(Result) error) error {
 	}
 	r := j.Results[0]
 	if err := send(r); err != nil {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.dead {
+			return ErrRevoked
+		}
+		if s.rejectedTooOften(r, err) {
+			s.dropOldest(r)
+		}
 		return err
 	}
 	s.mu.Lock()
@@ -275,11 +296,48 @@ func (s *State) DeliverOne(send func(Result) error) error {
 	if s.dead {
 		return ErrRevoked
 	}
+	s.reject = rejectCount{}
 	next := s.cloneJournal()
 	if len(next.Results) > 0 && string(encode(next.Results[0])) == string(encode(r)) {
 		next.Results = next.Results[1:]
 	}
 	return s.saveJournal(next)
+}
+
+// rejectedTooOften (mit s.mu): nur HTTP 400 zählt; jeder andere Ausgang setzt zurück.
+func (s *State) rejectedTooOften(r Result, err error) bool {
+	var he *HTTPError
+	if !errors.As(err, &he) || he.Status != 400 {
+		s.reject = rejectCount{}
+		return false
+	}
+	id := sum(encode(r))
+	if s.reject.id != id {
+		s.reject = rejectCount{id: id}
+	}
+	s.reject.n++
+	return s.reject.n >= resultRejectLimit
+}
+
+// dropOldest (mit s.mu) verwirft r als gezählte Verdrängung. Schlägt das Speichern
+// fehl, bleibt der Stand und der nächste Versuch wiederholt es.
+func (s *State) dropOldest(r Result) {
+	next := s.cloneJournal()
+	if len(next.Results) == 0 || string(encode(next.Results[0])) != string(encode(r)) {
+		return
+	}
+	next.Results = next.Results[1:]
+	next.Dropped++
+	if s.saveJournal(next) == nil {
+		s.reject = rejectCount{}
+	}
+}
+
+// Dropped ist der dauerhafte Zähler verworfener Ergebnisse.
+func (s *State) Dropped() uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.journal.Dropped
 }
 func (s *State) Revoke() error {
 	s.mu.Lock()
@@ -290,7 +348,8 @@ func (s *State) Revoke() error {
 	if s.Root == "" || filepath.Dir(s.Root) == s.Root {
 		return errors.New("state_root")
 	}
-	return os.RemoveAll(s.Root)
+	// Kein os.RemoveAll: Das Kind kann im tmp-Ordner Junctions/Symlinks anlegen (#1245 L5).
+	return removeTree(s.Root)
 }
 
 // Slot reservation and the claimed marker form one durable transaction.

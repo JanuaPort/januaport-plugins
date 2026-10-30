@@ -168,6 +168,7 @@ type DPAPI struct{}
 
 func (DPAPI) Seal([]byte) ([]byte, error)                          { return nil, errPlatform }
 func (DPAPI) Open([]byte) ([]byte, error)                          { return nil, errPlatform }
+func MkdirPrivate(string, bool) error                              { return errPlatform }
 func Root() (string, error)                                        { return "", errPlatform }
 func Lock() (func(), error)                                        { return nil, errPlatform }
 func WindowsEnv() []string                                         { return nil }

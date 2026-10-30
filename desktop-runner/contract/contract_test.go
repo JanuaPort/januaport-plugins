@@ -253,7 +253,7 @@ func checkBody(kind string, b []byte) error {
 		if v.Log == nil || len(*v.Log) > 64*1024 {
 			return fmt.Errorf("log")
 		}
-		allowed := map[string][]string{"ok": {}, "error": {}, "timeout": {}, "limit": {"tool_calls"}, "internal": {}, "cancelled": {}, "refused": {"hash", "runtime", "account", "manifest", "offline"}, "interrupted": {}}
+		allowed := map[string][]string{"ok": {}, "error": {}, "timeout": {}, "limit": {"tool_calls"}, "internal": {}, "cancelled": {}, "refused": {"hash", "runtime", "account", "manifest", "offline", "idle"}, "interrupted": {}}
 		details, ok := allowed[v.End]
 		if !ok {
 			return fmt.Errorf("end")
@@ -435,6 +435,22 @@ func TestGoldenJSON(t *testing.T) {
 	}
 	if !bytes.Equal(read(t, "error_404_unknown.json"), read(t, "error_404_foreign.json")) {
 		t.Fatal("404 muss byte-gleich sein")
+	}
+}
+
+// refused/idle (JanuaPort/januaport#1245): Startregel Leerlauf nicht erfüllt, vor jedem Prozessstart.
+func TestRefusedIdle(t *testing.T) {
+	if err := checkBody("result", []byte(`{"end":"refused","detail":"idle","log":""}`)); err != nil {
+		t.Fatal("refused/idle abgewiesen", err)
+	}
+	for _, b := range []string{
+		`{"end":"refused","detail":"Idle","log":""}`, `{"end":"refused","detail":"idle ","log":""}`,
+		`{"end":"ok","detail":"idle","log":""}`, `{"end":"limit","detail":"idle","log":""}`,
+		`{"end":"interrupted","detail":"idle","log":""}`, `{"end":"refused","log":""}`,
+	} {
+		if checkBody("result", []byte(b)) == nil {
+			t.Fatalf("falsches idle akzeptiert: %s", b)
+		}
 	}
 }
 
