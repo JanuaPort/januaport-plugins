@@ -438,6 +438,22 @@ func TestGoldenJSON(t *testing.T) {
 	}
 }
 
+// refused/idle (JanuaPort/januaport#1245): Startregel Leerlauf nicht erfüllt, vor jedem Prozessstart.
+func TestRefusedIdle(t *testing.T) {
+	if err := checkBody("result", []byte(`{"end":"refused","detail":"idle","log":""}`)); err != nil {
+		t.Fatal("refused/idle abgewiesen", err)
+	}
+	for _, b := range []string{
+		`{"end":"refused","detail":"Idle","log":""}`, `{"end":"refused","detail":"idle ","log":""}`,
+		`{"end":"ok","detail":"idle","log":""}`, `{"end":"limit","detail":"idle","log":""}`,
+		`{"end":"interrupted","detail":"idle","log":""}`, `{"end":"refused","log":""}`,
+	} {
+		if checkBody("result", []byte(b)) == nil {
+			t.Fatalf("falsches idle akzeptiert: %s", b)
+		}
+	}
+}
+
 func TestForbiddenJSON(t *testing.T) {
 	for _, field := range []string{"session_status", "idle_minutes", "account", "unexpected"} {
 		t.Run(field, func(t *testing.T) {
