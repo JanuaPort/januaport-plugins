@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.2.0 — 2026-10-30
+
+**Setzt einen Kern ab 0.89.0 voraus.** Ältere Kerne lehnen `refused/idle` ab; der Läufer
+verwirft solche Ergebnisse nach zehnmal HTTP 400 in Folge mit Logzeile. Skripte bekommen
+ein eigenes TEMP je Lauf, das nach dem Lauf gelöscht wird.
+
 - Ablehnungsklasse `refused/idle`: fehlt bei passendem Konto und aktiver Sitzung nur
   der Leerlauf der Startregel, meldet der Läufer `idle` statt `account`, vor jedem
   Start (JanuaPort/januaport#1245 L). **Release-Hinweis: setzt einen Kern mit
