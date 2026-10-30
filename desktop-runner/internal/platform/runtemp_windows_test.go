@@ -200,3 +200,34 @@ _winapi.CreateJunction(cfg["ziel"], os.path.join(temp, "a", "verweis"))
 		t.Fatal("Umgebung durch den Lauf verändert", err)
 	}
 }
+
+func TestRevokeFolgtKeinerJunctionInTmp(t *testing.T) { // SEC R1 c-6519227223
+	root := filepath.Join(t.TempDir(), "state")
+	if err := SecureRoot(root); err != nil {
+		t.Fatal(err)
+	}
+	st, err := client.OpenState(root, DPAPI{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	canary := filepath.Join(outside, "kanarienvogel.txt")
+	if err = os.WriteFile(canary, []byte("lebt"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	run := filepath.Join(root, "tmp", client.RunID("a"))
+	if err = os.MkdirAll(run, 0700); err != nil {
+		t.Fatal(err)
+	}
+	junction(t, filepath.Join(run, "verweis"), outside)
+	junction(t, filepath.Join(root, "tmp", "direkt"), outside)
+	if err = st.Revoke(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(root); !os.IsNotExist(err) {
+		t.Fatal("Zustand nicht gelöscht", err)
+	}
+	if _, err = os.Stat(canary); err != nil {
+		t.Fatal("Widerruf ist der Junction gefolgt")
+	}
+}

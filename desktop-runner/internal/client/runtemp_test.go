@@ -504,3 +504,17 @@ func TestRunRaeumtRestordnerBeimStartAuf(t *testing.T) {
 		t.Fatal("Rest vom letzten Lauf bleibt liegen")
 	}
 }
+
+func TestRevokeFolgtKeinemVerweisInTmp(t *testing.T) { // SEC R1 c-6519227223
+	st, _ := OpenState(t.TempDir(), testCipher{})
+	outside, canary := canaryDir(t)
+	run := filepath.Join(st.Root, "tmp", RunID("a"))
+	os.MkdirAll(run, 0700)
+	symlinkOrSkip(t, outside, filepath.Join(run, "verweis"))
+	if err := st.Revoke(); err != nil {
+		t.Fatal(err)
+	}
+	if exists(st.Root) || !exists(canary) {
+		t.Fatalf("Wurzel gelöscht=%t, Kanarienvogel lebt=%t", !exists(st.Root), exists(canary))
+	}
+}
