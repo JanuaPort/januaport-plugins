@@ -1,0 +1,20 @@
+# BEISPIEL — systemd-tmpfiles-Zeilen für den LinkedIn-Seite-Beisteller
+# (JanuaPort/januaport#1237, Form nach script-runner/deploy/jnpt-plugins-script-runner.conf.example).
+#
+# Ablage auf der Anlage: als zusätzliche Zeilen in
+# /etc/tmpfiles.d/jnpt-plugins.conf, danach
+#   systemd-tmpfiles --create /etc/tmpfiles.d/jnpt-plugins.conf
+#
+# Jeder Ordner unter /run/jnpt/plugins lässt im Gateway eine Schlüssel-Stelle
+# erscheinen (plugin-<name>); das Gateway schreibt dort runtime-key hinein.
+#   linkedin-seite         runtime-key = der EINE Bridge-Key für LinkedIn
+#                            (Stelle plugin-linkedin-seite; derselbe Wert steht
+#                            in der Connector-Credential linkedin-seite)
+#   linkedin-seite-oauth  runtime-key = das OAuth-JSON
+#                            (Stelle plugin-linkedin-seite-oauth, Zustimmungsskript
+#                            am PO-Rechner, stdout per Pipe in die Betreiber-CLI)
+# Der Dienst liest beide Dateien nur beim Start; den Neustart nach einem
+# Schlüsselwechsel und nach dem Boot löst das Unit-Paar
+# jnpt-linkedin-seite-key.path/.service aus.
+d /run/jnpt/plugins/linkedin-seite 0750 65532 65532 -
+d /run/jnpt/plugins/linkedin-seite-oauth 0750 65532 65532 -

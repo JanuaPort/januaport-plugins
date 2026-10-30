@@ -1,0 +1,13 @@
+# /etc/jnpt-updater.d/linkedin-seite.conf; root-owned regular file, 0600/0644.
+IMAGE_REPO=ghcr.io/januaport/linkedin-seite
+COMPOSE_FILE=/opt/jnpt/plugins/linkedin-seite/docker-compose.yml
+SERVICE=linkedin-seite
+ENV_FILE=/opt/jnpt/plugins/linkedin-seite/.env
+ENV_KEY=JNPT_LINKEDIN_SEITE_IMAGE
+HEALTH_DOCKER=1
+# Vorbedingungen: config.json und BEIDE runtime-key-Dateien, die das Gateway nach
+# dem Eintragen in der Basis-Einrichtung ablegt (Stellen plugin-linkedin-seite
+# und plugin-linkedin-seite-oauth). Fehlt eine, bucht der Aktuator
+# `unprovisioned` statt `failed`.
+REQUIRE=/opt/jnpt/plugins/linkedin-seite/config.json:/run/jnpt/plugins/linkedin-seite/runtime-key:/run/jnpt/plugins/linkedin-seite-oauth/runtime-key
+# DATA_DIRS intentionally absent: no report persistence.

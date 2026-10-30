@@ -1,0 +1,469 @@
+Suche 1
+rg --hidden -n --sort path -g !.git -g !*.lock -g !*.sum -g !PRUEFBERICHT.md -g !**/pruefung/** -g !**/.mutation-*/** Bridge.Key|Tagesdeckel|setup_guide|jnpt.plugin.key|rw_organization_admin|r_organization_social|plugin-linkedin-seite|api\.linkedin\.com|oauth/v2|SafeAppRunner|WorkerPool|transport\.send|transport\.token .
+
+.\ARCHITEKTUR.md:6:| [google-reporting](google-reporting/CLAUDE.md) | #1130, Stufe 1: privater Python-REST-Beisteller für acht feste GSC-/GA4-Berichte. Google-Auth außerhalb des Gatewaykerns; Schlüssel nur aus Tresor-Stellen (`plugin-google-reporting` = ein Bridge-Key, `plugin-google-reporting-google` = Servicekonto-JSON, Ordner-Mounts, eigenes Unit-Paar für den Neustart); zwei Prozessworker mit RAM-Token-Caches und tatsächlicher Abbruchgrenze, feste öffentliche Seitenfilter. Runbook/Netz-/Audit-/SEC-Livegates im Modul; die Admin-Anleitung `SETUP.md` geht als `setup_guide` in den signierten Katalog (JanuaPort/januaport#1137). **#1148:** drei Schreibhandgriffe (GA4-Annotation, GSC-Sitemap, GA4-Kanalgruppe) über feste POST-Routen je Operation, je Schreibscope ein eigenes Credential-Objekt, `dry_run` mit `before`/`after`, Tagesdeckel 20 im Serverprozess, Änderungszeile im Log; Modul `manage.py` (rein) und `manage_adapter.py`. **#1150:** GA4-Status prüft nur die angefragten `apiName`s; ein zu spätes `end_date` hat den festen Code `end_date_not_available`. **#1138:** Release-Strecke `google-reporting-release.yml` (Tag `google-reporting-vX.Y.Z`, Image `ghcr.io/januaport/google-reporting`, 1.0.0 vorbereitet, noch nicht getaggt). Gebaut/synthetisch geprüft; Livebeleg offen. |
+.\ARCHITEKTUR.md:7:| [linkedin-seite](linkedin-seite/CLAUDE.md) | #1237, Stufe A: drei feste GET-Werkzeuge, fünf Hersteller-Endpunkte einschließlich networkSizes für Follower-Gesamtzahl; Organisation nur aus Betreiberkonfiguration. Follower-Zeitraum bis heute−2 UTC; maximal zehn Beiträge, Nullinteraktion nur bei gültiger leerer Einzelantwort mit gültigem Paging ohne next-Link; nur negative Like-Summe markiert gekappt, andere negative Zähler sind Fehler; Personenbezug im gesamten Objekt unterdrückt Text. Zwei gepinnte Scopes; OAuth aus Tresorstellen `plugin-linkedin-seite` / `plugin-linkedin-seite-oauth`, RAM-Refresh und 14-Tage-Warnung. Lokales Zustimmungsskript auf 127.0.0.1/::1, gemeinsam genau eine Anfrage einschließlich fehlerhafter, IPv4-Fallback nur bei fehlendem IPv6, belegter IPv6-Port bricht ab; stdout direkt in Tresor-Pipe. Zwei killbare Worker, 50 HTTP-Versuche/UTC-Tag im Serverprozess, 30 Berichte/Minute; keine Personenlisten oder Fach-Schreibwege. Safe-HTTP-/Deploy-/Release-Muster aus google-reporting, setup_guide und Mutationsproben. Herstellervertrag zentral als live zu belegen markiert; synthetische Abnahme, Live/Katalog offen. |
+.\google-reporting\CHANGELOG.md:37:  Credential-Objekt, `dry_run` mit `before`/`after`, Tagesdeckel 20 Schreibversuche je Quelle
+.\google-reporting\CHANGELOG.md:47:  Schlüsselwechsel). Sie geht als `setup_guide` in den signierten Plugin-Katalog; das README
+.\google-reporting\CHANGELOG.md:48:  verweist darauf. `tests/test_setup_guide.py` prüft 32 KiB, UTF-8 und den V1-Inhalt.
+.\google-reporting\CHANGELOG.md:57:- #1130 B1 (SEC-Zweitprüfung): Secret-Ablage nach Hausmuster #887. Ein Bridge-Key für
+.\google-reporting\CHANGELOG.md:60:  entfallen. Der Bridge-Key ist ein Zufallswert und wird per Betreiber-CLI (stdin) in Stelle und
+.\google-reporting\CLAUDE.md:16:  durch feste JSON-Codes ohne rohe Requestbytes/Exception-Logs. SafeAppRunner
+.\google-reporting\CLAUDE.md:19:  eine feste POST-Route, **ein** Bridge-Key für beide Quellen
+.\google-reporting\CLAUDE.md:42:- **P3:** Tagesdeckel `WRITE_CAP_PER_DAY` = 20 je Quelle/UTC-Tag in `WorkerPool.write_attempts`
+.\google-reporting\CLAUDE.md:69:Secret-Ablage (Hausmuster #887, SEC B1): Stellen `plugin-google-reporting` (Bridge-Key,
+.\google-reporting\CLAUDE.md:77:Vorlage `jnpt-plugin-key@` kennt nur eine Stelle je Compose). Entfernen ist kein
+.\google-reporting\CLAUDE.md:87:`setup_guide` in den signierten Katalog übernommen (JanuaPort/januaport#1137). Sie muss ohne
+.\google-reporting\CLAUDE.md:91:`tests/test_setup_guide.py`; wer die Rechte ändert, zieht beide nach. Seit #1148: GSC höchstens
+.\google-reporting\CLAUDE.md:96:Mutationstests müssen Bridge-Key-Auth, Vorprüfung, Filter, Retries und Kill abdecken, seit
+.\google-reporting\CLAUDE.md:97:#1148 auch Scope-Trennung, Tagesdeckel, P1 (primary), P2 (Privacy-Scan) und das Titelpräfix.
+.\google-reporting\README.md:26:`Authorization: Bearer <Bridge-Key>`: **ein** Bridge-Key für beide Quellen
+.\google-reporting\README.md:70:(je 1.0.0, derselbe Bridge-Key); die Lesevorlagen bleiben unverändert.
+.\google-reporting\README.md:115:- **Tagesdeckel:** höchstens 20 Schreibversuche je Quelle und UTC-Tag. Der Zähler liegt im
+.\google-reporting\README.md:128:  nur als Länge und SHA-256-Präfix. Token, Schlüssel und Bridge-Key stehen nie darin. Das
+.\google-reporting\README.md:191:(SafeAppRunner), die Eingabebytes aus Fehlerbody und Log entfernt.
+.\google-reporting\README.md:223:[SETUP.md](SETUP.md). Die Datei wird je Plugin-Version als `setup_guide` in den signierten
+.\google-reporting\README.md:224:Plugin-Katalog übernommen und ist dann über den Admin-MCP (`admin_get_plugin_setup_guide`),
+.\google-reporting\README.md:226:keine relativen Links; `tests/test_setup_guide.py` prüft das.
+.\google-reporting\README.md:249:   | `plugin-google-reporting` | `/run/jnpt/plugins/google-reporting/` | der **eine** Bridge-Key, ein Zufallswert; derselbe Wert steht in der Connector-Credential `google-reporting`. Setzt der Betreiber per CLI (siehe unten) |
+.\google-reporting\README.md:252:   **Der Bridge-Key ist ein Zufallswert, den kein Mensch kennen muss.** Der
+.\google-reporting\README.md:289:   das Schreiben löst den Recreate aus. Die Vorlage `jnpt-plugin-key@` des Produkts
+.\google-reporting\README.md:325:Rotation: Beim Bridge-Key einen neuen Zufallswert wie in Schritt 2 erzeugen und im
+.\google-reporting\README.md:335:Console gelöscht ist; ein abgeflossener Bridge-Key bleibt gültig, bis er ersetzt
+.\google-reporting\README.md:339:Rückbau entfernt Rechte/Instanzen, widerruft Bridge-Key/Google-Grants (Schlüssel in
+.\google-reporting\SETUP.md:9:ablegen und den Bridge-Key setzen. Der Bridge-Key ist ein Zufallswert, den kein Mensch kennen
+.\google-reporting\deploy\jnpt-google-reporting-key.path:4:# Warum ein eigenes Paar und nicht jnpt-plugin-key@: Die Vorlage des Produkts
+.\google-reporting\deploy\jnpt-google-reporting-key.service:12:# `.env` mit dem Image-Pin daneben (wie jnpt-plugin-key@.service des Produkts).
+.\google-reporting\deploy\jnpt-google-reporting-key.service:31:# ── Härtung (1:1 wie jnpt-plugin-key@.service) ──────────────────────────────
+.\google-reporting\deploy\jnpt-plugins-google-reporting.conf.example:10:#   google-reporting         runtime-key = der EINE Bridge-Key für GSC und GA4
+.\google-reporting\docker-compose.yml:26:      # jnpt/runtime-key = der EINE Bridge-Key (Stelle plugin-google-reporting),
+.\google-reporting\google_reporting\safe_http.py:30:class SafeAppRunner(web.AppRunner):
+.\google-reporting\google_reporting\safe_http.py:43:    runner = SafeAppRunner(
+.\google-reporting\google_reporting\server.py:22:from .workers import WorkerPool
+.\google-reporting\google_reporting\server.py:210:    pool = WorkerPool(cfg, IDENTITY_PATH)
+.\google-reporting\google_reporting\workers.py:42:class WorkerPool:
+.\google-reporting\tests\test_boundary.py:9:from google_reporting.safe_http import SafeAppRunner
+.\google-reporting\tests\test_boundary.py:12:from google_reporting.workers import WorkerPool
+.\google-reporting\tests\test_boundary.py:18:        return SafeAppRunner(
+.\google-reporting\tests\test_boundary.py:41:        self.pool = WorkerPool(
+.\google-reporting\tests\test_boundary.py:220:            pool = WorkerPool(
+.\google-reporting\tests\test_google_adapter.py:522:        from google_reporting.workers import WorkerPool
+.\google-reporting\tests\test_google_adapter.py:526:            pool = WorkerPool(
+.\google-reporting\tests\test_manage_http.py:14:from google_reporting.workers import WorkerPool, WRITE_CAP_PER_DAY
+.\google-reporting\tests\test_manage_http.py:230:        self.pool = WorkerPool(self.cfg, self.path, budget=3, adapter_factory=CountingAdapter, today=lambda: self.day[0])
+.\google-reporting\tests\test_setup_guide.py:1:"""SETUP.md becomes the signed catalog field setup_guide (JanuaPort/januaport#1137).
+.\google-reporting\tests\wire_server.py:13:from google_reporting.workers import WorkerPool
+.\google-reporting\tests\wire_server.py:76:    pool = WorkerPool(cfg, "unused", adapter_factory=SyntheticAdapter)
+.\linkedin-seite\CHANGELOG.md:31:  google-reporting. Zusätzlicher Tagesdeckel 50 im Serverprozess vor jedem HTTP-Aufruf.
+.\linkedin-seite\CHANGELOG.md:33:  setup_guide- und Release-Vertragstests. Stufe B ist nicht enthalten.
+.\linkedin-seite\CLAUDE.md:13:  `rw_organization_admin r_organization_social`. Kein weiterer Scope, kein Schreibadapter.
+.\linkedin-seite\CLAUDE.md:39:- `server.py`: Bridge-Key-Auth, feste GET-Routen, keine freien Pfade; 8 KiB Anfrage,
+.\linkedin-seite\CLAUDE.md:44:  SafeAppRunner Pflicht; Parserlimits 8192; Parserfehler ohne Rohbytes/Exceptions, ohne
+.\linkedin-seite\CLAUDE.md:58:Secret-Hausmuster #887: `plugin-linkedin-seite` (Bridge-Key, zugleich Connector-Credential
+.\linkedin-seite\CLAUDE.md:59:`linkedin-seite`) und `plugin-linkedin-seite-oauth` (OAuth-JSON). tmpfiles erzeugt beide
+.\linkedin-seite\CLAUDE.md:65:SETUP ist `setup_guide` für den signierten Katalog: UTF-8, höchstens 32 KiB, keine relativen
+.\linkedin-seite\README.md:9:Alle Fachrouten brauchen `Authorization: Bearer <Bridge-Key>`.
+.\linkedin-seite\README.md:60:REST: `https://api.linkedin.com/rest/`, Header `LinkedIn-Version` und
+.\linkedin-seite\README.md:73:- **Scopes:** genau `rw_organization_admin r_organization_social`, als Konstante und im
+.\linkedin-seite\README.md:87:- **Ablage:** Hausmuster #887: `plugin-linkedin-seite` für den Bridge-Key und
+.\linkedin-seite\README.md:88:  `plugin-linkedin-seite-oauth` für OAuth-JSON mit `client_id`, `client_secret`,
+.\linkedin-seite\README.md:93:- **Tagesdeckel:** 50 ausgehende HTTP-Versuche pro UTC-Tag im Serverprozess. Jeder
+.\linkedin-seite\README.md:121:3. Einen zufälligen Bridge-Key per stdin in beide Stellen setzen, danach verwerfen:
+.\linkedin-seite\README.md:125:   printf %s "$K" | jnpt credential set --name plugin-linkedin-seite
+.\linkedin-seite\README.md:131:   OAuth-JSON kommt per Pipe vom PO-Rechner in `plugin-linkedin-seite-oauth` (SETUP).
+.\linkedin-seite\README.md:141:   Produktvorlage `jnpt-plugin-key@` kennt nur eine Stelle und genügt hier nicht.
+.\linkedin-seite\README.md:144:   Separates Egress-Netz; Host-Firewall/DNS-Policy für `api.linkedin.com:443` und
+.\linkedin-seite\README.md:152:Rotation: Bridge-Key gleichzeitig in Stelle und Connector-Credential ersetzen. OAuth-
+.\linkedin-seite\SETUP.md:4:installiert vorher den Beisteller, legt die beiden Tresor-Stellen an und setzt den Bridge-Key.
+.\linkedin-seite\SETUP.md:14:3. Genau die Scopes `rw_organization_admin r_organization_social` freigeben lassen.
+.\linkedin-seite\SETUP.md:29:python linkedin-seite/tools/zustimmung.py --client-id APP_CLIENT_ID | jnpt credential set --name plugin-linkedin-seite-oauth
+.\linkedin-seite\SETUP.md:53:Die Tresor-Stelle `plugin-linkedin-seite-oauth` enthält JSON mit `client_id`, `client_secret`,
+.\linkedin-seite\SETUP.md:58:Der zweite Tresorplatz `plugin-linkedin-seite` enthält den vom Betreiber erzeugten Bridge-Key.
+.\linkedin-seite\SETUP.md:83:Der Tagesdeckel beträgt 50 einzelne Aufrufe einschließlich Fehlschlägen und Refresh pro
+.\linkedin-seite\deploy\jnpt-linkedin-seite-key.path:4:# Warum ein eigenes Paar und nicht jnpt-plugin-key@: Die Vorlage des Produkts
+.\linkedin-seite\deploy\jnpt-linkedin-seite-key.path:11:#   Betreiber trägt Wert in der Basis-Einrichtung ein (Stelle plugin-linkedin-seite
+.\linkedin-seite\deploy\jnpt-linkedin-seite-key.path:12:#   oder plugin-linkedin-seite-oauth)
+.\linkedin-seite\deploy\jnpt-linkedin-seite-key.service:12:# `.env` mit dem Image-Pin daneben (wie jnpt-plugin-key@.service des Produkts).
+.\linkedin-seite\deploy\jnpt-linkedin-seite-key.service:31:# ── Härtung (1:1 wie jnpt-plugin-key@.service) ──────────────────────────────
+.\linkedin-seite\deploy\jnpt-plugins-linkedin-seite.conf.example:10:#   linkedin-seite         runtime-key = der EINE Bridge-Key für LinkedIn
+.\linkedin-seite\deploy\jnpt-plugins-linkedin-seite.conf.example:11:#                            (Stelle plugin-linkedin-seite; derselbe Wert steht
+.\linkedin-seite\deploy\jnpt-plugins-linkedin-seite.conf.example:14:#                            (Stelle plugin-linkedin-seite-oauth, Zustimmungsskript
+.\linkedin-seite\deploy\linkedin-seite.conf.example:9:# dem Eintragen in der Basis-Einrichtung ablegt (Stellen plugin-linkedin-seite
+.\linkedin-seite\deploy\linkedin-seite.conf.example:10:# und plugin-linkedin-seite-oauth). Fehlt eine, bucht der Aktuator
+.\linkedin-seite\docker-compose.yml:1:name: jnpt-plugin-linkedin-seite
+.\linkedin-seite\docker-compose.yml:26:      # jnpt/runtime-key = der EINE Bridge-Key (Stelle plugin-linkedin-seite),
+.\linkedin-seite\docker-compose.yml:27:      # oauth/runtime-key = das OAuth-JSON (plugin-linkedin-seite-oauth).
+.\linkedin-seite\linkedin_seite\linkedin_adapter.py:118:        return self.transport.send(urllib.request.Request(s.API_ROOT + endpoint + '?' + urlencode(params),
+.\linkedin-seite\linkedin_seite\oauth.py:145:            raw = self.transport.token({s.GRANT_TYPE: s.REFRESH_TOKEN, s.REFRESH_TOKEN: refresh,
+.\linkedin-seite\linkedin_seite\safe_http.py:30:class SafeAppRunner(web.AppRunner):
+.\linkedin-seite\linkedin_seite\safe_http.py:43:    runner = SafeAppRunner(
+.\linkedin-seite\linkedin_seite\server.py:13:from .workers import WorkerPool
+.\linkedin-seite\linkedin_seite\server.py:18:# plugin-linkedin-seite = the one Bridge key, plugin-linkedin-seite-oauth
+.\linkedin-seite\linkedin_seite\server.py:151:    pool = WorkerPool(cfg, load_identity(IDENTITY_PATH))
+.\linkedin-seite\linkedin_seite\source_contract.py:7:API_ROOT = 'https://api.linkedin.com/rest/'
+.\linkedin-seite\linkedin_seite\source_contract.py:8:TOKEN_URL = 'https://www.linkedin.com/oauth/v2/accessToken'
+.\linkedin-seite\linkedin_seite\source_contract.py:9:AUTHORIZE_URL = 'https://www.linkedin.com/oauth/v2/authorization'
+.\linkedin-seite\linkedin_seite\source_contract.py:11:SCOPES = ('rw_organization_admin', 'r_organization_social')
+.\linkedin-seite\linkedin_seite\workers.py:53:class WorkerPool:
+.\linkedin-seite\tests\mutations.py:36:    ('scope-set', 'source_contract.py', "SCOPES = ('rw_organization_admin', 'r_organization_social')", "SCOPES = ('r_organization_social',)", A+'test_scopes_pinned_and_expanded_grant_rejected_on_wire'),
+.\linkedin-seite\tests\support.py:74:                data = outer.token_body if parsed.path == '/oauth/v2/accessToken' else outer.default(parsed.path, params)
+.\linkedin-seite\tests\test_acceptance.py:29:        self.assertEqual(set(s.SCOPES), {'rw_organization_admin', 'r_organization_social'})
+.\linkedin-seite\tests\test_adapter.py:174:        self.assertEqual(tokens[0][1], '/oauth/v2/accessToken')
+.\linkedin-seite\tests\test_adapter.py:190:        self.assertEqual(set(s.SCOPES), {'rw_organization_admin', 'r_organization_social'})
+.\linkedin-seite\tests\test_boundary.py:7:from linkedin_seite.safe_http import SafeAppRunner
+.\linkedin-seite\tests\test_boundary.py:9:from linkedin_seite.workers import WorkerPool, DAILY_CAP
+.\linkedin-seite\tests\test_boundary.py:15:        return SafeAppRunner(self.app, access_log=None, max_line_size=8192, max_field_size=8192, **kwargs)
+.\linkedin-seite\tests\test_boundary.py:22:        self.pool = WorkerPool(CFG, self.data, adapter_factory=LocalAdapter, budget=5)
+.\linkedin-seite\tests\test_boundary.py:146:        self.pool = WorkerPool(CFG, identity(self.fake.port), adapter_factory=LocalAdapter,
+.\linkedin-seite\tests\test_boundary.py:182:        self.pool = WorkerPool(CFG, identity(self.fake.port, days=-1, refresh=True), adapter_factory=LocalAdapter)
+.\linkedin-seite\tests\test_consent.py:65:        self.assertEqual(set(params[s.SCOPE][0].split()), {'rw_organization_admin', 'r_organization_social'})
+.\linkedin-seite\tests\test_setup_guide.py:1:"""Signed setup_guide contract, following google-reporting."""
+.\linkedin-seite\tests\test_setup_guide.py:22:        for phrase in ('rw_organization_admin r_organization_social', 'Seiten-Admin-Rolle',
+.\linkedin-seite\tests\test_setup_guide.py:24:                       'jnpt credential set --name plugin-linkedin-seite-oauth',
+.\linkedin-seite\tests\wire_server.py:10:from linkedin_seite.safe_http import SafeAppRunner
+.\linkedin-seite\tests\wire_server.py:12:from linkedin_seite.workers import WorkerPool
+.\linkedin-seite\tests\wire_server.py:30:    pool = WorkerPool(CFG, data['oauth'], adapter_factory=NoisyAdapter)
+.\linkedin-seite\tests\wire_server.py:31:    runner = SafeAppRunner(create_app(CFG, data['bridge'].encode(), pool), access_log=None)
+.\linkedin-seite\tools\zustimmung.py:135:    raw = transport.token(fields)
+
+Suche 2
+rg --hidden -n --sort path -g !.git -g !*.lock -g !*.sum -g !PRUEFBERICHT.md -g !**/pruefung/** -g !**/.mutation-*/** api\.linkedin|plugin-linkedin|linkedin_seite|LinkedIn-Version|X-Restli-Protocol-Version .
+
+.\ARCHITEKTUR.md:7:| [linkedin-seite](linkedin-seite/CLAUDE.md) | #1237, Stufe A: drei feste GET-Werkzeuge, fünf Hersteller-Endpunkte einschließlich networkSizes für Follower-Gesamtzahl; Organisation nur aus Betreiberkonfiguration. Follower-Zeitraum bis heute−2 UTC; maximal zehn Beiträge, Nullinteraktion nur bei gültiger leerer Einzelantwort mit gültigem Paging ohne next-Link; nur negative Like-Summe markiert gekappt, andere negative Zähler sind Fehler; Personenbezug im gesamten Objekt unterdrückt Text. Zwei gepinnte Scopes; OAuth aus Tresorstellen `plugin-linkedin-seite` / `plugin-linkedin-seite-oauth`, RAM-Refresh und 14-Tage-Warnung. Lokales Zustimmungsskript auf 127.0.0.1/::1, gemeinsam genau eine Anfrage einschließlich fehlerhafter, IPv4-Fallback nur bei fehlendem IPv6, belegter IPv6-Port bricht ab; stdout direkt in Tresor-Pipe. Zwei killbare Worker, 50 HTTP-Versuche/UTC-Tag im Serverprozess, 30 Berichte/Minute; keine Personenlisten oder Fach-Schreibwege. Safe-HTTP-/Deploy-/Release-Muster aus google-reporting, setup_guide und Mutationsproben. Herstellervertrag zentral als live zu belegen markiert; synthetische Abnahme, Live/Katalog offen. |
+.\linkedin-seite\CLAUDE.md:58:Secret-Hausmuster #887: `plugin-linkedin-seite` (Bridge-Key, zugleich Connector-Credential
+.\linkedin-seite\CLAUDE.md:59:`linkedin-seite`) und `plugin-linkedin-seite-oauth` (OAuth-JSON). tmpfiles erzeugt beide
+.\linkedin-seite\Dockerfile:10:COPY --chown=65532:65532 linkedin_seite ./linkedin_seite
+.\linkedin-seite\Dockerfile:12:ENTRYPOINT ["python", "-m", "linkedin_seite.server"]
+.\linkedin-seite\README.md:60:REST: `https://api.linkedin.com/rest/`, Header `LinkedIn-Version` und
+.\linkedin-seite\README.md:61:`X-Restli-Protocol-Version: 2.0.0`. Fünf feste Hersteller-Endpunkte, einschließlich
+.\linkedin-seite\README.md:87:- **Ablage:** Hausmuster #887: `plugin-linkedin-seite` für den Bridge-Key und
+.\linkedin-seite\README.md:88:  `plugin-linkedin-seite-oauth` für OAuth-JSON mit `client_id`, `client_secret`,
+.\linkedin-seite\README.md:125:   printf %s "$K" | jnpt credential set --name plugin-linkedin-seite
+.\linkedin-seite\README.md:131:   OAuth-JSON kommt per Pipe vom PO-Rechner in `plugin-linkedin-seite-oauth` (SETUP).
+.\linkedin-seite\README.md:144:   Separates Egress-Netz; Host-Firewall/DNS-Policy für `api.linkedin.com:443` und
+.\linkedin-seite\SETUP.md:18:   LinkedIn-Version (YYYYMM) an den Betreiber geben; diese Angaben kommen in dessen
+.\linkedin-seite\SETUP.md:29:python linkedin-seite/tools/zustimmung.py --client-id APP_CLIENT_ID | jnpt credential set --name plugin-linkedin-seite-oauth
+.\linkedin-seite\SETUP.md:53:Die Tresor-Stelle `plugin-linkedin-seite-oauth` enthält JSON mit `client_id`, `client_secret`,
+.\linkedin-seite\SETUP.md:58:Der zweite Tresorplatz `plugin-linkedin-seite` enthält den vom Betreiber erzeugten Bridge-Key.
+.\linkedin-seite\deploy\jnpt-linkedin-seite-key.path:11:#   Betreiber trägt Wert in der Basis-Einrichtung ein (Stelle plugin-linkedin-seite
+.\linkedin-seite\deploy\jnpt-linkedin-seite-key.path:12:#   oder plugin-linkedin-seite-oauth)
+.\linkedin-seite\deploy\jnpt-plugins-linkedin-seite.conf.example:11:#                            (Stelle plugin-linkedin-seite; derselbe Wert steht
+.\linkedin-seite\deploy\jnpt-plugins-linkedin-seite.conf.example:14:#                            (Stelle plugin-linkedin-seite-oauth, Zustimmungsskript
+.\linkedin-seite\deploy\linkedin-seite.conf.example:9:# dem Eintragen in der Basis-Einrichtung ablegt (Stellen plugin-linkedin-seite
+.\linkedin-seite\deploy\linkedin-seite.conf.example:10:# und plugin-linkedin-seite-oauth). Fehlt eine, bucht der Aktuator
+.\linkedin-seite\docker-compose.yml:1:name: jnpt-plugin-linkedin-seite
+.\linkedin-seite\docker-compose.yml:26:      # jnpt/runtime-key = der EINE Bridge-Key (Stelle plugin-linkedin-seite),
+.\linkedin-seite\docker-compose.yml:27:      # oauth/runtime-key = das OAuth-JSON (plugin-linkedin-seite-oauth).
+.\linkedin-seite\linkedin_seite\safe_http.py:10:LOG = logging.getLogger("linkedin_seite")
+.\linkedin-seite\linkedin_seite\server.py:15:LOG = logging.getLogger("linkedin_seite")
+.\linkedin-seite\linkedin_seite\server.py:18:# plugin-linkedin-seite = the one Bridge key, plugin-linkedin-seite-oauth
+.\linkedin-seite\linkedin_seite\source_contract.py:7:API_ROOT = 'https://api.linkedin.com/rest/'
+.\linkedin-seite\linkedin_seite\source_contract.py:12:VERSION_HEADER = 'LinkedIn-Version'
+.\linkedin-seite\linkedin_seite\source_contract.py:13:PROTOCOL_HEADER = 'X-Restli-Protocol-Version'
+.\linkedin-seite\tests\mutations.py:110:            for directory in ('linkedin_seite', 'tools') for p in (ROOT/directory).glob('*.py')}
+.\linkedin-seite\tests\mutations.py:125:            for directory in ('linkedin_seite', 'tests', 'tools'):
+.\linkedin-seite\tests\mutations.py:127:            path = probe/module if module.startswith('tools/') else probe/'linkedin_seite'/module
+.\linkedin-seite\tests\support.py:11:from linkedin_seite import source_contract as s
+.\linkedin-seite\tests\support.py:12:from linkedin_seite.domain import Config
+.\linkedin-seite\tests\support.py:13:from linkedin_seite.oauth import Transport
+.\linkedin-seite\tests\support.py:14:from linkedin_seite.linkedin_adapter import LinkedInAdapter
+.\linkedin-seite\tests\test_acceptance.py:15:from linkedin_seite.domain import parse_request, ReportError
+.\linkedin-seite\tests\test_acceptance.py:16:from linkedin_seite import source_contract as s
+.\linkedin-seite\tests\test_adapter.py:6:from linkedin_seite import source_contract as s
+.\linkedin-seite\tests\test_adapter.py:7:from linkedin_seite.domain import parse_request, ReportError
+.\linkedin-seite\tests\test_adapter.py:8:from linkedin_seite.linkedin_adapter import minimize
+.\linkedin-seite\tests\test_adapter.py:9:from linkedin_seite.oauth import token_result, warning
+.\linkedin-seite\tests\test_boundary.py:6:from linkedin_seite.domain import ReportError, parse_request, encode_response
+.\linkedin-seite\tests\test_boundary.py:7:from linkedin_seite.safe_http import SafeAppRunner
+.\linkedin-seite\tests\test_boundary.py:8:from linkedin_seite.server import create_app
+.\linkedin-seite\tests\test_boundary.py:9:from linkedin_seite.workers import WorkerPool, DAILY_CAP
+.\linkedin-seite\tests\test_boundary.py:79:        with self.assertLogs('linkedin_seite', level='INFO') as logs:
+.\linkedin-seite\tests\test_boundary.py:100:        with self.assertLogs('linkedin_seite', level='INFO') as logs:
+.\linkedin-seite\tests\test_consent.py:13:from linkedin_seite import source_contract as s
+.\linkedin-seite\tests\test_contract.py:6:from linkedin_seite.domain import Config, ReportError, parse_request, strict_json
+.\linkedin-seite\tests\test_contract.py:7:from linkedin_seite.oauth import load_identity
+.\linkedin-seite\tests\test_contract.py:8:from linkedin_seite import server
+.\linkedin-seite\tests\test_final_sec.py:10:from linkedin_seite import source_contract as s
+.\linkedin-seite\tests\test_final_sec.py:11:from linkedin_seite.domain import parse_request, ReportError
+.\linkedin-seite\tests\test_logs.py:10:from linkedin_seite import source_contract as s
+.\linkedin-seite\tests\test_sec_tightening.py:9:from linkedin_seite import source_contract as s
+.\linkedin-seite\tests\test_sec_tightening.py:10:from linkedin_seite.domain import parse_request, ReportError
+.\linkedin-seite\tests\test_sec_tightening.py:11:from linkedin_seite.linkedin_adapter import project_shares, path
+.\linkedin-seite\tests\test_setup_guide.py:24:                       'jnpt credential set --name plugin-linkedin-seite-oauth',
+.\linkedin-seite\tests\wire_server.py:10:from linkedin_seite.safe_http import SafeAppRunner
+.\linkedin-seite\tests\wire_server.py:11:from linkedin_seite.server import create_app
+.\linkedin-seite\tests\wire_server.py:12:from linkedin_seite.workers import WorkerPool
+.\linkedin-seite\tests\wire_server.py:13:from linkedin_seite.linkedin_adapter import LinkedInAdapter
+.\linkedin-seite\tools\zustimmung.py:25:from linkedin_seite import source_contract as s
+.\linkedin-seite\tools\zustimmung.py:26:from linkedin_seite.oauth import Transport, secret, token_result
+.\linkedin-seite\tools\zustimmung.py:27:from linkedin_seite.domain import encode_response
+
+Suche 3
+rg --hidden -n --sort path -g !.git -g !*.lock -g !*.sum -g !PRUEFBERICHT.md -g !**/pruefung/** -g !**/.mutation-*/** Authorization|compare_digest|add_route|method=|\.send\(|\.token\(|SCOPES|organization|permit|refresh|logging|LOG\.|MAX_|RATE_|DAILY_CAP linkedin-seite/linkedin_seite linkedin-seite/tools
+
+linkedin-seite/linkedin_seite\domain.py:7:MAX_RESPONSE = 512 * 1024
+linkedin-seite/linkedin_seite\domain.py:31:    organization: str
+linkedin-seite/linkedin_seite\domain.py:36:        if not isinstance(raw, dict) or set(raw) - {'organization', 'linkedin_version'}:
+linkedin-seite/linkedin_seite\domain.py:38:        org = raw.get('organization')
+linkedin-seite/linkedin_seite\domain.py:39:        if not isinstance(org, str) or not re.fullmatch(r'(?:urn:li:organization:)?[1-9][0-9]{0,19}', org):
+linkedin-seite/linkedin_seite\domain.py:42:            org = 'urn:li:organization:' + org
+linkedin-seite/linkedin_seite\domain.py:89:    if len(data) > MAX_RESPONSE:
+linkedin-seite/linkedin_seite\linkedin_adapter.py:104:    def __init__(self, cfg, identity, permit, transport_factory=Transport):
+linkedin-seite/linkedin_seite\linkedin_adapter.py:106:        self.transport = transport_factory(permit)
+linkedin-seite/linkedin_seite\linkedin_adapter.py:113:            endpoint += '/' + quote(self.cfg.organization, safe='')
+linkedin-seite/linkedin_seite\linkedin_adapter.py:116:        headers = {'Authorization': 'Bearer ' + token, s.VERSION_HEADER: self.cfg.linkedin_version,
+linkedin-seite/linkedin_seite\linkedin_adapter.py:118:        return self.transport.send(urllib.request.Request(s.API_ROOT + endpoint + '?' + urlencode(params),
+linkedin-seite/linkedin_seite\linkedin_adapter.py:119:                                   headers=headers, method='GET'))
+linkedin-seite/linkedin_seite\linkedin_adapter.py:123:        params = {s.Q: org_key, org_key: self.cfg.organization}
+linkedin-seite/linkedin_seite\linkedin_adapter.py:133:            if org_key in raw and raw[org_key] != self.cfg.organization:
+linkedin-seite/linkedin_seite\linkedin_adapter.py:143:        if not rows or any(path(row, org_key) != self.cfg.organization for row in rows):
+linkedin-seite/linkedin_seite\linkedin_adapter.py:183:            raw = self.get(s.POSTS, {s.Q: s.AUTHOR, s.AUTHOR: self.cfg.organization,
+linkedin-seite/linkedin_seite\linkedin_adapter.py:191:                if (path(row, s.AUTHOR) != self.cfg.organization or path(row, s.LIFECYCLE) != s.PUBLISHED
+linkedin-seite/linkedin_seite\oauth.py:13:MAX_SOURCE = 512 * 1024
+linkedin-seite/linkedin_seite\oauth.py:22:    def __init__(self, permit):
+linkedin-seite/linkedin_seite\oauth.py:23:        self.permit = permit
+linkedin-seite/linkedin_seite\oauth.py:31:        self.permit()  # server-process grant before every HTTP attempt, including OAuth
+linkedin-seite/linkedin_seite\oauth.py:34:                raw = response.read(MAX_SOURCE + 1)
+linkedin-seite/linkedin_seite\oauth.py:35:                if len(raw) > MAX_SOURCE:
+linkedin-seite/linkedin_seite\oauth.py:51:        return self.send(urllib.request.Request(s.TOKEN_URL, data=urlencode(fields).encode(),
+linkedin-seite/linkedin_seite\oauth.py:52:                         headers={'Content-Type': 'application/x-www-form-urlencoded'}, method='POST'))
+linkedin-seite/linkedin_seite\oauth.py:73:    optional = {s.REFRESH_TOKEN, 'refresh_expires_at'}
+linkedin-seite/linkedin_seite\oauth.py:80:    if (s.REFRESH_TOKEN in data) != ('refresh_expires_at' in data):
+linkedin-seite/linkedin_seite\oauth.py:84:        if timestamp(data['refresh_expires_at']) > now + timedelta(days=REFRESH_DAYS, minutes=1):
+linkedin-seite/linkedin_seite\oauth.py:99:    expiry = timestamp(data.get('refresh_expires_at', data['access_expires_at']))
+linkedin-seite/linkedin_seite\oauth.py:100:    if 'refresh_expires_at' not in data and now >= expiry:
+linkedin-seite/linkedin_seite\oauth.py:107:def token_result(raw, now, original_refresh_expiry=None):
+linkedin-seite/linkedin_seite\oauth.py:111:        if s.SCOPE in raw and (not isinstance(raw[s.SCOPE], str) or set(raw[s.SCOPE].split()) != set(s.SCOPES)):
+linkedin-seite/linkedin_seite\oauth.py:125:            if original_refresh_expiry is not None:
+linkedin-seite/linkedin_seite\oauth.py:126:                expiry = min(expiry, original_refresh_expiry)  # never extend original consent
+linkedin-seite/linkedin_seite\oauth.py:127:            result.update({s.REFRESH_TOKEN: secret(raw[s.REFRESH_TOKEN]), 'refresh_expires_at': expiry.isoformat()})
+linkedin-seite/linkedin_seite\oauth.py:142:        refresh = self.data.get(s.REFRESH_TOKEN)
+linkedin-seite/linkedin_seite\oauth.py:143:        refresh_expiry = timestamp(self.data['refresh_expires_at']) if refresh else None
+linkedin-seite/linkedin_seite\oauth.py:144:        if refresh and now >= expiry - timedelta(minutes=5) and now < refresh_expiry:
+linkedin-seite/linkedin_seite\oauth.py:145:            raw = self.transport.token({s.GRANT_TYPE: s.REFRESH_TOKEN, s.REFRESH_TOKEN: refresh,
+linkedin-seite/linkedin_seite\oauth.py:147:            update = token_result(raw, now, refresh_expiry)
+linkedin-seite/linkedin_seite\safe_http.py:4:import logging
+linkedin-seite/linkedin_seite\safe_http.py:10:LOG = logging.getLogger("linkedin_seite")
+linkedin-seite/linkedin_seite\safe_http.py:18:        LOG.info("route=unknown code=%s duration_ms=0", code)
+linkedin-seite/linkedin_seite\server.py:7:import logging
+linkedin-seite/linkedin_seite\server.py:15:LOG = logging.getLogger("linkedin_seite")
+linkedin-seite/linkedin_seite\server.py:74:            header = request.headers.getall("Authorization", [])
+linkedin-seite/linkedin_seite\server.py:79:                authorized = hmac.compare_digest(header[0].encode("ascii"), expected)
+linkedin-seite/linkedin_seite\server.py:113:            LOG.info(
+linkedin-seite/linkedin_seite\server.py:125:    app.router.add_route("*", "/{tail:.*}", fallback)
+linkedin-seite/linkedin_seite\server.py:142:    logging.basicConfig(level=logging.INFO, format="%(message)s")
+linkedin-seite/linkedin_seite\server.py:145:        logging.getLogger(name).setLevel(logging.CRITICAL)
+linkedin-seite/linkedin_seite\server.py:162:        LOG.critical("startup_failed")
+linkedin-seite/linkedin_seite\source_contract.py:11:SCOPES = ('rw_organization_admin', 'r_organization_social')
+linkedin-seite/linkedin_seite\source_contract.py:15:PAGE = 'organizationPageStatistics'
+linkedin-seite/linkedin_seite\source_contract.py:16:FOLLOWERS = 'organizationalEntityFollowerStatistics'
+linkedin-seite/linkedin_seite\source_contract.py:17:SHARES = 'organizationalEntityShareStatistics'
+linkedin-seite/linkedin_seite\source_contract.py:24:ORGANIZATION = 'organization'
+linkedin-seite/linkedin_seite\source_contract.py:25:ENTITY = 'organizationalEntity'
+linkedin-seite/linkedin_seite\source_contract.py:69:REFRESH_TOKEN = 'refresh_token'
+linkedin-seite/linkedin_seite\source_contract.py:70:REFRESH_EXPIRES_IN = 'refresh_token_expires_in'
+linkedin-seite/linkedin_seite\workers.py:6:import logging
+linkedin-seite/linkedin_seite\workers.py:13:RATE_PER_MINUTE = 30
+linkedin-seite/linkedin_seite\workers.py:14:MAX_QUEUED = 4
+linkedin-seite/linkedin_seite\workers.py:15:DAILY_CAP = 50
+linkedin-seite/linkedin_seite\workers.py:19:    logging.disable(logging.CRITICAL)
+linkedin-seite/linkedin_seite\workers.py:20:    # No Python logging or inherited request/server objects in a spawned worker.
+linkedin-seite/linkedin_seite\workers.py:25:    def permit():
+linkedin-seite/linkedin_seite\workers.py:26:        conn.send(("permit",))
+linkedin-seite/linkedin_seite\workers.py:30:    adapter = adapter_factory(cfg, identity, permit)
+linkedin-seite/linkedin_seite\workers.py:41:            # Only expiry metadata crosses back; refreshed access/refresh tokens
+linkedin-seite/linkedin_seite\workers.py:43:            expiry = adapter.tokens.data.get('refresh_expires_at')
+linkedin-seite/linkedin_seite\workers.py:45:                conn.send(("expiry", expiry))
+linkedin-seite/linkedin_seite\workers.py:46:            conn.send(result)
+linkedin-seite/linkedin_seite\workers.py:82:    def _permit(self):
+linkedin-seite/linkedin_seite\workers.py:85:        if self.attempts.get(day, 0) >= DAILY_CAP:
+linkedin-seite/linkedin_seite\workers.py:124:        if len(ticks) >= RATE_PER_MINUTE:
+linkedin-seite/linkedin_seite\workers.py:126:        if self.pending >= WORKERS + MAX_QUEUED:
+linkedin-seite/linkedin_seite\workers.py:135:                conn.send(req)
+linkedin-seite/linkedin_seite\workers.py:144:                        current = self.identity.get('refresh_expires_at')
+linkedin-seite/linkedin_seite\workers.py:146:                            self.identity['refresh_expires_at'] = message[1]
+linkedin-seite/linkedin_seite\workers.py:148:                    if message[0] != "permit":
+linkedin-seite/linkedin_seite\workers.py:152:                        self._permit()
+linkedin-seite/linkedin_seite\workers.py:153:                        conn.send(("granted",))
+linkedin-seite/linkedin_seite\workers.py:155:                        conn.send(("error", exc.status, exc.code))
+linkedin-seite/tools\zustimmung.py:34:              s.STATE: state, s.SCOPE: ' '.join(s.SCOPES)}
+linkedin-seite/tools\zustimmung.py:47:            or not hmac.compare_digest(values.get(s.STATE, '').encode(), state.encode())):
+linkedin-seite/tools\zustimmung.py:135:    raw = transport.token(fields)
+
+Suche 4
+rg --hidden -n --sort path -g !.git -g !*.lock -g !*.sum -g !PRUEFBERICHT.md -g !**/pruefung/** -g !**/.mutation-*/** "totalFollowerCounts|FOLLOWER_TOTAL|networkSizes|firstDegreeSize|COMPANY_FOLLOWED_BY_MEMBER|end_date_not_available|ohne_interaktion|korrigiert|text_ausgelassen|erwaehnung|Member.URN|Mention|mention|localhost:8765|::1|stdout.{0,30}Datei|likeCount|negative.*Zähler|sum_counter|project_shares|[Pp][Aa][Gg][Ii][Nn][Gg]|len\(rows\)|genau eine Anfrage|EADDRINUSE|EAFNOSUPPORT|EADDRNOTAVAIL|EPROTONOSUPPORT|SO_EXCLUSIVEADDRUSE|IPv4.Fallback" .
+
+.\ARCHITEKTUR.md:6:| [google-reporting](google-reporting/CLAUDE.md) | #1130, Stufe 1: privater Python-REST-Beisteller für acht feste GSC-/GA4-Berichte. Google-Auth außerhalb des Gatewaykerns; Schlüssel nur aus Tresor-Stellen (`plugin-google-reporting` = ein Bridge-Key, `plugin-google-reporting-google` = Servicekonto-JSON, Ordner-Mounts, eigenes Unit-Paar für den Neustart); zwei Prozessworker mit RAM-Token-Caches und tatsächlicher Abbruchgrenze, feste öffentliche Seitenfilter. Runbook/Netz-/Audit-/SEC-Livegates im Modul; die Admin-Anleitung `SETUP.md` geht als `setup_guide` in den signierten Katalog (JanuaPort/januaport#1137). **#1148:** drei Schreibhandgriffe (GA4-Annotation, GSC-Sitemap, GA4-Kanalgruppe) über feste POST-Routen je Operation, je Schreibscope ein eigenes Credential-Objekt, `dry_run` mit `before`/`after`, Tagesdeckel 20 im Serverprozess, Änderungszeile im Log; Modul `manage.py` (rein) und `manage_adapter.py`. **#1150:** GA4-Status prüft nur die angefragten `apiName`s; ein zu spätes `end_date` hat den festen Code `end_date_not_available`. **#1138:** Release-Strecke `google-reporting-release.yml` (Tag `google-reporting-vX.Y.Z`, Image `ghcr.io/januaport/google-reporting`, 1.0.0 vorbereitet, noch nicht getaggt). Gebaut/synthetisch geprüft; Livebeleg offen. |
+.\ARCHITEKTUR.md:7:| [linkedin-seite](linkedin-seite/CLAUDE.md) | #1237, Stufe A: drei feste GET-Werkzeuge, fünf Hersteller-Endpunkte einschließlich networkSizes für Follower-Gesamtzahl; Organisation nur aus Betreiberkonfiguration. Follower-Zeitraum bis heute−2 UTC; maximal zehn Beiträge, Nullinteraktion nur bei gültiger leerer Einzelantwort mit gültigem Paging ohne next-Link; nur negative Like-Summe markiert gekappt, andere negative Zähler sind Fehler; Personenbezug im gesamten Objekt unterdrückt Text. Zwei gepinnte Scopes; OAuth aus Tresorstellen `plugin-linkedin-seite` / `plugin-linkedin-seite-oauth`, RAM-Refresh und 14-Tage-Warnung. Lokales Zustimmungsskript auf 127.0.0.1/::1, gemeinsam genau eine Anfrage einschließlich fehlerhafter, IPv4-Fallback nur bei fehlendem IPv6, belegter IPv6-Port bricht ab; stdout direkt in Tresor-Pipe. Zwei killbare Worker, 50 HTTP-Versuche/UTC-Tag im Serverprozess, 30 Berichte/Minute; keine Personenlisten oder Fach-Schreibwege. Safe-HTTP-/Deploy-/Release-Muster aus google-reporting, setup_guide und Mutationsproben. Herstellervertrag zentral als live zu belegen markiert; synthetische Abnahme, Live/Katalog offen. |
+.\box\scripts\hardening.sh:134:# Box läuft headless, niemand korrigiert die Uhr von Hand. Europe/Berlin, weil
+.\desktop-runner\contract\README.md:134:`127.0.0.0/8` oder `::1`; ein beliebiger Hostname genügt nicht. Ein
+.\google-reporting\CHANGELOG.md:30:  `end_date_not_available` (400) statt pauschal `invalid_input`; kein Echo, kein Klemmen.
+.\google-reporting\CLAUDE.md:59:  `end_date_not_available` (400, fester Code, kein Datum im Fehler, kein Klemmen); nur ein
+.\google-reporting\README.md:45:Property-Zeitzone) scheitert mit dem eigenen festen Code `end_date_not_available`
+.\google-reporting\README.md:60:Fehler: 400 Eingabe (`invalid_input`, `end_date_not_available`), 401/403 Bridge, 429 lokale Bremse, 502 Quelle, 503 Betrieb/
+.\google-reporting\google_reporting\domain.py:234:            raise ReportError(400, "end_date_not_available")
+.\google-reporting\google_reporting\domain.py:510:        quality["limit_reached"] = len(rows) >= cap
+.\google-reporting\google_reporting\domain.py:512:        quality["source_returned_rows"] = len(rows)
+.\google-reporting\google_reporting\domain.py:602:        if quality.get("source_row_count", 0) > len(rows):
+.\google-reporting\tests\mutations.py:207:        '"end_date_not_available"',
+.\google-reporting\tests\test_boundary.py:151:            self.assertEqual(await response.json(), {"error": "end_date_not_available"})
+.\google-reporting\tests\test_contract.py:71:                        (400, "end_date_not_available"),
+.\linkedin-seite\CHANGELOG.md:6:  Paging mit fehlenden/leeren links zulassen, next-Link/unbekannte Form weiter abweisen.
+.\linkedin-seite\CHANGELOG.md:7:  Belegter IPv6-Port bricht Zustimmung vor Browserstart ab; IPv4-Fallback ausschließlich
+.\linkedin-seite\CHANGELOG.md:13:  Nur likeCount darf negativ sein: Summe vor Kappung; andere negative Zähler abweisen.
+.\linkedin-seite\CHANGELOG.md:15:  networkSizes bleibt bei den zwei gepinnten Scopes; Wissensbeleg im Prüfbericht, live offen.
+.\linkedin-seite\CHANGELOG.md:17:  127.0.0.1/::1, fehlendes IPv6 mit Hinweis; Redirect unverändert.
+.\linkedin-seite\CHANGELOG.md:20:  networkSizes für Follower-Gesamtzahl, Follower-Ende höchstens heute−2 UTC; fehlende
+.\linkedin-seite\CLAUDE.md:10:  `end_date_not_available`, kein Klemmen. Vorgabe endet am letzten verfügbaren Tag.
+.\linkedin-seite\CLAUDE.md:15:  Follower-Gesamtzahl aus `networkSizes/{kodierte Konfigurations-URN}` mit
+.\linkedin-seite\CLAUDE.md:16:  `edgeType=COMPANY_FOLLOWED_BY_MEMBER`, Feld `firstDegreeSize`; Zuwachs sind Zugänge.
+.\linkedin-seite\CLAUDE.md:21:  `ohne_interaktion: true`. Paging-Objekt mit fehlenden/leeren links zulassen;
+.\linkedin-seite\CLAUDE.md:22:  rel=next und unbekannte Paging-Formen abweisen. Keine fremde Org/ID, keine zweite Zeile;
+.\linkedin-seite\CLAUDE.md:24:  Nur likeCount darf negativ sein: erst Tageswerte summieren, dann negative Summe
+.\linkedin-seite\CLAUDE.md:25:  auf 0 und `korrigiert: true` am Beitrag. Alle anderen negativen Zähler sind Formfehler.
+.\linkedin-seite\CLAUDE.md:26:  Mention/Member-/Person-URN überall im gesamten Beitragsobjekt, auch unbekannte Felder:
+.\linkedin-seite\CLAUDE.md:28:  `text_ausgelassen: "erwaehnung"`; Bericht fortsetzen, keine Person im Log/Ergebnis.
+.\linkedin-seite\CLAUDE.md:47:  erst nach Herstellerbeleg, sonst ohne; beide Loopbacks 127.0.0.1 und ::1:8765,
+.\linkedin-seite\CLAUDE.md:48:  nie Wildcard. Redirect bleibt http://localhost:8765/linkedin/callback.
+.\linkedin-seite\CLAUDE.md:49:  Gemeinsam genau eine Anfrage; die erste beendet beide Listener auch bei falschem
+.\linkedin-seite\CLAUDE.md:51:  Nur EAFNOSUPPORT/EADDRNOTAVAIL/EPROTONOSUPPORT: IPv4 weiter, fester stderr-Hinweis.
+.\linkedin-seite\CLAUDE.md:52:  EADDRINUSE: klare Port-belegt-Meldung und Abbruch vor Browserstart; andere Fehler
+.\linkedin-seite\README.md:21:`end_date_not_available`; es wird nicht geklemmt. API-Ende exklusiv; alle Tagesintervalle
+.\linkedin-seite\README.md:26:der aktuelle Gesamtwert kommt separat aus `networkSizes` / `firstDegreeSize` mit
+.\linkedin-seite\README.md:27:`edgeType=COMPANY_FOLLOWED_BY_MEMBER` und URL-kodierter Konfigurations-URN im Pfad.
+.\linkedin-seite\README.md:29:das gepinnte Summenfeld `likeCount`; dessen Bedeutung ist live zu bestätigen, keine Ersatzmetrik.
+.\linkedin-seite\README.md:31:und wird nach Herstellerbeleg korrigiert.
+.\linkedin-seite\README.md:39:Member-URNs werden nicht ausgegeben. Bei Member-/Person-URN oder Mention irgendwo im
+.\linkedin-seite\README.md:42:`text_ausgelassen: "erwaehnung"`. Unmarkierter Seitenfreitext ist keine allgemeine
+.\linkedin-seite\README.md:44:Beitrags-ID ergibt fünf Zähler mit 0 und `ohne_interaktion: true`. Ein `paging`-Objekt mit
+.\linkedin-seite\README.md:45:fehlenden oder leeren `links` ist gültig; `rel=next` oder unbekannte Paging-Formen sind Fehler.
+.\linkedin-seite\README.md:49:Nur bei `likeCount` ist ein negativer Wert dokumentiert: erst alle Tageswerte summieren,
+.\linkedin-seite\README.md:50:dann eine negative Summe auf 0 setzen und `korrigiert: true` am Beitrag markieren.
+.\linkedin-seite\README.md:51:Andere negative Zähler, einschließlich Follower und Seitenaufrufe, ergeben
+.\linkedin-seite\README.md:62:`networkSizes`. Development Tier: einzelne GETs, kein BATCH_GET.
+.\linkedin-seite\README.md:104:Die Ausgabe auf stdout nie in eine Datei umleiten, nur direkt per Pipe an `jnpt credential set`.
+.\linkedin-seite\README.md:105:Die Redirect-URI bleibt `http://localhost:8765/linkedin/callback`. Das PO-Skript bindet
+.\linkedin-seite\README.md:106:Port 8765 auf `127.0.0.1` und `::1`, ausschließlich Loopback. Gemeinsam genau eine Anfrage:
+.\linkedin-seite\README.md:110:oder nicht verfügbarer Loopback-Adresse (EAFNOSUPPORT/EADDRNOTAVAIL/EPROTONOSUPPORT).
+.\linkedin-seite\README.md:111:Ist `[::1]:8765` belegt (EADDRINUSE), bricht es vor Browserstart mit klarer Meldung ab.
+.\linkedin-seite\SETUP.md:13:2. In der App exakt die Redirect-URI `http://localhost:8765/linkedin/callback` eintragen.
+.\linkedin-seite\SETUP.md:36:Die Ausgabe auf stdout nie in eine Datei umleiten, nur direkt per Pipe an `jnpt credential set`.
+.\linkedin-seite\SETUP.md:41:`127.0.0.1:8765` und `[::1]:8765`, niemals auf Wildcard-Adressen. Die eingetragene Redirect-URI
+.\linkedin-seite\SETUP.md:42:bleibt `http://localhost:8765/linkedin/callback`. Gemeinsam wird genau eine Anfrage behandelt;
+.\linkedin-seite\SETUP.md:45:Fehlt IPv6 (EAFNOSUPPORT/EADDRNOTAVAIL/EPROTONOSUPPORT), bleibt IPv4 aktiv und stderr zeigt
+.\linkedin-seite\SETUP.md:46:einen Hinweis. Ist `[::1]:8765` belegt (EADDRINUSE), bricht das Skript vor Browserstart mit
+.\linkedin-seite\SETUP.md:47:„IPv6-Port [::1]:8765 ist belegt; Zustimmung abgebrochen.“ ab. Auch andere Bindefehler
+.\linkedin-seite\SETUP.md:67:Der Follower-Gesamtwert kommt aus dem fünften festen GET-Endpunkt `networkSizes`
+.\linkedin-seite\SETUP.md:68:(`firstDegreeSize`, `edgeType=COMPANY_FOLLOWED_BY_MEMBER`), nur für die konfigurierte Organisation.
+.\linkedin-seite\SETUP.md:71:`end_date_not_available`. Seitenstatistiken enden spätestens gestern.
+.\linkedin-seite\SETUP.md:73:Nullzähler und `ohne_interaktion: true`. `paging` mit fehlenden oder leeren `links` ist gültig;
+.\linkedin-seite\SETUP.md:74:ein `rel=next`-Link, unbekannte Paging-Formen, fremde Organisation/ID oder eine
+.\linkedin-seite\SETUP.md:77:Nur negative `likeCount`-Summen werden auf 0 korrigiert und mit `korrigiert: true` am
+.\linkedin-seite\SETUP.md:81:`text_ausgelassen: "erwaehnung"`); der übrige Beitrag bleibt erhalten. Diese Herstellerbefunde
+.\linkedin-seite\linkedin_seite\domain.py:79:            raise ReportError(400, 'end_date_not_available')
+.\linkedin-seite\linkedin_seite\linkedin_adapter.py:21:def sum_counter(values, key, result):
+.\linkedin-seite\linkedin_seite\linkedin_adapter.py:29:        result['korrigiert'] = True
+.\linkedin-seite\linkedin_seite\linkedin_adapter.py:33:def project_shares(rows, post=False):
+.\linkedin-seite\linkedin_seite\linkedin_adapter.py:39:        result[out] = sum_counter((path(row, key) for row in rows), key, result)
+.\linkedin-seite\linkedin_seite\linkedin_adapter.py:41:        result['ohne_interaktion'] = True
+.\linkedin-seite\linkedin_seite\linkedin_adapter.py:45:def mentioned(value):
+.\linkedin-seite\linkedin_seite\linkedin_adapter.py:49:        return any(mentioned(key) or mentioned(item) for key, item in value.items())
+.\linkedin-seite\linkedin_seite\linkedin_adapter.py:51:        return any(mentioned(item) for item in value)
+.\linkedin-seite\linkedin_seite\linkedin_adapter.py:67:        clean[s.TEXT] = None if mentioned(row) else text
+.\linkedin-seite\linkedin_seite\linkedin_adapter.py:90:    paging = raw.get(s.PAGING, {})
+.\linkedin-seite\linkedin_seite\linkedin_adapter.py:91:    if not isinstance(paging, dict) or not isinstance(paging.get(s.LINKS, []), list):
+.\linkedin-seite\linkedin_seite\linkedin_adapter.py:93:    if any(not isinstance(link, dict) or link.get(s.REL) == s.NEXT for link in paging.get(s.LINKS, [])):
+.\linkedin-seite\linkedin_seite\linkedin_adapter.py:132:                shape()  # unknown top-level continuation; paging validated above
+.\linkedin-seite\linkedin_seite\linkedin_adapter.py:139:        if post and len(rows) > 1:
+.\linkedin-seite\linkedin_seite\linkedin_adapter.py:154:        elif not post and len(rows) != 1:
+.\linkedin-seite\linkedin_seite\linkedin_adapter.py:167:        return project_shares(rows, post=post)
+.\linkedin-seite\linkedin_seite\linkedin_adapter.py:186:            if len(rows) > req.limit:
+.\linkedin-seite\linkedin_seite\linkedin_adapter.py:206:                    item.update({'text': None, 'text_ausgelassen': 'erwaehnung'})
+.\linkedin-seite\linkedin_seite\source_contract.py:10:REDIRECT_URI = 'http://localhost:8765/linkedin/callback'
+.\linkedin-seite\linkedin_seite\source_contract.py:19:NETWORK = 'networkSizes'
+.\linkedin-seite\linkedin_seite\source_contract.py:21:FOLLOWED_BY_MEMBER = 'COMPANY_FOLLOWED_BY_MEMBER'
+.\linkedin-seite\linkedin_seite\source_contract.py:22:NETWORK_SIZE = 'firstDegreeSize'
+.\linkedin-seite\linkedin_seite\source_contract.py:38:PAGING = 'paging'
+.\linkedin-seite\linkedin_seite\source_contract.py:51:REACTION = 'likeCount'
+.\linkedin-seite\linkedin_seite\source_contract.py:61:# Mention wire representations: aus Herstellerdoku, live zu belegen.
+.\linkedin-seite\linkedin_seite\source_contract.py:62:MENTION_MARKERS = ('urn:li:member:', 'urn:li:person:', 'memberattributedentity', 'mention', '@[')
+.\linkedin-seite\tests\mutations.py:48:    ('no-partial-pagination', 'linkedin_adapter.py', 'if any(not isinstance(link, dict) or link.get(s.REL) == s.NEXT for link in paging.get(s.LINKS, [])):', 'if False:', A+'test_period_gaps_duplicates_foreign_org_and_next_page_rejected'),
+.\linkedin-seite\tests\mutations.py:51:    ('member-urn-in-text', 'linkedin_adapter.py', 'None if mentioned(row) else text', 'text', 'test_logs.Logs.test_real_service_mentions_never_in_response_or_log'),
+.\linkedin-seite\tests\mutations.py:57:    ('post-statistics-id', 'linkedin_adapter.py', "if post and any(path(row, s.SHARE_ID if post.startswith('urn:li:share:') else s.UGC_ID) != post for row in rows):", 'if False:', S+'test_zero_only_valid_empty_single_post_no_paging_foreign_org_or_id'),
+.\linkedin-seite\tests\mutations.py:77:    ('missing-post-flag', 'linkedin_adapter.py', "result['ohne_interaktion'] = True", 'pass', N+'test_missing_post_statistics_only_documented_empty_shape'),
+.\linkedin-seite\tests\mutations.py:79:    ('negative-count-visible', 'linkedin_adapter.py', "result['korrigiert'] = True", 'pass', N+'test_negative_like_count_clamped_and_marked'),
+.\linkedin-seite\tests\mutations.py:80:    ('mention-attributes', 'linkedin_adapter.py', 'mentioned(row)', 'mentioned(text)', N+'test_mentions_text_and_attributes_redacted_without_aborting'),
+.\linkedin-seite\tests\mutations.py:81:    ('mention-marker', 'source_contract.py', "'memberattributedentity', 'mention', '@['", "'memberattributedentity', '@['", N+'test_mentions_text_and_attributes_redacted_without_aborting'),
+.\linkedin-seite\tests\mutations.py:84:    ('consent-ipv6-loopback', 'tools/zustimmung.py', "CallbackServer(('::1', 8765)", "CallbackServer(('::', 8765)", H+'test_both_loopbacks_one_request_and_close'),
+.\linkedin-seite\tests\mutations.py:89:    ('post-no-top-level-next', 'linkedin_adapter.py', 'if s.NEXT in raw:', 'if False:', S+'test_zero_only_valid_empty_single_post_no_paging_foreign_org_or_id'),
+.\linkedin-seite\tests\mutations.py:90:    ('post-envelope-org', 'linkedin_adapter.py', 'if org_key in raw and raw[org_key] != self.cfg.organization:', 'if False:', S+'test_zero_only_valid_empty_single_post_no_paging_foreign_org_or_id'),
+.\linkedin-seite\tests\mutations.py:91:    ('post-envelope-id', 'linkedin_adapter.py', 'if field in raw and raw[field] != post:', 'if False:', S+'test_zero_only_valid_empty_single_post_no_paging_foreign_org_or_id'),
+.\linkedin-seite\tests\mutations.py:92:    ('post-second-row', 'linkedin_adapter.py', 'if post and len(rows) > 1:', 'if False:', S+'test_zero_only_valid_empty_single_post_no_paging_foreign_org_or_id'),
+.\linkedin-seite\tests\mutations.py:93:    ('post-other-id', 'linkedin_adapter.py', 'if post and any(field in row and row[field] != post for row in rows for field in (s.SHARE_ID, s.UGC_ID)):', 'if False:', S+'test_zero_only_valid_empty_single_post_no_paging_foreign_org_or_id'),
+.\linkedin-seite\tests\mutations.py:94:    ('zero-only-single-post', 'linkedin_adapter.py', 'if post and not rows:\n            return []', 'if not rows:\n            return []', S+'test_zero_only_valid_empty_single_post_no_paging_foreign_org_or_id'),
+.\linkedin-seite\tests\mutations.py:98:    ('person-reference-entire-object', 'linkedin_adapter.py', 'mentioned(row)', 'mentioned(text) or mentioned(attributes)', 'test_logs.Logs.test_real_service_mentions_never_in_response_or_log'),
+.\linkedin-seite\tests\mutations.py:100:    ('post-valid-paging', 'linkedin_adapter.py', 'if s.NEXT in raw:', 'if s.PAGING in raw or s.NEXT in raw:', 'test_final_sec.Paging.test_single_post_empty_or_missing_links_valid_next_and_bad_shapes_rejected'),
+.\linkedin-seite\tests\mutations.py:101:    ('paging-shape', 'linkedin_adapter.py', 'if not isinstance(paging, dict) or not isinstance(paging.get(s.LINKS, []), list):', 'if False:', 'test_final_sec.Paging.test_single_post_empty_or_missing_links_valid_next_and_bad_shapes_rejected'),
+.\linkedin-seite\tests\mutations.py:102:    ('ipv6-occupied-port', 'tools/zustimmung.py', "            if exc.errno == errno.EADDRINUSE:\n                print('IPv6-Port [::1]:8765 ist belegt; Zustimmung abgebrochen.', file=sys.stderr)\n                raise ValueError('zustimmung_abgewiesen') from None\n            if exc.errno not in (errno.EAFNOSUPPORT, errno.EADDRNOTAVAIL, errno.EPROTONOSUPPORT):\n                print('IPv6-Listener fehlgeschlagen; Zustimmung abgebrochen.', file=sys.stderr)\n                raise ValueError('zustimmung_abgewiesen') from None\n", '', 'test_final_sec.IPv6Failure.test_actual_ipv6_port_in_use_aborts_before_browser_or_token'),
+.\linkedin-seite\tests\mutations.py:103:    ('ipv6-only-unavailable-fallback', 'tools/zustimmung.py', 'if exc.errno not in (errno.EAFNOSUPPORT, errno.EADDRNOTAVAIL, errno.EPROTONOSUPPORT):', 'if False:', 'test_final_sec.IPv6Failure.test_unknown_ipv6_error_does_not_fall_back'),
+.\linkedin-seite\tests\test_acceptance.py:31:            if endpoint.startswith('/rest/networkSizes/'):
+.\linkedin-seite\tests\test_acceptance.py:32:                return {'firstDegreeSize': 123, 'person': 'PRIVATE-CANARY'}
+.\linkedin-seite\tests\test_acceptance.py:39:        self.assertEqual(call[:3], ('GET', '/rest/networkSizes/' + quote(ORG, safe=''),
+.\linkedin-seite\tests\test_acceptance.py:40:                                    {'edgeType': ['COMPANY_FOLLOWED_BY_MEMBER']}))
+.\linkedin-seite\tests\test_acceptance.py:44:        for endpoint in ('networkSizes/urn:li:organization:999', '../networkSizes/999'):
+.\linkedin-seite\tests\test_acceptance.py:56:            self.assertEqual(cm.exception.code, 'end_date_not_available')
+.\linkedin-seite\tests\test_acceptance.py:62:        self.assertIs(post['ohne_interaktion'], True)
+.\linkedin-seite\tests\test_acceptance.py:66:                    {s.ELEMENTS: [], s.PAGING: {s.LINKS: [{s.REL: s.NEXT}]}}):
+.\linkedin-seite\tests\test_acceptance.py:82:            self.assertIs(post['korrigiert'], True)
+.\linkedin-seite\tests\test_acceptance.py:84:    def test_mentions_text_and_attributes_redacted_without_aborting(self):
+.\linkedin-seite\tests\test_acceptance.py:90:            {s.TEXT: 'PRIVATE-NAME', 'attributes': [{'type': 'Mention', 'name': 'PRIVATE-NAME'}]},
+.\linkedin-seite\tests\test_acceptance.py:105:            self.assertEqual(post['text_ausgelassen'], 'erwaehnung')
+.\linkedin-seite\tests\test_acceptance.py:147:        for field in ('korrigiert', 'ohne_interaktion', 'text', 'text_ausgelassen'):
+.\linkedin-seite\tests\test_acceptance.py:159:            for host in ('::1', '127.0.0.1'):
+.\linkedin-seite\tests\test_acceptance.py:196:            self.assertEqual(parse_qs(urlsplit(url).query)['redirect_uri'], ['http://localhost:8765/linkedin/callback'])
+.\linkedin-seite\tests\test_acceptance.py:199:                    for host, value in [('127.0.0.1' if ipv6_failure else '::1', state)]:
+.\linkedin-seite\tests\test_acceptance.py:225:        self.assertEqual(set(addresses), {('127.0.0.1', 8765)} if ipv6_failure else {('127.0.0.1', 8765), ('::1', 8765)})
+.\linkedin-seite\tests\test_acceptance.py:232:        for code in (errno.EAFNOSUPPORT, errno.EADDRNOTAVAIL, errno.EPROTONOSUPPORT):
+.\linkedin-seite\tests\test_acceptance.py:243:            self.assertIn('Die Ausgabe auf stdout nie in eine Datei umleiten, nur direkt per Pipe an `jnpt credential set`.', text)
+.\linkedin-seite\tests\test_adapter.py:93:                    data[s.PAGING] = {s.LINKS: [{s.REL: s.NEXT, 'href': 'http://example.test/leak'}]}
+.\linkedin-seite\tests\test_boundary.py:56:        for query in ('end_date='+yesterday, 'organization=urn:li:organization:999', 'edgeType=other', 'path=networkSizes'):
+.\linkedin-seite\tests\test_boundary.py:59:            self.assertEqual(await reply.json(), {'error': 'end_date_not_available' if query.startswith('end_date=') else 'invalid_input'})
+.\linkedin-seite\tests\test_consent.py:47:                sock.sendall(('GET '+target+' HTTP/1.1\r\nHost: localhost:8765\r\n\r\n').encode())
+.\linkedin-seite\tests\test_consent.py:66:        self.assertEqual(params[s.REDIRECT], ['http://localhost:8765/linkedin/callback'])
+.\linkedin-seite\tests\test_consent.py:133:        self.assertEqual(addresses, [('127.0.0.1', 8765), ('::1', 8765)]*2)
+.\linkedin-seite\tests\test_contract.py:72:        for value in ('', '0.0.0.0', '127.0.0.1', '::', '::1', '8.8.8.8', 'not-an-ip'):
+.\linkedin-seite\tests\test_final_sec.py:1:"""Final SEC corrections: provider paging and actual IPv6 port collision."""
+.\linkedin-seite\tests\test_final_sec.py:14:class Paging(unittest.TestCase):
+.\linkedin-seite\tests\test_final_sec.py:20:            for paging in ({}, {s.LINKS: []}):
+.\linkedin-seite\tests\test_final_sec.py:25:                        data[s.PAGING] = paging
+.\linkedin-seite\tests\test_final_sec.py:30:                self.assertEqual(post.get('ohne_interaktion', False), empty)
+.\linkedin-seite\tests\test_final_sec.py:31:            for paging in (None, [], 'bad', {s.LINKS: None}, {s.LINKS: {}},
+.\linkedin-seite\tests\test_final_sec.py:46:            if hasattr(socket, 'SO_EXCLUSIVEADDRUSE'):
+.\linkedin-seite\tests\test_final_sec.py:47:                occupied.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+.\linkedin-seite\tests\test_final_sec.py:50:            occupied.bind(('::1', 8765))
+.\linkedin-seite\tests\test_final_sec.py:58:            self.assertIn('IPv6-Port [::1]:8765 ist belegt; Zustimmung abgebrochen.', errors.getvalue())
+.\linkedin-seite\tests\test_logs.py:14:    def test_real_service_mentions_never_in_response_or_log(self):
+.\linkedin-seite\tests\test_logs.py:32:                            raw[s.ELEMENTS][0][s.ATTRIBUTES] = [{'Mention': 'urn:li:person:987654'}]
+.\linkedin-seite\tests\test_logs.py:41:                    self.assertEqual(json.loads(body)['beitraege'][0]['text_ausgelassen'], 'erwaehnung')
+.\linkedin-seite\tests\test_sec_tightening.py:11:from linkedin_seite.linkedin_adapter import project_shares, path
+.\linkedin-seite\tests\test_sec_tightening.py:23:    def test_zero_only_valid_empty_single_post_no_paging_foreign_org_or_id(self):
+.\linkedin-seite\tests\test_sec_tightening.py:27:            {s.ELEMENTS: [], s.PAGING: None},
+.\linkedin-seite\tests\test_sec_tightening.py:28:            {s.ELEMENTS: [], s.PAGING: {s.LINKS: [{s.REL: s.NEXT}]}},
+.\linkedin-seite\tests\test_sec_tightening.py:44:        self.assertIs(self.posts()['beitraege'][0]['ohne_interaktion'], True)
+.\linkedin-seite\tests\test_sec_tightening.py:72:            result = project_shares([path(row, s.SHARE_STATS) for row in raw[s.ELEMENTS]], post=True)
+.\linkedin-seite\tests\test_sec_tightening.py:74:            self.assertEqual(result.get('korrigiert', False), corrected)
+.\linkedin-seite\tests\test_sec_tightening.py:79:            for extra in ({'mentions': [{'entity': urn}]}, {'unknownFuture': {'nested': [urn]}}, {urn: 'PRIVATE-NAME'}):
+.\linkedin-seite\tests\test_sec_tightening.py:90:                self.assertEqual(post['text_ausgelassen'], 'erwaehnung')
+.\linkedin-seite\tests\test_sec_tightening.py:99:        for first_host in ('127.0.0.1', '::1'):
+.\linkedin-seite\tests\test_sec_tightening.py:109:                        other = '::1' if first_host == '127.0.0.1' else '127.0.0.1'
+.\linkedin-seite\tests\test_sec_tightening.py:131:                for host in ('127.0.0.1', '::1'):
+.\linkedin-seite\tests\test_setup_guide.py:23:                       'http://localhost:8765/linkedin/callback', '127.0.0.1',
+.\linkedin-seite\tools\zustimmung.py:58:        if hasattr(socket, 'SO_EXCLUSIVEADDRUSE'):
+.\linkedin-seite\tools\zustimmung.py:60:            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+.\linkedin-seite\tools\zustimmung.py:107:            servers.append(stack.enter_context(CallbackServer(('::1', 8765), Handler, socket.AF_INET6)))
+.\linkedin-seite\tools\zustimmung.py:109:            if exc.errno == errno.EADDRINUSE:
+.\linkedin-seite\tools\zustimmung.py:110:                print('IPv6-Port [::1]:8765 ist belegt; Zustimmung abgebrochen.', file=sys.stderr)
+.\linkedin-seite\tools\zustimmung.py:112:            if exc.errno not in (errno.EAFNOSUPPORT, errno.EADDRNOTAVAIL, errno.EPROTONOSUPPORT):
+.\script-runner\CLAUDE.md:635:korrigiert ihre Modi und erhält vorhandene Inhalte. `network_mode: none`,
+.\script-runner\internal\gitref\gitref_test.go:57:		{"fd::17", false},
+.\script-runner\internal\hygiene\release_test.go:330:// E6 (korrigiert nach SEC): script-runner.yml und kartei-rpa.yml laufen nur

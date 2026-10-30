@@ -1,0 +1,56 @@
+name: jnpt-plugin-linkedin-seite
+services:
+  linkedin-seite:
+    image: ${JNPT_LINKEDIN_SEITE_IMAGE:?image digest required}
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 32
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 1
+    ipc: none
+    tmpfs:
+      - /tmp:size=2m,noexec,nosuid,nodev,uid=65532,gid=65532,mode=0700
+    environment:
+      LINKEDIN_SEITE_BIND_IP: ${LINKEDIN_SEITE_PLUGIN_IP:?exact internal network address required}
+    volumes:
+      - type: bind
+        source: /opt/jnpt/plugins/linkedin-seite/config.json
+        target: /etc/linkedin-seite/config.json
+        read_only: true
+        bind: {create_host_path: false}
+      # Zwei ORDNER-Mounts statt Datei-Mounts (Muster #887): ein atomar ersetzter
+      # Schlüssel kommt an, und die Stellen entstehen im Gateway aus den Ordnern.
+      # jnpt/runtime-key = der EINE Bridge-Key (Stelle plugin-linkedin-seite),
+      # oauth/runtime-key = das OAuth-JSON (plugin-linkedin-seite-oauth).
+      # Beide liest der Dienst nur beim Start; den Neustart nach einem
+      # Schlüsselwechsel löst deploy/jnpt-linkedin-seite-key.path aus.
+      - type: bind
+        source: /run/jnpt/plugins/linkedin-seite
+        target: /run/secrets/jnpt
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: /run/jnpt/plugins/linkedin-seite-oauth
+        target: /run/secrets/oauth
+        read_only: true
+        bind: {create_host_path: false}
+    networks:
+      plugins:
+        ipv4_address: ${LINKEDIN_SEITE_PLUGIN_IP:?exact internal network address required}
+      egress: {}
+    healthcheck:
+      test: [CMD, python, -c, "import os,urllib.request; urllib.request.build_opener(urllib.request.ProxyHandler({})).open('http://'+os.environ['LINKEDIN_SEITE_BIND_IP']+':8092/healthz',timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+networks:
+  plugins:
+    external: true
+    name: jnpt_plugins
+  # Dedicated network. Host firewall must restrict egress before activation;
+  # Compose does not enforce domain allowlists. No other workload joins it.
+  egress: {}
