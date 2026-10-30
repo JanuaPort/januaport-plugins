@@ -253,7 +253,7 @@ func checkBody(kind string, b []byte) error {
 		if v.Log == nil || len(*v.Log) > 64*1024 {
 			return fmt.Errorf("log")
 		}
-		allowed := map[string][]string{"ok": {}, "error": {}, "timeout": {}, "limit": {"tool_calls"}, "internal": {}, "cancelled": {}, "refused": {"hash", "runtime", "account", "manifest", "offline"}, "interrupted": {}}
+		allowed := map[string][]string{"ok": {}, "error": {}, "timeout": {}, "limit": {"tool_calls"}, "internal": {}, "cancelled": {}, "refused": {"hash", "runtime", "account", "manifest", "offline", "idle"}, "interrupted": {}}
 		details, ok := allowed[v.End]
 		if !ok {
 			return fmt.Errorf("end")

@@ -128,14 +128,15 @@ func run(args []string, out io.Writer) error {
 		if err = state.Load("credential", &credential); err != nil {
 			return err
 		}
-		engine := &client.Engine{State: state, Credential: credential, Version: version, Session: platform.Session, Spawn: platform.Spawn, ChildEnv: platform.WindowsEnv()}
+		log := client.Logger{Root: root}
+		engine := &client.Engine{State: state, Credential: credential, Version: version, Session: platform.Session, Spawn: platform.Spawn, ChildEnv: platform.WindowsEnv(),
+			Temps: &client.RunTemps{Base: filepath.Join(root, "tmp"), Mkdir: platform.MkdirPrivate}, Log: &log}
 		api, err := client.NewAPI(credential.Trust, credential.Token, engine.Revoke)
 		if err != nil {
 			return err
 		}
 		defer api.Close()
 		engine.API = api
-		log := client.Logger{Root: root}
 		_ = log.Write(client.LogStarted, 1)
 		err = engine.Run(ctx)
 		if err == context.Canceled {

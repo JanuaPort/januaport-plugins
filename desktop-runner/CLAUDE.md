@@ -19,8 +19,9 @@ Maßgeblich: [Draht-Vertrag v1/v2](contract/README.md).
 | environment.go, copied_lock.go, copied_zip.go | Allowlist, Wheels, Entpacken und Umgebungsseal |
 | engine.go, bootstrap.py | Gemeinsamer Laufplatz, Takt, Claim/Start, Rahmenkanal/MCP |
 | state.go, replace_* | Atomare OS-geschützte Dateien, Journal/Marker/Slot-Transaktion, Löschung |
-| log.go | Geschlossene numerische Codes, 5 × 1 MiB |
-| internal/platform/*_windows.go | DPAPI/ACL, WTS/LastInput, suspendierter Prozess/Job Object, COM/HKCU |
+| runtemp.go | Lauf-TEMP: RunID/RunTemps, Anlegen nur neu, Aufräumen/Besen ohne Reparse-Punkte, Kind-Umgebung |
+| log.go | Geschlossene numerische Codes (1–6), 5 × 1 MiB |
+| internal/platform/*_windows.go | DPAPI/ACL (SecureRoot, MkdirPrivate), WTS/LastInput, suspendierter Prozess/Job Object, COM/HKCU |
 | internal/platform/install.go, other.go | Windows-Nähte und Fail-closed-Stubs für andere Systeme |
 | internal/platform/security_linux.go, server_linux.go | Linux-HMAC/Dateirechte, Sperre und Server-Konfiguration |
 | container.go, container_engine.go, secrets_linux.go | Docker-CLI, Startwege und Geheimnisgrenze |
@@ -88,11 +89,35 @@ Maßgeblich: [Draht-Vertrag v1/v2](contract/README.md).
    run_key oder job_id, Freigabe-manifest_seq, Commit, Offline-Flag und
    Abschlusszeit. Box prüft historische Freigabe und führt vetLog aus.
    Erstes gewinnt dauerhaft, gleich 204/abweichend 409; erst nach 204 löschen
-   (Ausnahmen gezählte Verdrängung und Widerruf). Kein Tokenablauf-Cutoff.
+   (Ausnahmen gezählte Verdrängung, ein zehnmal in Folge mit HTTP 400 abgewiesenes
+   ältestes Ergebnis und Widerruf). Das abgewiesene Ergebnis erhöht den
+   Verlustzähler und hinterlässt die Logzeile 5; es staut den Rückstau nie.
+   Alle anderen Fehler (409, 429, 503, Netz) verwerfen nie. Kein Tokenablauf-Cutoff.
 10. Box hält Ad-hoc-Aufträge persistent, löscht Eingabe bei Ende; Claim nach
     Box-Neustart funktioniert. Auch Start-/Ergebnis-/Manifesthistorie bleibt;
     kein pauschales Neustart-404 mit Verwerfen. Windows: Contract 1 und Paketversion 1; Linux-Server: Contract 2,
-    Updates zuerst Kern, dann Läufer; geschlossene Klassen inkl. offline.
+    Updates zuerst Kern, dann Läufer; geschlossene Klassen inkl. offline und idle.
+11. `refused/idle` (#1245 L): Die Startregel ist nicht erfüllt, weil nur der
+    Leerlauf fehlt (Sitzung aktiv, Konto passt, Modus `idle`, Leerlauf kürzer als
+    `idle_minutes`). Entsteht an derselben Stelle wie `account`, also vor Lauf-TEMP,
+    Laufmarker und Spawn. Falsches Konto oder inaktive Sitzung bleibt `account`.
+    Nie `idle` → `account` umdeuten (auch nicht für alte Kerne). Release-Hinweis:
+    setzt einen Kern mit #1245 K voraus (er nimmt `idle` an); ein alter Kern
+    antwortet 400, das Ergebnis staut nicht (Invariante 9).
+12. Lauf-TEMP (#1245 L, Befund 6): Je Lauf ein neues, leeres Verzeichnis
+    `%LOCALAPPDATA%\JanuaPort\desktop-runner\tmp\<RunID>\` (RunID = SHA-256 des
+    Lauf-Schlüssels, genau 64 kleine Hex-Zeichen, vor jedem Pfad geprüft). Es ist
+    `TEMP`, `TMP` und Arbeitsverzeichnis des Kinds, nie mehr `envs\…\runtime`
+    (der Bootstrap wird per absolutem Pfad gestartet). Anlegen exklusiv (existiert
+    es, `internal`, nichts übernommen), DACL wie der Läufer-Ordner, danach geprüft.
+    Gelöscht wird nach dem Job-Teardown (`p.Close()`), nie währenddessen; der
+    Besen beim Start räumt alles unter `tmp\` ab. Aufräumen und Besen steigen
+    nie in Symlinks/Junctions/Reparse-Punkte ein (eigene Rekursion mit Lstat,
+    kein `os.RemoveAll`) und löschen sie nur als Verweis. Nichts überlebt einen
+    Lauf, keine Größenbremse (Wanduhr-Grenze, eigene Platte). Journal, Ergebnis und
+    Geheimnisse liegen nie unter `tmp\`. Die Kind-Umgebung enthält kein
+    `LOCALAPPDATA`/`USERPROFILE`/`APPDATA`/`HOME*`/`TMPDIR`; ein Wert aus diesen
+    Variablen wird gefiltert, `TEMP`/`TMP` zeigen nur auf das Laufverzeichnis.
 
 ## Benannte Grenzen
 
@@ -110,7 +135,9 @@ gegen jemanden mit Zugriff auf diese Sitzung (C4).
 | ZIP-Namen/Typen/Kollisionen/Bomben | TestZIPAbweisungAmEntpacker; Kopien: TestCopiedLibraryFunctions |
 | E3: TLS vor Code, CA/Pin, keine Redirects/Proxys, Pubkey nötig | TestPairTLSUndLeererPubkey, TestCAFingerprintProxyUndURL, TestRedirectUndRemoteHTTPAbgewiesen, TestPairCodeFormat, TestPairLeererPubkey, TestPairRFC8032Pubkey, TestPairLeererPubkeySpeichertNichts, TestPairRFC8032PubkeySpeichertNichts |
 | E1: Gerät/seq/Signatur, alter Sync unverändert | TestManifestAblehnung, TestManifestSyncAtomarUndOfflineAmAdapter, TestVeralteterStartSynchronisiertErneut; Kopien: TestCopiedContractFunctions |
-| Konto/Sitzung/idle vor Spawn | TestKontoUndManipulationVorSpawn, TestReadyVerboteneZustaende |
+| Konto/Sitzung/idle vor Spawn | TestKontoUndManipulationVorSpawn, TestReadyVerboteneZustaende, TestIdleVorSpawnUndMount, TestIdleWirdNieAlsAccountGemeldet |
+| Rückstau-Grenze abgelehnter Ergebnisse (L2) | TestAbgelehntesErgebnisStautDenRueckstauNicht, TestAltKernLehntIdleAbJournalStautNicht, TestVerwurfWirdLokalGeloggt |
+| Lauf-TEMP (L3–L6) | TestRunIDFormat, TestRunTempsCreateVerlaesstDieBasisNie, TestRunTempsAnlegenNeuUndExklusiv, TestRunTempsRemoveFolgtKeinemVerweis, TestRunTempsSweepRaeumtRestePlusVerweiseOhneEinzusteigen, TestLaufBekommtPrivatesTempAlsArbeitsverzeichnis, TestLaufTempWirdBeiJedemEndeAufgeraeumt, TestKindUmgebungOhneProfil; Windows: TestMkdirPrivateExklusivUndGeprueft, TestRunTempJunctionKanarienvogel, TestWindowsEnvOhneProfilUndTemp, TestWindowsPythonTempProLauf |
 | B2/B3 Windows: keine Listener/Downloads, keine privaten Bodys/Kind-Token | TestKeineListenerDownloaderOderPip, TestNurAnlageUndKeinePrivatenBodys, TestWindowsPythonEchterStartUndManipulation, TestWindowsJobObjectEnkelUndToken |
 | Cron/DST, Offline-Grenze und Journal | TestCronZeitzoneUndSlots, TestOfflineRegel, TestOfflineVerweigertWirdJournalisiert |
 | E4: Ciphertext-Deckel, Bestätigung, Neustart | TestJournalDeckelBestaetigungNeustart, TestJournalMisstVerschluesselteBytes, TestWindowsNeustartInterrupted, TestErgebnisrueckstauUndAtomarerSlot |
@@ -126,8 +153,8 @@ Baum-Besuche gegen wiederholte DAG-Expansion. Die eingebettete Allowlist wird
 byte-genau mit dem Vertrag verglichen. Der Windows-Bootstrap ist eigenständig
 für Pipes implementiert.
 
-Engine.Execute (Windows) prüft Konto, Paket, Paketmanifest und Umgebungsseal und
-schreibt den Laufmarker vor Spawn. Lauf-Token sind kein Feld des Windows-Launch.
+Engine.Execute (Windows) prüft Konto/Leerlauf, Paket, Paketmanifest und Umgebungsseal,
+legt das Lauf-TEMP an und schreibt den Laufmarker vor Spawn. Lauf-Token sind kein Feld des Windows-Launch.
 Der Windows-MCP-Weg erhält sie ausschließlich im HTTP-Header. runMu und Benutzermutex
 verhindern parallele Starts; beide Startwege verwenden dasselbe Journal.
 Slot und claimed-Marker werden atomar reserviert. Ergebnisnachlieferung ist
@@ -195,6 +222,10 @@ Nach externer Zwangsbeendigung den betroffenen Guard ausdrücklich prüfen.
 Abschlussbericht ausschließlich im Chat, keine Berichtsdatei im Repository.
 
 Native Windows-Mutationen zusätzlich: probe/mutations-windows.ps1 (ohne Admin).
+Mutationsfälle für #1245 L: idle-before-spawn, idle-remap-account, result-reject-jam,
+runid-format, runtemp-reuse, runtemp-follow-link, child-env-profile, windows-exclusive.
+Die Symlink-Tests von RunTemps überspringen unter Windows ohne Symlink-Recht sichtbar;
+dort belegt TestRunTempJunctionKanarienvogel das Aufräumen an einer echten Junction.
 
 ## Linux-Server: zusätzliche Invarianten (JanuaPort/januaport#1195)
 
@@ -242,7 +273,9 @@ Native Windows-Mutationen zusätzlich: probe/mutations-windows.ps1 (ohne Admin).
 - K1: Werkzeuglose Zeitpläne starten ohne runs/start und ohne Lauf-Token;
   Ad-hoc bleibt Claim → Start. Bestehende Offline-Grenzen bleiben erhalten.
   **Offener Kern-Nachzug:** desktopResult.valid in cmd/jnpt/desktop_routes.go
-  verweigert noch refused/secret und limit/wall. Keine stille Klassenumdeutung.
+  verweigert noch refused/secret und limit/wall (und bis #1245 K refused/idle).
+  Keine stille Klassenumdeutung; abgelehnte Ergebnisse verwirft der Läufer nach
+  zehn 400-Antworten gezählt (Invariante 9) statt den Rückstau zu blockieren.
 
 | Tragende Server-Invariante | Tests |
 |---|---|

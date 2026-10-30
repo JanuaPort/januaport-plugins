@@ -27,6 +27,8 @@ type Engine struct {
 	Session      func() (Session, error)
 	Spawn        Spawn
 	ChildEnv     []string
+	Temps        *RunTemps // nil: State.Root/tmp ohne OS-Schutz (Tests); main verdrahtet MkdirPrivate
+	Log          *Logger   // optional, nur feste Codes
 	Config       Config
 	mu           sync.Mutex
 	runMu        sync.Mutex
@@ -223,6 +225,8 @@ func refused(r Result, err error) Result {
 		detail = "runtime"
 	case errors.Is(err, ErrAccount):
 		detail = "account"
+	case errors.Is(err, ErrIdle):
+		detail = "idle"
 	case errors.Is(err, ErrManifest):
 		detail = "manifest"
 	case errors.Is(err, ErrOffline):
@@ -239,8 +243,11 @@ func (e *Engine) Execute(ctx context.Context, r Result, env Environment, input j
 	e.mu.Lock()
 	config := e.Config
 	e.mu.Unlock()
-	if err != nil || !Ready(s, config, true) {
+	if err != nil {
 		return refused(r, ErrAccount)
+	}
+	if why := startRefusal(s, config); why != nil {
+		return refused(r, why)
 	}
 	if !safeName(env.Dir) || env.Dir != envKey(env.Origin) || env.Origin.Commit != r.Commit {
 		return refused(r, ErrHash)
@@ -271,12 +278,19 @@ func (e *Engine) Execute(ctx context.Context, r Result, env Environment, input j
 	if len(env.Tools) > 0 && runToken == "" {
 		return refused(r, ErrOffline)
 	}
+	tmp, err := e.temps().Create(RunID(r.Key()))
+	if err != nil {
+		return finish(r, "internal", "")
+	}
+	// Erst nach p.Close() (Job-Teardown) und cancel: LIFO der defers.
+	defer e.removeRunTemp(tmp)
 	if err = e.State.Mark(r, "started"); err != nil {
 		return finish(r, "internal", "")
 	}
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(min(wall, env.Timeout))*time.Second)
 	defer cancel()
-	launch := Launch{Dir: filepath.Join(dir, "runtime"), Exe: filepath.Join(dir, "runtime", "python.exe"), Args: []string{"-I", "-B", "bootstrap.py"}, Env: slices.Clone(e.ChildEnv)}
+	runtime := filepath.Join(dir, "runtime")
+	launch := Launch{Dir: tmp, Exe: filepath.Join(runtime, "python.exe"), Args: []string{"-I", "-B", filepath.Join(runtime, "bootstrap.py")}, Env: childEnv(e.ChildEnv, tmp)}
 	e.mu.Lock()
 	p, err := e.Spawn(runCtx, launch)
 	if err != nil {
@@ -392,6 +406,41 @@ func (e *Engine) Execute(ctx context.Context, r Result, env Environment, input j
 	}
 }
 
+func (e *Engine) temps() RunTemps {
+	if e.Temps != nil {
+		return *e.Temps
+	}
+	return RunTemps{Base: filepath.Join(e.State.Root, "tmp")}
+}
+func (e *Engine) logCode(code LogCode, n uint64) {
+	if e.Log != nil {
+		_ = e.Log.Write(code, n)
+	}
+}
+
+// removeRunTemp läuft nach dem Prozessbaum. Bleibt etwas gesperrt, räumt der
+// Besen beim nächsten Start auf; der nächste Lauf bekommt ohnehin ein neues.
+func (e *Engine) removeRunTemp(dir string) {
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(200 * time.Millisecond)
+		}
+		if e.temps().Remove(dir) == nil {
+			return
+		}
+	}
+	e.logCode(LogTempLeft, 1)
+}
+
+// deliverOne stellt höchstens ein Ergebnis zu. Verwirft der Journal ein vom
+// Kern dauerhaft abgelehntes Ergebnis, bleibt davon nur eine feste Logzeile.
+func (e *Engine) deliverOne(ctx context.Context) {
+	before := e.State.Dropped()
+	_ = e.State.DeliverOne(func(r Result) error { return e.API.Report(ctx, r) })
+	if after := e.State.Dropped(); after > before {
+		e.logCode(LogResultDropped, after)
+	}
+}
 func (e *Engine) report(r Result) error {
 	if err := e.State.Append(r); err != nil {
 		return err
@@ -551,6 +600,9 @@ func (e *Engine) Run(ctx context.Context) error {
 	if err := e.recoverContainers(ctx); err != nil {
 		return err
 	}
+	if e.Container == nil && e.temps().Sweep() != nil {
+		e.logCode(LogTempLeft, 1)
+	}
 	var cached Bundle
 	if err := e.State.Load("manifest", &cached); err == nil {
 		if m, verifyErr := VerifyManifest(cached.Manifest.Envelope, e.Credential.Pubkey, e.Credential.DeviceID, 0); verifyErr != nil || m.Contract != e.API.Contract() {
@@ -604,7 +656,7 @@ func (e *Engine) Run(ctx context.Context) error {
 		}
 		reportDeadline := min(5*time.Second, time.Until(time.Now().UTC().Truncate(time.Minute).Add(time.Minute)))
 		reportCtx, reportStop := context.WithTimeout(ctx, reportDeadline)
-		_ = e.State.DeliverOne(func(r Result) error { return e.API.Report(reportCtx, r) })
+		e.deliverOne(reportCtx)
 		reportStop()
 		now := time.Now()
 		minute := now.UTC().Truncate(time.Minute)

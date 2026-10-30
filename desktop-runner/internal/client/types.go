@@ -16,6 +16,7 @@ var (
 	ErrRuntime  = errors.New("refused/runtime")
 	ErrManifest = errors.New("refused/manifest")
 	ErrAccount  = errors.New("refused/account")
+	ErrIdle     = errors.New("refused/idle")
 	ErrOffline  = errors.New("refused/offline")
 	ErrProtocol = errors.New("protocol")
 	ErrRevoked  = errors.New("revoked")
@@ -189,6 +190,20 @@ type Session struct {
 
 func Ready(s Session, c Config, verified bool) bool {
 	return verified && s.Active && s.Account != "" && strings.EqualFold(s.Account, c.ExpectedAccount) && (c.StartPolicy.Mode == "always" || (c.StartPolicy.Mode == "idle" && s.Idle >= time.Duration(c.StartPolicy.IdleMinutes)*time.Minute))
+}
+
+// startRefusal sagt, warum die Startregel nicht erfüllt ist; nil heißt bereit.
+// idle gilt nur, wenn das Gerät ohne die Leerlaufbedingung bereit wäre.
+func startRefusal(s Session, c Config) error {
+	if Ready(s, c, true) {
+		return nil
+	}
+	always := c
+	always.StartPolicy.Mode = "always"
+	if c.StartPolicy.Mode == "idle" && Ready(s, always, true) {
+		return ErrIdle
+	}
+	return ErrAccount
 }
 
 // Launch has no run-token member; it is also used by the real Windows adapter.

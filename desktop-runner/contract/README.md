@@ -44,7 +44,8 @@ Zusätzliche Container-Fehler: `refused/hash`, `refused/runtime`, `refused/secre
 **K1-Abweichung im Kerncode:** `cmd/jnpt/desktop_routes.go:desktopResult.valid`
 akzeptiert noch weder Detail `secret` unter refused noch `wall` unter limit.
 Diese beiden beauftragten Resultate werden nicht umbenannt; der Kern muss
-nachgezogen werden. Bis dahin hält der Läufer HTTP-400-Ergebnisse im Journal.
+nachgezogen werden. Bis dahin wiederholt der Läufer HTTP-400-Ergebnisse zehnmal
+und verwirft sie dann gezählt, statt den Rückstau zu blockieren.
 
 Lokale Container-Konvention: Das Image stellt /bin/sh und tar bereit. Der Läufer
 setzt --entrypoint /bin/sh ausdrücklich und überschreibt Image-ENTRYPOINTs.
@@ -357,7 +358,9 @@ Werte aller Felder und gleiche An-/Abwesenheit optionaler Felder sind
 identisch; Schlüsselreihenfolge/äußere Leerzeichen sind unerheblich, `log`
 bleibt byte-genau. Erst nach **204-Bestätigung** löscht das Gerät den Eintrag;
 Transportfehler oder 409 löschen ihn nicht. Ausnahmen sind das ausdrücklich
-gezählte Verdrängen an der Kapazitätsgrenze und Widerruf samt Gesamtlöschung.
+gezählte Verdrängen an der Kapazitätsgrenze, ein vom Kern zehnmal in Folge mit
+`400` abgewiesenes ältestes Ergebnis (ebenso gezählt, damit es den Rückstau nicht
+dauerhaft blockiert) und Widerruf samt Gesamtlöschung.
 
 **Die Box hält Ad-hoc-Aufträge persistent und löscht deren Eingabe bei Ende;
 ein Claim funktioniert auch nach Box-Neustart.** Auch Manifest-seq,
@@ -377,12 +380,19 @@ Geschlossene Menge; `detail` fehlt, außer wo ausdrücklich verlangt.
 | `limit` | `tool_calls` (Pflicht) | Gerät |
 | `internal` | keines | Gerät |
 | `cancelled` | keines | Gerät |
-| `refused` | `hash`, `runtime`, `account`, `manifest`, **`offline`** (genau eines, Pflicht) | Gerät, vor Prozessstart |
+| `refused` | `hash`, `runtime`, `account`, `manifest`, **`offline`**, **`idle`** (genau eines, Pflicht) | Gerät, vor Prozessstart |
 | `interrupted` | keines | Gerät, Neustart mit offenem Laufmarker |
 | `expired` | keines | nur Box, ohne Start |
 | `lost` | keines | nur Box, ohne verwertbares Ergebnis |
 | `denied` | keines | nur Box, Berechtigung verweigert |
 
+`refused/idle` (JanuaPort/januaport#1245): Konto und aktive Sitzung passen, nur der
+vom Kern vorgegebene Leerlauf (`start_policy.mode: "idle"`, `idle_minutes`) fehlt.
+Er entsteht an derselben Stelle wie `refused/account`, vor jedem Prozessstart, ohne
+Gerätedaten im Körper. Der Kern nimmt `idle` ab der Version mit #1245 K an (gleiche
+Tabelle wie die übrigen Details, kein Neuversuch außerhalb der Zeitplanregeln). Ein
+älterer Kern antwortet `400 invalid`; der Läufer deutet nie in `account` um, sondern
+verwirft das Ergebnis nach zehn 400-Antworten gezählt (siehe „Erst nach 204“).
 Das Gerät kann `expired`/`lost`/`denied` nicht per `runs/result` setzen
 (`400 invalid`). Ein Heartbeat-Abbruch führt zu Prozessabbruch und `cancelled`.
 Die Sync-Ablehnung **Klasse `manifest`** ist keine zusätzliche Ende-Klasse.

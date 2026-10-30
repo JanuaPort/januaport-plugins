@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Ablehnungsklasse `refused/idle`: fehlt bei passendem Konto und aktiver Sitzung nur
+  der Leerlauf der Startregel, meldet der Läufer `idle` statt `account`, vor jedem
+  Start (JanuaPort/januaport#1245 L). **Release-Hinweis: setzt einen Kern mit
+  #1245 K voraus** (er nimmt `idle` an). Ein älterer Kern antwortet 400.
+- Ein vom Kern zehnmal in Folge mit HTTP 400 abgewiesenes Ergebnis blockiert den
+  Rückstau nicht mehr: Es wird gezählt verworfen (Verlustzähler, Logzeile `5 <n>`).
+  Bisher blieb es dauerhaft an erster Stelle des Journals liegen (betrifft auch die
+  offenen K1-Klassen `refused/secret` und `limit/wall`).
+- Privates TEMP je Lauf: frisches Verzeichnis mit DACL des Läufer-Ordners unter
+  `%LOCALAPPDATA%\JanuaPort\desktop-runner\tmp\<Lauf-ID>\` als `TEMP`, `TMP` und
+  Arbeitsverzeichnis statt `envs\…\runtime`; nach dem Job-Teardown gelöscht, Rest
+  räumt der Start-Besen, ohne Junctions oder Symlinks zu betreten. Die Kind-Umgebung
+  bleibt ohne `LOCALAPPDATA`/`USERPROFILE`/`APPDATA`. Behebt, dass Skripte ohne TEMP
+  in die geprüfte Umgebung schrieben und der nächste Lauf mit `refused/hash` endete
+  (Befund 6).
+
 - Manueller Installationstest des signierten Windows-Releases in einem frischen
   Standardkonto, mit SHA-256, Authenticode/Herausgeber und GitHub-Provenance,
   Showcase-Kopplung, Installation, fünf Minuten Anlagenkontakt und Deinstallation

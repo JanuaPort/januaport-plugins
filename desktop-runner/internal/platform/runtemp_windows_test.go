@@ -186,6 +186,9 @@ _winapi.CreateJunction(cfg["ziel"], os.path.join(temp, "a", "verweis"))
 		if got.End != "ok" {
 			t.Fatalf("Lauf %d: %+v", i+1, got)
 		}
+		if e = st.Append(got); e != nil {
+			t.Fatal(e)
+		}
 		if entries, _ := os.ReadDir(base); len(entries) != 0 {
 			t.Fatalf("Lauf %d: Temp überlebt den Lauf", i+1)
 		}
