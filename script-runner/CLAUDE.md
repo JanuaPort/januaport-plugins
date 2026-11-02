@@ -6,7 +6,8 @@ in `README.md` — hier steht, warum das Ding so aussieht, wie es aussieht.
 ## Verantwortung
 
 Der Skript-Läufer führt **gepinnte Python-Skripte** aus einem Git-Repository
-des Kunden aus, ausgelöst von einer KI über JanuaPort. Er läuft als Beisteller
+des Kunden oder freigegebenen Speicherpaketen aus, ausgelöst von einer KI
+über JanuaPort. Er läuft als Beisteller
 neben dem Gateway; das Gateway selbst führt nie Code aus (R1). Entstanden in
 JanuaPort/januaport#928 (Paket P2). Verbindlich sind der **Draht-Vertrag**
 (Fassung 5, `contract: 2`, JanuaPort/januaport#1040; Grundlage Fassung 1 + 2
@@ -18,7 +19,7 @@ Kommentaren und Tests verweisen darauf.
 
 | Unterbefehl | Dienst | Verantwortung |
 |---|---|---|
-| `mediator` | `script-runner` | vermittler: MCP-Server für das Gateway (Weg A, `:8090` im internen Netz `jnpt_plugins`), prüft `runtime-key` (R13), liest `pins.json` und `desktop-pins.json`, einzige Senke für Code (R6, M5), hält den einen Slot, misst Wandzeit und Größen selbst (M2, M4), ruft innere Werkzeuge mit dem Lauf-Token (Weg B), `/healthz` auf `:8091`; Taktgeber für Zeitpläne (#1039 S1, liest `schedules.json`, löst über das Gateway aus) |
+| `mediator` | `script-runner` | vermittler: MCP-Server für das Gateway (Weg A, `:8090` im internen Netz `jnpt_plugins`), prüft `runtime-key` (R13), liest `pins.json` und `desktop-pins.json`, Speicherbote und Leser von `speicher/state.json` (#1277 S4b), einzige Senke für Code (R6, M5), hält den einen Slot, misst Wandzeit und Größen selbst (M2, M4), ruft innere Werkzeuge mit dem Lauf-Token (Weg B), `/healthz` auf `:8091`; Taktgeber für Zeitpläne (#1039 S1, liest `schedules.json`, löst über das Gateway aus) |
 | `guard` | `script-runner-sandbox` | Wächter: PID 1 der Sandbox, `PR_SET_DUMPABLE 0`, meldet `hello`, nimmt **genau einen** job, startet `python -I`, räumt den Prozessbaum ab (V1/V3), hält die Instanz 10,5 s (B1) |
 | `fetcher` | `script-runner-fetcher` | abholer: prüft Git-Pins gegen den Standard-Zweig und holt Objekte per ssh in den Bare-Store, prüft `wanted/` und `repo_url` selbst (V2, M7); unabhängige Speicherprüfung alle 5 s (#1277 S4b) |
 | `init-libs` | `script-runner-init` | kurzlebiger Volume-Init als 65532, ohne Netz; legt `ready` (0755) und `staging` (0700) an und beendet sich vor dem Sandbox-Start |
@@ -29,7 +30,7 @@ Katalog), Host-Units/tmpfiles (P4b, Gateway-Repo — hier nur Beispiele unter
 Pin-Speicher, Lauf-Token, Relay, Audit, `scan` (P1/P3, Gateway), Rezept (P5).
 Zeitplan-Verwaltung, Fälligkeit, Eingabe und Identity eines Zeitplans
 (#1039, Kern); hier nur der Taktgeber.
-Kein pip und kein Download (Bibliotheken liegen als Wheels im Repo des Betreibers,
+Kein pip und kein Paketindex-Download (Bibliotheken liegen als Wheels im Paket des Betreibers,
 siehe „Python-Bibliotheken“), keine zweite Sprache, keine Netzfreigabe je Skript, kein
 Webhook, keine GUI. Der Git-Anbieter wird ausschließlich mit `ls-remote`
 und `fetch` gelesen.
@@ -194,10 +195,10 @@ Ausgabe auf stdout, Werkzeuge per `januaport.call(name, arguments)` → dict
 und `vendor/` darin (reines Python, R12), dazu — mit `requirements` — hinten
 angehängt `/libs/<lockhash>` (Wheels, auch native; nur lesend).
 
-## Speicherpins (#1277 S4b, Lauf 1)
+## Speicherpins (#1277 S4b)
 
-Die Abholer-Seite ist gebaut; Bote, Senke und `tools/list`-Anbindung folgen in
-Lauf 2. Speicherpins sind damit noch nicht ausführbar. Der Git-Weg samt
+Bote, Abholer und Senke binden die Speicherquelle an `tools/list` und die
+Ausführung an. Der Git-Weg samt
 `pins.json`, `desktop-pins.json`, `wanted/`, `approved/`, `failed/`, `repo_url`
 und `store.git` bleibt unverändert; `initStore` lässt `speicher/` unberührt.
 Desktop-/Geräte-/Testpins und Vertragskennung 2 ändern sich nicht.
@@ -230,7 +231,7 @@ mit festem Fehlercode). Fehlerindex -1 gilt für den gesamten Abgleich, sonst
 für den Index in `accepted.manifest.pins`. Sequenz, Liste und Freigaben werden
 zusammen per zufälliger Temp-Datei mit `O_CREATE|O_EXCL`, Datei-fsync, Rename
 und Ordner-fsync veröffentlicht. `package_sha256` ist der selbst berechnete
-Hash der geprüften Paketbytes; die Senke muss ihn vor Codeübergabe nachprüfen.
+Hash der geprüften Paketbytes; die Senke prüft ihn vor jeder Codeübergabe nach.
 Die Frist kommt ausschließlich aus `accepted.manifest.issued_at` im selben
 Zustand (`State.Fresh`), nie aus einem separaten Fristfeld.
 
@@ -274,9 +275,47 @@ in der Sandbox sind Befunde. Ähnlich benannte Nachbarpfade sind keine Eltern.
 | Git kann die Speicherverlängerung nicht blockieren | `TestStorageLoopIndependentOfBlockedGitOnce` |
 | Eltern-Mounts und Einzelschlüssel gesperrt | `TestKeyMountParentsAtComposeAdapter`, `TestKeyMountComparisonUsesComponents` |
 
-Die Senke in Lauf 2 muss vor jeder Codeübergabe erneut Frist und Paketbindung
-prüfen; damit wirkt auch bei angehaltenem Abholer ein zurückgehaltener Entzug
-spätestens nach 12 Minuten. Lauf 1 allein erteilt keine Codeübergabe.
+Der Vermittler holt als Bote in einer eigenen Goroutine alle 60 s die Liste
+mit seinem vorhandenen Plugin-Runtime-Key über
+`GET /api/plugin/script-runner/storage/pins` (ohne Query), fehlende Pakete über
+`GET /api/plugin/script-runner/storage/packages/{name}/{commit}?path=<path>`.
+Er folgt keiner Umleitung, liest mit `LimitReader(N+1)` (1 MiB/128 MiB/1 GiB),
+beachtet `Retry-After` und wartet nach 404 mindestens 5 Minuten. Die Rohbytes
+werden atomar mit Temp-Datei, fsync, Rename und Ordner-fsync veröffentlicht;
+der Bote prüft weder Signatur noch Inhalt. Sichere Routennamen sind keine
+Freigabe. Er entfernt Pakete, die nicht mehr in der Liste stehen. Nur feste
+Log-Codes, keine Bodies, Query-URLs oder Schlüssel. Der Netzweg ist neben
+MCP und Taktgeber die einzige ausdrücklich erlaubte HTTP-Client-Stelle.
+
+Die consumer-seitige `objectSource` in `internal/store` verbindet den bisherigen
+Git-Batchleser und das Speicherpaket. `ReadState` liest einen zusammenhängenden
+Snapshot über denselben B1-Dateiadapter. Der Vermittler hat keinen Public-Key-
+Mount; Signatur und Schlüsselbindung bleiben Aufgabe des Abholers. Die Senke
+verlangt eine passende Freigabe, `State.Fresh` mit eigener `time.Now` und den
+exakten `package_sha256`, bevor sie Objekte öffnet; nach dem Lesen wird die
+Freigabe nochmals geprüft. `run` prüft zusätzlich unmittelbar vor `frame.Job`,
+auch nach dem Warten auf einen Sandbox-Platz. Das gilt ebenso für Wheels über
+`ListWheels`/`CopyBlob`. Bei angehaltenem Abholer wirkt ein zurückgehaltener
+Entzug damit spätestens nach 12 Minuten. Kein getrenntes Ablaufdatum (H5).
+`pruneLibs` berücksichtigt Speicherpins; ehemals freigegebene, jetzt entzogene
+oder abgelaufene Speicherpakete werden entfernt. Noch ungeprüfte neue Pakete
+bleiben für den Abholer verfügbar. Fehler gehen vor Freigaben.
+
+| Invariante Lauf 2 | Test am Adapter |
+|---|---|
+| Keine Umleitung, kein Body/Key/Query im Log | `TestCourierRedirectNeverReachesSecondServer`, `TestCourierHTTPFailuresBackoffAndNoEcho` |
+| Grenzen auch beim tatsächlichen HTTP-Lesen; 404/Retry-After | `TestCourierLimitReaderBoundsActualHTTPRead`, `TestCourierPackageLimitsAndRetry`, `TestCourierHTTPFailuresBackoffAndNoEcho` |
+| Inbox oder HTTP-Fehler allein erzeugen kein ready | `TestStorageInboxAndHTTPFailuresNeverReady`, `TestStorageSourceAtRealFetcherAdapter` |
+| Frist, Freigabe und Hash vor Codeübergabe, auch nach Warten | `TestStorageRechecksAtCodeHandoffWithStoppedFetcher`, `TestStorageExpiryWhileWaitingForSandbox` |
+| Entzogene Pakete werden abgeräumt | `TestStoragePruneRevokedPackages` |
+| Echter Speicherlauf und R8 ohne Schlüsselmount im Vermittler | Docker: `TestStorageReadyRunAndRevocationWithStoppedFetcher` |
+
+Die Docker-Sonde erzeugt einen eigenen Wegwerf-Schlüssel und startet aus einem
+signierten leeren Journal einer bereits initialisierten Installation. Sie
+schwächt die B2-Sperre nicht ab (deren vier Fälle prüft der echte Dateiadapter).
+Eine rückdatierte, noch frische Liste verkürzt nur die Wartezeit bis zum echten
+Ablauf. Danach bleibt die Senke trotz gestopptem Abholer gesperrt. Kein echter
+Kern, keine Änderung an Compose, Netzen oder UIDs.
 
 ## Desktop-Pins (#1165 D2b, Epic #1163)
 
@@ -327,7 +366,7 @@ expandiert. Die Paketreihenfolge ist deterministisch (siehe Vertrag).
 | Ungültiges Manifest/fehlende Pflichtdatei öffnet keinen Paketweg; Fehler ohne Echo | `TestDesktopInvalidManifestAtHTTP`, `TestDesktopMissingRequiredFilesAtHTTP` |
 | Desktop-Pins sind keine MCP-Werkzeuge und senden keinen Sandbox-Job; auch ein gleichnamiger lokaler Pin öffnet keinen Weg | `TestDesktopMetadataAndNoSandboxOrWheelExtraction` (zählender Unix-Adapter: 0 Jobs) |
 | Kein Aufruf des Bibliotheksadapters und kein Entpacken, auch nicht für Windows-Wheels | `TestDesktopWheelPreparationSeamZero` (Windows und `any`, 0 Vorbereitungen, leere Ready-/Staging-Ordner) |
-| Kein Download-Client in neuem Quellcode | unverändertes `TestNoDownloadClientInSource` |
+| HTTP-Clients nur für MCP, Taktgeber und Speicherboten; kein Paketindex | `TestNoDownloadClientInSource` |
 | Desktop-Pins zählen als bekannt; Zeitpläne werden lokal nur gemeldet, das Gerät taktet aus dem Manifest | `TestDesktopTickerNeverFiresAtHTTP` (keine HTTP-Auslösung und keine lokalen Lauf-/Missed-/Busy-Werte) |
 | SHA-1 und SHA-256; unveränderte Goldens sind byte-gleich | `TestDesktopSHA256AtHTTP`, `TestDesktopPackageGolden` (direkter Import beider Golden-Pakete in echte Git-Objektdatenbanken) |
 
@@ -507,8 +546,8 @@ nicht von `isolation` ab; `/healthz` behält seine lokale Sandbox-Bedeutung.
 
 11. **Bibliotheken (#1041), Invarianten 1–5 und 7 des Plans.** Details im
     Abschnitt „Python-Bibliotheken“; je Invariante die Tests:
-    - **Kein pip, kein Netz:** `TestNoDownloadClientInSource` (weder vermittler
-      noch abholer noch `libs`/`store` enthalten einen HTTP-Client für Downloads,
+    - **Kein pip, kein Paketindex:** `TestNoDownloadClientInSource` (HTTP-Clients
+      ausschließlich in MCP, Taktgeber und Speicherboten; `libs`/`store` und Abholer ohne HTTP-Client,
       kein pip, keine Index-Adresse; `http.*`-Client nur in Weg B und
       Taktgeber), Sonden `TestLibsNoPip` und `TestR12ImageHasNoPipAndSha1dcGit`,
       `net_probe` unverändert.

@@ -1,7 +1,8 @@
 # script-runner — Skript-Läufer für JanuaPort
 
 Der Skript-Läufer führt **gepinnte Python-Skripte** aus dem Git-Repository des
-Betreibers aus. Eine KI ruft ein Skript über JanuaPort wie ein Werkzeug auf;
+Betreibers oder aus freigegebenen Speicherpaketen aus. Eine KI ruft ein Skript
+über JanuaPort wie ein Werkzeug auf;
 das Skript darf dabei selbst JanuaPort-Werkzeuge benutzen — mit genau den
 Rechten des Aufrufers, begrenzt auf die Werkzeuge, die das Skript deklariert.
 So wird aus einer Folge von Werkzeugaufrufen ein wiederholbarer Baustein
@@ -22,9 +23,9 @@ Drei dauerhafte Dienste und ein kurzer Init-Dienst aus einem Image, neben dem Ga
 
 | Dienst | Aufgabe | Netz |
 |---|---|---|
-| `script-runner` | nimmt Aufrufe vom Gateway an, hält die Pins, übergibt den Code an die Sandbox, leitet Werkzeugaufrufe des Skripts an JanuaPort weiter | nur das interne Netz `jnpt_plugins` (kein Ausgang, nur das Gateway daneben), kein Host-Port |
+| `script-runner` | nimmt Aufrufe vom Gateway an, holt Speicherlisten und -pakete als Bote, hält die Pins, übergibt den Code an die Sandbox, leitet Werkzeugaufrufe des Skripts an JanuaPort weiter | nur das interne Netz `jnpt_plugins` (kein Ausgang, nur das Gateway daneben), kein Host-Port |
 | `script-runner-sandbox` | führt **einen** Lauf aus und wird danach mit leerem Arbeitsspeicher neu gestartet | **kein Netz** |
-| `script-runner-fetcher` | prüft Git-Pins gegen den Standard-Zweig und holt Objekte per ssh mit einem Nur-Lese-Deploy-Key; prüft Speicherlisten und Pakete unabhängig davon (#1277 S4b, noch ohne Ausführung) | eigenes Netz mit Ausgang, kein Weg zum Gateway |
+| `script-runner-fetcher` | prüft Git-Pins gegen den Standard-Zweig und holt Objekte per ssh mit einem Nur-Lese-Deploy-Key; prüft Speicherlisten und Pakete unabhängig davon (#1277 S4b) | eigenes Netz mit Ausgang, kein Weg zum Gateway |
 | `script-runner-init` | legt die Bibliotheksordner an und beendet sich erfolgreich, bevor die Sandbox startet | **kein Netz**, nur das Volume `libs` |
 
 Für den **Desktop-Läufer** (#1165 D2b) stellt der Beisteller zusätzlich
@@ -86,7 +87,7 @@ Protokollfehler abgewiesen. Details und Golden-Dateien: [Vertrag](contract/READM
 | Läufe in Folge | etwa 6 je Minute; dazwischen antwortet der Läufer „belegt, in etwa 10 Sekunden erneut versuchen“ |
 | Gepinnter Ordner | ≤ 4 MiB, ≤ 1000 Dateien (der Code, ohne `wheels/`) |
 | Bibliotheken | nur mit `requirements`: Wheels für Python 3.12 auf manylinux x86_64; ≤ 300 MiB und ≤ 30 000 Dateien je Lock installiert, ≤ 2 GiB für alle Locks; ein Thread für BLAS/OpenMP |
-| Sprache | Python 3.12 mit Standardbibliothek; reines Python unter `vendor/` im Skriptordner; Bibliotheken nur als geprüfte Wheels (siehe unten); **kein pip**, kein Download |
+| Sprache | Python 3.12 mit Standardbibliothek; reines Python unter `vendor/` im Skriptordner; Bibliotheken nur als geprüfte Wheels (siehe unten); **kein pip**, kein Paketindex-Download |
 | Git | nur ssh; ein Repository je Anlage |
 
 **Schritt L (0.3.0):** Die eigene 25-s-Kappe entfällt (SEC L6).
@@ -255,9 +256,15 @@ fertige Verzeichnis einmal gegen sein Manifest und verwirft Abweichungen.
   negativer Vorfahren-Befund (Exit 1) widerruft. Ein Wechsel der Repository-URL
   leert weiterhin alle Git-Freigaben. Alte Stores brauchen
   nach dem Update zunächst eine erfolgreiche Zweigprüfung.
-- **Speicherquelle (#1277 S4b, im Bau):** Der Abholer prüft die signierte Liste
+- **Speicherquelle (#1277 S4b):** Der Abholer prüft die signierte Liste
   und Pakete unter `speicher/inbox/` alle 5 s unabhängig von Git und schreibt
-  Freigaben nach `speicher/state.json`. Bote und Ausführung folgen in Lauf 2.
+  Freigaben nach `speicher/state.json`. Der Vermittler holt Liste und fehlende
+  Pakete alle 60 s mit dem Plugin-Runtime-Key, ohne Umleitung und begrenzt;
+  `Retry-After` gilt, nach 404 mindestens 5 Minuten Pause. Vor jeder
+  Codeübergabe prüft die Senke Freigabe, Frist aus `accepted.manifest.issued_at`
+  und Pakethash erneut — auch nach dem Warten auf die Sandbox. Entzug wirkt
+  spätestens nach 12 Minuten, auch bei angehaltenem Abholer. Speicherpins
+  erscheinen im bestehenden `tools/list`-Vertrag 2, ohne zusätzliche Felder.
   `runner-pins.pub` liegt neben dem Deploy-Key und wird je Durchlauf neu gelesen.
   Fehlender/gewechselter Schlüssel entfernt Speicherfreigaben sofort. Bei
   Höchststand 0 (auch Erstinstallation, Rücksetzung und Neustart in der Sperre)
@@ -266,7 +273,7 @@ fertige Verzeichnis einmal gegen sein Manifest und verwirft Abweichungen.
   Die Prüfung schützt gegen Transport und Fehler im Vermittler, nicht gegen
   seine Kompromittierung. Zugesagt ist nur, dass der Vermittler über den
   Abholer weder an den Deploy-Key noch an den Ausgang kommt. Technischer
-  Vertrag und Belege: [CLAUDE.md](CLAUDE.md#speicherpins-1277-s4b-lauf-1).
+  Vertrag und Belege: [CLAUDE.md](CLAUDE.md#speicherpins-1277-s4b).
 - **Image:** `ghcr.io/januaport/script-runner`, gebaut von der
   Release-Strecke dieses Repos (Tag `script-runner-vX.Y.Z`, nur `linux/amd64`,
   mit SBOM und Provenance). Die Anlage bezieht es nur per Digest aus dem

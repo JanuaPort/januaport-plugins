@@ -149,8 +149,8 @@ func RemoveFile(path string) error {
 	return nil
 }
 
-// EnsureDirectory creates only speicher, never inbox, beneath the trusted
-// store root. An existing symlink is rejected by openDirectory.
+// EnsureDirectory creates one child under an anchored no-follow parent.
+// The fetcher creates only speicher; the courier also creates its inbox tree.
 func EnsureDirectory(root string) error {
 	parent, e := openDirectory(filepath.Dir(root))
 	if e != nil {

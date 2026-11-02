@@ -45,7 +45,7 @@ func (s State) IssuedAt() time.Time {
 	return issued
 }
 
-// Fresh is also the expiry interface for the future sink: no separate expiry
+// Fresh is also the expiry interface for the sink: no separate expiry
 // field can extend an approval. Key/signature and package validation remain required.
 func (s State) Fresh(now time.Time) bool {
 	issued := s.IssuedAt()

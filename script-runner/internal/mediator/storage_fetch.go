@@ -102,19 +102,34 @@ func (c *storageCourier) Once(ctx context.Context) {
 			}
 		}
 	}
+	// Reserve all existing bytes first: a missing package sorted before an
+	// existing one must not let the directory exceed the total limit.
 	budget := c.totalLimit
+	existing := map[string]bool{}
 	for _, p := range list.Pins {
 		name := p.Name + "-" + p.Commit + ".pkg"
+		if existing[name] {
+			continue
+		}
 		path := filepath.Join(pkgDir, name)
-		// Existing packages are opaque too. Account for their bytes in the total
-		// budget; never follow links or accept a partial file as a completed fetch.
+		if b, e := storagepins.ReadFile(path, c.packageLimit); e == nil {
+			if int64(len(b)) > budget {
+				_ = storagepins.RemoveFile(path)
+				continue
+			}
+			budget -= int64(len(b))
+			existing[name] = true
+		}
+	}
+	for _, p := range list.Pins {
+		name := p.Name + "-" + p.Commit + ".pkg"
+		if existing[name] {
+			continue
+		}
+		path := filepath.Join(pkgDir, name)
 		limit := min(c.packageLimit, budget)
 		if limit <= 0 {
 			return
-		}
-		if b, e := storagepins.ReadFile(path, limit); e == nil {
-			budget -= int64(len(b))
-			continue
 		}
 		if c.now().Before(c.packageNext[name]) {
 			continue
@@ -129,6 +144,8 @@ func (c *storageCourier) Once(ctx context.Context) {
 		budget -= int64(len(b))
 		if storagepins.WriteFile(path, b, c.packageLimit) != nil {
 			c.log.Warn("storage_transport_failed")
+		} else {
+			existing[name] = true
 		}
 	}
 }

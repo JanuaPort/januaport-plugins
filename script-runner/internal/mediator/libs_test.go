@@ -596,9 +596,9 @@ func TestLibsTamperedDirectoryIsDiscardedAtStart(t *testing.T) {
 	}
 }
 
-// Invariante 1: Der Läufer lädt nichts aus dem Netz. Weder vermittler noch
-// abholer (noch eine andere Stelle ohne Weg B) enthalten einen HTTP-Client
-// außer MCP, Taktgeber und Speicherbote; kein pip, keine Index-Adresse.
+// Invariante 1: HTTP-Clients ausschließlich für MCP, Taktgeber und Speicherbote.
+// Bibliotheken, Objektquellen und Abholer haben keinen HTTP-Client; kein pip
+// und keine Index-Adresse.
 func TestNoDownloadClientInSource(t *testing.T) {
 	root := "../.."
 	httpClientAllowed := map[string]bool{"internal/mediator/run.go": true, "internal/mediator/schedules.go": true, "internal/mediator/storage_fetch.go": true}

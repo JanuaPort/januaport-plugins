@@ -217,7 +217,7 @@ Speicher, PIDs und Mindestlebensdauer bleiben eigenständige Grenzen.
 
 ## Referenzen und Nachweise
 
-### Speicherquelle (#1277 S4b, Lauf 1)
+### Speicherquelle (#1277 S4b)
 
 Abholer-Vertrag aus Plan c-6578615445 und SEC c-6578688656: separate Inbox
 `speicher/inbox/list.json` und `speicher/inbox/pkg/<name>-<commit>.pkg`,
@@ -249,9 +249,9 @@ den Index in der angenommenen Pinliste. Frist ausschließlich aus
 `accepted.manifest.issued_at`; bei Sequenz 0 Sperre ab eigener Prozessuhr bis
 streng nach 12 Minuten, auch bei fehlendem Zustand, Wechsel und Neustart.
 Fehlender/gewechselter Schlüssel entfernt Freigaben im selben Durchlauf.
-Details und Adapterbelege stehen in [CLAUDE.md](../CLAUDE.md#speicherpins-1277-s4b-lauf-1).
+Details und Adapterbelege stehen in [CLAUDE.md](../CLAUDE.md#speicherpins-1277-s4b).
 
-Lauf 2 bindet Bote, Senke und Meldung an: zunächst `pending`, bei Fehlern
+Bote, Senke und Meldung sind angebunden: zunächst `pending`, bei Fehlern
 `invalid/fetch_failed` (Liste, Schlüssel, Transport) bzw.
 `invalid/hash_mismatch` (Paketstruktur, Hash). Eine Abholerfreigabe allein
 ist kein `ready`; Manifest-, Bibliotheks- und Sandboxprüfung bleiben erforderlich.
@@ -267,3 +267,13 @@ Git-/Desktop-Dateien und alle bisherigen Goldens bleiben bytegleich.
   `internal/mediator/limits_test.go`; echter Wächter-Adapter:
   `internal/guard/limits_linux_test.go`.
 - [P3-Abschlussbericht](https://github.com/JanuaPort/januaport/issues/1040#issuecomment-6205261051): Verifikation, Mutationsproben und Fundstellen.
+
+Der Speicherbote veröffentlicht unveränderte HTTP-Bytes atomar in der Inbox;
+Redirects, Übergröße und Fehlerantworten werden abgewiesen, `Retry-After` und
+404-Backoff von mindestens 5 Minuten eingehalten. Nur der Abholer erteilt
+Freigaben. Die Senke öffnet das Paket über eine consumer-seitige Objektquelle,
+prüft den exakten Pakethash und die Frist aus demselben `accepted`-Snapshot
+vor jeder Codeübergabe, einschließlich nach dem Warten auf die Sandbox.
+`internal/mediator/testdata/storage.pkg` ist eine separate ausführbare
+Integrationsfixture, kein Kern-Golden. Die Docker-Sonde signiert mit einem
+frisch erzeugten Wegwerf-Schlüssel; der Golden-Schlüssel bleibt gesperrt.

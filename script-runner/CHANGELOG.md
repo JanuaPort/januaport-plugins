@@ -1,5 +1,18 @@
 # Changelog — script-runner
 
+## Unveröffentlicht — #1277 S4b Lauf 2 (2026-11-02)
+
+- Speicherbote im Vermittler: eigener 60-s-Takt, Runtime-Key, rohe atomare
+  Inbox-Veröffentlichung, keine Redirects, begrenzte Antworten, Retry-After
+  und 5-min-Backoff nach 404; feste Log-Codes ohne Bodies oder Schlüssel.
+- Senke mit consumer-seitiger Objektquelle: Freigabe, Frist aus accepted und
+  Pakethash vor jeder Codeübergabe erneut geprüft, auch nach Sandbox-Wartezeit.
+  Speicherpins und Bibliotheken nutzen Vertrag 2 ohne neues Wire-Feld;
+  abgelaufene/entzogene Pakete und nicht referenzierte Bibliotheken werden entfernt.
+- Docker-Sonde mit eigenem Wegwerf-Schlüssel: ready, echter Lauf, Ablauf bei
+  gestopptem Abholer und R8 ohne Deploy-/Public-Key-Mount im Vermittler.
+  Git-/Desktop-Goldens, Compose, Netze und UIDs unverändert.
+
 ## Unveröffentlicht — #1277 S4b Lauf 1 (2026-11-02)
 
 - Abholer prüft Speicherpins unabhängig von Git alle 5 s: signierte exakte
