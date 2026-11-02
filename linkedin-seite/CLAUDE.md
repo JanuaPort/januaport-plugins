@@ -1,4 +1,4 @@
-# linkedin-seite 0.1.0 — Modulvertrag (#1237)
+# linkedin-seite 0.1.1 — Modulvertrag (#1237)
 
 Privater Python-REST-Beisteller, Apache 2.0. PO 29.10.2026 Option (a): ausschließlich
 Stufe A. Synthetisch geprüft, Live-Abnahme offen. Kein eigener MCP-Server.
