@@ -1,0 +1,42 @@
+# jnpt-bing-webmaster-key.path — beobachtet BEIDE Laufzeit-Schlüssel des
+# Bing-Webmaster-Beistellers und weckt dessen Neustart (#1292).
+#
+# Warum ein eigenes Paar und nicht jnpt-plugin-key@: Die Vorlage des Produkts
+# beobachtet nur /run/jnpt/plugins/%i/runtime-key und startet
+# /opt/jnpt/plugins/%i/docker-compose.yml. Für die zweite Stelle
+# `bing-webmaster-bing` (Bing-API-Schlüssel) gibt es dort keine Compose.
+#
+# Die Kette:
+#
+#   Betreiber trägt Wert in der Basis-Einrichtung ein (Stelle plugin-bing-webmaster
+#   oder plugin-bing-webmaster-bing)
+#     → Gateway schreibt die runtime-key-Datei (≤ 60 s, auch nach jedem Boot)
+#       → diese Unit sieht die Änderung
+#         → jnpt-bing-webmaster-key.service erzeugt den Container neu
+#           → der Dienst liest beide Schlüssel beim Start.
+#
+# Boot: Startet der Container vor dem Schreiben der Dateien, endet er mit
+# `startup_failed` (Exit 1); das spätere Schreiben löst den Recreate aus.
+#
+# Ablage auf der Anlage: /etc/systemd/system/jnpt-bing-webmaster-key.path
+# Aktivieren (NUR die Path-Unit, nicht den Service):
+#   systemctl daemon-reload && systemctl enable --now jnpt-bing-webmaster-key.path
+# Mitlesen: journalctl -u jnpt-bing-webmaster-key.service -f
+
+[Unit]
+Description=Beobachtet die Laufzeit-Schlüssel des JanuaPort-Beistellers bing-webmaster
+Documentation=https://github.com/JanuaPort/januaport/blob/main/deploy/tunnel/CLAUDE.md
+
+[Path]
+# ⚠️ PathChanged, NICHT PathModified: Das Gateway schreibt atomar über eine
+# temporäre Datei plus `rename`; nur PathChanged sieht den Inode-Tausch.
+PathChanged=/run/jnpt/plugins/bing-webmaster/runtime-key
+PathChanged=/run/jnpt/plugins/bing-webmaster-bing/runtime-key
+
+# ⚠️ Bewusst KEIN MakeDirectory=: Die Ordner gehören der Gateway-UID (65532) und
+# entstehen ausschließlich über systemd-tmpfiles
+# (jnpt-plugins-bing-webmaster.conf.example). Legte diese Unit sie an, gehörten
+# sie root — und die Beanspruchung wäre kein Akt des Betreibers mehr (SEC K1).
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,12 @@
+{
+  "site_url": "https://www.example.test/",
+  "hosts": [
+    "example.test",
+    "www.example.test"
+  ],
+  "write_cap_per_day": 20,
+  "indexnow": {
+    "key": "synthetic-indexnow-key-0123456789",
+    "key_location": "https://www.example.test/synthetic-indexnow-key-0123456789.txt"
+  }
+}
