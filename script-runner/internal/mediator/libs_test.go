@@ -601,8 +601,11 @@ func TestLibsTamperedDirectoryIsDiscardedAtStart(t *testing.T) {
 // für Downloads, kein pip, keine Index-Adresse.
 func TestNoDownloadClientInSource(t *testing.T) {
 	root := "../.."
-	httpClientAllowed := map[string]bool{"internal/mediator/run.go": true, "internal/mediator/schedules.go": true}
-	noNetPackages := []string{"libs", "store", "fetcher", "guard", "manifest", "pins", "gitref", "frame", "schedules", "ticker"}
+	httpClientAllowed := map[string]bool{"internal/mediator/run.go": true, "internal/mediator/schedules.go": true, "internal/mediator/storage_fetch.go": true}
+	if len(httpClientAllowed) != 3 || !httpClientAllowed["internal/mediator/run.go"] || !httpClientAllowed["internal/mediator/schedules.go"] || !httpClientAllowed["internal/mediator/storage_fetch.go"] {
+		t.Fatal("HTTP-Ausnahmen erweitert oder verschoben")
+	}
+	noNetPackages := []string{"libs", "store", "fetcher", "guard", "manifest", "pins", "gitref", "frame", "schedules", "ticker", "storagepins", "gitobjects"}
 	forbiddenImportsEverywhere := map[string]bool{"plugin": true}
 	clientNames := map[string]bool{"Get": true, "Head": true, "Post": true, "PostForm": true, "DefaultClient": true,
 		"NewRequest": true, "NewRequestWithContext": true, "Client": true, "Transport": true, "DefaultTransport": true}

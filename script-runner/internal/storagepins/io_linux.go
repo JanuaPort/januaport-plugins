@@ -74,7 +74,17 @@ func randomName() string {
 }
 
 func atomicWrite(root string, b []byte, name func() string) error {
-	if int64(len(b)) > MaxListBytes {
+	return atomicFile(root, "state.json", b, MaxListBytes, name)
+}
+
+// WriteFile publishes bounded opaque inbox bytes with the same durable,
+// exclusive-temp protocol as state.json. Only the courier calls this API.
+func WriteFile(path string, b []byte, limit int64) error {
+	return atomicFile(filepath.Dir(path), filepath.Base(path), b, limit, randomName)
+}
+
+func atomicFile(root, target string, b []byte, limit int64, name func() string) error {
+	if limit < 0 || limit > MaxPackageBytes || int64(len(b)) > limit || target == "." || target == ".." || strings.ContainsAny(target, "/\\") {
 		return ErrInvalid
 	}
 	dir, e := openDirectory(root)
@@ -100,7 +110,40 @@ func atomicWrite(root string, b []byte, name func() string) error {
 	if e != nil || closed != nil {
 		return ErrInvalid
 	}
-	if unix.Renameat(int(dir.Fd()), tmp, int(dir.Fd()), "state.json") != nil || dir.Sync() != nil {
+	if unix.Renameat(int(dir.Fd()), tmp, int(dir.Fd()), target) != nil || dir.Sync() != nil {
+		return ErrInvalid
+	}
+	return nil
+}
+
+// DirectoryNames and RemoveFile keep cleanup anchored to a no-follow directory.
+func DirectoryNames(root string) ([]string, error) {
+	dir, e := openDirectory(root)
+	if e != nil {
+		return nil, e
+	}
+	defer func() { _ = dir.Close() }()
+	entries, e := dir.ReadDir(-1)
+	if e != nil {
+		return nil, ErrInvalid
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	return names, nil
+}
+
+func RemoveFile(path string) error {
+	dir, e := openDirectory(filepath.Dir(path))
+	if e != nil {
+		return e
+	}
+	defer func() { _ = dir.Close() }()
+	if e = unix.Unlinkat(int(dir.Fd()), filepath.Base(path), 0); e != nil && e != unix.ENOENT {
+		return ErrInvalid
+	}
+	if dir.Sync() != nil {
 		return ErrInvalid
 	}
 	return nil
