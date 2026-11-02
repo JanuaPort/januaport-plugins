@@ -6,6 +6,7 @@ require (
 	filippo.io/edwards25519 v1.1.0
 	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/robfig/cron/v3 v3.0.1
+	golang.org/x/net v0.53.0
 	golang.org/x/sys v0.49.0
 	gopkg.in/yaml.v3 v3.0.1
 )

@@ -96,7 +96,7 @@ func setup(t *testing.T, files ...fileSpec) *fixture {
 	if len(files) == 0 {
 		files = []fileSpec{{"index.html", "<h1>app</h1>", ""}, {"main.js", "console.log(1)", ""}, {"jnpt.app.json", "{}", ""}}
 	}
-	f := &fixture{t: t, status: 200, proxyStatus: 200, maxAge: 47, key: credential("apphost"), now: time.Now()}
+	f := &fixture{t: t, status: 200, proxyStatus: 200, maxAge: 47, key: credential("apphost"), now: time.Now().Truncate(time.Second)}
 	f.data, f.commit = bundle(t, "a", files)
 	f.keyPath = filepath.Join(t.TempDir(), "runtime-key")
 	if err := os.WriteFile(f.keyPath, []byte(f.key), 0600); err != nil {
@@ -111,6 +111,10 @@ func setup(t *testing.T, files ...fileSpec) *fixture {
 	}
 	f.server = httptest.NewServer(f.h.Handler())
 	t.Cleanup(f.server.Close)
+	c := f.login()
+	r := f.request("GET", "a.apps.example.test", "/_jnpt/callback?code=fixture", http.Header{"Cookie": []string{c.String()}}, "")
+	requireStatus(t, r, 200)
+	f.exchanges = nil
 	return f
 }
 
@@ -218,7 +222,7 @@ func TestInvariant1VerifiedPackageAtHTTP(t *testing.T) {
 			f := setup(t)
 			want := 200
 			if kind == "tampered" {
-				f.data[len(f.data)-2] ^= 1
+				f.data = bytes.Replace(f.data, []byte("<h1>app</h1>"), []byte("<h1>bad</h1>"), 1)
 				want = 503
 			}
 			if kind == "foreign" {
@@ -557,7 +561,7 @@ func TestStaticLogoutAndRelaySeparationAtHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r2.Body.Close()
+	defer func() { _ = r2.Body.Close() }()
 	requireStatus(t, r2, 404)
 }
 

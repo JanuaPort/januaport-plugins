@@ -1,5 +1,5 @@
-# Ein Image für drei dauerhafte Dienste und Volume-Init (JanuaPort/januaport#928):
-# vermittler, Sandbox (Wächter + Python), abholer und init-libs. Welcher Dienst läuft,
+# Ein Image für vier dauerhafte Dienste (apphost optional) und Volume-Init:
+# vermittler, Sandbox (Wächter + Python), abholer, apphost und init-libs. Welcher Dienst läuft,
 # entscheidet der Unterbefehl in docker-compose.yml.
 #
 # Beide Basis-Images sind per Digest gepinnt (Index-Digest, gültig für jede
