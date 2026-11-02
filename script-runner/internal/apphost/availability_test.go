@@ -108,6 +108,14 @@ func TestF2SessionCapacityEvictsEarliestAtHTTP(t *testing.T) {
 
 func TestH2PackageFetchIsolationAndCoalescingAtHTTP(t *testing.T) {
 	f := setup(t)
+	waiterReturned := make(chan struct{})
+	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.h.Handler().ServeHTTP(w, r)
+		if r.Header.Get("X-Probe-Waiter") == "1" {
+			close(waiterReturned)
+		}
+	}))
+	t.Cleanup(f.server.Close)
 	bData, bCommit := bundle(t, "b", []fileSpec{{"index.html", "app-b", ""}})
 	entered := make(chan struct{})
 	release := make(chan struct{})
@@ -139,13 +147,16 @@ func TestH2PackageFetchIsolationAndCoalescingAtHTTP(t *testing.T) {
 	defer unblock()
 	f.h.c.GatewayURL = gw.URL
 	f.h.sessions["session-b"] = binding{"b", f.now.Add(time.Hour)}
-	request := func(ctx context.Context, app, token string) (int, string, error) {
+	request := func(ctx context.Context, app, token string, waiter bool) (int, string, error) {
 		r, err := http.NewRequestWithContext(ctx, "GET", f.server.URL+"/", nil)
 		if err != nil {
 			return 0, "", err
 		}
 		r.Host = app + ".apps.example.test"
 		r.Header.Set("Cookie", "__Host-jnpt_app="+token)
+		if waiter {
+			r.Header.Set("X-Probe-Waiter", "1")
+		}
 		resp, err := http.DefaultClient.Do(r)
 		if err != nil {
 			return 0, "", err
@@ -159,7 +170,7 @@ func TestH2PackageFetchIsolationAndCoalescingAtHTTP(t *testing.T) {
 	results := make(chan error, 8)
 	for i := 0; i < 8; i++ {
 		go func() {
-			n, _, err := request(ctx, "a", credential("app"))
+			n, _, err := request(ctx, "a", credential("app"), false)
 			if err == nil && n != 200 {
 				err = fmt.Errorf("app a: %d", n)
 			}
@@ -173,16 +184,21 @@ func TestH2PackageFetchIsolationAndCoalescingAtHTTP(t *testing.T) {
 	}
 	bctx, bcancel := context.WithTimeout(ctx, time.Second)
 	defer bcancel()
-	n, body, err := request(bctx, "b", "session-b")
+	n, body, err := request(bctx, "b", "session-b", false)
 	if err != nil || n != 200 || body != "app-b" {
 		t.Fatalf("app b blocked by app a: status=%d err=%v", n, err)
 	}
 	// A waiting request can cancel independently of the in-flight fetch.
 	wctx, wcancel := context.WithTimeout(ctx, 50*time.Millisecond)
 	defer wcancel()
-	_, _, err = request(wctx, "a", credential("app"))
+	_, _, err = request(wctx, "a", credential("app"), true)
 	if err == nil {
 		t.Fatal("canceled waiter remained blocked")
+	}
+	select {
+	case <-waiterReturned:
+	case <-time.After(time.Second):
+		t.Fatal("canceled waiter still occupies the apphost handler")
 	}
 	// All remaining requests share the one result, including late arrivals.
 	unblock()

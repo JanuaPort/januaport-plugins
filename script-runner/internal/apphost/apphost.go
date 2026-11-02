@@ -36,6 +36,10 @@ type cached struct {
 	files   map[string]asset
 	status  int
 }
+type packageFlight struct {
+	done   chan struct{}
+	result cached // Published by closing done; immutable afterwards.
+}
 type binding struct {
 	app     string
 	expires time.Time
@@ -47,6 +51,7 @@ type Host struct {
 	client   *http.Client
 	mu       sync.Mutex
 	cache    map[string]cached
+	flights  map[string]*packageFlight
 	sessions map[string]binding
 }
 
@@ -78,7 +83,7 @@ func New(c Config) (*Host, error) {
 			return nil, errors.New("apphost: Gateway-URLs fehlen oder sind ungültig")
 		}
 	}
-	h := &Host{c: c, client: &http.Client{Timeout: 30 * time.Second, Transport: newTransport(), CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}, cache: map[string]cached{}, sessions: map[string]binding{}}
+	h := &Host{c: c, client: &http.Client{Timeout: 30 * time.Second, Transport: newTransport(), CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}, cache: map[string]cached{}, flights: map[string]*packageFlight{}, sessions: map[string]binding{}}
 	return h, nil
 }
 func (h *Host) key() (string, error) {
@@ -202,66 +207,91 @@ func (h *Host) request(ctx context.Context, method, route, key string, body []by
 }
 func (h *Host) packageFor(ctx context.Context, app, key string) (map[string]asset, int) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	if flight := h.flights[app]; flight != nil {
+		h.mu.Unlock()
+		select {
+		case <-flight.done:
+			return flight.result.files, flight.result.status
+		case <-ctx.Done():
+			return nil, 503
+		}
+	}
 	now := h.c.Now()
-	old := h.cache[app]
+	old, exists := h.cache[app]
 	if !old.checked.IsZero() && now.Sub(old.checked) < 5*time.Second {
+		h.mu.Unlock()
 		return old.files, old.status
 	}
-	// Bound host-driven RAM use; evict old entries before admitting another app.
-	if len(h.cache) >= 256 {
+	// In-flight entries reserve capacity too; never evict a running fetch.
+	if !exists && len(h.cache) >= 256 {
 		for name, c := range h.cache {
-			if now.Sub(c.checked) >= 5*time.Second {
+			if h.flights[name] == nil && now.Sub(c.checked) >= 5*time.Second {
 				delete(h.cache, name)
 			}
 		}
 		if len(h.cache) >= 256 {
+			h.mu.Unlock()
 			return nil, 503
 		}
 	}
+	flight := &packageFlight{done: make(chan struct{})}
+	h.flights[app] = flight
+	h.cache[app] = old
+	h.mu.Unlock()
+
+	next := h.fetchPackage(ctx, app, key, old)
+	next.checked = h.c.Now()
+	h.mu.Lock()
+	h.cache[app] = next
+	flight.result = next
+	delete(h.flights, app)
+	close(flight.done)
+	h.mu.Unlock()
+	return next.files, next.status
+}
+
+// No shared mutex is held during network I/O or object verification.
+func (h *Host) fetchPackage(ctx context.Context, app, key string, old cached) cached {
+	next := cached{status: 503}
 	r, e := http.NewRequestWithContext(ctx, "GET", h.c.GatewayURL+"/internal/apps/package?app="+url.QueryEscape(app), nil)
 	if e != nil {
-		return nil, 503
+		return next
 	}
 	r.Header.Set("Authorization", "Bearer "+key)
 	if old.commit != "" {
 		r.Header.Set("If-None-Match", `"`+old.commit+`"`)
 	}
-	next := cached{checked: now, status: 503}
-	defer func() { h.cache[app] = next }()
 	resp, e := h.client.Do(r)
 	if e != nil {
-		return nil, 503
+		return next
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == 404 {
 		next.status = 404
-		return nil, 404
+		return next
 	}
 	if resp.StatusCode == 304 && old.files != nil {
-		next = old
-		next.checked = now
-		return next.files, 200
+		return old
 	}
 	if resp.StatusCode != 200 {
-		return nil, 503
+		return next
 	}
 	b, e := io.ReadAll(io.LimitReader(resp.Body, (128<<20)+1))
 	if e != nil || len(b) > 128<<20 {
-		return nil, 503
+		return next
 	}
 	etag := resp.Header.Get("ETag")
 	if len(etag) != 66 || etag[0] != '"' || etag[65] != '"' {
-		return nil, 503
+		return next
 	}
 	commit := etag[1:65]
 	files, e := loadPackage(b, commit, app)
 	if e != nil {
 		h.c.Logger.Warn("app_package_rejected")
-		return nil, 503
+		return next
 	}
 	next.files, next.commit, next.status = files, commit, 200
-	return files, 200
+	return next
 }
 
 func (h *Host) login(w http.ResponseWriter, r *http.Request, app string) {

@@ -19,7 +19,17 @@ MUTATIONS = [
         ("if !strings.HasSuffix(host, suffix) {", "if false {"),
         ("name := strings.TrimSuffix(host, suffix)", 'name := strings.Split(strings.TrimSuffix(host, suffix), ".")[0]')]),
     ("4 Cookie-Bindung aus", "internal/apphost/apphost.go", [
-        ('!ok || b.app != app || !h.c.Now().Before(b.expires) || r.Method != "GET"', '(ok && b.app == "mutation-never") || r.Method != "GET"')]),
+        ('c, e := r.Cookie("__Host-jnpt_login")', 'c, e := r.Cookie("__Host-jnpt_login")\n if c == nil { c = &http.Cookie{} }'),
+        ('if e != nil || !opaque.MatchString(c.Value) {', 'if false {')]),
+    ("F2 Sitzungsverdrängung aus", "internal/apphost/apphost.go", [
+        ('delete(h.sessions, earliest)', 'if earliest != "" { h.mu.Unlock(); status(w, 503); return }')]),
+    ("H2 globaler Mutex beim Abruf", "internal/apphost/apphost.go", [
+        ('h.mu.Unlock()\n\n\tnext := h.fetchPackage', '// mutation: keep mutex\n\n\tnext := h.fetchPackage'),
+        ('next.checked = h.c.Now()\n\th.mu.Lock()', 'next.checked = h.c.Now()')]),
+    ("H2 parallele Abrufe derselben App", "internal/apphost/apphost.go", [
+        ('flight := h.flights[app]; flight != nil {', 'flight := h.flights[app]; flight != nil && false {')]),
+    ("H2 wartende Anfrage ignoriert Abbruch", "internal/apphost/apphost.go", [
+        ('case <-ctx.Done():', 'case <-context.Background().Done():')]),
     ("5 App aus Query", "internal/apphost/apphost.go", [
         ('map[string]string{"app": app, "code":', 'map[string]string{"app": r.URL.Query().Get("app"), "code":')]),
     ("6 festes Max-Age", "internal/apphost/apphost.go", [
