@@ -19,7 +19,7 @@ braucht ein Gateway ab **0.77.0**. Ein älteres Gateway sperrt den Läufer ganz
 
 ## Wie es arbeitet
 
-Drei dauerhafte Dienste und ein kurzer Init-Dienst aus einem Image, neben dem Gateway:
+Vier dauerhafte Dienste (Apphost optional) und ein kurzer Init-Dienst aus einem Image, neben dem Gateway:
 
 | Dienst | Aufgabe | Netz |
 |---|---|---|
@@ -27,6 +27,7 @@ Drei dauerhafte Dienste und ein kurzer Init-Dienst aus einem Image, neben dem Ga
 | `script-runner-sandbox` | führt **einen** Lauf aus und wird danach mit leerem Arbeitsspeicher neu gestartet | **kein Netz** |
 | `script-runner-fetcher` | prüft Git-Pins gegen den Standard-Zweig und holt Objekte per ssh mit einem Nur-Lese-Deploy-Key; prüft Speicherlisten und Pakete unabhängig davon (#1277 S4b) | eigenes Netz mit Ausgang, kein Weg zum Gateway |
 | `script-runner-init` | legt die Bibliotheksordner an und beendet sich erfolgreich, bevor die Sandbox startet | **kein Netz**, nur das Volume `libs` |
+| `script-runner-apphost` | liefert geprüfte Browser-Apps, bindet die Anmeldung an den Browser und reicht MCP sowie TLS-Freigaben an den privaten Gateway-Listener weiter | ausschließlich `jnpt_apps`, Profil `apps`, kein Host-Port |
 
 Für den **Desktop-Läufer** (#1165 D2b) stellt der Beisteller zusätzlich
 geprüfte Pakete bereit. JanuaPort schreibt `desktop-pins.json` atomar neben
@@ -304,7 +305,7 @@ fertige Verzeichnis einmal gegen sein Manifest und verwirft Abweichungen.
   die Sandbox eingehängt sind, kein Anlegen; eingehängt sind nur der
   Socket-Ordner des Läufers und `/libs` (die Bibliotheken), beide read-only —
   die Grenze ist die Mount-Liste.
-- **Netz:** Der Läufer hängt nur am Netz `jnpt_plugins`, das die Kern-Compose
+- **Netz:** Der Vermittler hängt nur am Netz `jnpt_plugins`, das die Kern-Compose
   von JanuaPort mit `internal: true` anlegt; dort hängt sonst nur das Gateway.
   Er erreicht `jnpt:8484`, das Gateway ihn unter `script-runner:8090`, ins
   Internet und ins LAN kommt er nicht. Fehlt das Netz auf der Anlage, startet
@@ -350,3 +351,78 @@ sh script-runner/probe/measure-libs.sh  # Messung: Bibliotheken im Sandbox-Image
 ```
 
 Einzelheiten für Entwickler: `CLAUDE.md`. Änderungen: `CHANGELOG.md`.
+
+## Browser-Apps mit `apphost`
+
+Das optionale Compose-Profil `apps` startet `script-runner-apphost` aus demselben
+Image. Der Dienst liefert ausschließlich statische Browser-Dateien aus dem
+Live-Paket `apps/<app>/` des Gateways. Python und Git werden dabei nicht gestartet.
+Server-Code, PNG und ICO gehören nicht zum Browser-App-Format v1; SVG ist möglich.
+Der HTML-Tokenizer stammt aus `golang.org/x/net/html` (BSD-3-Clause).
+
+Für den Betrieb sind drei Werte erforderlich:
+
+| Variable | Inhalt |
+|---|---|
+| `JNPT_APPS_DOMAIN` | Basissuffix ohne `apps.`, beispielsweise `example.test` |
+| `JNPT_APPS_GATEWAY_URL` | URL des **privaten** App-Listeners im Netz `jnpt_apps`, ohne Pfad; niemals der öffentliche Gateway-Listener |
+| `JNPT_GATEWAY_PUBLIC_URL` | öffentliche HTTPS-Origin für `/app-login/start`, ohne Pfad |
+
+Die Vault-Stelle `plugin-apphost` wird vom Kern als
+`/run/jnpt/plugins/apphost/runtime-key` materialisiert. Der einzige Mount ist
+`/run/jnpt/plugins/apphost:/run/secrets/jnpt:ro`; das Verzeichnis und der Schlüssel
+müssen für UID 65532 lesbar sein. Kein Schlüssel in Compose, Umgebungsvariablen
+oder Aufrufargumenten. Jeder HTTP-Aufruf liest die Schlüsseldatei erneut.
+Ein fehlender oder ungültiger Schlüssel verhindert den Start bzw. die Auslieferung.
+
+Der Kern legt das interne Netz `jnpt_apps` an; Apphost hängt ausschließlich daran.
+Vermittler, Abholer, Sandbox und Init hängen nie daran. `read_only`, `cap_drop: ALL`,
+`no-new-privileges` und UID 65532 sind Pflicht; weder Host-Port noch Store,
+Deploy-Key, Socket oder zusätzlicher Mount sind vorgesehen. Die Box-Kopie
+`box/docker-compose.script-runner.yml` ist bytegleich und wird zusammen mit dem
+Läufer-Paket einschließlich `seccomp/` in dessen Installationsordner verwendet.
+Die Box-Gateway-Compose und deren Listener-/Subnetzprüfung werden im Kern gepflegt.
+
+Caddy erreicht ausschließlich den Browser-Port `:8080`. Das interne Relay
+`:8081/tls-ask` ergänzt den Bearer für `/internal/apps/tls-ask` und bestätigt nur
+HTTP 200 des privaten Gateways. Browser-Pfade unter `/internal/` und `/tls-ask`
+liefern 404. DNS benötigt gewöhnlich `*.apps.<domain>`; einzelne A-Records je App
+sind ebenfalls möglich. Auf der Box: Wildcard im LAN-DNS und `tls internal`.
+
+Der Paketabruf nutzt `GET /internal/apps/package?app=<name>` mit dem Apphost-Bearer.
+ETag und `If-None-Match` tragen den Commit in Anführungszeichen. Jede Fassung wird
+über `gitobjects.Objects` einschließlich `Verify` vollständig an Commit und Pfad
+gebunden; es gibt kein Dateisystem-Checkout. Pro App bleibt eine Fassung im RAM,
+frühestens nach fünf Sekunden wird nachgefragt. 304 erhält sie, 404 verwirft sie,
+Transport-/Prüffehler sperren die Auslieferung. Ein Neustart leert alle Caches.
+
+Das komplette Paket muss die Ladeprüfung bestehen: höchstens 4 MiB Inhalt und
+1000 Dateien, nur Modus `100644`, verpflichtende `index.html`, feste MIME-Liste
+(HTML, CSS, JavaScript/MJS, SVG, JSON/Map/Webmanifest und Text). Inline-Scripts,
+Event-Attribute, `javascript:` und die eigene kleine Secret-Musterliste sperren
+alle Dateien der Fassung. `jnpt.app.json` wird mitgeprüft, aber niemals ausgeliefert.
+
+Nur `<dns-label>.apps.<domain>` wird bedient. Dateien verlangen eine vom Apphost
+registrierte, noch gültige Sitzung; bloßes Erfinden eines Session-Cookies genügt
+nicht. Navigation ohne Sitzung startet die Anmeldung, Assets antworten mit 401.
+Der einmalige Verifier steht fünf Minuten im sicheren HttpOnly-Login-Cookie
+(`SameSite=Lax`) und wird im RAM an die App gebunden. Callback ohne passende,
+frische Bindung löst keinen Exchange aus; die App stammt ausschließlich aus dem
+Host. Das Login-Cookie wird bei jedem Callback gelöscht. Das Sitzungscookie ist
+HttpOnly, Secure, `SameSite=Strict`, und lebt höchstens `max_age` bzw. bis
+`expires_at`. Die Antwort führt mit einer skriptfreien Meta-Refresh-Seite zurück.
+Ein Apphost-Neustart verlangt eine neue Anmeldung.
+
+`POST /mcp` und `POST /_jnpt/logout` verlangen den eigenen HTTPS-Origin und
+`X-Jnpt-App: 1`. Der Proxy akzeptiert höchstens 8 MiB, setzt den App-Bearer selbst
+und übernimmt nur MIME-/MCP-Protokollheader. Browser-Cookies, Authorization,
+Forwarded- und X-Jnpt-Header gehen nicht weiter; Gateway-Cookies kommen nicht
+zurück. 401 löscht die lokale Sitzung und das Cookie. Logout widerruft über
+`exchange {revoke}`. Es gibt keine Gateway-Redirects und keinen Umgebungsproxy.
+Logs enthalten keine Cookies, Tokens, Codes, Verifier oder Query-Werte.
+
+Alle Antworten tragen `no-store`, `nosniff`, `no-referrer` und die feste CSP:
+
+```text
+default-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'
+```

@@ -2,6 +2,11 @@
 
 ## Unveröffentlicht — #1277 SEC F1 (2026-11-02)
 
+- Optionaler Unterbefehl `apphost`: verifizierte Browser-Apps aus gitobjects.v1,
+  Anmeldung mit einmaligem Host-Cookie, privater MCP-Proxy und tls-ask-Relay.
+  Eigener nur lesbarer Runtime-Key, ausschließlich Apps-Netz, kein Store oder Socket.
+  Compose-Profil `apps` und Box-Kopie; Lade- und HTTP-Sicherheitsregeln mit Adaptertests.
+
 - Git-/Speicher-Namenskollision am MCP-Adapter abgesichert und im Vertrag
   festgehalten: beide Pins `invalid/manifest_invalid`, kein Sandbox-Job.
   Nur Namen aus `state.json/accepted` lösen die Kollision aus; ungeprüfte

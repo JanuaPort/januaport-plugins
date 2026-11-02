@@ -15,13 +15,14 @@ sowie Nachtrag 2a in JanuaPort/januaport#928; lokal `contract/README.md`) und da
 Bedrohungsmodell von SEC (T1–T12, R1–R13, M1–M7, V1–V3); die Nummern in
 Kommentaren und Tests verweisen darauf.
 
-**Ein statisches Go-Binary, ein Image, drei dauerhafte Dienste und ein Init-Dienst** (Unterbefehle):
+**Ein statisches Go-Binary, ein Image, vier dauerhafte Dienste (apphost optional) und ein Init-Dienst** (Unterbefehle):
 
 | Unterbefehl | Dienst | Verantwortung |
 |---|---|---|
 | `mediator` | `script-runner` | vermittler: MCP-Server für das Gateway (Weg A, `:8090` im internen Netz `jnpt_plugins`), prüft `runtime-key` (R13), liest `pins.json` und `desktop-pins.json`, Speicherbote und Leser von `speicher/state.json` (#1277 S4b), einzige Senke für Code (R6, M5), hält den einen Slot, misst Wandzeit und Größen selbst (M2, M4), ruft innere Werkzeuge mit dem Lauf-Token (Weg B), `/healthz` auf `:8091`; Taktgeber für Zeitpläne (#1039 S1, liest `schedules.json`, löst über das Gateway aus) |
 | `guard` | `script-runner-sandbox` | Wächter: PID 1 der Sandbox, `PR_SET_DUMPABLE 0`, meldet `hello`, nimmt **genau einen** job, startet `python -I`, räumt den Prozessbaum ab (V1/V3), hält die Instanz 10,5 s (B1) |
 | `fetcher` | `script-runner-fetcher` | abholer: prüft Git-Pins gegen den Standard-Zweig und holt Objekte per ssh in den Bare-Store, prüft `wanted/` und `repo_url` selbst (V2, M7); unabhängige Speicherprüfung alle 5 s (#1277 S4b) |
+| `apphost` | `script-runner-apphost` | optionales Profil `apps`, Browser `:8080`, internes tls-ask-Relay `:8081`, ausschließlich `jnpt_apps`, nur RAM und eigener Schlüsselordner |
 | `init-libs` | `script-runner-init` | kurzlebiger Volume-Init als 65532, ohne Netz; legt `ready` (0755) und `staging` (0700) an und beendet sich vor dem Sandbox-Start |
 
 **Nicht hier, mit Absicht:** Katalogeintrag und Signatur (die liegt auf dem
@@ -52,6 +53,7 @@ und `fetch` gelesen.
 | `internal/mediator` | vermittler: MCP, Auth, Pins, Slot/V1, Lauf, Weg B |
 | `internal/guard` | Wächter (`guard_linux.go`; anderswo nur ein Platzhalter) |
 | `internal/fetcher` | abholer |
+| `internal/apphost` | Browser-Listener, tls-ask-Relay, verifizierte statische Apps und Browser-Anmeldung; eigener Gatewayadapter ohne Proxy-Umgebung oder Redirects |
 | `internal/gitobjects` | geprüfte Kopie des Paketvertrags: SHA-256, sortierte Objekte, vollständiger Baum ohne Git-Aufruf |
 | `internal/storagepins` | signierte Speicherliste, gehärteter Dateiadapter, atomarer Höchststand und Speicherfreigaben |
 | `internal/hygiene` | Wächter-Tests für Compose (Vertrag §6, SEC-Zeile 3), Seccomp-Profil, Dockerfile |
@@ -384,7 +386,7 @@ expandiert. Die Paketreihenfolge ist deterministisch (siehe Vertrag).
 | Ungültiges Manifest/fehlende Pflichtdatei öffnet keinen Paketweg; Fehler ohne Echo | `TestDesktopInvalidManifestAtHTTP`, `TestDesktopMissingRequiredFilesAtHTTP` |
 | Desktop-Pins sind keine MCP-Werkzeuge und senden keinen Sandbox-Job; auch ein gleichnamiger lokaler Pin öffnet keinen Weg | `TestDesktopMetadataAndNoSandboxOrWheelExtraction` (zählender Unix-Adapter: 0 Jobs) |
 | Kein Aufruf des Bibliotheksadapters und kein Entpacken, auch nicht für Windows-Wheels | `TestDesktopWheelPreparationSeamZero` (Windows und `any`, 0 Vorbereitungen, leere Ready-/Staging-Ordner) |
-| HTTP-Clients nur für MCP, Taktgeber und Speicherboten; kein Paketindex | `TestNoDownloadClientInSource` |
+| HTTP-Clients nur für MCP, Taktgeber, Speicherboten und den privaten Apphost-Gatewayadapter; kein Paketindex | `TestNoDownloadClientInSource` |
 | Desktop-Pins zählen als bekannt; Zeitpläne werden lokal nur gemeldet, das Gerät taktet aus dem Manifest | `TestDesktopTickerNeverFiresAtHTTP` (keine HTTP-Auslösung und keine lokalen Lauf-/Missed-/Busy-Werte) |
 | SHA-1 und SHA-256; unveränderte Goldens sind byte-gleich | `TestDesktopSHA256AtHTTP`, `TestDesktopPackageGolden` (direkter Import beider Golden-Pakete in echte Git-Objektdatenbanken) |
 
@@ -552,7 +554,7 @@ nicht von `isolation` ab; `/healthz` behält seine lokale Sandbox-Bedeutung.
     **Ausgang hat nur der abholer** (eigenes Netz `egress`, git über ssh); er
     hängt nie an `jnpt_plugins` oder `jnpt_default`. Die Sandbox hat
     `network_mode: none`. Jeder andere Dienst hat kein Netz oder nur
-    `jnpt_plugins`; ohne Netzliste hinge er am Projekt-Default mit Ausgang.
+    `jnpt_plugins`; der optionale Apphost hängt ausschließlich an `jnpt_apps`. Ohne Netzliste hinge er am Projekt-Default mit Ausgang.
     Mechanik: `internal/hygiene` (`checkNoEgress`, `checkMediator`,
     `checkFetcher`, Proben in `TestComposeMutationsAreCaught`,
     `TestNoServiceButFetcherHasEgress`), im Kern-Repo der Vorlagen-Wächter
@@ -566,8 +568,8 @@ nicht von `isolation` ab; `/healthz` behält seine lokale Sandbox-Bedeutung.
 11. **Bibliotheken (#1041), Invarianten 1–5 und 7 des Plans.** Details im
     Abschnitt „Python-Bibliotheken“; je Invariante die Tests:
     - **Kein pip, kein Paketindex:** `TestNoDownloadClientInSource` (HTTP-Clients
-      ausschließlich in MCP, Taktgeber und Speicherboten; `libs`/`store` und Abholer ohne HTTP-Client,
-      kein pip, keine Index-Adresse; `http.*`-Client nur in Weg B und
+      ausschließlich in MCP, Taktgeber, Speicherboten und Apphost; `libs`/`store` und Abholer ohne HTTP-Client,
+      kein pip, keine Index-Adresse; `http.*`-Client nur in Weg B, Apphost und
       Taktgeber), Sonden `TestLibsNoPip` und `TestR12ImageHasNoPipAndSha1dcGit`,
       `net_probe` unverändert.
     - **Hash-Abweichung ist fail-closed:** `TestEnsureTamperedWheelFailsClosed`,
@@ -1170,3 +1172,37 @@ P2_IMAGE=ghcr.io/januaport/script-runner@sha256:… sh script-runner/probe/run.s
 # Workflows
 docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:latest
 ```
+
+## Apphost: eigener Dienst und eigene Vertrauensgrenze
+
+`internal/apphost` ist ein zusätzlicher HTTP-Adapter. Er verwendet die geprüfte
+S4b-Bibliothek `gitobjects.Objects` (ruft `Verify` auf), verändert aber weder
+Speicher-Abholer noch Vermittler oder Senke. Konfiguration, Paket-/Login-Vertrag
+und Betriebsgrenzen stehen im README-Abschnitt „Browser-Apps mit apphost“.
+
+Die Kernzusage wird am realen HTTP-Adapter mit unabhängig erzeugten
+`gitobjects.v1`-Paketen geprüft: ein verändertes Blob oder ein fremder App-Pfad
+liefert keine Datei. RAM-Sitzungen verhindern, dass beliebige Browser-Cookies
+als Anmeldung gelten. Verifier-Bindungen sind hostgebunden, einmalig und fünf
+Minuten gültig. Paketdaten, Login-Bindungen und Sitzungen sind ausschließlich RAM;
+Neustart bedeutet neue Anmeldung. Die ETag-Abfrage erfolgt je App frühestens
+nach fünf Sekunden; 404 und Fehler geben keine alte Fassung frei.
+
+| Invariante | Adaptertest |
+|---|---|
+| Hash und Pfad | `TestInvariant1VerifiedPackageAtHTTP` |
+| Lade-Regeln einschließlich Grenzen und Geheimnis-Mustern | `TestInvariant2LoadRulesAtHTTP` |
+| Exakter App-Host | `TestInvariant3HostAtHTTP` |
+| Login-Cookie, Ablauf und Einmaligkeit vor Exchange | `TestInvariant4BrowserBindingAtHTTP`, `TestInvariant5AppFromHostAtHTTP` |
+| App ausschließlich aus dem Host | `TestInvariant5AppFromHostAtHTTP` |
+| Cookie- und CSP-Literale, begrenzte Sitzungsdauer | `TestInvariant6CookiesAndCSPAtHTTP` |
+| Origin, Headerfilter, Bodygrenze, 401 und Geheimnisfreiheit | `TestInvariant7ProxyAtHTTP`, `TestLogsNeverContainCredentialsOrQuery` |
+| Getrennte Listener und Abmeldung | `TestStaticLogoutAndRelaySeparationAtHTTP` |
+| ETag, Widerruf und Schlüsselrotation | `TestCacheETagRevocationAndKeyRotationAtHTTP` |
+| Genau Apps-Netz, genau ein Schlüsselmount, Box-Gleichheit | `TestInvariant10ApphostNetworkAndMounts` |
+| Wirkliche Netztrennung und Caddy | `TestInvariant10RealNetworkIsolation`, `TestInvariant11RealCaddy` (Docker-Probe) |
+
+`probe/mutate_apphost.py --docker` führt für jede Mutation die **volle**
+Apphost-Paketsuite aus und stellt die Originaldatei im `finally` wieder her.
+Jede Probe muss durch einen ausgeführten Test scheitern; reine Buildfehler
+zählen nicht. Die Caddy-Probe benötigt den echten Container `caddy:2.11.7`.
