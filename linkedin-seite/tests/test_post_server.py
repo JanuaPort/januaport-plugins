@@ -144,6 +144,38 @@ class Flow(Service):
         for canary in ('Hallo', 'a.png', 'UPLOADURLCANARY', 'dms-uploads', GATEWAY_TOKEN, self.write[s.ACCESS_TOKEN]):
             self.assertNotIn(canary, '\n'.join(logs.output))
 
+    async def test_unknown_outcome_after_the_final_request_is_never_sent_again(self):
+        # LinkedIn accepted the post, but the answer is unusable (here: no x-restli-id). A retry with the
+        # same approval could post a second time; it is refused until a human looks (Zweitmeinung A13).
+        def no_id(call):
+            if call['method'] == 'POST' and call['path'] == '/rest/posts':
+                self.li.posts += 1
+                return 201, {}, b''
+            return None
+        self.li.override = no_id
+        rid = self.plan(post_text='x')
+        await self.approve(rid)
+        status, body = await self.write_call('create_post', rid)
+        self.assertEqual((status, body), (502, {'error': 'unexpected_source_shape'}))
+        self.li.override = None
+        for _ in range(2):
+            status, body = await self.write_call('create_post', rid)
+            self.assertEqual((status, body), (409, {'error': 'ergebnis_unbekannt'}))
+        self.assertEqual(len(self.li.api('POST', '/rest/posts')), 1)
+        self.assertEqual(sum(self.writes.actions.values()), 1)
+
+    async def test_failure_before_the_final_request_may_be_retried(self):
+        self.li.override = lambda call: (500, {}, b'') if call['method'] == 'PUT' else None
+        rid = self.plan(post_text='x', medien='["a.png"]')
+        self.gw.files['a.png'] = PNG
+        await self.approve(rid)
+        status, body = await self.write_call('create_post', rid)
+        self.assertEqual((status, body), (502, {'error': 'source_unavailable'}))
+        self.li.override = None
+        status, body = await self.write_call('create_post', rid)
+        self.assertEqual((status, body['state']), (200, 'veroeffentlicht'))
+        self.assertEqual(len(self.li.api('POST', '/rest/posts')), 1)
+
     async def test_not_approved_is_403_and_counts_nothing(self):
         rid = self.plan(post_text='x')
         status, body = await self.write_call('create_post', rid)
@@ -223,8 +255,14 @@ class Background(Service):
             if self.writes.job is None or self.writes.job.future.done():
                 break
         self.li.override = None
-        status, body = await self.write_call('create_post', rid)
-        self.assertEqual((status, body['state'], body.get('wiederholt')), (200, 'veroeffentlicht', True))
+        status, body = await self.write_call('create_post', rid)  # first delivery of the background result
+        self.assertEqual((status, body['state'], body.get('wiederholt')), (200, 'veroeffentlicht', None))
+        for _ in range(100):  # a later repeat is a short job (re-read and hash), it may answer 202 first
+            status, again = await self.write_call('create_post', rid)
+            if status != 202:
+                break
+            await asyncio.sleep(0.1)
+        self.assertEqual((status, again['post_urn'], again.get('wiederholt')), (200, body['post_urn'], True))
         self.assertEqual(len(self.li.api('POST', '/rest/posts')), 1)
         self.assertEqual(sum(self.writes.actions.values()), 1)
 

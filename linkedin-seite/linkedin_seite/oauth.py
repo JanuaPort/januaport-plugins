@@ -89,12 +89,32 @@ def validate_identity(data, now=None):
     return dict(data)
 
 
-def load_identity(path):
+def read_identity_file(path):
     with Path(path).open('rb') as handle:
         raw = handle.read(64 * 1024 + 1)
     if len(raw) > 64 * 1024:
         raise ValueError('invalid_identity')
-    return validate_identity(strict_json(raw))
+    return strict_json(raw)
+
+
+def load_identity(path):
+    return validate_identity(read_identity_file(path))
+
+
+def validate_write_identity(data, now=None):
+    """Stufe B1 (#1237, SEC Bed. 4): the write identity carries `scope` = exactly the write scope.
+
+    The unchanged Stufe-A check rejects any `scope` field, so a write JSON in the read place fails
+    there, and a read JSON (no `scope`) fails here: the two tokens cannot be exchanged unnoticed.
+    Returns the identity without the marker, in the shape `Tokens` expects.
+    """
+    if not isinstance(data, dict) or not isinstance(data.get(s.SCOPE), str) or scope_set(data[s.SCOPE]) != set(s.WRITE_SCOPES):
+        raise ValueError('invalid_identity')
+    return validate_identity({k: v for k, v in data.items() if k != s.SCOPE}, now)
+
+
+def load_write_identity(path):
+    return validate_write_identity(read_identity_file(path))
 
 
 def warning(data, now=None):
@@ -131,11 +151,11 @@ def lifetime(seconds, days):
     return min(seconds, cap)
 
 
-def token_result(raw, now, original_refresh_expiry=None):
+def token_result(raw, now, original_refresh_expiry=None, scopes=s.SCOPES):
     try:
         if not isinstance(raw, dict):
             raise ValueError()
-        if s.SCOPE in raw and scope_set(raw[s.SCOPE]) != set(s.SCOPES):
+        if s.SCOPE in raw and scope_set(raw[s.SCOPE]) != set(scopes):
             raise ValueError()
         if raw.get(s.TOKEN_TYPE, 'Bearer').lower() != 'bearer':
             raise ValueError()
@@ -154,10 +174,11 @@ def token_result(raw, now, original_refresh_expiry=None):
 
 
 class Tokens:
-    def __init__(self, data, transport, now=None):
+    def __init__(self, data, transport, now=None, scopes=s.SCOPES):
         self.data = validate_identity(data)
         self.transport = transport
         self.now = now or (lambda: datetime.now(timezone.utc))
+        self.scopes = scopes  # the read grant, or for Stufe B1 the separate write grant
 
     def access(self):
         now = self.now()
@@ -167,7 +188,7 @@ class Tokens:
         if refresh and now >= expiry - timedelta(minutes=5) and now < refresh_expiry:
             raw = self.transport.token({s.GRANT_TYPE: s.REFRESH_TOKEN, s.REFRESH_TOKEN: refresh,
                                        s.CLIENT_ID: self.data[s.CLIENT_ID], s.CLIENT_SECRET: self.data[s.CLIENT_SECRET]})
-            update = token_result(raw, now, refresh_expiry)
+            update = token_result(raw, now, refresh_expiry, self.scopes)
             self.data.update(update)  # RAM only; source file remains untouched
             expiry = timestamp(self.data['access_expires_at'])
         if now >= expiry:

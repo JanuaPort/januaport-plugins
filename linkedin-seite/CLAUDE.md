@@ -1,7 +1,8 @@
-# linkedin-seite 0.1.2 — Modulvertrag (#1237)
+# linkedin-seite 0.2.0 — Modulvertrag (#1237)
 
-Privater Python-REST-Beisteller, Apache 2.0. PO 29.10.2026 Option (a): ausschließlich
-Stufe A. Synthetisch geprüft, Live-Abnahme offen. Kein eigener MCP-Server.
+Privater Python-REST-Beisteller, Apache 2.0. PO 29.10.2026 Option (a): Stufe A (Lesen); seit
+0.2.0 Stufe B1 (Posten nach Freigabe, SEC c-6575359082 und c-6575837332). Synthetisch geprüft,
+Live-Abnahme offen. Kein eigener MCP-Server; für B1 ein eigener, nur lesender MCP-Client.
 Root-CLAUDE.md war im Ausgangscheckout nicht vorhanden.
 
 - `domain.py`: fail-closed Konfiguration, Organisation ausschließlich Betreiberwert;
@@ -10,7 +11,10 @@ Root-CLAUDE.md war im Ausgangscheckout nicht vorhanden.
   `end_date_not_available`, kein Klemmen. Vorgabe endet am letzten verfügbaren Tag.
 - `source_contract.py`: EIN Ort aller Hersteller-Endpunkte, Parameter und Feldnamen,
   Kommentar „aus Herstellerdoku, live zu belegen“. Scopes exakt
-  `rw_organization_admin r_organization_social`. Kein weiterer Scope, kein Schreibadapter.
+  `rw_organization_admin r_organization_social` für Stufe A. Seit 0.2.0 der Block Stufe B1:
+  `WRITE_SCOPES` = genau `w_organization_social`, geschlossene `WRITE_ENDPOINTS` (Methode, Pfad je
+  Operation, Doku-URL je Zeile), `UPLOAD_HOSTS`/`UPLOAD_PATH_PREFIX`, `UPLOAD_TOKEN` je Upload-Art,
+  Video-Teilgröße, Status-Takt und Höchstzeit, Umfrage-Grenzen, reservierte Little-Text-Zeichen.
 - `linkedin_adapter.py`: fünf feste REST-Endpunkte, nur einzelne GETs, kein BATCH_GET.
   Query nach Rest.li 2.0 (`restli_query`, 0.1.2): Werte in `RESTLI_STRUCTURED` (`timeIntervals`,
   `shares`, `ugcPosts`) gehen roh, nur die URN darin ist kodiert; alle übrigen Werte voll kodiert.
@@ -65,9 +69,11 @@ Root-CLAUDE.md war im Ausgangscheckout nicht vorhanden.
 
 Invarianten in README, SETUP, Code, Deploy, CI und Tests gemeinsam nachziehen.
 Secret-Hausmuster #887: `plugin-linkedin-seite` (Bridge-Key, zugleich Connector-Credential
-`linkedin-seite`) und `plugin-linkedin-seite-oauth` (OAuth-JSON). tmpfiles erzeugt beide
-Ordner 0750/65532; Compose hängt Ordner read-only ein, eigenes Key-Unit-Paar beobachtet
-beide `runtime-key` und führt force-recreate aus. Nie Klartext unter /etc oder /opt.
+`linkedin-seite`) und `plugin-linkedin-seite-oauth` (OAuth-JSON); seit 0.2.0 optional
+`plugin-linkedin-seite-post-oauth` (Schreib-Grant) und `plugin-linkedin-seite-gateway` (eigener
+Gateway-Token, nur `redaktionsplan_get`, `redaktion_freigabe_search`, `<ablage>_get_file`). tmpfiles erzeugt alle vier
+Ordner 0750/65532; Compose hängt sie read-only ein, eigenes Key-Unit-Paar beobachtet
+alle vier `runtime-key` und führt force-recreate aus; REQUIRE verlangt nur die zwei Stufe-A-Schlüssel. Nie Klartext unter /etc oder /opt.
 Konfiguration ist secretfrei. Kein Secret in Envs, Repo, Fehlerantwort oder Log.
 Dienst bindet nur reservierte Plugin-IP; internal-Netz und Egress-Firewall Betreiberpflicht.
 
@@ -84,4 +90,59 @@ Tag `linkedin-seite-vX.Y.Z` ausschließlich durch Auftraggeber; Aktionen SHA-gep
 keine neuen Aktionen. amd64-Build, SBOM/Provenance, Digest-/Config-Digest-Sonden,
 Trivy-Bericht, erst dann Tag. Workflow-Änderung zieht Release-Test/CHANGELOG nach.
 Version steht in diesem Kopf, README-Kopf und CHANGELOG; Compose/Deskriptor ohne Version.
-Stufe B ist nicht implementiert; später separater Auftrag und SEC-/Rechte-/Auditvertrag.
+## Stufe B1 (0.2.0) — Invarianten
+
+- `redaktion.py` (rein, ohne IO): `WriteConfig` aus dem optionalen Config-Block `schreiben`
+  (`gateway_url` streng `http(s)://<host>:<port>/mcp`, nie `/admin/mcp`; Kartei-/Ablage-Namen; Größe
+  Vorgabe = Höchstwert 32 MiB). Schreibrouten nehmen nur `{"eintrag_id": <16 Hex>}`. Kartei-Felder
+  `post_text`, `medien` (JSON-Liste), `umfrage` (JSON-Objekt), `post_urn`, `kommentar_text` als
+  string, weil der Kern nur `string|integer|number|boolean` kennt; strikt geparst. Umfrage-Grenzen
+  vor dem Senden, nichts kürzen. `posten` verlangt leere `post_urn`. Kürzel `‹…›` in einem Feld und
+  URNs im Kommentartext werden abgewiesen. Hash = SHA-256 über `HASH_PREFIX` + kanonisches JSON
+  (sortiert, UTF-8, kompakt) der gepostet-relevanten Felder und `{datei, bytes, sha256}` je Medium;
+  eingefrorene Vektoren in `tests/test_post_domain.py` — eine Änderung entwertet jede Freigabe und
+  braucht ein neues `v`. `freigegeben` verlangt `eintrag_id`, `aktion`, `hash` exakt **und**
+  `via == updated_via == "SSO"`. `little` escaped alle reservierten Zeichen, `#Wort` bleibt Hashtag.
+  `upload_ziel`: https, `netloc == hostname` (kein Port, keine Zugangsdaten), Host exakt aus der
+  Liste, Pfadpräfix, kein Fragment. `video_teile`: lückenlos, ohne Überlappung, ≤ ceil(Größe/4 MiB).
+- `gateway.py`: MCP-Client (JSON-RPC über Streamable HTTP, Legacy-Kette wie `kartei-rpa`, JSON oder
+  SSE). Ruft **nur** die drei Werkzeuge aus `WriteConfig.tools`; jeder andere Name scheitert vor dem
+  HTTP-Aufruf. Kein Proxy, keine Umleitung, Antwortgröße begrenzt (beim Datei-Abruf 4/3 · Grenze +
+  1 MiB, Lesen bricht dort ab). Dateiname vor dem Aufruf geprüft. `Medium` ist die eine private
+  Kopie (`bytearray`), `loeschen()` überschreibt und verwirft sie. Feste Fehlercodes, kein
+  Gateway-Text.
+- `post_adapter.py`: Reihenfolge Eintrag → Medien einmal lesen → Hash → Freigabe → `report_hash`
+  (Idempotenz) → erst dann `begin_action` (zählt) und LinkedIn. Nur Operationen aus
+  `WRITE_ENDPOINTS` (`api`) und geprüfte Upload-Adressen (`upload`); Autor/owner/actor nur
+  `cfg.organization`; alle übrigen Post-Felder Konstanten (`POST_SHELL`). `Tokens` mit
+  `WRITE_SCOPES` (auch die Erneuerung). Kopien im `finally` gelöscht. Video: alle Teile geprüft vor
+  dem ersten PUT, ETag je Teil, `finalizeUpload`, Status in festem Takt bis Höchstzeit, Post nur bei
+  `AVAILABLE`.
+- `post_pool.py`: je Auftrag ein spawn-Prozess (`job_main`, Logging aus). Der Serverprozess hält
+  Tageszähler (5 Aktionen, 45 HTTP), Idempotenz-Map und den einen laufenden Auftrag; der Auftrag
+  fragt vor jedem LinkedIn-Aufruf über seine Leitung — ohne Serverprozess kein Aufruf. Warten 20 s,
+  danach `202 in_arbeit`, harte Grenze 25 min, Client-Abbruch beendet einen Schreibauftrag nicht
+  (Vorschau schon). Ein Ergebnis/Fehler nach 202 wird beim nächsten Aufruf genau einmal geliefert.
+  Vor dem nicht wiederholbaren Schlussaufruf (`post_create`, `comment_create`) meldet der Auftrag
+  `final`; scheitert er danach, sperrt `unbekannt` dieselbe `eintrag_id`+`hash` mit
+  `409 ergebnis_unbekannt` (kein Doppelpost durch Wiederholung).
+  Spur: eine Zeile je Schreibauftrag, nur Aktion, ID, Hash, Code, URN, Größe.
+- `server.py`: eigener Präfix `/v1/linkedin-post/`, gemeinsame Bridge-Prüfung `check_bridge`,
+  `load_write_side` lädt Schreib-Grant (`load_write_identity`, verlangt `scope`) und Gateway-Token;
+  fehlt/ungültig ⇒ Schreiben aus (`schreiben=<grund>` im Log), Stufe A läuft unverändert.
+- `oauth.py`: `token_result`/`Tokens` mit `scopes`-Parameter (Vorgabe Stufe-A-Scopes), Lese-JSON
+  ohne `scope`, Schreib-JSON mit `scope` = `w_organization_social`; damit fällt ein Tausch in beiden
+  Richtungen beim Laden auf.
+- `tools/zustimmung.py --schreiben`: fordert genau `w_organization_social` an, schreibt `scope` ins
+  JSON, nennt die Ziel-Stelle auf stderr; ohne Schalter byte-gleicher Aufruf wie 0.1.2.
+
+Bewusste Entscheidungen und Grenzen: Medien als JSON-String statt Kartei-Liste (Kern-Typen);
+Dateiinhalt über seinen SHA-256 im Hash (gleichwertig, nicht wortgleich mit SEC Bed. 2);
+Dokumenttitel = Dateiname (bei LinkedIn Pflicht); Kommentartext unescaped (Little-Text für
+Kommentare nicht dokumentiert), deshalb ohne URN; kein `GET` des Ziel-Posts (nicht in der
+geschlossenen Liste) — die Freigabe des Menschen bindet die URN; kein DRAFT (Doku: nur `PUBLISHED`
+beim Anlegen); Zähler und Idempotenz nur im RAM, Neustart setzt zurück; `post_urn` schreibt die KI,
+sie ist Komfort und kein Schutz gegen die KI. Token-Label `SSO` ist im Kern nicht reserviert:
+Betreiberregel. Pflichtmutanten B1 stehen in `tests/mutations.py` (Präfixe `b1-`…`b5-`, `v1-`…`v3-`,
+`poll-`). B2-Rest (Untertitel, Vorschaubild, Video-Löschen) und B3 (fremde Kommentare) sind nicht
+gebaut.

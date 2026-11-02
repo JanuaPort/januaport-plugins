@@ -15,13 +15,13 @@ from linkedin_seite.server import create_app
 from linkedin_seite.workers import WorkerPool
 from linkedin_seite.post_pool import WritePool
 from support import LocalAdapter
-from support_post import LocalPostAdapter, config
+from support_post import NoisyPostAdapter, config
 
 
 async def serve(data):
     cfg = config(data['gateway_port'])
     pool = WorkerPool(cfg, data['oauth'], adapter_factory=LocalAdapter)
-    writes = WritePool(cfg, data['write'], data['gateway_token'], adapter_factory=LocalPostAdapter)
+    writes = WritePool(cfg, data['write'], data['gateway_token'], adapter_factory=NoisyPostAdapter)
     runner = SafeAppRunner(create_app(cfg, data['bridge'].encode(), pool, writes), access_log=None)
     await runner.setup()
     site = web.TCPSite(runner, '127.0.0.1', 0)

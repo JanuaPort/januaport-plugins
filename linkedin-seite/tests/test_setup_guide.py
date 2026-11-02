@@ -46,7 +46,9 @@ class SetupGuide(unittest.TestCase):
         guide = self.guide()
         for phrase in ('w_organization_social', '--schreiben', 'jnpt credential set --name plugin-linkedin-seite-post-oauth',
                        'redaktion_freigabe', 'linkedin_seite_vorschau', 'SSO', 'hash', '5 schreibende Aktionen',
-                       'Lese- und Schreib-Token'):
+                       'Lese- und Schreib-Token', 'http://jnpt:8484/mcp', 'jnpt_plugins', '/admin/mcp',
+                       'redaktionsplan_get', 'redaktion_freigabe_search', 'redaktion_medien_get_file',
+                       'plugin-linkedin-seite-gateway'):
             self.assertIn(phrase, guide)
         self.assertRegex(guide, r'Read-Host -MaskInput [^\n]*\| python [^\n]*zustimmung\.py --client-id APP_CLIENT_ID '
                                 r'--secret-stdin --schreiben \| jnpt credential set --name plugin-linkedin-seite-post-oauth')

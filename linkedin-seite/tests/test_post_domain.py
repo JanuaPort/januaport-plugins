@@ -8,9 +8,9 @@ from linkedin_seite.domain import Config, ReportError
 from support_post import ORG, PNG, PDF, mp4, record, freigabe
 
 
-def code(callable_, *args):
+def code(callable_, *args, **kwargs):
     try:
-        callable_(*args)
+        callable_(*args, **kwargs)
     except ReportError as exc:
         return exc.code
     except ValueError as exc:
@@ -148,6 +148,14 @@ class Entries(unittest.TestCase):
         self.assertEqual(entry('kommentar', post_urn='urn:li:share:7', kommentar_text='Link: https://januaport.ai').kommentar_text,
                          'Link: https://januaport.ai')
 
+    def test_comment_text_with_a_urn_is_refused_until_little_text_is_proven_for_comments(self):
+        # The comment text goes unescaped (Comments API documents no little text): a mention needs a URN.
+        for text in ('Danke @[Max](urn:li:person:1)', 'siehe urn:li:organization:1', 'URN:LI:member:1'):
+            with self.subTest(text=text):
+                self.assertEqual(code(entry, 'kommentar', post_urn='urn:li:share:1', kommentar_text=text), 'kommentar_erwaehnung')
+        self.assertEqual(entry('kommentar', post_urn='urn:li:share:1', kommentar_text='Danke (an alle) @team').kommentar_text,
+                         'Danke (an alle) @team')
+
     def test_pseudonymised_fields_are_never_posted(self):
         # SEC Bed. 5: no privacy labels on plan fields; a veil token would leave the house as text.
         self.assertEqual(code(entry, 'posten', post_text='Hallo ‹name-a1b2›'), 'pseudonym_im_feld')
@@ -220,11 +228,11 @@ class Hash(unittest.TestCase):
         poll = json.dumps({'dauer': 7, 'antworten': ['Ja', 'Nein'], 'frage': 'Gut?'})
         table = [
             ('posten', entry(post_text='Hallo'), [], '9c37da07fcf73161aaf1cd2243ee4a4a241d9fc6a792a203d6badb69927a8cf0'),
-            ('posten', entry(post_text='Hallo', medien='["a.png"]'), self.media(('a.png', PNG)), None),
-            ('posten', entry(post_text='Hallo', umfrage=poll), [], None),
-            ('bearbeiten', entry('bearbeiten', post_text='Hallo', post_urn='urn:li:share:7'), [], None),
+            ('posten', entry(post_text='Hallo', medien='["a.png"]'), self.media(('a.png', PNG)), '8ee6658f4c73f177be8161ddff97bf6d6f531df6185364e41f3f63b8d5a8b60e'),
+            ('posten', entry(post_text='Hallo', umfrage=poll), [], 'e687a631525fce748578f6e91a08f65e2631f43952ca94c9bad89cdd7b6519f4'),
+            ('bearbeiten', entry('bearbeiten', post_text='Hallo', post_urn='urn:li:share:7'), [], '0bbf1403d94b00c641bc6f2c256272c5aee3b14470f2e8b5111f80f3547df746'),
             ('loeschen', entry('loeschen', post_urn='urn:li:share:7'), [], 'd528f4f7520c367556b622a25efaf1427f8f90a9b4752f201914aebe48740cd1'),
-            ('kommentar', entry('kommentar', post_urn='urn:li:share:7', kommentar_text='Hallo'), [], None),
+            ('kommentar', entry('kommentar', post_urn='urn:li:share:7', kommentar_text='Hallo'), [], '2af7aa349b4a6b0051ff60ce8e98d6e9af4fa1ce2e29fc28c6024b6c9662f908'),
         ]
         digests = []
         for aktion, e, media, frozen in table:

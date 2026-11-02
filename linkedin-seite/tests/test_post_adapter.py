@@ -50,12 +50,12 @@ class Base(unittest.TestCase):
         self.gw.freigaben.append(freigabe(rid, aktion, digest))
         return digest
 
-    def run(self, rid, aktion='posten', **kwargs):
+    def act(self, rid, aktion='posten', **kwargs):
         return self.adapter(**kwargs).run(r.WriteRequest(aktion, rid))
 
     def fails(self, rid, aktion='posten', **kwargs):
         with self.assertRaises(ReportError) as cm:
-            self.run(rid, aktion, **kwargs)
+            self.act(rid, aktion, **kwargs)
         return cm.exception.code
 
     def body(self, call):
@@ -83,7 +83,7 @@ class Formats(Base):
     def test_text_post_with_link_author_is_the_configured_organization(self):
         rid = self.plan(post_text=TEXT)
         digest = self.approve(rid)
-        result = self.run(rid)
+        result = self.act(rid)
         self.assertEqual(result, {'aktion': 'posten', 'eintrag_id': rid, 'hash': digest, 'format': 'text',
                                   'state': 'veroeffentlicht', 'post_urn': 'urn:li:share:7000000000000000001', 'bytes': 0})
         calls = self.li.writes()
@@ -99,7 +99,7 @@ class Formats(Base):
         rid = self.plan(post_text='Bild', medien='["a.png"]')
         self.gw.files['a.png'] = PNG
         self.approve(rid)
-        result = self.run(rid)
+        result = self.act(rid)
         self.assertEqual((result['format'], result['bytes']), ('bild', len(PNG)))
         init, put, post = self.li.writes()
         self.assertEqual((init['method'], init['path'], init['query']), ('POST', '/rest/images', 'action=initializeUpload'))
@@ -116,7 +116,7 @@ class Formats(Base):
         rid = self.plan(post_text='Bilder', medien='["z.jpg","a.png"]')
         self.gw.files.update({'z.jpg': JPG, 'a.png': PNG})
         self.approve(rid)
-        self.assertEqual(self.run(rid)['format'], 'bilder')
+        self.assertEqual(self.act(rid)['format'], 'bilder')
         calls = self.li.writes()
         self.assertEqual([c['body'] for c in calls if c['method'] == 'PUT'], [JPG, PNG])
         post = calls[-1]
@@ -126,7 +126,7 @@ class Formats(Base):
         rid = self.plan(post_text='Karussell', medien='["karussell-11-2026.pdf"]')
         self.gw.files['karussell-11-2026.pdf'] = PDF
         self.approve(rid)
-        self.assertEqual(self.run(rid)['format'], 'dokument')
+        self.assertEqual(self.act(rid)['format'], 'dokument')
         init, put, post = self.li.writes()
         self.assertEqual((init['path'], init['query']), ('/rest/documents', 'action=initializeUpload'))
         self.assertEqual(self.body(init), {'initializeUploadRequest': {'owner': ORG}})
@@ -169,7 +169,7 @@ class Formats(Base):
         poll = json.dumps({'frage': 'Welche Stufe zuerst?', 'antworten': ['Verbinden', 'Bauen (bald)'], 'dauer': 7})
         rid = self.plan(post_text='Umfrage (kurz)', umfrage=poll)
         self.approve(rid)
-        self.assertEqual(self.run(rid)['format'], 'umfrage')
+        self.assertEqual(self.act(rid)['format'], 'umfrage')
         (post,) = self.li.writes()
         self.assertEqual(self.body(post), {**POST_SHELL, 'commentary': 'Umfrage \\(kurz\\)', 'content': {'poll': {
             'question': 'Welche Stufe zuerst?', 'options': [{'text': 'Verbinden'}, {'text': 'Bauen (bald)'}],
@@ -178,7 +178,7 @@ class Formats(Base):
     def test_edit_partial_update_commentary_only(self):
         rid = self.plan(post_text='Korrigiert (v2)', post_urn='urn:li:ugcPost:42', medien='["a.png"]')
         digest = self.approve(rid, 'bearbeiten')
-        result = self.run(rid, 'bearbeiten')
+        result = self.act(rid, 'bearbeiten')
         self.assertEqual(result, {'aktion': 'bearbeiten', 'eintrag_id': rid, 'hash': digest, 'format': 'bearbeiten',
                                   'state': 'bearbeitet', 'post_urn': 'urn:li:ugcPost:42', 'bytes': 0})
         (call,) = self.li.writes()
@@ -191,7 +191,7 @@ class Formats(Base):
     def test_delete_needs_its_own_approval(self):
         rid = self.plan(post_urn='urn:li:share:42')
         self.approve(rid, 'loeschen')
-        self.assertEqual(self.run(rid, 'loeschen')['state'], 'geloescht')
+        self.assertEqual(self.act(rid, 'loeschen')['state'], 'geloescht')
         (call,) = self.li.writes()
         self.assertEqual((call['method'], call['path']), ('DELETE', '/rest/posts/' + encoded('urn:li:share:42')))
         self.assertEqual(call['headers']['x-restli-method'], 'DELETE')
@@ -200,7 +200,7 @@ class Formats(Base):
     def test_own_comment_as_the_organization(self):
         rid = self.plan(post_urn='urn:li:share:42', kommentar_text='Mehr dazu: https://januaport.ai (Preise)')
         self.approve(rid, 'kommentar')
-        result = self.run(rid, 'kommentar')
+        result = self.act(rid, 'kommentar')
         self.assertEqual((result['state'], result['kommentar_id']), ('kommentiert', '6643206422739898368'))
         (call,) = self.li.writes()
         self.assertEqual((call['method'], call['path']),
@@ -208,6 +208,22 @@ class Formats(Base):
         self.assertEqual(self.body(call), {'actor': ORG, 'object': 'urn:li:share:42',
                                            'message': {'text': 'Mehr dazu: https://januaport.ai (Preise)'}})
         self.assert_no_person()
+
+
+class WriteToken(Base):
+    def test_expired_write_token_is_refreshed_with_exactly_the_write_scope(self):
+        self.data = write_identity(self.li.port, days=-1, refresh=True)
+        rid = self.plan(post_text='x')
+        self.approve(rid)
+        self.act(rid)
+        token, post = self.li.calls[0], self.li.calls[-1]
+        self.assertEqual(token['path'], '/oauth/v2/accessToken')
+        self.assertTrue(post['headers']['authorization'].startswith('Bearer WRITE-REFRESHED-'))
+        self.li.token_body[s.SCOPE] = 'r_organization_social,rw_organization_admin'  # a read grant answer
+        rid = self.plan(post_text='y')
+        self.approve(rid)
+        self.assertEqual(self.fails(rid), 'unexpected_source_shape')
+        self.assertEqual(self.li.api('POST', '/rest/posts')[1:], [])
 
 
 class ClosedEndpoints(Base):
@@ -294,7 +310,7 @@ class Approval(Base):
         self.assertEqual(self.fails(rid), 'nicht_freigegeben')
         self.assertEqual(self.li.calls, [])
         self.gw.freigaben.append(freigabe(rid, 'posten', digest))
-        self.assertEqual(self.run(rid)['state'], 'veroeffentlicht')
+        self.assertEqual(self.act(rid)['state'], 'veroeffentlicht')
 
     def test_preview_reads_shows_and_hashes_but_never_writes(self):
         rid = self.plan(post_text='Hallo (x)', medien='["a.png","b.png"]')
@@ -362,9 +378,10 @@ class UploadTarget(Base):
                     self.check_target(url, files)
 
     def test_redirect_of_the_upload_url_is_not_followed(self):
+        steal = 'http://127.0.0.1:%d/steal' % self.li.port  # stays on the local fake, even if followed
         def override(call):
             if call['method'] == 'PUT':
-                return 307, {'Location': 'https://evil.example/steal'}, b''
+                return 307, {'Location': steal}, b''
             return None
         self.li.override = override
         for name, data in (('a.png', PNG), ('c.mp4', mp4(8192))):
@@ -375,9 +392,19 @@ class UploadTarget(Base):
                 self.approve(rid)
                 self.assertEqual(self.fails(rid), 'source_umleitung_abgewiesen')
                 self.assertEqual(len([c for c in self.li.calls if c['method'] == 'PUT']), 1)
-                self.assertFalse(any('evil' in c['host'] for c in self.li.calls))
+                self.assertEqual([c for c in self.li.calls if c['path'] == '/steal'], [])
                 self.assertEqual(self.li.api('POST', '/rest/posts'), [])
                 self.assertEqual([c for c in self.li.calls if c['query'] == 'action=finalizeUpload'], [])
+
+    def test_redirect_of_an_api_answer_is_not_followed_and_carries_no_token(self):
+        steal = 'http://127.0.0.1:%d/steal' % self.li.port
+        self.li.override = lambda call: (307, {'Location': steal}, b'') if call['method'] == 'GET' else None
+        rid = self.plan(post_text='x', medien='["c.mp4"]')
+        self.gw.files['c.mp4'] = mp4(8192)
+        self.approve(rid)
+        self.assertEqual(self.fails(rid), 'source_umleitung_abgewiesen')
+        self.assertEqual([c for c in self.li.calls if c['path'] == '/steal'], [])
+        self.assertEqual(self.li.api('POST', '/rest/posts'), [])
 
 
 class UploadBytes(Base):
@@ -390,7 +417,7 @@ class UploadBytes(Base):
         self.approve(rid)
         self.gw.after_read['clip.mp4'] = mp4(5 * MiB)[::-1]  # the Ablage is swapped right after the first read
         self.gw.calls.clear()
-        self.run(rid)
+        self.act(rid)
         self.assertEqual(len(self.gw.tool_calls(TOOL_FILE)), 1)
         self.assertEqual(b''.join(c['body'] for c in self.li.calls if c['method'] == 'PUT'), data)
 
@@ -447,7 +474,7 @@ class UploadBytes(Base):
         self.gw.files.update({'a.png': PNG, 'b.png': PNG + b'2'})
         self.approve(rid)
         self.copies.clear()
-        self.run(rid)
+        self.act(rid)
         self.assertEqual(len(self.copies), 2)
         self.assertTrue(all(c.daten == bytearray() and c.geloescht for c in self.copies))
         self.copies.clear()

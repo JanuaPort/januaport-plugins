@@ -32,9 +32,12 @@ GIF = b'GIF89a' + b'synthetic-gif'
 PDF = b'%PDF-1.7\n' + b'synthetic-pdf'
 
 
+_PATTERN = bytes((i * 7) % 251 for i in range(251))
+
+
 def mp4(size):
     head = b'\x00\x00\x00\x18ftypmp42'
-    return head + bytes((i * 7) % 251 for i in range(size - len(head)))
+    return head + (_PATTERN * ((size - len(head)) // 251 + 1))[:size - len(head)]
 
 
 def write_identity(port, days=60, refresh=False):
@@ -311,6 +314,8 @@ class VirtualClock:
     def sleep(self, seconds):
         self.sleeps.append(seconds)
         self.now += seconds
+        if self.now - 1000.0 > 4 * 3600:  # a runaway poll loop is a red test, not a hang
+            raise AssertionError('runaway polling')
 
 
 class LocalPostAdapter(PostAdapter):
@@ -321,6 +326,21 @@ class LocalPostAdapter(PostAdapter):
         port = int(data[s.CLIENT_ID])
         super().__init__(cfg, data, gateway_token, link, transport_factory=lambda p: LocalWriteTransport(p, port),
                          sleep=clock.sleep, monotonic=clock.monotonic)
+
+
+class NoisyWriteTransport(LocalWriteTransport):
+    """Exercises the log silence of the job process at the real HTTP seam (log canary)."""
+
+    def _open(self, request):
+        import logging
+        logging.warning('transport-canary=%s %s', request.full_url, request.get_header('Authorization'))
+        return super()._open(request)
+
+
+class NoisyPostAdapter(PostAdapter):
+    def __init__(self, cfg, data, gateway_token, link):
+        port = int(data[s.CLIENT_ID])
+        super().__init__(cfg, data, gateway_token, link, transport_factory=lambda p: NoisyWriteTransport(p, port))
 
 
 class Link:
@@ -345,6 +365,9 @@ class Link:
     def report_hash(self, digest):
         self.hashes.append(digest)
         return digest not in self.repeat
+
+    def final_request(self):
+        self.finals = getattr(self, 'finals', 0) + 1
 
     def expiry(self, value):
         pass

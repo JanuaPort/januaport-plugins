@@ -30,11 +30,17 @@ def strict_json(raw):
 class Config:
     organization: str
     linkedin_version: str
+    # Stufe B1 (#1237): optional write block; absent = write routes answer schreiben_nicht_eingerichtet.
+    schreiben: object = None
 
     @classmethod
     def from_dict(cls, raw):
-        if not isinstance(raw, dict) or set(raw) - {'organization', 'linkedin_version'}:
+        if not isinstance(raw, dict) or set(raw) - {'organization', 'linkedin_version', 'schreiben'}:
             raise ValueError('configuration_invalid')
+        schreiben = None
+        if 'schreiben' in raw:
+            from .redaktion import WriteConfig
+            schreiben = WriteConfig.from_dict(raw['schreiben'])
         org = raw.get('organization')
         if not isinstance(org, str) or not re.fullmatch(r'(?:urn:li:organization:)?[1-9][0-9]{0,19}', org):
             raise ValueError('configuration_invalid')
@@ -43,7 +49,7 @@ class Config:
         version = raw.get('linkedin_version', datetime.now(timezone.utc).strftime('%Y%m'))
         if not isinstance(version, str) or not re.fullmatch(r'20[0-9]{2}(?:0[1-9]|1[0-2])', version):
             raise ValueError('configuration_invalid')
-        return cls(org, version)
+        return cls(org, version, schreiben)
 
 
 @dataclass(frozen=True)
