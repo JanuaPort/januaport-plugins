@@ -34,6 +34,13 @@ class Version(unittest.TestCase):
         self.assertIsNotNone(section)
         self.assertIn('JanuaPort/januaport#1237', section.group(0))
 
+    def test_stage_b1_ships_as_0_2_0_with_its_changelog_entry(self):
+        self.assertGreaterEqual(triple(self.versions()[2]), (0, 2, 0))
+        section = re.search(r'^## 0\.2\.0 — .*?(?=^## |\Z)', self.read('CHANGELOG.md'), re.M | re.S)
+        self.assertIsNotNone(section)
+        for phrase in ('JanuaPort/januaport#1237', 'Stufe B1', 'redaktion_freigabe', 'w_organization_social'):
+            self.assertIn(phrase, section.group(0))
+
 
 if __name__ == '__main__':
     unittest.main()
