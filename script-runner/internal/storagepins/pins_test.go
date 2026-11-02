@@ -58,8 +58,12 @@ func TestCoreGoldenVectorsAndChecksums(t *testing.T) {
 			if e != nil {
 				t.Fatal(e)
 			}
-			// Golden expiry is > 10 min too; production policy is the fixed MaxAge.
-			_, _, err := Verify(readGolden(t, c.Case+".json"), pub, c.HighestSeen, time.Time{}, now)
+			// Golden policy is supplied by the core fixture; production uses MaxAge.
+			age, e := time.ParseDuration(c.MaxAge)
+			if e != nil {
+				t.Fatal(e)
+			}
+			_, _, err := verifyMaxAge(readGolden(t, c.Case+".json"), pub, c.HighestSeen, time.Time{}, now, age)
 			if (err == nil) != c.Valid {
 				t.Fatalf("valid=%v: %v", c.Valid, err)
 			}
