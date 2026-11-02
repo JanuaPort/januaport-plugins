@@ -153,7 +153,9 @@ func TestCourierRedirectNeverReachesSecondServer(t *testing.T) {
 	var hits atomic.Int64
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits.Add(1) }))
 	defer target.Close()
-	c, _, _, _ := courierFixture(t, func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, target.URL+"/key", 307) })
+	c, _, _, _ := courierFixture(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+"/key", http.StatusTemporaryRedirect)
+	})
 	c.Once(context.Background())
 	if hits.Load() != 0 {
 		t.Fatal("redirect followed")
@@ -265,5 +267,30 @@ func TestCourierRejectsPathEscapeAndReloadsKey(t *testing.T) {
 	c.Once(context.Background())
 	if hits != 2 {
 		t.Fatal("request without key")
+	}
+}
+
+func TestCourierBudgetCountsExistingPackagesBeforeDownloading(t *testing.T) {
+	commit := strings.Repeat("a", 64)
+	raw := []byte(`{"manifest":{"pins":[{"name":"a","commit":"` + commit + `","path":"a"},{"name":"z","commit":"` + commit + `","path":"z"}]},"sig":"opaque"}`)
+	c, _, _, _ := courierFixture(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/pins") {
+			_, _ = w.Write(raw)
+		} else {
+			_, _ = w.Write(bytes.Repeat([]byte("x"), 40))
+		}
+	})
+	c.packageLimit = 64
+	c.totalLimit = 64
+	dir := filepath.Join(c.root, "inbox/pkg")
+	if e := os.MkdirAll(dir, 0700); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.WriteFile(filepath.Join(dir, "z-"+commit+".pkg"), bytes.Repeat([]byte("z"), 40), 0600); e != nil {
+		t.Fatal(e)
+	}
+	c.Once(context.Background())
+	if _, e := os.Stat(filepath.Join(dir, "a-"+commit+".pkg")); !os.IsNotExist(e) {
+		t.Fatal("published 80 bytes with total limit 64")
 	}
 }

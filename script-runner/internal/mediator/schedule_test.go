@@ -59,6 +59,10 @@ func newFakeCore(t *testing.T, handle func(w http.ResponseWriter, r *http.Reques
 	t.Helper()
 	c := &fakeCore{handle: handle}
 	c.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/plugin/script-runner/storage/") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		body, _ := io.ReadAll(r.Body)
 		c.mu.Lock()
 		c.reqs = append(c.reqs, coreRequest{r.Method, r.URL.Path, r.Header.Get("Authorization"), len(body), r.ContentLength})
