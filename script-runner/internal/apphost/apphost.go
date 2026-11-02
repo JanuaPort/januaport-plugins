@@ -47,7 +47,6 @@ type Host struct {
 	client   *http.Client
 	mu       sync.Mutex
 	cache    map[string]cached
-	logins   map[string]binding
 	sessions map[string]binding
 }
 
@@ -79,7 +78,7 @@ func New(c Config) (*Host, error) {
 			return nil, errors.New("apphost: Gateway-URLs fehlen oder sind ungültig")
 		}
 	}
-	h := &Host{c: c, client: &http.Client{Timeout: 30 * time.Second, Transport: newTransport(), CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}, cache: map[string]cached{}, logins: map[string]binding{}, sessions: map[string]binding{}}
+	h := &Host{c: c, client: &http.Client{Timeout: 30 * time.Second, Transport: newTransport(), CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}, cache: map[string]cached{}, sessions: map[string]binding{}}
 	return h, nil
 }
 func (h *Host) key() (string, error) {
@@ -272,26 +271,15 @@ func (h *Host) login(w http.ResponseWriter, r *http.Request, app string) {
 		return
 	}
 	v := base64.RawURLEncoding.EncodeToString(b)
-	h.mu.Lock()
-	h.prune()
-	if len(h.logins) >= 4096 {
-		h.mu.Unlock()
-		status(w, 503)
-		return
-	}
-	h.logins[v] = binding{app, h.c.Now().Add(300 * time.Second)}
-	h.mu.Unlock()
 	cookie(w, "__Host-jnpt_login", v, 300, http.SameSiteLaxMode)
 	sum := sha256.Sum256([]byte(v))
 	q := url.Values{"app": {app}, "c": {base64.RawURLEncoding.EncodeToString(sum[:])}}
 	http.Redirect(w, r, h.c.LoginURL+"/app-login/start?"+q.Encode(), http.StatusFound)
 }
 func (h *Host) prune() {
-	for _, m := range []map[string]binding{h.logins, h.sessions} {
-		for k, b := range m {
-			if !h.c.Now().Before(b.expires) {
-				delete(m, k)
-			}
+	for k, b := range h.sessions {
+		if !h.c.Now().Before(b.expires) {
+			delete(h.sessions, k)
 		}
 	}
 }
@@ -308,15 +296,12 @@ func (h *Host) session(r *http.Request, app string) (string, bool) {
 func (h *Host) callback(w http.ResponseWriter, r *http.Request, app string) {
 	deleteLogin(w)
 	c, e := r.Cookie("__Host-jnpt_login")
-	if e != nil {
+	if e != nil || !opaque.MatchString(c.Value) {
 		status(w, 400)
 		return
 	}
-	h.mu.Lock()
-	b, ok := h.logins[c.Value]
-	delete(h.logins, c.Value)
-	h.mu.Unlock()
-	if !ok || b.app != app || !h.c.Now().Before(b.expires) || r.Method != "GET" || r.URL.Query().Get("code") == "" {
+	// The core validates code lifetime, single use, app and S256(verifier).
+	if r.Method != "GET" || r.URL.Query().Get("code") == "" {
 		status(w, 400)
 		return
 	}
@@ -356,10 +341,15 @@ func (h *Host) callback(w http.ResponseWriter, r *http.Request, app string) {
 	}
 	h.mu.Lock()
 	h.prune()
-	if len(h.sessions) >= 4096 {
-		h.mu.Unlock()
-		status(w, 503)
-		return
+	if _, exists := h.sessions[result.Token]; !exists && len(h.sessions) >= 4096 {
+		var earliest string
+		var expiry time.Time
+		for token, b := range h.sessions {
+			if expiry.IsZero() || b.expires.Before(expiry) {
+				earliest, expiry = token, b.expires
+			}
+		}
+		delete(h.sessions, earliest)
 	}
 	h.sessions[result.Token] = binding{app, h.c.Now().Add(time.Duration(age) * time.Second)}
 	h.mu.Unlock()
