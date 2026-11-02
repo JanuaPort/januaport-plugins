@@ -28,7 +28,11 @@ Root-CLAUDE.md war im Ausgangscheckout nicht vorhanden.
   `text_ausgelassen: "erwaehnung"`; Bericht fortsetzen, keine Person im Log/Ergebnis.
 - `oauth.py`: fester Tokenendpunkt, einziger POST (OAuth, kein Fach-Schreibweg).
   TLS-Prüfung, keine Proxies/Redirects/Retry. Access bis 60 Tage; Refresh optional bis
-  365 Tage ab Erstzustimmung, Frist nie verlängern. Erneuerung fünf Minuten vor Ablauf
+  365 Tage ab Erstzustimmung, Frist nie verlängern. Tokenantwort tolerant, wo LinkedIn
+  ungenau ist, streng, wo es schützt (0.1.1, c-6571493150): `scope` mit Komma und/oder
+  Leerraum getrennt, Menge weiter exakt gleich `SCOPES` (`scope_set`); Laufzeiten bis
+  Höchstwert + 1 Tag (`OVERSHOOT_TOLERANCE_SECONDS`) werden auf 60/365 Tage gedeckelt
+  (`lifetime`), darüber/nicht int/≤0 = `unexpected_source_shape`. Erneuerung fünf Minuten vor Ablauf
   beim nächsten Abruf ausschließlich RAM; kein Tresor-Rückschreiben. Warnung ab 14 Tagen
   vor Access-Ablauf ohne Refresh bzw. Refresh-Ablauf mit Refresh, nur Datum; danach
   ohne nutzbaren Access `token_abgelaufen`. Metadaten über verkürzte Frist zum Elternprozess.
@@ -51,8 +55,10 @@ Root-CLAUDE.md war im Ausgangscheckout nicht vorhanden.
   Nur EAFNOSUPPORT/EADDRNOTAVAIL/EPROTONOSUPPORT: IPv4 weiter, fester stderr-Hinweis.
   EADDRINUSE: klare Port-belegt-Meldung und Abbruch vor Browserstart; andere Fehler
   ebenfalls Abbruch. Windows-Sockets exklusiv binden. Danach beide Listener schließen.
-  Secret getpass ohne Echo oder stdin, nie Argument/Datei; Tresor-JSON nur stdout,
-  niemals Datei-Umleitung, nur direkte Pipe an `jnpt credential set`.
+  Secret getpass ohne Echo oder stdin, nie Argument/Datei; Steuerzeichen (Unicode Cc, etwa
+  Strg+V aus `cmd`) im Secret = feste deutsche Meldung, Abbruch vor Browser und Token,
+  Meldung nennt den Wert nie; unter Windows PowerShell 7 `Read-Host -MaskInput` + `--secret-stdin`.
+  Tresor-JSON nur stdout, niemals Datei-Umleitung, nur direkte Pipe an `jnpt credential set`.
 
 Invarianten in README, SETUP, Code, Deploy, CI und Tests gemeinsam nachziehen.
 Secret-Hausmuster #887: `plugin-linkedin-seite` (Bridge-Key, zugleich Connector-Credential
