@@ -46,7 +46,7 @@ func TestInvariant11CaddyFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, s := range []string{"*.apps.{$JNPT_APPS_DOMAIN}", "ask http://script-runner-apphost:8081/tls-ask", "reverse_proxy script-runner-apphost:8080", "app_login_log", "delete code"} {
+	for _, s := range []string{"*.apps.{$JNPT_APPS_DOMAIN}", "reverse_proxy script-runner-apphost:8080", "app_login_log", "delete code"} {
 		if !strings.Contains(string(b), s) {
 			t.Fatal("Caddy contract", s)
 		}
@@ -57,5 +57,19 @@ func TestInvariant11CaddyFiles(t *testing.T) {
 	}
 	if strings.Replace(string(b), "tls {", "tls internal {", 1) != string(box) {
 		t.Fatal("box Caddy differs beyond issuer")
+	}
+	global, err := os.ReadFile("../../apps-global.caddy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(global) != "on_demand_tls {\n\task http://script-runner-apphost:8081/tls-ask\n}\n" {
+		t.Fatal("global ask contract")
+	}
+	boxGlobal, err := os.ReadFile("../../../box/apps-global.caddy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(global) != string(boxGlobal) {
+		t.Fatal("box global differs")
 	}
 }

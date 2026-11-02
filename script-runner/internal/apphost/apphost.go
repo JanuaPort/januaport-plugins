@@ -79,7 +79,7 @@ func New(c Config) (*Host, error) {
 			return nil, errors.New("apphost: Gateway-URLs fehlen oder sind ungültig")
 		}
 	}
-	h := &Host{c: c, client: &http.Client{Timeout: 30 * time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}, cache: map[string]cached{}, logins: map[string]binding{}, sessions: map[string]binding{}}
+	h := &Host{c: c, client: &http.Client{Timeout: 30 * time.Second, Transport: newTransport(), CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}, cache: map[string]cached{}, logins: map[string]binding{}, sessions: map[string]binding{}}
 	return h, nil
 }
 func (h *Host) key() (string, error) {
@@ -458,7 +458,7 @@ func (h *Host) RelayHandler() http.Handler {
 		}
 		domain := r.URL.Query().Get("domain")
 		if h.app(domain) == "" {
-			status(w, 404)
+			status(w, 403)
 			return
 		}
 		key, e := h.key()

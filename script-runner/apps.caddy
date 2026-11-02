@@ -1,0 +1,32 @@
+*.apps.{$JNPT_APPS_DOMAIN} {
+	tls {
+		on_demand
+	}
+	log app_login_log {
+		output stdout
+		format filter {
+			wrap json
+			fields {
+				request>uri query {
+					delete code
+					delete verifier
+					delete token
+					delete c
+				}
+				request>headers delete
+				resp_headers delete
+			}
+		}
+	}
+	reverse_proxy script-runner-apphost:8080
+	# Handle upstream failures without Caddy's default error log containing the URI.
+	handle_errors {
+		header {
+			Referrer-Policy no-referrer
+			Cache-Control no-store
+			X-Content-Type-Options nosniff
+			Content-Security-Policy "default-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'"
+		}
+		respond "" {http.error.status_code}
+	}
+}

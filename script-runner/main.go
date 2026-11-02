@@ -85,9 +85,21 @@ func runApphost() int {
 	defer stop()
 	browser := &http.Server{Addr: ":8080", Handler: h.Handler(), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
 	relay := &http.Server{Addr: ":8081", Handler: h.RelayHandler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 35 * time.Second}
+	browserListener, err := apphost.Listen(ctx, browser.Addr)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "apphost: Browser-Listener nicht verfügbar")
+		return 1
+	}
+	defer func() { _ = browserListener.Close() }()
+	relayListener, err := apphost.Listen(ctx, relay.Addr)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "apphost: Relay-Listener nicht verfügbar")
+		return 1
+	}
+	defer func() { _ = relayListener.Close() }()
 	errs := make(chan error, 2)
-	go func() { errs <- browser.ListenAndServe() }()
-	go func() { errs <- relay.ListenAndServe() }()
+	go func() { errs <- browser.Serve(browserListener) }()
+	go func() { errs <- relay.Serve(relayListener) }()
 	code := 0
 	select {
 	case <-ctx.Done():

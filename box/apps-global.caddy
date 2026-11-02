@@ -1,0 +1,3 @@
+on_demand_tls {
+	ask http://script-runner-apphost:8081/tls-ask
+}

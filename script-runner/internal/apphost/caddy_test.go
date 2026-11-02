@@ -1,6 +1,7 @@
 package apphost
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -8,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -21,15 +23,19 @@ func TestInvariant11RealCaddy(t *testing.T) {
 		t.Skip("requires named Caddy 2.11.7 Docker probe")
 	}
 	f := setup(t)
+	var browser *http.Server
 	for _, srv := range []struct {
 		addr    string
 		handler http.Handler
 	}{{":8080", f.h.Handler()}, {":8081", f.h.RelayHandler()}} {
-		listener, e := net.Listen("tcp", srv.addr)
+		listener, e := Listen(context.Background(), srv.addr)
 		if e != nil {
 			t.Fatal(e)
 		}
 		server := &http.Server{Handler: srv.handler, ReadHeaderTimeout: 5 * time.Second}
+		if srv.addr == ":8080" {
+			browser = server
+		}
 		go func() { _ = server.Serve(listener) }()
 		t.Cleanup(func() { _ = server.Close() })
 	}
@@ -50,8 +56,33 @@ func TestInvariant11RealCaddy(t *testing.T) {
 			t.Fatalf("Caddy load: %d %s", resp.StatusCode, b)
 		}
 	}
-	base := "{\n admin 0.0.0.0:2019\n auto_https disable_redirects\n %s\n}\nhttp://:8085 { respond /healthz healthy 200\n respond 404\n}\n%s"
-	load(strings.ReplaceAll(strings.Replace(base, "%s", "", 1), "%s", ""))
+	readConfig := func() []byte {
+		t.Helper()
+		r, e := http.Get(admin + "/config/")
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer func() { _ = r.Body.Close() }()
+		b, e := io.ReadAll(r.Body)
+		if e != nil {
+			t.Fatal(e)
+		}
+		requireStatus(t, r, 200)
+		return b
+	}
+	base := "{\n admin 0.0.0.0:2019\n auto_https disable_redirects\n log {\n output file /probe/server.log\n }\n import /probe/apps-global.d/*.caddy\n}\nhttp://:8085 { respond /healthz healthy 200\n respond 404\n}\nimport /probe/apps.d/*.caddy\n"
+	for _, dir := range []string{"/probe/apps-global.d", "/probe/apps.d"} {
+		if e := os.MkdirAll(dir, 0755); e != nil {
+			t.Fatal(e)
+		}
+	}
+	withoutImports := strings.ReplaceAll(strings.ReplaceAll(base, " import /probe/apps-global.d/*.caddy\n", ""), "import /probe/apps.d/*.caddy\n", "")
+	load(withoutImports)
+	baselineConfig := readConfig()
+	load(base)
+	if !bytes.Equal(baselineConfig, readConfig()) {
+		t.Fatal("empty Apps imports changed Caddy configuration")
+	}
 	baseline, e := http.Get("http://k4-caddy:8085/healthz")
 	if e != nil {
 		t.Fatal(e)
@@ -66,11 +97,14 @@ func TestInvariant11RealCaddy(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	config := strings.Replace(base, "%s", string(global), 1)
-	config = strings.Replace(config, "%s", string(site), 1)
-	config = strings.ReplaceAll(config, "{$JNPT_APPS_DOMAIN}", "example.test")
+	config := strings.ReplaceAll(string(site), "{$JNPT_APPS_DOMAIN}", "example.test")
 	config = strings.ReplaceAll(config, "output stdout", "output file /probe/access.log")
-	load(config)
+	for p, b := range map[string][]byte{"apps-global.d/apps-global.caddy": global, "apps.d/apps.caddy": []byte(config)} {
+		if e := os.WriteFile(filepath.Join("/probe", p), b, 0644); e != nil {
+			t.Fatal(e)
+		}
+	}
+	load(base)
 	resp, e := http.Get(admin + "/config/")
 	if e != nil {
 		t.Fatal(e)
@@ -151,6 +185,11 @@ func TestInvariant11RealCaddy(t *testing.T) {
 	}
 	requireStatus(t, r, 404)
 	_ = r.Body.Close()
+	// A failed upstream must not leak the callback query through Caddy's error logger.
+	if e := browser.Close(); e != nil {
+		t.Fatal(e)
+	}
+	requireStatus(t, request("a.apps.example.test", "/_jnpt/callback?code=upstream-error-canary", h), 502)
 	logBytes, e := os.ReadFile("/probe/access.log")
 	if e != nil {
 		t.Fatal(e)
@@ -163,21 +202,36 @@ func TestInvariant11RealCaddy(t *testing.T) {
 			t.Fatal("Caddy logged secret")
 		}
 	}
-	load(strings.ReplaceAll(strings.Replace(base, "%s", "", 1), "%s", ""))
+	serverLog, e := os.ReadFile("/probe/server.log")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if strings.Contains(string(logBytes)+string(serverLog), "upstream-error-canary") {
+		t.Fatal("Caddy error log leaked callback code")
+	}
+	for _, p := range []string{"/probe/apps.d/apps.caddy", "/probe/apps-global.d/apps-global.caddy"} {
+		if e := os.Remove(p); e != nil {
+			t.Fatal(e)
+		}
+	}
+	load(base)
 	r, e = http.Get("http://k4-caddy:8085/healthz")
 	if e != nil {
 		t.Fatal(e)
 	}
 	requireStatus(t, r, 200)
 	_ = r.Body.Close()
+	if !bytes.Equal(baselineConfig, readConfig()) {
+		t.Fatal("removing Apps changed baseline configuration")
+	}
 }
 
 func TestInvariant10RealNetworkIsolation(t *testing.T) {
 	if os.Getenv("K4_CADDY_ADMIN") == "" {
 		t.Skip("requires isolated Docker networks")
 	}
-	// Positive control: the separate runner listener is alive (Caddy is dual-homed
-	// only in this probe and exposes a fixed test reachability endpoint).
+	// The probe script checks the runner's live listener from inside its container.
+	// Here both Docker DNS and the known IP must be inaccessible from the Apps net.
 	r, e := http.Get("http://k4-runner-control:8090/")
 	if e == nil {
 		_ = r.Body.Close()

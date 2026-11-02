@@ -596,13 +596,15 @@ func TestLibsTamperedDirectoryIsDiscardedAtStart(t *testing.T) {
 	}
 }
 
-// Invariante 1: HTTP-Clients ausschließlich für MCP, Taktgeber und Speicherbote.
+// Invariante 1: HTTP-Clients ausschließlich für MCP, Taktgeber, Speicherbote und Apphost.
 // Bibliotheken, Objektquellen und Abholer haben keinen HTTP-Client; kein pip
 // und keine Index-Adresse.
 func TestNoDownloadClientInSource(t *testing.T) {
 	root := "../.."
-	httpClientAllowed := map[string]bool{"internal/mediator/run.go": true, "internal/mediator/schedules.go": true, "internal/mediator/storage_fetch.go": true}
-	if len(httpClientAllowed) != 3 || !httpClientAllowed["internal/mediator/run.go"] || !httpClientAllowed["internal/mediator/schedules.go"] || !httpClientAllowed["internal/mediator/storage_fetch.go"] {
+	// Apphost is a separate service: only its private gateway adapter and its
+	// explicit TCP transport may create HTTP clients; no package-index access.
+	httpClientAllowed := map[string]bool{"internal/mediator/run.go": true, "internal/mediator/schedules.go": true, "internal/mediator/storage_fetch.go": true, "internal/apphost/apphost.go": true, "internal/apphost/network.go": true}
+	if len(httpClientAllowed) != 5 || !httpClientAllowed["internal/mediator/run.go"] || !httpClientAllowed["internal/mediator/schedules.go"] || !httpClientAllowed["internal/mediator/storage_fetch.go"] || !httpClientAllowed["internal/apphost/apphost.go"] || !httpClientAllowed["internal/apphost/network.go"] {
 		t.Fatal("HTTP-Ausnahmen erweitert oder verschoben")
 	}
 	noNetPackages := []string{"libs", "store", "fetcher", "guard", "manifest", "pins", "gitref", "frame", "schedules", "ticker", "storagepins", "gitobjects"}

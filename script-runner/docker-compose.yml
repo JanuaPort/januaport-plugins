@@ -154,6 +154,7 @@ services:
       - no-new-privileges:true
     networks: [jnpt_apps]
     environment:
+      GODEBUG: multipathtcp=0
       JNPT_APPS_DOMAIN: ${JNPT_APPS_DOMAIN:-}
       JNPT_APPS_GATEWAY_URL: ${JNPT_APPS_GATEWAY_URL:-}
       JNPT_GATEWAY_PUBLIC_URL: ${JNPT_GATEWAY_PUBLIC_URL:-}

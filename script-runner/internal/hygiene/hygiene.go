@@ -254,6 +254,9 @@ func checkApphost(s service, nets map[string]network) []string {
 	if s.User != "65532:65532" {
 		add("UID")
 	}
+	if s.Environment["GODEBUG"] != "multipathtcp=0" {
+		add("MPTCP muss abgeschaltet sein")
+	}
 	if !slices.Equal([]string(s.Volumes), []string{"/run/jnpt/plugins/apphost:/run/secrets/jnpt:ro"}) || len(s.Tmpfs) != 0 {
 		add("einziger Mount muss der Schlüsselordner read-only sein")
 	}

@@ -27,14 +27,32 @@ MUTATIONS = [
     ("6 unsafe-inline", "internal/apphost/apphost.go", [("script-src 'self';", "script-src 'self' 'unsafe-inline';")]),
     ("7 Headerfilter aus", "internal/apphost/apphost.go", [
         ('out.Header.Set("Authorization", "Bearer "+token)', 'out.Header = r.Header.Clone()\n out.Header.Set("Authorization", "Bearer "+token)')]),
+    ("10 Apphost im Plugin-Netz", "docker-compose.yml", [
+        ("networks: [jnpt_apps]", "networks: [jnpt_apps, plugins]")]),
+    ("11 Caddy delete code aus", "../box/apps.caddy", [("delete code", "# mutation: code filter removed")]),
+    ("11 Fehlerhandler aus", "../box/apps.caddy", [("handle_errors {", "handle /not-used-for-errors {")]),
+    ("C-1 CORS wildcard", "internal/apphost/apphost.go", [
+        ("func security(w http.ResponseWriter) {", 'func security(w http.ResponseWriter) {\n w.Header().Set("Access-Control-Allow-Origin", "*")')]),
+    ("C-2 Refresh umgeleitet", "internal/apphost/apphost.go", [("content=\"0;url=/\"", "content=\"0;url=/foreign\"")]),
+    ("C-3 Verifier zu kurz", "internal/apphost/apphost.go", [("make([]byte, 32)", "make([]byte, 16)")]),
+    ("I-1 Shell statt Binary", "docker-compose.yml", [('command: ["apphost"]', 'command: ["sh", "-c", "script-runner apphost"]')]),
+    ("I-2 Dialer MPTCP", "internal/apphost/network.go", [("d.SetMultipathTCP(false)", "d.SetMultipathTCP(true)")]),
+    ("I-2 Listener MPTCP", "internal/apphost/network.go", [("lc.SetMultipathTCP(false)", "lc.SetMultipathTCP(true)")]),
+    ("I-3 Binaryscan aus", "../.github/workflows/script-runner.yml", [("govulncheck -mode binary", "govulncheck -mode source")]),
+    ("H-1 Syntaxpruefung aus", "internal/apphost/apphost.go", [('if h.app(domain) == "" {', 'if false {')]),
+    ("H-1 Query durchgereicht", "internal/apphost/apphost.go", [
+        ('"/internal/apps/tls-ask?domain="+url.QueryEscape(domain)', '"/internal/apps/tls-ask?"+r.URL.RawQuery')]),
 ]
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--docker", action="store_true")
+    parser.add_argument("--only", help="mutation name prefix; still runs the full Go package suite")
     args = parser.parse_args()
     for i, (name, file, replacements) in enumerate(MUTATIONS):
+        if args.only and not name.startswith(args.only):
+            continue
         path = ROOT / file
         original = path.read_bytes()
         changed = original.decode()
@@ -45,7 +63,8 @@ def main():
         print(f"MUTATION {name}", flush=True)
         try:
             path.write_text(changed, encoding="utf-8", newline="")
-            command = ["go", "test", "-count=1", "./internal/apphost"]
+            package = "./internal/hygiene" if name.startswith(("10 ", "I-1 ", "I-3 ")) else "./internal/apphost"
+            command = ["go", "test", "-count=1", package]
             if args.docker:
                 # Check RAM on Windows before every heavy named container.
                 check = subprocess.run(["powershell", "-NoProfile", "-Command",
@@ -56,8 +75,17 @@ def main():
                     "-v", f"{ROOT.parent.as_posix()}:/repo",
                     "-v", f"{(pathlib.Path.home()/'go/pkg/mod').as_posix()}:/go/pkg/mod",
                     "-w", "/repo/script-runner", "golang:1.26.10"] + command
+            if name.startswith("11 "):
+                command = ["pwsh", "-NoProfile", "-File", str(ROOT / "probe/apphost.ps1")]
             result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False)
-            print(result.stdout, result.stderr, flush=True)
+            if name.startswith("11 "):
+                lines = result.stdout.splitlines()
+                for j, line in enumerate(lines):
+                    if "--- FAIL:" in line or line.startswith(("FAIL", "ok ")):
+                        print("\n".join(lines[max(0, j-1):j+2]), flush=True)
+                print(result.stderr, flush=True)
+            else:
+                print(result.stdout, result.stderr, flush=True)
             if result.returncode == 0 or "--- FAIL:" not in result.stdout or "build failed" in result.stdout:
                 raise RuntimeError(f"mutation not killed by an executing test: {name}")
         finally:
