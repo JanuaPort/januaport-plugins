@@ -217,6 +217,47 @@ Speicher, PIDs und Mindestlebensdauer bleiben eigenständige Grenzen.
 
 ## Referenzen und Nachweise
 
+### Speicherquelle (#1277 S4b, Lauf 1)
+
+Abholer-Vertrag aus Plan c-6578615445 und SEC c-6578688656: separate Inbox
+`speicher/inbox/list.json` und `speicher/inbox/pkg/<name>-<commit>.pkg`,
+signierte vollständige Pinliste mit `zweck:skriptlaeufer-pins.v1`, ausschließlich
+SHA-256 und nach Hash sortierte Paketobjekte. Das unterscheidet die Reihenfolge
+vom bestehenden Desktop-Paketweg; dessen Goldens und Ausgabe bleiben unverändert.
+Die Signatur bindet Name, Commit und Pfad; Git-Objekthashes binden den Inhalt.
+
+`golden/storage/` ist unverändert aus `januaport` Branch `feat/1277-s4b-kern`
+Commit `a28a2376cd5986c8d062365fd9d07b61cc12057e`,
+`internal/desktop/testdata/runnerpins/` kopiert, einschließlich `SHA256SUMS`.
+`TestCoreGoldenVectorsAndChecksums` prüft sämtliche Hashes und alle Fälle aus
+`expectations.json` (einschließlich Großschreibvarianten und kleiner Ordnung).
+Die Golden-Erwartungen enthalten eine 5-Minuten-Testpolicy; im Betrieb gelten
+fest 10 Minuten plus höchstens 2 Minuten Zukunftstoleranz. Der öffentliche
+Golden-Schlüssel ist ausschließlich für den reinen Prüfer zugelassen; der
+Dateilader weist ihn wie den RFC-8032-Testschlüssel ab.
+
+`TestCopiedContractFunctions` bewacht die Funktionen gegen die gemeinsame
+Referenz in `desktop-runner/contract/contract_test.go`. Die einzigen benannten
+Abweichungen sind der fehlschlagende SHA-1-Zweig, die Hashsortierung und das
+bereits im Desktop-Client geltende DAG-Besuchslimit. Der Gleichlauf mit dem
+Kern wird zusätzlich durch dessen signierte Golden-Vektoren geprüft.
+
+`state.json` ist ein atomarer Version-1-Snapshot mit Fingerprint, höchster
+Sequenz, `accepted:{manifest,sig}`, Freigaben samt `package_sha256` und festen
+Fehlern `{index,state,reason}`. Index -1 bezeichnet die gesamte Liste, sonst
+den Index in der angenommenen Pinliste. Frist ausschließlich aus
+`accepted.manifest.issued_at`; bei Sequenz 0 Sperre ab eigener Prozessuhr bis
+streng nach 12 Minuten, auch bei fehlendem Zustand, Wechsel und Neustart.
+Fehlender/gewechselter Schlüssel entfernt Freigaben im selben Durchlauf.
+Details und Adapterbelege stehen in [CLAUDE.md](../CLAUDE.md#speicherpins-1277-s4b-lauf-1).
+
+Lauf 2 bindet Bote, Senke und Meldung an: zunächst `pending`, bei Fehlern
+`invalid/fetch_failed` (Liste, Schlüssel, Transport) bzw.
+`invalid/hash_mismatch` (Paketstruktur, Hash). Eine Abholerfreigabe allein
+ist kein `ready`; Manifest-, Bibliotheks- und Sandboxprüfung bleiben erforderlich.
+Kein neues Feld in `tools/list`, Vertragskennung bleibt 2. Bestehende
+Git-/Desktop-Dateien und alle bisherigen Goldens bleiben bytegleich.
+
 - `golden/call_headers.json`: Fassung 5 mit Grenz-Header.
 - `golden/call_headers_v1.json`: unveränderte alten Lauf-Header ohne Grenz-Header;
   `TestRunHeadersGoldenV1AndV2` pinnt ihre Altgrenzen als Literale.

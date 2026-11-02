@@ -24,7 +24,7 @@ Drei dauerhafte Dienste und ein kurzer Init-Dienst aus einem Image, neben dem Ga
 |---|---|---|
 | `script-runner` | nimmt Aufrufe vom Gateway an, hält die Pins, übergibt den Code an die Sandbox, leitet Werkzeugaufrufe des Skripts an JanuaPort weiter | nur das interne Netz `jnpt_plugins` (kein Ausgang, nur das Gateway daneben), kein Host-Port |
 | `script-runner-sandbox` | führt **einen** Lauf aus und wird danach mit leerem Arbeitsspeicher neu gestartet | **kein Netz** |
-| `script-runner-fetcher` | prüft Pins gegen den Standard-Zweig und holt Objekte per ssh mit einem Nur-Lese-Deploy-Key | eigenes Netz mit Ausgang, kein Weg zum Gateway |
+| `script-runner-fetcher` | prüft Git-Pins gegen den Standard-Zweig und holt Objekte per ssh mit einem Nur-Lese-Deploy-Key; prüft Speicherlisten und Pakete unabhängig davon (#1277 S4b, noch ohne Ausführung) | eigenes Netz mit Ausgang, kein Weg zum Gateway |
 | `script-runner-init` | legt die Bibliotheksordner an und beendet sich erfolgreich, bevor die Sandbox startet | **kein Netz**, nur das Volume `libs` |
 
 Für den **Desktop-Läufer** (#1165 D2b) stellt der Beisteller zusätzlich
@@ -244,7 +244,7 @@ fertige Verzeichnis einmal gegen sein Manifest und verwirft Abweichungen.
 
 ## Betrieb
 
-- **Standard-Zweig:** Nur dessen Kopf und Vorfahren sind pinbar. Der Abholer
+- **Standard-Zweig (Git-Quelle):** Nur dessen Kopf und Vorfahren sind pinbar. Der Abholer
   prüft auch schon gespeicherte Pins im nächsten Durchlauf erneut (normal
   alle 5 s). Entfernt ein Force-Push einen gepinnten Commit aus der Abstammung,
   wird der Pin ungültig; neue Läufe werden verweigert. Laufende Skripte enden
@@ -253,8 +253,20 @@ fertige Verzeichnis einmal gegen sein Manifest und verwirft Abweichungen.
   werden mit `fetch_failed` abgewiesen; der Läufer loggt eine Warnung.
   Auch andere Prüffehler entziehen keine bestehende Zweigfreigabe: Nur ein
   negativer Vorfahren-Befund (Exit 1) widerruft. Ein Wechsel der Repository-URL
-  leert weiterhin alle Freigaben. Alte Stores brauchen
+  leert weiterhin alle Git-Freigaben. Alte Stores brauchen
   nach dem Update zunächst eine erfolgreiche Zweigprüfung.
+- **Speicherquelle (#1277 S4b, im Bau):** Der Abholer prüft die signierte Liste
+  und Pakete unter `speicher/inbox/` alle 5 s unabhängig von Git und schreibt
+  Freigaben nach `speicher/state.json`. Bote und Ausführung folgen in Lauf 2.
+  `runner-pins.pub` liegt neben dem Deploy-Key und wird je Durchlauf neu gelesen.
+  Fehlender/gewechselter Schlüssel entfernt Speicherfreigaben sofort. Bei
+  Höchststand 0 (auch Erstinstallation, Rücksetzung und Neustart in der Sperre)
+  gilt ab eigener Prozessuhr eine Sperre bis streng nach 12 Minuten; danach
+  verlangt die Liste einen höchstens 10 Minuten alten Signierzeitpunkt.
+  Die Prüfung schützt gegen Transport und Fehler im Vermittler, nicht gegen
+  seine Kompromittierung. Zugesagt ist nur, dass der Vermittler über den
+  Abholer weder an den Deploy-Key noch an den Ausgang kommt. Technischer
+  Vertrag und Belege: [CLAUDE.md](CLAUDE.md#speicherpins-1277-s4b-lauf-1).
 - **Image:** `ghcr.io/januaport/script-runner`, gebaut von der
   Release-Strecke dieses Repos (Tag `script-runner-vX.Y.Z`, nur `linux/amd64`,
   mit SBOM und Provenance). Die Anlage bezieht es nur per Digest aus dem

@@ -1,4 +1,4 @@
-// Aus contract/contract_test.go übernommen; gleiche Funktionen werden durch TestCopiedContractFunctions bewacht.
+// Aus desktop-runner/contract/contract_test.go übernommen; durch TestCopiedContractFunctions bewacht.
 package gitobjects
 
 import (
@@ -135,7 +135,7 @@ func decodePackage(b []byte, algo, commit, pinPath string) error {
 		objects[id] = o
 	}
 	if r.Len() != 0 {
-		return fmt.Errorf("Daten nach Paket")
+		return fmt.Errorf("Daten nach Paket") //nolint:staticcheck // ST1005: bewachte Vertragskopie.
 	}
 	used := map[string]bool{}
 	get := func(id string, kind byte) (object, error) {
@@ -202,7 +202,7 @@ func decodePackage(b []byte, algo, commit, pinPath string) error {
 					continue
 				}
 				if mode != "40000" {
-					return fmt.Errorf("Pin ist kein Baum")
+					return fmt.Errorf("Pin ist kein Baum") //nolint:staticcheck // ST1005: bewachte Vertragskopie.
 				}
 				found = true
 				if err := walk(child, remaining[1:], depth+1); err != nil {
@@ -217,7 +217,7 @@ func decodePackage(b []byte, algo, commit, pinPath string) error {
 			}
 		}
 		if len(remaining) > 0 && !found {
-			return fmt.Errorf("Pin fehlt")
+			return fmt.Errorf("Pin fehlt") //nolint:staticcheck // ST1005: bewachte Vertragskopie.
 		}
 		return nil
 	}
@@ -294,7 +294,7 @@ func canonical(b []byte) ([]byte, error) {
 		return nil, err
 	}
 	if _, err := d.Token(); err != io.EOF {
-		return nil, fmt.Errorf("Daten nach JSON")
+		return nil, fmt.Errorf("Daten nach JSON") //nolint:staticcheck // ST1005: bewachte Vertragskopie.
 	}
 	var out bytes.Buffer
 	quote := func(s string) {
@@ -403,7 +403,7 @@ func strict(b []byte, v any) error {
 	}
 	var rest any
 	if err := d.Decode(&rest); err != io.EOF {
-		return fmt.Errorf("Daten nach JSON")
+		return fmt.Errorf("Daten nach JSON") //nolint:staticcheck // ST1005: bewachte Vertragskopie.
 	}
 	return nil
 }

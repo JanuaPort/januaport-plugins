@@ -1,5 +1,23 @@
 # Changelog — script-runner
 
+## Unveröffentlicht — #1277 S4b Lauf 1 (2026-11-02)
+
+- Abholer prüft Speicherpins unabhängig von Git alle 5 s: signierte exakte
+  Pinliste, vertrauenswürdiger Public-Key, 10-Minuten-Frist, SHA-256-Paketgraph
+  und Hashsortierung. Kern-Goldens aus `a28a2376` unverändert samt SHA256SUMS.
+- Atomarer `speicher/state.json` mit Sequenz und Freigaben; bei Höchststand 0
+  Sperre bis streng nach 12 Minuten ab eigener Prozessuhr, auch bei fehlender
+  Datei, Schlüsselwechsel und Neustart. Fehlender/gewechselter Schlüssel
+  entfernt Freigaben sofort. Kein Inbox-Schreibweg und kein Runtime-Key im Abholer.
+- Gehärteter Dateiadapter: keine Symlinks einschließlich Elternkomponenten,
+  nur reguläre Dateien, begrenztes Lesen, exklusive zufällige Temp-Dateien,
+  fsync/Rename/Ordner-fsync. Fehler und Logs ohne fremde Bodies oder Schlüssel.
+- Hygiene-Wächter sperrt Schlüsselordner auch über Eltern-Mounts; Vergleich
+  nach Pfadkomponenten. Test-first für P1, P2, P3 und B3 mit roten Mutationen.
+- Bote, Senke, `tools/list`-Anbindung und Docker-Sonden folgen in Lauf 2;
+  Speicherpins sind noch nicht ausführbar. Vertragskennung 2, Git-/Desktop-
+  Goldens, Compose, Netze, UIDs und Profile unverändert. SEC-R4 bleibt extern.
+
 ## 0.3.1 — 2026-10-26 (Go 1.26.10, CVE-2026-111943)
 
 - **Image:** `sha256:65bb4697333cc6a69185fb00a35f59a08d2702bb2d9348d0a307f522eb93cf43` (Index, nur `linux/amd64`; arm64-Ausnahme bis zur ersten Nachfrage, JanuaPort/januaport#928)

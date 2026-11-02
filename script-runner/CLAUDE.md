@@ -20,7 +20,7 @@ Kommentaren und Tests verweisen darauf.
 |---|---|---|
 | `mediator` | `script-runner` | vermittler: MCP-Server für das Gateway (Weg A, `:8090` im internen Netz `jnpt_plugins`), prüft `runtime-key` (R13), liest `pins.json` und `desktop-pins.json`, einzige Senke für Code (R6, M5), hält den einen Slot, misst Wandzeit und Größen selbst (M2, M4), ruft innere Werkzeuge mit dem Lauf-Token (Weg B), `/healthz` auf `:8091`; Taktgeber für Zeitpläne (#1039 S1, liest `schedules.json`, löst über das Gateway aus) |
 | `guard` | `script-runner-sandbox` | Wächter: PID 1 der Sandbox, `PR_SET_DUMPABLE 0`, meldet `hello`, nimmt **genau einen** job, startet `python -I`, räumt den Prozessbaum ab (V1/V3), hält die Instanz 10,5 s (B1) |
-| `fetcher` | `script-runner-fetcher` | abholer: prüft Pins gegen den Standard-Zweig und holt Objekte per ssh in den Bare-Store, prüft `wanted/` und `repo_url` selbst (V2, M7) |
+| `fetcher` | `script-runner-fetcher` | abholer: prüft Git-Pins gegen den Standard-Zweig und holt Objekte per ssh in den Bare-Store, prüft `wanted/` und `repo_url` selbst (V2, M7); unabhängige Speicherprüfung alle 5 s (#1277 S4b) |
 | `init-libs` | `script-runner-init` | kurzlebiger Volume-Init als 65532, ohne Netz; legt `ready` (0755) und `staging` (0700) an und beendet sich vor dem Sandbox-Start |
 
 **Nicht hier, mit Absicht:** Katalogeintrag und Signatur (die liegt auf dem
@@ -51,6 +51,8 @@ und `fetch` gelesen.
 | `internal/mediator` | vermittler: MCP, Auth, Pins, Slot/V1, Lauf, Weg B |
 | `internal/guard` | Wächter (`guard_linux.go`; anderswo nur ein Platzhalter) |
 | `internal/fetcher` | abholer |
+| `internal/gitobjects` | geprüfte Kopie des Paketvertrags: SHA-256, sortierte Objekte, vollständiger Baum ohne Git-Aufruf |
+| `internal/storagepins` | signierte Speicherliste, gehärteter Dateiadapter, atomarer Höchststand und Speicherfreigaben |
 | `internal/hygiene` | Wächter-Tests für Compose (Vertrag §6, SEC-Zeile 3), Seccomp-Profil, Dockerfile |
 | `sandbox/bootstrap.py` | Python-Seite: Modul `januaport`, Fehlermeldung ohne Text, `sys.path.append` der Bibliotheken (#1041) |
 | `seccomp/` | Profil, Quelle (moby) und Herleitung `derive.py` |
@@ -191,6 +193,90 @@ Ausgabe auf stdout, Werkzeuge per `januaport.call(name, arguments)` → dict
 (`CallToolResult`), `januaport.ToolError` bei `isError`. `sys.path` = Pin-Ordner
 und `vendor/` darin (reines Python, R12), dazu — mit `requirements` — hinten
 angehängt `/libs/<lockhash>` (Wheels, auch native; nur lesend).
+
+## Speicherpins (#1277 S4b, Lauf 1)
+
+Die Abholer-Seite ist gebaut; Bote, Senke und `tools/list`-Anbindung folgen in
+Lauf 2. Speicherpins sind damit noch nicht ausführbar. Der Git-Weg samt
+`pins.json`, `desktop-pins.json`, `wanted/`, `approved/`, `failed/`, `repo_url`
+und `store.git` bleibt unverändert; `initStore` lässt `speicher/` unberührt.
+Desktop-/Geräte-/Testpins und Vertragskennung 2 ändern sich nicht.
+
+Unter `/var/lib/script-runner/speicher/` liest der Abholer `inbox/list.json`
+(höchstens 1 MiB) und `inbox/pkg/<name>-<commit>.pkg` (128 MiB je Paket,
+1 GiB Lesebudget je Durchlauf). Er schreibt nie in die Inbox. Seine eigene
+Goroutine läuft alle 5 s, unabhängig von Git-`Once`. Kein Runtime-Key, kein
+Gateway- oder sonstiger Netzaufruf ist Teil dieses Pfads. `runner-pins.pub`
+kommt ausschließlich aus dem vorhandenen nur lesend eingehängten
+`/run/jnpt/plugins/script-runner-git/`, wird je Durchlauf neu gelesen und
+verlangt Standard-Base64 für genau 32 Byte plus ein LF. RFC-8032-Testschlüssel,
+Kern-Golden-Testschlüssel und Punkte kleiner Ordnung werden abgewiesen.
+
+Freigabe verlangt Schlüssel, frische signierte Liste und passenden Pakethash.
+Die Liste prüft Zweck `skriptlaeufer-pins.v1`, exakte Feldschreibweise und
+Pflichtfelder, Signatur, sortierte eindeutige Pins mit SHA-256-Commit und
+`seq >= highest_seq`. Gleiche Sequenz darf nur mit gleichem oder neuerem
+`issued_at` verlängern. Die Frist ist konstant 10 Minuten, die Zukunftstoleranz
+2 Minuten. Eine unveränderte Pinmenge kann durch frisches `issued_at` weiterleben;
+ein Replay derselben Liste verlängert nichts. Transportfehler werden nicht
+zu Freigaben. Paketstruktur und Hashfehler sind `invalid/hash_mismatch`,
+Liste/Schlüssel/Transport `invalid/fetch_failed`; bis zur Senkenprüfung gilt
+für freigegebene neue Pins `pending`, niemals allein deshalb `ready`.
+
+`state.json` enthält `{version:1,key_fpr,highest_seq,accepted:{manifest,sig},
+approved:[{name,commit,path,package_sha256}],failed:[{index,state,reason}]}`.
+`accepted` ist bei Rücksetzung `null`, beide Listen sind dann leer (bei Fehlern
+mit festem Fehlercode). Fehlerindex -1 gilt für den gesamten Abgleich, sonst
+für den Index in `accepted.manifest.pins`. Sequenz, Liste und Freigaben werden
+zusammen per zufälliger Temp-Datei mit `O_CREATE|O_EXCL`, Datei-fsync, Rename
+und Ordner-fsync veröffentlicht. `package_sha256` ist der selbst berechnete
+Hash der geprüften Paketbytes; die Senke muss ihn vor Codeübergabe nachprüfen.
+Die Frist kommt ausschließlich aus `accepted.manifest.issued_at` im selben
+Zustand (`State.Fresh`), nie aus einem separaten Fristfeld.
+
+**B2/H3:** Ist `highest_seq` beim Laden oder Rücksetzen 0, beginnt die Sperre
+mit der eigenen Uhr (`time.Now`) ab Prozessstart bzw. Rücksetzung. Erst
+`now > Start + 10 min + 2 min` öffnet sie; Gleichheit bleibt gesperrt.
+Dies gilt bei fehlender/kaputter Datei, Schlüsselwechsel und jedem Neustart
+während der Sperre. Zeitwerte aus dem Volume setzen die Sperruhr nie.
+Bei kaputtem Zustand wird `storage_state_reset` geloggt, bei Schlüsselwechsel
+`storage_key_changed`; alle Freigaben entfallen und der Höchststand wird 0.
+Fehlender Schlüssel (`storage_key_missing`) und Schlüsselwechsel schreiben
+`approved:[]` sofort im selben Durchlauf, auch bei A → B → A.
+
+**B1:** Inbox und Zustand sind feindliche Eingaben. Der Dateiadapter öffnet
+jede Datei und alle Verzeichniskomponenten ohne Linkverfolgung (`O_NOFOLLOW`),
+verlangt per fstat reguläre Dateien und liest mit `LimitReader(N+1)`.
+Überlauf wird verworfen; ein vorhandener Temp-Name wird nie beschrieben.
+Ungeprüfte Inbox-Bytes, Bodies, URLs und Schlüssel gelangen weder in Zustand
+noch Log. Nur verifizierte kanonische Listenmetadaten, selbst berechnete
+Pakethashes und feste Fehlercodes werden gespeichert. Logs tragen feste Codes.
+Die Prüfung schützt gegen Transport und Fehler im Vermittler, nicht gegen
+seine Kompromittierung. Zugesagt ist nur, dass der Vermittler über den Abholer
+weder an den Deploy-Key noch an den Ausgang kommt.
+
+**B3:** Host-Mounts auf die Schlüsselordner, deren Eltern oder einzelne
+Schlüsseldateien werden anhand von Pfadkomponenten gesperrt: Deploy-Key und
+`runner-pins.pub` ausschließlich beim Abholer, Runtime-Key ausschließlich
+beim Vermittler. Auch `/run/jnpt/plugins:/p:ro` im Vermittler und `/run/jnpt:/p`
+in der Sandbox sind Befunde. Ähnlich benannte Nachbarpfade sind keine Eltern.
+
+| Invariante | Test am Adapter |
+|---|---|
+| Inbox allein erteilt keine Freigabe | `TestStorageInboxAloneNeverApproves` |
+| Schlüssel, Frist, Hash und sofortiger Entzug bei Schlüsselverlust/-wechsel | `TestStorageApprovalRequiresKeyFreshnessAndHash` |
+| Symlinks auf Schlüssel, signierte Liste, Paket und Inbox-Elternteil gesperrt; kein Echo | `TestStorageInboxSymlinksAtAdapter`, `TestHostileFileAdapter` |
+| Vorhandene Temp-Namen werden nie beschrieben | `TestAtomicStateTempLinkNeverWritten`, `TestAtomicStateExistingRegularTempNeverWritten` |
+| Fehlend, kaputt, Wechsel und Neustart sperren auch exakt bei 12 min | `TestZeroSequenceQuarantineAllResetPaths`, `TestKeyBackAndForthRestartsQuarantine` |
+| Gleiche Sequenz niemals mit älterem issued_at; Entzug und Neustart öffnen keinen Replay | `TestVerifySameSequenceNeverMovesIssuedAtBackwards`, `TestStorageRefreshRevocationAndRestartReplay` |
+| Frist ausschließlich aus accepted | `TestExpiryDerivedOnlyFromAcceptedManifest` |
+| Inbox und Git-Dateien bleiben bytegleich; Git-Reset erhält Speicher | `TestStorageNeverWritesInboxOrGitPaths`, `TestGitInitLeavesStorageUntouched` |
+| Git kann die Speicherverlängerung nicht blockieren | `TestStorageLoopIndependentOfBlockedGitOnce` |
+| Eltern-Mounts und Einzelschlüssel gesperrt | `TestKeyMountParentsAtComposeAdapter`, `TestKeyMountComparisonUsesComponents` |
+
+Die Senke in Lauf 2 muss vor jeder Codeübergabe erneut Frist und Paketbindung
+prüfen; damit wirkt auch bei angehaltenem Abholer ein zurückgehaltener Entzug
+spätestens nach 12 Minuten. Lauf 1 allein erteilt keine Codeübergabe.
 
 ## Desktop-Pins (#1165 D2b, Epic #1163)
 
@@ -342,7 +428,7 @@ nicht von `isolation` ab; `/healthz` behält seine lokale Sandbox-Bedeutung.
    nur irgendeinen Filter.
 7. **V2 / M7 / L3 — der abholer vertraut niemandem.** Jede `wanted/`-Zeile
    und die `repo_url` prüft er selbst (Allowlist), bevor Git läuft. Jeder
-   gewünschte Commit muss Vorfahr (oder gleich) dem Kopf des
+   gewünschte Git-Commit muss Vorfahr (oder gleich) dem Kopf des
    Remote-Standard-Zweigs sein, für Pins von Menschen und KI gleichermaßen,
    einschließlich aller Desktop-Pins aus der zweiten Materialisierungsdatei.
    Bei jedem Durchlauf mit gewünschten Commits:
@@ -371,6 +457,8 @@ nicht von `isolation` ab; `/healthz` behält seine lokale Sandbox-Bedeutung.
    `merge-base` über den Runner, für SHA-1 und SHA-256.
 8. **R8 — kein Weg zurück.** Kein `push`, kein `receive-pack` im Code
    (Wächter `TestNoPushPathInSource`). Der Deploy-Key hängt nur im abholer.
+   B3 sperrt auch Eltern-Mounts und Einzelschlüssel; `runner-pins.pub` teilt
+   diesen Ordner. Für Speicher gilt die unabhängige B1-Prüfung oben.
 9. **Compose ist Vertrag §6, der Wächter prüft deny by default.**
    `internal/hygiene` dekodiert mit `KnownFields(true)`: Jeder Schlüssel, den
    das Struct nicht kennt, ist ein Verstoß — das Struct kennt genau die

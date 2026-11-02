@@ -1,8 +1,9 @@
-// Package fetcher ist der abholer: Nur Vorfahren des frisch aufgelösten
+// Package fetcher ist der abholer: Für Git gelten nur Vorfahren des frisch aufgelösten
 // Remote-Standard-Zweigkopfs werden freigegeben (SEC L3, #1083). Er holt Objekte
 // per ssh in den Bare-Store (Vertrag §8, Nachtrag 2a). Er vertraut dem
 // vermittler nicht: jede Zeile aus wanted/ und die repo_url prüft er selbst
 // (V2, M7). Der Git-Anbieter wird nur mit ls-remote und fetch gelesen.
+// Speicherpins prüft storage.go getrennt anhand signierter Liste und Pakethashes.
 package fetcher
 
 import (
@@ -68,7 +69,7 @@ func (b *headOutput) Write(p []byte) (int, error) {
 
 // Config des abholers.
 type Config struct {
-	StoreDir   string        // gemeinsames Volume: wanted/, repo_url, store.git, approved/, failed/
+	StoreDir   string        // gemeinsames Volume: Git-Pfade sowie getrennt speicher/
 	KeyPath    string        // Deploy-Key (…/script-runner-git/runtime-key)
 	TmpDir     string        // tmpfs für die Schlüsselkopie
 	Interval   time.Duration // Abstand der Durchläufe
