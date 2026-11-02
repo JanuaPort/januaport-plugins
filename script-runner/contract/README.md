@@ -148,6 +148,8 @@ Sandbox-Isolation bereit. Auch ein gleichnamiger Eintrag in `pins.json`
 Namen mit `refused/pin` ab. Es werden weder Sandbox-Jobs gesendet noch
 Bibliotheken vorbereitet oder Windows-Wheels entpackt.
 
+Ein gleichnamiger Git-Pin in `pins.json` und Speicher-Pin aus `state.json/accepted` macht **beide** zu `invalid/manifest_invalid`; `tools/call` antwortet mit `refused`, ohne Sandbox-Job. Ungeprüfte Namen aus `inbox/list.json` lösen diese Kollision nicht aus (SEC F1/H4).
+
 ```text
 GET /desktop/package?commit=<hex>&path=<relativer-pin-ordner>
 Authorization: Bearer <runtime-key>

@@ -309,6 +309,12 @@ Entzug damit spätestens nach 12 Minuten. Kein getrenntes Ablaufdatum (H5).
 `pruneLibs` berücksichtigt Speicherpins; ehemals freigegebene, jetzt entzogene
 oder abgelaufene Speicherpakete werden entfernt. Noch ungeprüfte neue Pakete
 bleiben für den Abholer verfügbar. Fehler gehen vor Freigaben.
+Git- und Speicherpins teilen einen Namensraum: Ein Git-Pin in `pins.json` und
+Speicher-Pin mit gleichem Namen werden beide `invalid/manifest_invalid`;
+`tools/call` wird ohne Sandbox-Job verweigert (SEC F1). Nur Namen aus dem
+Abholer-Snapshot `state.json/accepted` lösen die Kollision aus. Ungeprüfte
+Inbox-Kandidaten reservieren keinen Namen und sperren keinen Git-Pin (H4).
+Das interne Merkmal `storageAccepted` verändert den Draht-Vertrag nicht.
 
 | Invariante Lauf 2 | Test am Adapter |
 |---|---|
@@ -318,6 +324,9 @@ bleiben für den Abholer verfügbar. Fehler gehen vor Freigaben.
 | Frist, Freigabe und Hash vor Codeübergabe, auch nach Warten | `TestStorageRechecksAtCodeHandoffWithStoppedFetcher`, `TestStorageExpiryWhileWaitingForSandbox` |
 | Entzogene Pakete werden abgeräumt | `TestStoragePruneRevokedPackages` |
 | Echter Speicherlauf und R8 ohne Schlüsselmount im Vermittler | Docker: `TestStorageReadyRunAndRevocationWithStoppedFetcher` |
+| Gleichnamige Git-/Speicherpins beide ungültig, kein Job; ungeprüfte Inbox sperrt Git nicht | `TestGitStorageNameCollisionAtMCP`, `TestUnsignedStorageNameDoesNotCollideAtMCP` |
+| Fristablauf oder andere Freigabe zwischen den beiden Snapshots sperrt | `TestStorageExpiryBetweenApprovalReadsRefusesRun`, `TestStorageSourceAtRealFetcherAdapter/expires_during_read`, `…/approval_changes_during_read` |
+| Globale/eigene Fehlermarke schlägt Freigabe; neuer Commit entzieht alten gecachten Pin | `TestStorageFailureOverridesApprovalAtMCP`, `TestStorageRenewalRejectsCachedOldCommit` |
 
 Die Docker-Sonde erzeugt einen eigenen Wegwerf-Schlüssel und startet aus einem
 signierten leeren Journal einer bereits initialisierten Installation. Sie

@@ -18,6 +18,9 @@ import (
 type pinState struct {
 	pin     pins.Pin
 	storage bool
+	// Only names from the fetcher's accepted snapshot participate in F1.
+	// Unverified inbox candidates must not reserve a Git pin's name (SEC H4).
+	storageAccepted bool
 	verdict
 }
 
@@ -92,7 +95,7 @@ func (m *Mediator) refresh(ctx context.Context) {
 	storageStates := m.storageStates(ctx)
 	for i := range states {
 		for j := range storageStates {
-			if states[i].pin.Name == storageStates[j].pin.Name {
+			if storageStates[j].storageAccepted && states[i].pin.Name == storageStates[j].pin.Name {
 				states[i].verdict = verdict{state: contract.StateInvalid, reason: contract.ReasonManifestInvalid}
 				storageStates[j].verdict = states[i].verdict
 			}

@@ -1,5 +1,14 @@
 # Changelog — script-runner
 
+## Unveröffentlicht — #1277 SEC F1 (2026-11-02)
+
+- Git-/Speicher-Namenskollision am MCP-Adapter abgesichert und im Vertrag
+  festgehalten: beide Pins `invalid/manifest_invalid`, kein Sandbox-Job.
+  Nur Namen aus `state.json/accepted` lösen die Kollision aus; ungeprüfte
+  Inbox-Namen können Git-Pins nicht sperren (H4).
+- Tests für Ablauf/Änderung zwischen Freigabe-Snapshots, Freigabe plus
+  globaler/eigener Fehlermarke und alten gecachten Pin nach Commit-Erneuerung.
+
 ## Unveröffentlicht — #1277 SEC H6 (2026-11-02)
 
 - Hygiene-Wächter meldet nicht sicher auflösbare relative und variable

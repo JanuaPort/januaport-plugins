@@ -51,7 +51,7 @@ func (m *Mediator) storageStates(ctx context.Context) []pinState {
 			continue
 		}
 		seen[p.Name] = true
-		ps := pinState{pin: pins.Pin{Name: p.Name, Commit: p.Commit, Path: p.Path}, storage: true, verdict: verdict{state: contract.StatePending}}
+		ps := pinState{pin: pins.Pin{Name: p.Name, Commit: p.Commit, Path: p.Path}, storage: true, storageAccepted: checked, verdict: verdict{state: contract.StatePending}}
 		if checked {
 			ps.verdict = m.pinApproval(ps)
 			if ps.state == contract.StateReady {
