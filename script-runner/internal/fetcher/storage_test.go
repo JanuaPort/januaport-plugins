@@ -198,6 +198,11 @@ func TestStorageApprovalRequiresKeyFreshnessAndHash(t *testing.T) {
 				return
 			}
 			x.failed(reason)
+			if which == "changed_key" || which == "missing_key" || which == "golden_key" {
+				if s.HighestSeq != 0 || s.Accepted != nil {
+					t.Fatal("key reset retained sequence or accepted list")
+				}
+			}
 			if which == "golden_key" && !strings.Contains(x.logs.String(), "storage_key_missing") {
 				t.Fatal("golden trust key not blocked")
 			}
@@ -337,6 +342,39 @@ func TestStorageRefreshRevocationAndRestartReplay(t *testing.T) {
 	x.publish()
 	x.f.StorageOnce()
 	x.failed("fetch_failed")
+}
+
+func TestStorageKeySwitchBackFromApprovedStateStaysQuarantined(t *testing.T) {
+	x := newStorageFixture(t)
+	x.ready()
+	a, e := os.ReadFile(x.keyPath)
+	if e != nil {
+		t.Fatal(e)
+	}
+	b, _, e := ed25519.GenerateKey(rand.Reader)
+	if e != nil {
+		t.Fatal(e)
+	}
+	x.write(x.keyPath, []byte(base64.StdEncoding.EncodeToString(b)+"\n"))
+	x.f.StorageOnce()
+	x.failed("fetch_failed")
+	x.advance(3 * time.Minute)
+	x.write(x.keyPath, a)
+	x.publish()
+	x.f.StorageOnce()
+	x.failed("fetch_failed")
+	for _, d := range []time.Duration{9 * time.Minute, 3 * time.Minute} {
+		x.advance(d)
+		x.publish()
+		x.f.StorageOnce()
+		x.failed("fetch_failed")
+	}
+	x.advance(time.Second)
+	x.publish()
+	x.f.StorageOnce()
+	if len(x.state().Approved) != 1 {
+		t.Fatal("fresh list not accepted after switch quarantine")
+	}
 }
 
 func TestStorageTotalBudget(t *testing.T) {
