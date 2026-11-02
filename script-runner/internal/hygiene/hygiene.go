@@ -333,11 +333,28 @@ func checkCommon(name string, s service) []string {
 }
 
 // exposesKey compares Linux host path components. Parent mounts expose the
-// key directory too; child mounts may expose an individual key (SEC B3).
+// key directory too; child mounts may expose an individual key (SEC B3/H6).
+// Unknown bind sources fail closed; checkCommon exempts each key's owner.
 func exposesKey(mount, protected string) bool {
 	source, _, ok := strings.Cut(mount, ":")
-	if !ok || !path.IsAbs(source) {
+	// Do not interpolate using the test process's environment. In particular,
+	// ${VAR:-default} contains a colon before the actual mount separator.
+	if strings.Contains(source, "$") {
+		return true
+	}
+	if !ok {
 		return false
+	}
+	if !path.IsAbs(source) {
+		if strings.HasPrefix(source, "./") && !strings.Contains(source, "\\") && !slices.Contains(strings.Split(source, "/"), "..") {
+			// A project-local path cannot leave the documented installation
+			// directory. Preserve such mounts (e.g. ./seccomp) without using cwd.
+			source = path.Join("/opt/jnpt/plugins/script-runner", source)
+		} else {
+			// Plain names are named volumes, not host paths. Everything that
+			// denotes a relative/home path remains unresolved and is a finding.
+			return strings.ContainsAny(source, "/\\") || strings.HasPrefix(source, ".") || strings.HasPrefix(source, "~")
+		}
 	}
 	source = path.Clean(source)
 	return pathContains(source, protected) || pathContains(protected, source)

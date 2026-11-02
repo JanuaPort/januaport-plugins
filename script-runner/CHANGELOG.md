@@ -1,5 +1,14 @@
 # Changelog — script-runner
 
+## Unveröffentlicht — #1277 SEC H6 (2026-11-02)
+
+- Hygiene-Wächter meldet nicht sicher auflösbare relative und variable
+  Bind-Quellen für jeden nicht berechtigten Dienst als möglichen Schlüsselzugriff.
+  Projektlokale Quellen ohne Elternkomponenten bleiben auf den dokumentierten
+  Ablageort begrenzt; benannte Volumes und die echte Compose bleiben unverändert.
+- Adaptertests für beide Schlüsselordner, alle Dienste und den erlaubten
+  `./seccomp`-Fall; Mutation „relative Quelle ignorieren“ wird rot.
+
 ## Unveröffentlicht — #1277 S4b Lauf 2 (2026-11-02)
 
 - Speicherbote im Vermittler: eigener 60-s-Takt, Runtime-Key, rohe atomare

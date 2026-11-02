@@ -261,6 +261,14 @@ Schlüsseldateien werden anhand von Pfadkomponenten gesperrt: Deploy-Key und
 `runner-pins.pub` ausschließlich beim Abholer, Runtime-Key ausschließlich
 beim Vermittler. Auch `/run/jnpt/plugins:/p:ro` im Vermittler und `/run/jnpt:/p`
 in der Sandbox sind Befunde. Ähnlich benannte Nachbarpfade sind keine Eltern.
+**H6:** Nicht sicher auflösbare Bind-Quellen gelten für jeden nicht berechtigten
+Dienst als möglicher Zugriff auf den jeweiligen Schlüsselordner. Dazu zählen
+Elternkomponenten (`..`), unklare relative Pfade und Variablen (`$VAR`, `${VAR}`,
+auch mit Default). Der Wächter interpoliert keine Prozessumgebung. Projektlokale
+`./…`-Pfade ohne Elternkomponenten werden gegen den dokumentierten Ablageort
+`/opt/jnpt/plugins/script-runner/` aufgelöst; `./seccomp:/x` bleibt beim
+Vermittler und Abholer erlaubt. Benannte Volumes und `security_opt`-Profilpfade
+sind keine Bind-Quellen. Die echte Compose bleibt unverändert und sauber.
 
 | Invariante | Test am Adapter |
 |---|---|
@@ -274,6 +282,7 @@ in der Sandbox sind Befunde. Ähnlich benannte Nachbarpfade sind keine Eltern.
 | Inbox und Git-Dateien bleiben bytegleich; Git-Reset erhält Speicher | `TestStorageNeverWritesInboxOrGitPaths`, `TestGitInitLeavesStorageUntouched` |
 | Git kann die Speicherverlängerung nicht blockieren | `TestStorageLoopIndependentOfBlockedGitOnce` |
 | Eltern-Mounts und Einzelschlüssel gesperrt | `TestKeyMountParentsAtComposeAdapter`, `TestKeyMountComparisonUsesComponents` |
+| Unaufgelöste relative/variable Bind-Quellen gesperrt; projektlokale sichere Quelle bleibt erlaubt | `TestUnresolvedKeyMountSourcesAtComposeAdapter`, `TestSafeProjectRelativeMountAtAuthorizedServices`, `TestShippedComposeIsClean` |
 
 Der Vermittler holt als Bote in einer eigenen Goroutine alle 60 s die Liste
 mit seinem vorhandenen Plugin-Runtime-Key über
@@ -496,7 +505,8 @@ nicht von `isolation` ab; `/healthz` behält seine lokale Sandbox-Bedeutung.
    `merge-base` über den Runner, für SHA-1 und SHA-256.
 8. **R8 — kein Weg zurück.** Kein `push`, kein `receive-pack` im Code
    (Wächter `TestNoPushPathInSource`). Der Deploy-Key hängt nur im abholer.
-   B3 sperrt auch Eltern-Mounts und Einzelschlüssel; `runner-pins.pub` teilt
+   B3/H6 sperrt auch Eltern-Mounts, Einzelschlüssel und nicht sicher auflösbare
+   relative/variable Bind-Quellen (Details oben); `runner-pins.pub` teilt
    diesen Ordner. Für Speicher gilt die unabhängige B1-Prüfung oben.
 9. **Compose ist Vertrag §6, der Wächter prüft deny by default.**
    `internal/hygiene` dekodiert mit `KnownFields(true)`: Jeder Schlüssel, den
