@@ -289,7 +289,13 @@ class Background(Service):
         self.assertEqual(len(self.li.calls), before)
         self.li.override = None
         status, body = await self.write_call('create_post', rid)
-        self.assertEqual(status, 202)  # a fresh attempt, it counts again
+        self.assertIn(status, (200, 202))  # a fresh attempt (fast runners finish it within the wait)
+        for _ in range(200):
+            if self.writes.job.future.done():
+                break
+            await asyncio.sleep(0.05)
+        self.assertEqual(len(self.li.api('POST', '/rest/posts')), 1)
+        self.assertEqual(sum(self.writes.actions.values()), 2)  # the failed attempt counted too
 
 
 class Tokens(unittest.TestCase):
