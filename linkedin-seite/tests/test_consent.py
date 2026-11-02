@@ -152,3 +152,52 @@ class Consent(unittest.TestCase):
             self.assertEqual(consent.main(), 1)
         self.assertEqual(output.getvalue(), '')
         self.assertEqual(errors.getvalue(), 'zustimmung_fehlgeschlagen\n')
+
+    def test_real_linkedin_token_shape_comma_scope_and_overshoot_yields_valid_vault_json(self):
+        # JanuaPort/januaport#1237: scope comma separated, refresh 59 s over 365 days (consent 02.11.2026)
+        from datetime import datetime, timedelta, timezone
+        from linkedin_seite.oauth import validate_identity
+        self.fake.token_body.update({s.SCOPE: 'r_organization_social,rw_organization_admin', s.TOKEN_TYPE: 'Bearer',
+                                     s.EXPIRES_IN: 60*86400+59, s.REFRESH_TOKEN: 'synthetic-refresh',
+                                     s.REFRESH_EXPIRES_IN: 31536059})
+        before = datetime.now(timezone.utc)
+        out = self.run_consent()
+        after = datetime.now(timezone.utc)
+        refresh = datetime.fromisoformat(out['refresh_expires_at'])
+        access = datetime.fromisoformat(out['access_expires_at'])
+        self.assertTrue(before + timedelta(days=365) <= refresh <= after + timedelta(days=365))
+        self.assertTrue(before + timedelta(days=60) <= access <= after + timedelta(days=60))
+        validate_identity(dict(out))  # the vault JSON is accepted by the service as written
+
+    def test_control_character_in_secret_is_rejected_with_german_message_and_nothing_is_sent(self):
+        # cmd pastes Ctrl+V into getpass as a control character; it must never reach LinkedIn
+        for secret in ('abc\x16def', '\x16', 'abc\x16', 'abc\x1bdef', 'abc\x7fdef', 'abc\x00def', 'ab\tcd'):
+            for via in ('stdin', 'getpass'):
+                with self.subTest(secret=repr(secret), via=via):
+                    args = ['z', '--client-id', 'synthetic-client'] + (['--secret-stdin'] if via == 'stdin' else [])
+                    output, errors = io.StringIO(), io.StringIO()
+                    guard = patch.object(consent, 'consent', side_effect=AssertionError('must not be reached'))
+                    typed = patch.object(consent.getpass, 'getpass', lambda *a: secret)
+                    with patch('sys.argv', args), patch('sys.stdin', io.StringIO(secret + '\n')), guard, typed, \
+                         contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+                        self.assertEqual(consent.main(), 1)
+                    self.assertEqual(output.getvalue(), '')
+                    message = errors.getvalue()
+                    for phrase in ('Steuerzeichen', 'Strg+V', 'Read-Host -MaskInput', '--secret-stdin'):
+                        self.assertIn(phrase, message)
+                    self.assertNotIn('zustimmung_fehlgeschlagen', message)
+                    self.assertNotIn('abc', message)  # the message never echoes the typed value
+                    self.assertTrue(message.isascii() and not any(ord(c) < 32 and c != '\n' for c in message))
+        self.assertEqual(self.fake.calls, [])
+
+    def test_clean_secret_with_trailing_line_ending_still_passes_the_control_check(self):
+        for ending in ('\n', '\r\n'):
+            with self.subTest(ending=repr(ending)):
+                output, errors = io.StringIO(), io.StringIO()
+                original = consent.consent
+                with patch('sys.argv', ['z', '--client-id', 'synthetic-client', '--secret-stdin']), \
+                     patch('sys.stdin', io.StringIO('synthetic-secret' + ending)), \
+                     contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors), \
+                     patch.object(consent, 'consent', lambda *a, **kw: original(*a, **kw, opener=self.browser, transport=LocalTransport(lambda: None, self.fake.port))):
+                    self.assertEqual(consent.main(), 0)
+                self.assertEqual(errors.getvalue(), 'Refresh-Token: nein\n')

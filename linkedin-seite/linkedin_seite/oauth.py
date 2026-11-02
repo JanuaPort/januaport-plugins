@@ -1,6 +1,7 @@
 """Fixed HTTPS transport and RAM-only OAuth lifecycle. No provider diagnostics."""
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import re
 import urllib.request
 import urllib.error
 from urllib.parse import urlencode
@@ -10,6 +11,8 @@ from .domain import ReportError, strict_json
 ACCESS_DAYS = 60
 REFRESH_DAYS = 365
 WARNING_DAYS = 14
+OVERSHOOT_TOLERANCE_SECONDS = 86400  # documented bound: reject beyond cap + one day
+SCOPE_SEPARATORS = re.compile(r'[\s,]+')
 MAX_SOURCE = 512 * 1024
 
 
@@ -104,23 +107,43 @@ def warning(data, now=None):
     return {}
 
 
+def scope_set(value):
+    """LinkedIn sends the granted scopes comma separated (02.11.2026); whitespace is accepted too.
+
+    Only the separator is tolerant. The caller still compares the set with the pinned scopes
+    exactly, so nothing extra and nothing missing passes. Non-strings fail closed.
+    """
+    if not isinstance(value, str):
+        raise ValueError()
+    return {part for part in SCOPE_SEPARATORS.split(value) if part}
+
+
+def lifetime(seconds, days):
+    """Validated lifetime in seconds, capped at the documented maximum.
+
+    LinkedIn overshoots slightly (refresh_token_expires_in 31536059 = 59 s over 365 days).
+    A small overshoot is capped, never extended; beyond cap + OVERSHOOT_TOLERANCE_SECONDS,
+    or for non-int / non-positive values, the response is rejected as unexpected.
+    """
+    cap = days * 86400
+    if type(seconds) is not int or not 0 < seconds <= cap + OVERSHOOT_TOLERANCE_SECONDS:
+        raise ValueError()
+    return min(seconds, cap)
+
+
 def token_result(raw, now, original_refresh_expiry=None):
     try:
         if not isinstance(raw, dict):
             raise ValueError()
-        if s.SCOPE in raw and (not isinstance(raw[s.SCOPE], str) or set(raw[s.SCOPE].split()) != set(s.SCOPES)):
+        if s.SCOPE in raw and scope_set(raw[s.SCOPE]) != set(s.SCOPES):
             raise ValueError()
         if raw.get(s.TOKEN_TYPE, 'Bearer').lower() != 'bearer':
             raise ValueError()
-        seconds = raw[s.EXPIRES_IN]
-        if type(seconds) is not int or not 0 < seconds <= ACCESS_DAYS * 86400:
-            raise ValueError()
+        seconds = lifetime(raw[s.EXPIRES_IN], ACCESS_DAYS)
         result = {s.ACCESS_TOKEN: secret(raw[s.ACCESS_TOKEN]),
                   'access_expires_at': (now + timedelta(seconds=seconds)).isoformat()}
         if s.REFRESH_TOKEN in raw:
-            seconds = raw[s.REFRESH_EXPIRES_IN]
-            if type(seconds) is not int or not 0 < seconds <= REFRESH_DAYS * 86400:
-                raise ValueError()
+            seconds = lifetime(raw[s.REFRESH_EXPIRES_IN], REFRESH_DAYS)
             expiry = now + timedelta(seconds=seconds)
             if original_refresh_expiry is not None:
                 expiry = min(expiry, original_refresh_expiry)  # never extend original consent

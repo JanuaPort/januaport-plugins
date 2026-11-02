@@ -175,6 +175,22 @@ echter Service/Worker und echte Loopback-Sockets; keine bloßen Adapter-Mocks.
 | `paging-shape` | `test_final_sec.Paging.test_single_post_empty_or_missing_links_valid_next_and_bad_shapes_rejected` |
 | `ipv6-occupied-port` | `test_final_sec.IPv6Failure.test_actual_ipv6_port_in_use_aborts_before_browser_or_token` |
 | `ipv6-only-unavailable-fallback` | `test_final_sec.IPv6Failure.test_unknown_ipv6_error_does_not_fall_back` |
+| `scope-comma-separator` | `test_oauth_toleranz.ScopeSeparators.test_comma_separated_as_sent_by_linkedin` |
+| `scope-only-comma-and-whitespace` | `test_oauth_toleranz.ScopeSeparators.test_only_comma_and_whitespace_separate` |
+| `scope-empty-parts` | `test_oauth_toleranz.ScopeSeparators.test_comma_with_spaces_and_mixed_separators` |
+| `scope-exact-set-wire` | `test_oauth_toleranz.RealLinkedInShapeThroughRefreshPath.test_wrong_scope_on_the_refresh_path_still_fails_closed_with_one_call` |
+| `lifetime-cap` | `test_oauth_toleranz.LifetimeTolerance.test_observed_linkedin_overshoot_is_capped_at_exactly_365_days` |
+| `lifetime-no-overshoot-tolerance` | `test_oauth_toleranz.LifetimeTolerance.test_observed_linkedin_overshoot_is_capped_at_exactly_365_days` |
+| `lifetime-unbounded-overshoot` | `test_oauth_toleranz.LifetimeTolerance.test_refresh_boundary_cap_plus_one_day_capped_beyond_rejected` |
+| `lifetime-positive` | `test_oauth_toleranz.LifetimeTolerance.test_refresh_invalid_types_and_values_rejected` |
+| `lifetime-int-type` | `test_oauth_toleranz.LifetimeTolerance.test_refresh_invalid_types_and_values_rejected` |
+| `access-lifetime-capped` | `test_oauth_toleranz.LifetimeTolerance.test_access_overshoot_is_capped_at_exactly_60_days` |
+| `refresh-lifetime-capped` | `test_oauth_toleranz.LifetimeTolerance.test_observed_linkedin_overshoot_is_capped_at_exactly_365_days` |
+| `secret-control-character` | `test_consent.Consent.test_control_character_in_secret_is_rejected_with_german_message_and_nothing_is_sent` |
+
+0.1.1 (JanuaPort/januaport#1237): die zwölf letzten Zeilen belegen Komma-Scope, gedeckelte
+Laufzeit-Überschreitung (bis Höchstwert + 1 Tag) und die Steuerzeichen-Abweisung im
+Zustimmungsskript. Der Anker von `expanded-grant` folgt dem neuen Aufruf `scope_set`.
 
 Zusätzlich unter Windows: SO_EXCLUSIVEADDRUSE-Block entfernt;
 `test_final_sec.IPv6Failure.test_actual_ipv6_port_in_use_aborts_before_browser_or_token`

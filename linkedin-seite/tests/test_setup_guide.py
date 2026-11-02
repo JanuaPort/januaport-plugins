@@ -32,3 +32,12 @@ class SetupGuide(unittest.TestCase):
         readme = (ROOT/'README.md').read_text(encoding='utf-8')
         self.assertIn('SEC-Prüfpunkte (A2)', readme)
         self.assertIn('[SETUP.md](SETUP.md)', readme)
+
+    def test_windows_secret_entry_uses_masked_powershell_input_not_cmd_paste(self):
+        # #1237: pasting into getpass under cmd inserts a control character (Ctrl+V)
+        guide = self.guide()
+        for phrase in ('Windows', 'PowerShell 7', 'Read-Host -MaskInput', 'cmd', 'Steuerzeichen', '--secret-stdin'):
+            self.assertIn(phrase, guide)
+        self.assertRegex(guide, r'Read-Host -MaskInput [^\n]*\| python [^\n]*zustimmung\.py --client-id APP_CLIENT_ID '
+                                r'--secret-stdin \| jnpt credential set --name plugin-linkedin-seite-oauth')
+        self.assertNotRegex(guide, r'--client-secret|\$env:|-AsPlainText|ConvertFrom-SecureString')

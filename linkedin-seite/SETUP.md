@@ -37,6 +37,20 @@ Die Ausgabe auf stdout nie in eine Datei umleiten, nur direkt per Pipe an `jnpt 
 Das Skript schreibt keine Dateien. Ein Terminal ohne sichere verdeckte Eingabe bricht ab;
 dann stdin verwenden. Ausgabe nicht mit `tee` speichern.
 
+**Windows:** In `cmd` fügt das Einfügen per Strg+V in den verdeckten Prompt ein Steuerzeichen
+in das Secret ein. Das Skript erkennt das, meldet „Steuerzeichen“ und bricht ab, bevor etwas
+an LinkedIn gesendet wird. Unter Windows deshalb **PowerShell 7** (`pwsh`) verwenden, das
+Secret dort maskiert mit `Read-Host -MaskInput` einlesen (Windows PowerShell 5.1 kennt die
+Option nicht) und per `--secret-stdin` übergeben. Eine Zeile, `APP_CLIENT_ID` ist die
+Client-ID der App:
+
+```powershell
+Read-Host -MaskInput 'Client-Secret' | python linkedin-seite/tools/zustimmung.py --client-id APP_CLIENT_ID --secret-stdin | jnpt credential set --name plugin-linkedin-seite-oauth
+```
+
+Das Secret wird nur von `Read-Host` gelesen und direkt durchgereicht: nicht als Argument, nicht
+in einer Variablen, nicht in einer Datei. Die Ausgabe geht auch hier ohne Umweg in `jnpt`.
+
 Das Skript öffnet LinkedIn mit zufälligem `state` und lauscht auf beiden Loopback-Adressen
 `127.0.0.1:8765` und `[::1]:8765`, niemals auf Wildcard-Adressen. Die eingetragene Redirect-URI
 bleibt `http://localhost:8765/linkedin/callback`. Gemeinsam wird genau eine Anfrage behandelt;
@@ -49,6 +63,11 @@ brechen ab. Unter Windows gilt exklusive Socket-Bindung. Nach Timeout erneut sta
 PKCE nur nach belegter S256-Unterstützung dieser LinkedIn-App mit `--pkce`
 einschalten; ohne diesen Beleg gilt der vertrauliche Client-Code-Tausch ohne PKCE.
 Anschließend meldet stderr **„Refresh-Token: ja“** oder **„Refresh-Token: nein“**.
+LinkedIn liefert die gewährten Scopes kommagetrennt und die Laufzeiten gelegentlich knapp
+über dem Höchstwert (beobachtet: Refresh-Token 59 Sekunden über 365 Tagen). Das Skript und
+der Dienst akzeptieren Komma oder Leerraum als Trenner, verlangen aber genau die zwei
+gepinnten Scopes, und deckeln eine Überschreitung bis zu einem Tag auf 60 bzw. 365 Tage.
+Alles darüber hinaus wird als unerwartete Antwort abgewiesen; die Frist wird nie verlängert.
 
 Die Tresor-Stelle `plugin-linkedin-seite-oauth` enthält JSON mit `client_id`, `client_secret`,
 `access_token`, `access_expires_at` und, falls LinkedIn sie liefert, gemeinsam

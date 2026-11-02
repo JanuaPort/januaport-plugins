@@ -22,6 +22,7 @@ N = 'test_acceptance.Manufacturer.'
 H = 'test_acceptance.DualLoopback.'
 S = 'test_sec_tightening.StrictSource.'
 F = 'test_sec_tightening.FirstRequest.'
+T = 'test_oauth_toleranz.'
 MUTANTS = [
     ('bridge-key', 'server.py', 'if not authorized:', 'if False:', B+'test_bridge_missing_wrong_duplicate_never_reach_adapter'),
     ('duplicate-auth', 'server.py', 'if len(header) != 1:', 'if not header:', B+'test_bridge_missing_wrong_duplicate_never_reach_adapter'),
@@ -34,7 +35,7 @@ MUTANTS = [
     ('future-date', 'domain.py', 'if end.date() > latest:', 'if False:', B+'test_org_paths_parameters_duplicates_dates_rejected'),
     ('post-input-cap', 'domain.py', 'int(limit) <= 10', 'int(limit) <= 99', D+'test_post_limit_and_unknown_parameters'),
     ('scope-set', 'source_contract.py', "SCOPES = ('rw_organization_admin', 'r_organization_social')", "SCOPES = ('r_organization_social',)", A+'test_scopes_pinned_and_expanded_grant_rejected_on_wire'),
-    ('expanded-grant', 'oauth.py', 'set(raw[s.SCOPE].split()) != set(s.SCOPES)', 'False', A+'test_scopes_pinned_and_expanded_grant_rejected_on_wire'),
+    ('expanded-grant', 'oauth.py', 'scope_set(raw[s.SCOPE]) != set(s.SCOPES)', 'False', A+'test_scopes_pinned_and_expanded_grant_rejected_on_wire'),
     ('daily-cap', 'workers.py', '>= DAILY_CAP:', '>= 1000000:', W+'test_daily_cap_counts_individual_gets_and_failures_parent_utc'),
     ('count-before-http', 'oauth.py', 'self.permit()  # server-process grant', 'pass  # server-process grant', W+'test_cap_stops_partway_posts_and_counts_token_exchange'),
     ('minute-throttle', 'workers.py', '>= RATE_PER_MINUTE:', '>= 1000000:', W+'test_minute_throttle_and_closed_pool'),
@@ -101,6 +102,20 @@ MUTANTS = [
     ('paging-shape', 'linkedin_adapter.py', 'if not isinstance(paging, dict) or not isinstance(paging.get(s.LINKS, []), list):', 'if False:', 'test_final_sec.Paging.test_single_post_empty_or_missing_links_valid_next_and_bad_shapes_rejected'),
     ('ipv6-occupied-port', 'tools/zustimmung.py', "            if exc.errno == errno.EADDRINUSE:\n                print('IPv6-Port [::1]:8765 ist belegt; Zustimmung abgebrochen.', file=sys.stderr)\n                raise ValueError('zustimmung_abgewiesen') from None\n            if exc.errno not in (errno.EAFNOSUPPORT, errno.EADDRNOTAVAIL, errno.EPROTONOSUPPORT):\n                print('IPv6-Listener fehlgeschlagen; Zustimmung abgebrochen.', file=sys.stderr)\n                raise ValueError('zustimmung_abgewiesen') from None\n", '', 'test_final_sec.IPv6Failure.test_actual_ipv6_port_in_use_aborts_before_browser_or_token'),
     ('ipv6-only-unavailable-fallback', 'tools/zustimmung.py', 'if exc.errno not in (errno.EAFNOSUPPORT, errno.EADDRNOTAVAIL, errno.EPROTONOSUPPORT):', 'if False:', 'test_final_sec.IPv6Failure.test_unknown_ipv6_error_does_not_fall_back'),
+
+    # JanuaPort/januaport#1237: tolerant where LinkedIn is imprecise, strict where it protects.
+    ('scope-comma-separator', 'oauth.py', "re.compile(r'[\\s,]+')", "re.compile(r'\\s+')", T+'ScopeSeparators.test_comma_separated_as_sent_by_linkedin'),
+    ('scope-only-comma-and-whitespace', 'oauth.py', "re.compile(r'[\\s,]+')", "re.compile(r'[\\s,;|+]+')", T+'ScopeSeparators.test_only_comma_and_whitespace_separate'),
+    ('scope-empty-parts', 'oauth.py', 'for part in SCOPE_SEPARATORS.split(value) if part}', 'for part in SCOPE_SEPARATORS.split(value)}', T+'ScopeSeparators.test_comma_with_spaces_and_mixed_separators'),
+    ('scope-exact-set-wire', 'oauth.py', 'scope_set(raw[s.SCOPE]) != set(s.SCOPES)', 'not scope_set(raw[s.SCOPE]) >= set(s.SCOPES)', T+'RealLinkedInShapeThroughRefreshPath.test_wrong_scope_on_the_refresh_path_still_fails_closed_with_one_call'),
+    ('lifetime-cap', 'oauth.py', 'return min(seconds, cap)', 'return seconds', T+'LifetimeTolerance.test_observed_linkedin_overshoot_is_capped_at_exactly_365_days'),
+    ('lifetime-no-overshoot-tolerance', 'oauth.py', 'seconds <= cap + OVERSHOOT_TOLERANCE_SECONDS:', 'seconds <= cap:', T+'LifetimeTolerance.test_observed_linkedin_overshoot_is_capped_at_exactly_365_days'),
+    ('lifetime-unbounded-overshoot', 'oauth.py', 'seconds <= cap + OVERSHOOT_TOLERANCE_SECONDS:', 'seconds <= cap + 10**9:', T+'LifetimeTolerance.test_refresh_boundary_cap_plus_one_day_capped_beyond_rejected'),
+    ('lifetime-positive', 'oauth.py', 'not 0 < seconds <= cap', 'not seconds <= cap', T+'LifetimeTolerance.test_refresh_invalid_types_and_values_rejected'),
+    ('lifetime-int-type', 'oauth.py', 'type(seconds) is not int or ', '', T+'LifetimeTolerance.test_refresh_invalid_types_and_values_rejected'),
+    ('access-lifetime-capped', 'oauth.py', 'lifetime(raw[s.EXPIRES_IN], ACCESS_DAYS)', 'raw[s.EXPIRES_IN]', T+'LifetimeTolerance.test_access_overshoot_is_capped_at_exactly_60_days'),
+    ('refresh-lifetime-capped', 'oauth.py', 'lifetime(raw[s.REFRESH_EXPIRES_IN], REFRESH_DAYS)', 'raw[s.REFRESH_EXPIRES_IN]', T+'LifetimeTolerance.test_observed_linkedin_overshoot_is_capped_at_exactly_365_days'),
+    ('secret-control-character', 'tools/zustimmung.py', "if any(unicodedata.category(char) == 'Cc' for char in value):", 'if False:', C+'test_control_character_in_secret_is_rejected_with_german_message_and_nothing_is_sent'),
 
 ]
 

@@ -1,4 +1,4 @@
-# LinkedIn-Seite 0.1.0 — #1237, Stufe A
+# LinkedIn-Seite 0.1.1 — #1237, Stufe A
 
 Privater Python-REST-Beisteller für Kennzahlen einer fest konfigurierten LinkedIn-Seite.
 PO-Entscheid vom 29.10.2026: Option (a), Stufe A. Synthetisch geprüft;
@@ -74,9 +74,16 @@ HTTP-Parserfehler vor der Middleware behalten das feste Fehler-JSON ohne Tokenme
   Test gepinnt. LinkedIn bietet für die erforderliche Administration keinen Read-only-Scope;
   deshalb ausschließlich feste GET-Fachrouten. Der einzige ausgehende POST dient dem
   festen OAuth-Tokenendpunkt. Der Grant hat mehr Möglichkeiten als dieser Dienst;
-  Gatewayrechte allein begrenzen einen entwendeten Token nicht.
+  Gatewayrechte allein begrenzen einen entwendeten Token nicht. Die Tokenantwort meldet
+  `scope` kommagetrennt (beobachtet 02.11.2026); Trenner sind Komma und/oder Leerraum
+  (`oauth.scope_set`), die Menge muss weiter **exakt** die zwei Scopes sein, nichts Zusätzliches,
+  nichts Fehlendes, kein anderer Trenner, Nicht-Strings fail-closed.
 - **Token-Lebensdauer/Erneuerung:** Access höchstens 60 Tage. Optionales Refresh nur, wenn
-  LinkedIn es beim Code-Tausch liefert; höchstens 365 Tage ab Erstzustimmung. Fünf Minuten
+  LinkedIn es beim Code-Tausch liefert; höchstens 365 Tage ab Erstzustimmung. LinkedIn
+  überschreitet die Höchstwerte gelegentlich knapp (`refresh_token_expires_in` 31536059 =
+  59 s zu viel): `oauth.lifetime` deckelt die Frist auf genau 60 bzw. 365 Tage, nie darüber;
+  Toleranz höchstens ein Tag (`OVERSHOOT_TOLERANCE_SECONDS`), darüber, nicht ganzzahlig oder
+  nicht positiv ergibt `unexpected_source_shape`. Gilt auch für die Erneuerung. Fünf Minuten
   vor Access-Ablauf erneuert ein nächster Abruf im Worker. Neue Tokens bleiben im RAM;
   die ursprüngliche Refresh-Frist wird niemals verlängert. Kein Tresor-Rückschreiben.
   Ohne Refresh ab 14 Tagen vor Access-Ablauf die Warnung, danach `token_abgelaufen`.
@@ -103,7 +110,10 @@ HTTP-Parserfehler vor der Middleware behalten das feste Fehler-JSON ohne Tokenme
 
 Die Ausgabe auf stdout nie in eine Datei umleiten, nur direkt per Pipe an `jnpt credential set`.
 Die Redirect-URI bleibt `http://localhost:8765/linkedin/callback`. Das PO-Skript bindet
-Port 8765 auf `127.0.0.1` und `::1`, ausschließlich Loopback. Gemeinsam genau eine Anfrage:
+Port 8765 auf `127.0.0.1` und `::1`, ausschließlich Loopback. Das Client-Secret wird ohne
+Echo oder per `--secret-stdin` gelesen; enthält es Steuerzeichen (unter `cmd` fügt Strg+V
+eines ein), bricht das Skript mit fester deutscher Meldung ab und sendet nichts. Unter
+Windows PowerShell 7 mit `Read-Host -MaskInput` nutzen (SETUP.md). Gemeinsam genau eine Anfrage:
 Die erste Anfrage beendet beide Listener, auch bei falschem State oder Pfad. Nach Abweisung
 neu starten; Warte-/Gesamtfrist fünf Minuten. Ohne verfügbares IPv6 arbeitet es mit IPv4
 weiter und meldet dies auf stderr. Das gilt ausschließlich bei fehlender IPv6-Unterstützung
