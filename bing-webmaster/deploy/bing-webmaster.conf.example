@@ -1,0 +1,13 @@
+# /etc/jnpt-updater.d/bing-webmaster.conf; root-owned regular file, 0600/0644.
+IMAGE_REPO=ghcr.io/januaport/bing-webmaster
+COMPOSE_FILE=/opt/jnpt/plugins/bing-webmaster/docker-compose.yml
+SERVICE=bing-webmaster
+ENV_FILE=/opt/jnpt/plugins/bing-webmaster/.env
+ENV_KEY=JNPT_BING_WEBMASTER_IMAGE
+HEALTH_DOCKER=1
+# Vorbedingungen: config.json und BEIDE runtime-key-Dateien, die das Gateway nach
+# dem Eintragen in der Basis-Einrichtung ablegt (Stellen plugin-bing-webmaster
+# und plugin-bing-webmaster-bing). Fehlt eine, bucht der Aktuator
+# `unprovisioned` statt `failed`.
+REQUIRE=/opt/jnpt/plugins/bing-webmaster/config.json:/run/jnpt/plugins/bing-webmaster/runtime-key:/run/jnpt/plugins/bing-webmaster-bing/runtime-key
+# DATA_DIRS intentionally absent: no persistence.
