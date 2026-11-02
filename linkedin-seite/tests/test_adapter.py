@@ -197,7 +197,7 @@ class Adapter(unittest.TestCase):
 
     def test_token_response_bounds_and_warning_dates(self):
         now = datetime.now(timezone.utc)
-        for seconds in (0, -1, True, '123', 60*86400+1):
+        for seconds in (0, -1, True, '123', 60*86400+86400+1):  # tolerance: cap + one day, see test_oauth_toleranz
             with self.assertRaises(ReportError):
                 token_result({s.ACCESS_TOKEN: 'synthetic', s.EXPIRES_IN: seconds}, now)
         data = identity(days=14)

@@ -152,3 +152,19 @@ class Consent(unittest.TestCase):
             self.assertEqual(consent.main(), 1)
         self.assertEqual(output.getvalue(), '')
         self.assertEqual(errors.getvalue(), 'zustimmung_fehlgeschlagen\n')
+
+    def test_real_linkedin_token_shape_comma_scope_and_overshoot_yields_valid_vault_json(self):
+        # JanuaPort/januaport#1237: scope comma separated, refresh 59 s over 365 days (consent 02.11.2026)
+        from datetime import datetime, timedelta, timezone
+        from linkedin_seite.oauth import validate_identity
+        self.fake.token_body.update({s.SCOPE: 'r_organization_social,rw_organization_admin', s.TOKEN_TYPE: 'Bearer',
+                                     s.EXPIRES_IN: 60*86400+59, s.REFRESH_TOKEN: 'synthetic-refresh',
+                                     s.REFRESH_EXPIRES_IN: 31536059})
+        before = datetime.now(timezone.utc)
+        out = self.run_consent()
+        after = datetime.now(timezone.utc)
+        refresh = datetime.fromisoformat(out['refresh_expires_at'])
+        access = datetime.fromisoformat(out['access_expires_at'])
+        self.assertTrue(before + timedelta(days=365) <= refresh <= after + timedelta(days=365))
+        self.assertTrue(before + timedelta(days=60) <= access <= after + timedelta(days=60))
+        validate_identity(dict(out))  # the vault JSON is accepted by the service as written
