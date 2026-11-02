@@ -48,6 +48,7 @@ class LocalAdapter(LinkedInAdapter):
 class Fake:
     def __init__(self):
         self.calls = []
+        self.raw_queries = []
         self.status = 200
         self.body = None
         self.delay = 0
@@ -68,6 +69,7 @@ class Fake:
             def answer(self):
                 parsed = urlsplit(self.path)
                 params = parse_qs(parsed.query)
+                outer.raw_queries.append(parsed.query)
                 body = self.rfile.read(int(self.headers.get('Content-Length', 0)))
                 outer.calls.append((self.command, parsed.path, params, dict(self.headers), body))
                 time.sleep(outer.delay)
