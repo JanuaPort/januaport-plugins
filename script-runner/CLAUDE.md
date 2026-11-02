@@ -1183,17 +1183,30 @@ und Betriebsgrenzen stehen im README-Abschnitt „Browser-Apps mit apphost“.
 Die Kernzusage wird am realen HTTP-Adapter mit unabhängig erzeugten
 `gitobjects.v1`-Paketen geprüft: ein verändertes Blob oder ein fremder App-Pfad
 liefert keine Datei. RAM-Sitzungen verhindern, dass beliebige Browser-Cookies
-als Anmeldung gelten. Verifier-Bindungen sind hostgebunden, einmalig und fünf
-Minuten gültig. Paketdaten, Login-Bindungen und Sitzungen sind ausschließlich RAM;
-Neustart bedeutet neue Anmeldung. Die ETag-Abfrage erfolgt je App frühestens
-nach fünf Sekunden; 404 und Fehler geben keine alte Fassung frei.
+als Anmeldung gelten. Die Anmeldung ist zustandslos: Der Verifier liegt nur im
+hostgebundenen Login-Cookie mit fünf Minuten Laufzeit, ohne serverseitige Login-Tabelle.
+Vor Exchange werden Cookie-Pflicht und Verifier-Form geprüft. Der Kern prüft
+App, S256(Verifier), Einmaligkeit und die 60 Sekunden Laufzeit des Codes.
+Paketdaten und Sitzungen liegen ausschließlich im RAM; ein Neustart löscht die
+Sitzungen, verhindert aber keinen Callback mit noch gültigem Code und Cookie.
+Die ETag-Abfrage erfolgt je App frühestens fünf Sekunden nach Abrufabschluss;
+404 und Fehler geben keine alte Fassung frei. Pro App läuft höchstens ein Abruf,
+wartende Anfragen teilen das Ergebnis und können unabhängig abbrechen. Während
+Netzabruf und Paketprüfung bleibt der globale Mutex frei, andere Apps werden nicht
+blockiert. Laufende Abrufe zählen zur Cache-Grenze und werden nicht verdrängt.
+Die Sitzungstabelle bleibt auf 4096 Einträge begrenzt: zuerst abgelaufene entfernen,
+bei weiter voller Tabelle den frühesten Ablauf verdrängen, statt Anmeldungen mit
+503 zu sperren. Das Erneuern eines vorhandenen Tokens verdrängt keine andere Sitzung.
 
 | Invariante | Adaptertest |
 |---|---|
 | Hash und Pfad | `TestInvariant1VerifiedPackageAtHTTP` |
 | Lade-Regeln einschließlich Grenzen und Geheimnis-Mustern | `TestInvariant2LoadRulesAtHTTP` |
 | Exakter App-Host | `TestInvariant3HostAtHTTP` |
-| Login-Cookie, Ablauf und Einmaligkeit vor Exchange | `TestInvariant4BrowserBindingAtHTTP`, `TestInvariant5AppFromHostAtHTTP` |
+| Login-Cookie und Verifier-Form vor Exchange | `TestInvariant4BrowserBindingAtHTTP` |
+| Zustandsloser Callback, Code-Bindung und Einmaligkeit im Kern-Stub | `TestF2StatelessCallbackCoreBindingAtHTTP` |
+| 5000 anonyme Navigationen sperren keine Anmeldung; frühesten Sitzungsablauf verdrängen | `TestF2AnonymousNavigationsCannotExhaustLoginAtHTTP`, `TestF2SessionCapacityEvictsEarliestAtHTTP` |
+| Paketabrufe je App zusammenfassen, andere Apps nicht blockieren | `TestH2PackageFetchIsolationAndCoalescingAtHTTP` |
 | App ausschließlich aus dem Host | `TestInvariant5AppFromHostAtHTTP` |
 | Cookie- und CSP-Literale, begrenzte Sitzungsdauer | `TestInvariant6CookiesAndCSPAtHTTP` |
 | Origin, Headerfilter, Bodygrenze, 401 und Geheimnisfreiheit | `TestInvariant7ProxyAtHTTP`, `TestLogsNeverContainCredentialsOrQuery` |
@@ -1214,7 +1227,7 @@ sein. Origin plus X-Jnpt-App plus CSP bilden die Grenze. Apphost erzeugt und
 übernimmt nie Access-Control-Antwortheader (`TestC1NoCORSOnAnyResponse`).
 C-2: Callback-Ziel ist das Literal `/`, der vollständige Kopfsatz einschließlich
 no-referrer gilt auch dort (`TestC2CallbackHasLiteralRefreshAndSecurityHeaders`).
-C-3: 32 Byte crypto/rand, einmaliger Verifier, beide __Host-Cookies ohne Domain,
+C-3: 32 Byte crypto/rand für den Cookie-Verifier, beide __Host-Cookies ohne Domain,
 Path=/ und Secure (`TestC3VerifierEntropyAndHostCookies`).
 
 I-1: exec-Form direkt auf das Binary. I-2: explizites TCP an beiden Listenern und

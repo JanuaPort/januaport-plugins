@@ -409,7 +409,10 @@ Der Paketabruf nutzt `GET /internal/apps/package?app=<name>` mit dem Apphost-Bea
 ETag und `If-None-Match` tragen den Commit in Anführungszeichen. Jede Fassung wird
 über `gitobjects.Objects` einschließlich `Verify` vollständig an Commit und Pfad
 gebunden; es gibt kein Dateisystem-Checkout. Pro App bleibt eine Fassung im RAM,
-frühestens nach fünf Sekunden wird nachgefragt. 304 erhält sie, 404 verwirft sie,
+frühestens fünf Sekunden nach Abschluss des Abrufs wird nachgefragt. Je App läuft
+höchstens ein Abruf gleichzeitig; wartende Anfragen teilen sein Ergebnis und können
+einzeln abbrechen. Andere Apps und Sitzungsprüfungen warten nicht auf diesen Abruf.
+304 erhält die Fassung, 404 verwirft sie,
 Transport-/Prüffehler sperren die Auslieferung. Ein Neustart leert alle Caches.
 
 Das komplette Paket muss die Ladeprüfung bestehen: höchstens 4 MiB Inhalt und
@@ -421,13 +424,19 @@ alle Dateien der Fassung. `jnpt.app.json` wird mitgeprüft, aber niemals ausgeli
 Nur `<dns-label>.apps.<domain>` wird bedient. Dateien verlangen eine vom Apphost
 registrierte, noch gültige Sitzung; bloßes Erfinden eines Session-Cookies genügt
 nicht. Navigation ohne Sitzung startet die Anmeldung, Assets antworten mit 401.
-Der einmalige Verifier steht fünf Minuten im sicheren HttpOnly-Login-Cookie
-(`SameSite=Lax`) und wird im RAM an die App gebunden. Callback ohne passende,
-frische Bindung löst keinen Exchange aus; die App stammt ausschließlich aus dem
-Host. Das Login-Cookie wird bei jedem Callback gelöscht. Das Sitzungscookie ist
+Die Anmeldung ist zustandslos: Der Verifier steht ausschließlich im sicheren
+HttpOnly-Login-Cookie mit fünf Minuten Laufzeit (`SameSite=Lax`), ohne Login-Tabelle
+im Apphost. Ein Callback ohne Cookie oder mit ungültiger Verifier-Form löst keinen
+Exchange aus; die App stammt ausschließlich aus dem Host. Der Kern prüft die
+Bindung des Codes an App und S256(Verifier), seine 60 Sekunden Laufzeit und die
+einmalige Verwendung. Das Login-Cookie wird bei jedem Callback gelöscht. Das Sitzungscookie ist
 HttpOnly, Secure, `SameSite=Strict`, und lebt höchstens `max_age` bzw. bis
 `expires_at`. Die Antwort führt mit einer skriptfreien Meta-Refresh-Seite zurück.
-Ein Apphost-Neustart verlangt eine neue Anmeldung. Beide Cookies tragen kein
+Ein Apphost-Neustart verwirft bestehende Sitzungen; ein bereits begonnener Login
+kann mit seinem Cookie abgeschlossen werden. Die Sitzungstabelle hält höchstens
+4096 Einträge. Nach dem Entfernen abgelaufener Einträge verdrängt eine neue Sitzung
+bei voller Tabelle die Sitzung mit dem frühesten Ablauf; sie sperrt keine Anmeldung.
+Beide Cookies tragen kein
 `Domain`-Attribut und gelten damit nur auf ihrem jeweiligen Host. Der Verifier
 besteht aus 32 Byte `crypto/rand`, base64url-kodiert. `SameSite=Strict` ist eine
 zweite Schicht: Apps und Gateway sind regelmäßig same-site, deshalb trennt es
