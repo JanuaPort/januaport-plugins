@@ -19,6 +19,8 @@ Gateway-Aufrufe der Tests gehen an lokale HTTP-Fakes (`tests/support_post.py`) a
   deren Dateien).
 - **Windows, Python 3.12.9 lokal:** vollständige Suite grün.
 - Vorher 115 Tests / 90 Mutationen; nachher 207 / 155 (92 neue Tests, 65 neue Pflichtmutanten).
+  Nachtrag Gate-Befund VENDOR (Schreib-Scopes genau `w_organization_social` + `w_organization_social_feed`):
+  208 Tests / 157 Mutationen, zuerst rot (13 Tests), dann grün; Nachweis ist der CI-Lauf auf dem gemeldeten SHA.
   Drei Stufe-A-Mutanten haben neue Anker (`get-only`: die gemeinsame `check_bridge`;
   `expanded-grant`, `scope-exact-set-wire`: `set(scopes)`), Prüfung und Testziel unverändert.
 - **Zweitmeinung (A13):** Design-Check nach dem roten Test (übernommen: URN im Kommentartext
@@ -37,7 +39,7 @@ Gateway-Aufrufe der Tests gehen an lokale HTTP-Fakes (`tests/support_post.py`) a
 | Bed. 3 W2 nur lesend, werkzeuggenau | `gateway.GatewayClient.call` (geschlossene Liste aus `WriteConfig.tools`) | `test_post_gateway.*` JSON und SSE (`b3-closed-tools`) |
 | Bed. 3 nur `/mcp` | `redaktion.gateway_url` | `WriteConfiguration.test_gateway_url_only_mcp…` (`b3-mcp-only`) |
 | Bed. 3 Pfad der Medien | `redaktion.check_datei` in `parse_medien` und `gateway.datei` | `Gateway.test_paths_rejected_before_any_call`, `Requests.test_media_names…` (`b3-path-before-call`, `b3-plan-path-guard`) |
-| Bed. 4 eigenes Credential, genau `w_organization_social` | `source_contract.WRITE_SCOPES`, `zustimmung.py --schreiben`, `oauth.validate_write_identity`, `server.load_write_side` | `test_post_consent.*`, `Tokens.*`, `WriteToken.*` (`b4-write-scope`, `b4-consent-scope-string`, `b4-write-identity-marker`, `b4-write-loader`, `b4-write-place`, `b4-write-refresh-scope`) |
+| Bed. 4 eigenes Credential, genau `w_organization_social` + `w_organization_social_feed` | `source_contract.WRITE_SCOPES`, `zustimmung.py --schreiben`, `oauth.validate_write_identity`, `server.load_write_side` | `test_post_consent.*`, `Tokens.*`, `WriteToken.*` (`b4-write-scope`, `b4-write-scope-extra`, `b4-write-scope-table`, `b4-consent-scope-string`, `b4-write-identity-marker`, `b4-write-loader`, `b4-write-place`, `b4-write-refresh-scope`) |
 | Bed. 4 Token nie getauscht | getrennte Prozesse/Stellen | `TokenSeparationOnTheWire.*` (`b4-token-exchange`) |
 | Bed. 5 Tagesgrenze 5 über alle Aktionen | `post_pool.WritePool._count` (Serverprozess), `post_adapter._begin` | `Flow.test_five_write_actions…`, `ClosedEndpoints.test_action_is_counted…` (`b5-daily-cap`, `b5-count-before-request`) |
 | Bed. 5 Idempotenz `eintrag_id`+`hash` | `post_pool._reply` (`hash` → `fertig`/`weiter`), `done` | `Flow.test_post_then_idempotent…`, `Background.*` (`b5-idempotency`, `b5-one-job`) |
@@ -69,13 +71,16 @@ Gateway-Aufrufe der Tests gehen an lokale HTTP-Fakes (`tests/support_post.py`) a
 | Upload-Host | images-/documents-/videos-api | Beispiele `https://www.linkedin.com/dms-uploads/…` |
 | Little-Text | shares/little-text-format | „All reserved characters need to be escaped with a backslash, even if those characters are not used in one of the supported elements or templates.“ |
 | Scope | shares/posts-api | „w_organization_social — Post, comment, and like posts on behalf of an organization.“ |
+| Scope Kommentar | shares/comments-api, Tabelle „Permissions“ | „w_organization_social_feed — Post, comment, and react on posts on behalf of an organization.“ |
 
 ## Scope-Befund
 
 `w_organization_social` deckt laut Posts-, Images-, Documents- und Videos-API Posten, Bearbeiten,
-Löschen und die Uploads. Für Kommentare widerspricht sich die Doku: die Posts-API nennt „comment“
-unter `w_organization_social`, die Comments-API-Seite listet nur `w_organization_social_feed`.
-Nicht still erweitert; angefordert wird genau `w_organization_social`. Live-Gate.
+Löschen und die Uploads. Für Kommentare nennt die Comments API 202610 in ihrer Tabelle „Permissions“
+`w_organization_social_feed` („Post, comment, and react on posts on behalf of an organization“,
+https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/comments-api?view=li-lms-2026-10). Gate-Befund VENDOR: angefordert werden genau diese zwei
+Scopes, kein weiterer; die App trägt beide (Portal vom PO geprüft). Der frühere Live-Gate-Punkt
+„Kommentar-Scope“ ist damit durch diesen Beleg ersetzt.
 
 ## Befund `UpdatedViaLabel`
 

@@ -202,7 +202,7 @@ class FakeLinkedIn(_Server):
         self.override = None
         self.posts = 0
         self.token_body = {s.ACCESS_TOKEN: 'WRITE-REFRESHED-' + secrets.token_urlsafe(16), s.EXPIRES_IN: 60*86400,
-                           s.SCOPE: 'w_organization_social'}
+                           s.SCOPE: 'w_organization_social,w_organization_social_feed'}
         self.upload_host = 'www.linkedin.com'
         self.lock = threading.Lock()
         outer = self

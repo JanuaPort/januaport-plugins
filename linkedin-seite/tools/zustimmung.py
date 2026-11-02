@@ -158,7 +158,8 @@ def main():
     parser.add_argument('--secret-stdin', action='store_true')
     parser.add_argument('--pkce', action='store_true', help='Nur nach belegter S256-Unterstützung der LinkedIn-App verwenden.')
     parser.add_argument('--schreiben', action='store_true',
-                        help='Stufe B1: genau w_organization_social, Ausgabe nur in plugin-linkedin-seite-post-oauth.')
+                        help='Stufe B1: genau w_organization_social und w_organization_social_feed, '
+                             'Ausgabe nur in plugin-linkedin-seite-post-oauth.')
     args = parser.parse_args()
     timer = None
     try:
@@ -177,7 +178,8 @@ def main():
         timer.daemon = True
         timer.start()
         if args.schreiben:
-            print('Schreib-Zustimmung (w_organization_social): Ausgabe nur an plugin-linkedin-seite-post-oauth.',
+            print('Schreib-Zustimmung (w_organization_social, w_organization_social_feed): '
+                  'Ausgabe nur an plugin-linkedin-seite-post-oauth.',
                   file=sys.stderr)
         # Read mode calls consent exactly as before 0.2.0; only --schreiben adds the write scopes.
         result = consent(args.client_id, value, args.pkce, **({'scopes': s.WRITE_SCOPES} if args.schreiben else {}))

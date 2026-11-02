@@ -19,11 +19,13 @@ class WriteConsent(unittest.TestCase):
     browser, run_consent = helper.Consent.browser, helper.Consent.run_consent
 
     def test_write_mode_requests_exactly_w_organization_social(self):
-        self.fake.token_body.update({s.SCOPE: 'w_organization_social'})
+        # Exactly the two write scopes (Posts API: w_organization_social; Comments API 202610:
+        # w_organization_social_feed), nothing else (Gate-Befund VENDOR, JanuaPort/januaport#1237).
+        self.fake.token_body.update({s.SCOPE: 'w_organization_social,w_organization_social_feed'})
         out = consent.consent('synthetic-client', 'synthetic-secret', opener=self.browser,
                               transport=helper.LocalTransport(lambda: None, self.fake.port), scopes=s.WRITE_SCOPES)
-        self.assertEqual(self.seen[0][s.SCOPE], ['w_organization_social'])
-        self.assertEqual(out['scope'], 'w_organization_social')
+        self.assertEqual(self.seen[0][s.SCOPE], ['w_organization_social w_organization_social_feed'])
+        self.assertEqual(out['scope'], 'w_organization_social w_organization_social_feed')
         self.assertEqual(oauth.validate_write_identity(dict(out))[s.CLIENT_SECRET], 'synthetic-secret')
         with self.assertRaises(ValueError):
             oauth.validate_identity(dict(out))  # never usable as the read token
@@ -41,8 +43,22 @@ class WriteConsent(unittest.TestCase):
             consent.consent('synthetic-client', 'synthetic-secret', opener=self.browser,
                             transport=helper.LocalTransport(lambda: None, self.fake.port), scopes=s.WRITE_SCOPES)
 
+    def test_token_answer_tolerates_separator_and_order_but_not_the_set(self):
+        from datetime import datetime, timezone
+        from linkedin_seite.oauth import token_result
+        now = datetime.now(timezone.utc)
+        for scope in ('w_organization_social,w_organization_social_feed', 'w_organization_social_feed, w_organization_social',
+                      'w_organization_social w_organization_social_feed'):
+            with self.subTest(scope=scope):
+                token_result({s.ACCESS_TOKEN: 'synthetic', s.EXPIRES_IN: 3600, s.SCOPE: scope}, now, scopes=s.WRITE_SCOPES)
+        for scope in ('w_organization_social', 'w_organization_social_feed',
+                      'w_organization_social,w_organization_social_feed,r_organization_social',
+                      'w_organization_social;w_organization_social_feed'):
+            with self.subTest(scope=scope), self.assertRaises(Exception):
+                token_result({s.ACCESS_TOKEN: 'synthetic', s.EXPIRES_IN: 3600, s.SCOPE: scope}, now, scopes=s.WRITE_SCOPES)
+
     def test_cli_flag_and_stderr_names_the_write_place(self):
-        self.fake.token_body.update({s.SCOPE: 'w_organization_social'})
+        self.fake.token_body.update({s.SCOPE: 'w_organization_social,w_organization_social_feed'})
         output, errors = io.StringIO(), io.StringIO()
         original = consent.consent
         args = ['z', '--client-id', 'synthetic-client', '--secret-stdin', '--schreiben']
@@ -51,10 +67,10 @@ class WriteConsent(unittest.TestCase):
              patch.object(consent, 'consent', lambda *a, **kw: original(*a, **kw, opener=self.browser,
                                                                       transport=helper.LocalTransport(lambda: None, self.fake.port))):
             self.assertEqual(consent.main(), 0)
-        self.assertEqual(json.loads(output.getvalue())['scope'], 'w_organization_social')
+        self.assertEqual(json.loads(output.getvalue())['scope'], 'w_organization_social w_organization_social_feed')
         self.assertIn('plugin-linkedin-seite-post-oauth', errors.getvalue())
         self.assertEqual(parse_qs(urlsplit(consent.authorization('c', 's', scopes=s.WRITE_SCOPES)).query)[s.SCOPE],
-                         ['w_organization_social'])
+                         ['w_organization_social w_organization_social_feed'])
 
 
 if __name__ == '__main__':

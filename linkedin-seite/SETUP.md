@@ -125,17 +125,19 @@ höchstens in den Passwortmanager. Niemals Tokens in ein Supportticket kopieren.
 
 Ab Version 0.2.0 kann der Beisteller auf der eigenen Unternehmensseite posten, bearbeiten, löschen
 und eigene Kommentare setzen — nur für Einträge des Redaktionsplans, die ein Mensch freigegeben hat.
-Dafür gibt es eine **zweite, eigene Zustimmung** mit genau dem Scope `w_organization_social`. Der
+Dafür gibt es eine **zweite, eigene Zustimmung** mit genau den Scopes `w_organization_social`
+(Posten, Bearbeiten, Löschen, Medien) und `w_organization_social_feed` (eigene Kommentare). Der
 Lese-Zugang aus Stufe A bleibt unverändert; Lese- und Schreib-Token sind getrennte Tresor-Stellen
 und werden nie getauscht. Ohne diese Zustimmung bleibt Posten aus.
 
 ### Schreib-Zustimmung
 
-1. In der LinkedIn-App prüfen, dass das Produkt „Community Management API“ den Scope
-   `w_organization_social` freigibt. Die zustimmende Person braucht auf der Seite die Rolle
+1. In der LinkedIn-App prüfen, dass das Produkt „Community Management API“ die Scopes
+   `w_organization_social` und `w_organization_social_feed` freigibt. Die zustimmende Person braucht auf der Seite die Rolle
    Administrator (oder Content-Admin). Die Redirect-URI bleibt dieselbe.
 2. Am PO-Rechner das Zustimmungsskript im Schreib-Modus starten. Es fordert **nur**
-   `w_organization_social` an und schreibt das JSON in eine **andere** Stelle als Stufe A:
+   `w_organization_social` und `w_organization_social_feed` an und schreibt das JSON in eine **andere**
+   Stelle als Stufe A:
 
 ```bash
 python linkedin-seite/tools/zustimmung.py --client-id APP_CLIENT_ID --schreiben | jnpt credential set --name plugin-linkedin-seite-post-oauth

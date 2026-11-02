@@ -239,7 +239,7 @@ class ClosedEndpoints(Base):
             'video_finalize': ('POST', 'videos?action=finalizeUpload'), 'video_status': ('GET', 'videos/{urn}')})
         self.assertEqual(s.UPLOAD_HOSTS, ('www.linkedin.com',))
         self.assertEqual(s.UPLOAD_TOKEN, {'bild': True, 'dokument': True, 'video': False})
-        self.assertEqual(s.WRITE_SCOPES, ('w_organization_social',))
+        self.assertEqual(s.WRITE_SCOPES, ('w_organization_social', 'w_organization_social_feed'))
         self.assertEqual(s.VIDEO_PART_BYTES, 4 * 1024 * 1024)
 
     def test_comment_get_reactions_and_foreign_operations_refused_before_http(self):

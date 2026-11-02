@@ -303,10 +303,12 @@ class Tokens(unittest.TestCase):
 
     def test_write_identity_requires_exactly_the_write_scope_read_identity_refuses_it(self):
         read = identity()
-        write = dict(read, scope='w_organization_social')
+        write = dict(read, scope='w_organization_social w_organization_social_feed')
         self.assertEqual(oauth.validate_write_identity(write), read)
         for bad in (read, dict(read, scope='rw_organization_admin r_organization_social'),
-                    dict(read, scope='w_organization_social rw_organization_admin'), dict(read, scope=['w_organization_social'])):
+                    dict(read, scope='w_organization_social rw_organization_admin'), dict(read, scope='w_organization_social'),
+                    dict(read, scope='w_organization_social w_organization_social_feed r_organization_social'),
+                    dict(read, scope=['w_organization_social', 'w_organization_social_feed'])):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 oauth.validate_write_identity(bad)
         with self.assertRaises(ValueError):
@@ -322,7 +324,8 @@ class Tokens(unittest.TestCase):
             self.assertEqual(server.load_write_side(cfg, ident, token), (None, 'schreib_identitaet_fehlt'))
             ident.write_text(json.dumps(identity()), encoding='utf-8')  # the read JSON in the write place
             self.assertEqual(server.load_write_side(cfg, ident, token), (None, 'schreib_identitaet_ungueltig'))
-            ident.write_text(json.dumps(dict(identity(), scope='w_organization_social')), encoding='utf-8')
+            ident.write_text(json.dumps(dict(identity(), scope='w_organization_social w_organization_social_feed')),
+                             encoding='utf-8')
             self.assertEqual(server.load_write_side(cfg, ident, token), (None, 'gateway_token_fehlt'))
             for raw in (b'short', b'with space ' * 4, b'x' * 2000):
                 token.write_bytes(raw)

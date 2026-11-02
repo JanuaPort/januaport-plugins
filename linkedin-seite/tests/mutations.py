@@ -166,7 +166,9 @@ MUTANTS = [
     ('b3-plan-path-guard', 'redaktion.py', "    return tuple(check_datei(v) for v in value)", "    return tuple(value)", DE+'test_fields_are_strings_json_lists_and_objects_fail_closed'),
     ('b3-pseudonym-guard', 'redaktion.py', "if any(mark in fields.get(name, '') for mark in PSEUDONYM):", 'if False:', DE+'test_pseudonymised_fields_are_never_posted'),
     # SEC Bed. 4: own write credential, exactly w_organization_social, never exchanged.
-    ('b4-write-scope', 'source_contract.py', "WRITE_SCOPES = ('w_organization_social',)", "WRITE_SCOPES = ('w_organization_social', 'r_organization_social')", WC+'test_write_mode_requests_exactly_w_organization_social'),
+    ('b4-write-scope', 'source_contract.py', "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed')", "WRITE_SCOPES = ('w_organization_social',)", WC+'test_write_mode_requests_exactly_w_organization_social'),
+    ('b4-write-scope-extra', 'source_contract.py', "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed')", "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed', 'r_organization_social')", WC+'test_write_mode_requests_exactly_w_organization_social'),
+    ('b4-write-scope-table', 'source_contract.py', "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed')", "WRITE_SCOPES = ('w_organization_social_feed',)", PC+'test_endpoint_table_is_exactly_the_reviewed_one'),
     ('b4-consent-scope-string', 'tools/zustimmung.py', "s.STATE: state, s.SCOPE: ' '.join(scopes)}", "s.STATE: state, s.SCOPE: ' '.join(s.SCOPES)}", WC+'test_write_mode_requests_exactly_w_organization_social'),
     ('b4-write-identity-marker', 'oauth.py', "if not isinstance(data, dict) or not isinstance(data.get(s.SCOPE), str) or scope_set(data[s.SCOPE]) != set(s.WRITE_SCOPES):", 'if not isinstance(data, dict):', ST+'test_write_identity_requires_exactly_the_write_scope_read_identity_refuses_it'),
     ('b4-write-loader', 'server.py', '    from .oauth import load_write_identity\n', '    from .oauth import load_identity as load_write_identity\n', ST+'test_loading_the_write_side_fail_closed_with_fixed_reasons'),

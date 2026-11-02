@@ -44,7 +44,7 @@ class SetupGuide(unittest.TestCase):
 
     def test_stage_b1_write_consent_and_approval_handgriffe(self):
         guide = self.guide()
-        for phrase in ('w_organization_social', '--schreiben', 'jnpt credential set --name plugin-linkedin-seite-post-oauth',
+        for phrase in ('w_organization_social', 'w_organization_social_feed', '--schreiben', 'jnpt credential set --name plugin-linkedin-seite-post-oauth',
                        'redaktion_freigabe', 'linkedin_seite_vorschau', 'SSO', 'hash', '5 schreibende Aktionen',
                        'Lese- und Schreib-Token', 'http://jnpt:8484/mcp', 'jnpt_plugins', '/admin/mcp',
                        'redaktionsplan_get', 'redaktion_freigabe_search', 'redaktion_medien_get_file',

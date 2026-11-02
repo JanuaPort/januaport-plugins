@@ -16,7 +16,8 @@
 # Stufe B1 (#1237, 0.2.0), beide optional — ohne sie läuft Stufe A, Schreiben ist aus:
 #   linkedin-seite-post-oauth  runtime-key = das OAuth-JSON des SCHREIB-Grants
 #                            (Stelle plugin-linkedin-seite-post-oauth, genau
-#                            w_organization_social, Zustimmungsskript mit --schreiben)
+#                            w_organization_social + w_organization_social_feed,
+#                            Zustimmungsskript mit --schreiben)
 #   linkedin-seite-gateway   runtime-key = der eigene, nur lesende Gateway-Token
 #                            des Beistellers (Stelle plugin-linkedin-seite-gateway)
 # Der Dienst liest alle Dateien nur beim Start; den Neustart nach einem

@@ -14,9 +14,12 @@
 - Rückverbindung W2: eigener MCP-Client an `http://jnpt:8484/mcp` (nur `/mcp`), geschlossene
   Werkzeugliste `redaktionsplan_get`, `redaktion_freigabe_search`, `<ablage>_get_file`; eigene Stelle
   `plugin-linkedin-seite-gateway`.
-- Eigener Schreib-Grant `plugin-linkedin-seite-post-oauth` mit genau `w_organization_social`
-  (`tools/zustimmung.py --schreiben`); das Schreib-JSON trägt `scope`, die Stufe-A-Prüfung weist es
-  ab. Lese- und Schreib-Token getrennt, auch bei der Erneuerung.
+- Eigener Schreib-Grant `plugin-linkedin-seite-post-oauth` mit genau `w_organization_social` und
+  `w_organization_social_feed` (Gate-Befund VENDOR: Comments API 202610, Tabelle „Permissions“,
+  `w_organization_social_feed` „Post, comment, and react on posts on behalf of an organization“; die App
+  trägt beide), `tools/zustimmung.py --schreiben`; das Schreib-JSON trägt `scope`, die Stufe-A-Prüfung
+  weist es ab. Token-Antwort: Trenner tolerant, Menge exakt. Lese- und Schreib-Token getrennt, auch bei
+  der Erneuerung.
 - Geschlossene Endpunktliste, Autor/owner/actor nur die konfigurierte Organisation, Upload nur an
   `https://www.linkedin.com/dms-uploads/…` ohne Umleitung, Token nur beim Bild-/Dokument-Upload,
   Video-Teile lückenlos, Status höchstens 15 Minuten, Post nur bei `AVAILABLE`.
@@ -28,7 +31,7 @@
 - Compose: zwei weitere read-only Ordner-Mounts (optional befüllt), tmpfiles vier Ordner, Path-Unit
   vier Schlüssel, REQUIRE unverändert. `config.json` mit optionalem Block `schreiben`.
 - Stufe A unverändert in Verhalten und Scopes; drei Mutations-Anker an die gemeinsame Bridge-Prüfung
-  und den Scope-Parameter angepasst. Test-first: 92 neue Tests (115 → 207), 65 neue Mutationsproben (90 → 155).
+  und den Scope-Parameter angepasst. Test-first: 93 neue Tests (115 → 208), 67 neue Mutationsproben (90 → 157).
 
 ## 0.1.2 — 2026-11-02
 

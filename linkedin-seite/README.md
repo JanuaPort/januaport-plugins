@@ -315,14 +315,17 @@ Erben-Bit. Die Medien-Ablage darf **nicht** pseudonymisiert sein (sonst verweige
 ### Credentials, Bremse und Spur
 
 - **Schreib-Grant (SEC Bed. 4):** eigene Stelle `plugin-linkedin-seite-post-oauth`, Zustimmung mit
-  `tools/zustimmung.py --schreiben`, angefordert wird **genau** `w_organization_social`. Das JSON trägt
-  zusätzlich `"scope": "w_organization_social"`: die unveränderte Stufe-A-Prüfung weist JSON mit
-  `scope` ab, die Schreib-Prüfung verlangt es — ein Tausch fällt beim Laden auf. Lese- und
-  Schreib-Token verlassen nie ihren Prozess; jede Erneuerung des Schreib-Tokens muss wieder genau
-  `w_organization_social` liefern. Laut Posts-API deckt der Scope „Post, comment, and like posts on
-  behalf of an organization“; die Comments-API-Seite nennt dagegen `w_organization_social_feed` —
-  **Live-Gate**, kein stilles Erweitern. Löschen, Bearbeiten, Bild-, Dokument- und Video-Upload stehen
-  unter `w_organization_social` (Posts-, Images-, Documents-, Videos-API 202610).
+  `tools/zustimmung.py --schreiben`, angefordert wird **genau** `w_organization_social
+  w_organization_social_feed`, nichts sonst. Das JSON trägt zusätzlich
+  `"scope": "w_organization_social w_organization_social_feed"`: die unveränderte Stufe-A-Prüfung weist
+  JSON mit `scope` ab, die Schreib-Prüfung verlangt genau diese Menge — ein Tausch fällt beim Laden auf.
+  Lese- und Schreib-Token verlassen nie ihren Prozess; jede Erneuerung des Schreib-Tokens muss wieder
+  genau diese zwei Scopes liefern (Trenner Komma oder Leerraum, Reihenfolge egal, Menge exakt).
+  Posten, Bearbeiten, Löschen sowie Bild-, Dokument- und Video-Upload stehen unter
+  `w_organization_social` (Posts-, Images-, Documents-, Videos-API 202610). Kommentieren als
+  Organisation steht unter `w_organization_social_feed`, belegt in der Comments API 202610, Tabelle
+  „Permissions“: „w_organization_social_feed | Post, comment, and react on posts on behalf of an organization“ (https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/comments-api?view=li-lms-2026-10).
+  Die App trägt beide Scopes (VENDOR, Portal vom PO geprüft).
 - **Gateway-Token:** eigene Stelle `plugin-linkedin-seite-gateway` (Hausmuster #887), nie Env, nie
   Datei im Klartext, nie im Log.
 - **Bremse (SEC Bed. 5):** 5 schreibende Aktionen je UTC-Tag über alle vier Aktionen zusammen, gezählt
@@ -396,8 +399,7 @@ Gateway-Netzweg Beisteller → `jnpt:8484` im Netz `jnpt_plugins` (Aufruf aus de
 `team_token_list`: Beisteller-Token mit genau den drei Werkzeugen, KI-Team-Token ohne Scope auf
 `redaktion_freigabe` (SEC Bed. 3, GATE) · Row-Level-Sicht des Team-Tokens auf beide Karteien ·
 Antwortform von `redaktionsplan_get`/`redaktion_freigabe_search`/`get_file` am echten Kern ·
-`via`/`updated_via` = `SSO` bei einem Satz der Freigabe-Seite · Scope `w_organization_social` für
-Kommentare · Upload-Host `www.linkedin.com` und Token-Pflicht je Upload-Art · ETag-Form der
+`via`/`updated_via` = `SSO` bei einem Satz der Freigabe-Seite · Upload-Host `www.linkedin.com` und Token-Pflicht je Upload-Art · ETag-Form der
 Video-Teile · `x-restli-id` von Post und Kommentar · Little-Text bei Kommentaren · Testvideo
 hochladen und abschließen ohne Post · Größe der echten Clips (≤ 32 MiB) und ihr Weg in die Ablage
 (`write_file` trägt nur rund 6 MiB) · PID-/Speichergrenzen des Containers mit laufendem Video und

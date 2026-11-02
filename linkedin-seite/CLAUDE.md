@@ -12,7 +12,8 @@ Root-CLAUDE.md war im Ausgangscheckout nicht vorhanden.
 - `source_contract.py`: EIN Ort aller Hersteller-Endpunkte, Parameter und Feldnamen,
   Kommentar „aus Herstellerdoku, live zu belegen“. Scopes exakt
   `rw_organization_admin r_organization_social` für Stufe A. Seit 0.2.0 der Block Stufe B1:
-  `WRITE_SCOPES` = genau `w_organization_social`, geschlossene `WRITE_ENDPOINTS` (Methode, Pfad je
+  `WRITE_SCOPES` = genau `w_organization_social` + `w_organization_social_feed` (Kommentar, Comments API
+  202610), geschlossene `WRITE_ENDPOINTS` (Methode, Pfad je
   Operation, Doku-URL je Zeile), `UPLOAD_HOSTS`/`UPLOAD_PATH_PREFIX`, `UPLOAD_TOKEN` je Upload-Art,
   Video-Teilgröße, Status-Takt und Höchstzeit, Umfrage-Grenzen, reservierte Little-Text-Zeichen.
 - `linkedin_adapter.py`: fünf feste REST-Endpunkte, nur einzelne GETs, kein BATCH_GET.
@@ -131,9 +132,9 @@ Version steht in diesem Kopf, README-Kopf und CHANGELOG; Compose/Deskriptor ohne
   `load_write_side` lädt Schreib-Grant (`load_write_identity`, verlangt `scope`) und Gateway-Token;
   fehlt/ungültig ⇒ Schreiben aus (`schreiben=<grund>` im Log), Stufe A läuft unverändert.
 - `oauth.py`: `token_result`/`Tokens` mit `scopes`-Parameter (Vorgabe Stufe-A-Scopes), Lese-JSON
-  ohne `scope`, Schreib-JSON mit `scope` = `w_organization_social`; damit fällt ein Tausch in beiden
+  ohne `scope`, Schreib-JSON mit `scope` = genau die zwei Schreib-Scopes; damit fällt ein Tausch in beiden
   Richtungen beim Laden auf.
-- `tools/zustimmung.py --schreiben`: fordert genau `w_organization_social` an, schreibt `scope` ins
+- `tools/zustimmung.py --schreiben`: fordert genau `w_organization_social w_organization_social_feed` an, schreibt `scope` ins
   JSON, nennt die Ziel-Stelle auf stderr; ohne Schalter byte-gleicher Aufruf wie 0.1.2.
 
 Bewusste Entscheidungen und Grenzen: Medien als JSON-String statt Kartei-Liste (Kern-Typen);

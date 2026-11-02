@@ -38,7 +38,8 @@ class Version(unittest.TestCase):
         self.assertGreaterEqual(triple(self.versions()[2]), (0, 2, 0))
         section = re.search(r'^## 0\.2\.0 — .*?(?=^## |\Z)', self.read('CHANGELOG.md'), re.M | re.S)
         self.assertIsNotNone(section)
-        for phrase in ('JanuaPort/januaport#1237', 'Stufe B1', 'redaktion_freigabe', 'w_organization_social'):
+        for phrase in ('JanuaPort/januaport#1237', 'Stufe B1', 'redaktion_freigabe', 'w_organization_social',
+                       'w_organization_social_feed'):
             self.assertIn(phrase, section.group(0))
 
 
