@@ -1206,3 +1206,36 @@ nach fünf Sekunden; 404 und Fehler geben keine alte Fassung frei.
 Apphost-Paketsuite aus und stellt die Originaldatei im `finally` wieder her.
 Jede Probe muss durch einen ausgeführten Test scheitern; reine Buildfehler
 zählen nicht. Die Caddy-Probe benötigt den echten Container `caddy:2.11.7`.
+
+### SEC-Bedingungen für Apphost
+
+C-1: SameSite ist nur zweite Schicht; App- und Gateway-Hosts können same-site
+sein. Origin plus X-Jnpt-App plus CSP bilden die Grenze. Apphost erzeugt und
+übernimmt nie Access-Control-Antwortheader (`TestC1NoCORSOnAnyResponse`).
+C-2: Callback-Ziel ist das Literal `/`, der vollständige Kopfsatz einschließlich
+no-referrer gilt auch dort (`TestC2CallbackHasLiteralRefreshAndSecurityHeaders`).
+C-3: 32 Byte crypto/rand, einmaliger Verifier, beide __Host-Cookies ohne Domain,
+Path=/ und Secure (`TestC3VerifierEntropyAndHostCookies`).
+
+I-1: exec-Form direkt auf das Binary. I-2: explizites TCP an beiden Listenern und
+am Dialer, unabhängig von einem entgegenstehenden GODEBUG; Compose setzt
+multipathtcp=0 (`TestI1ApphostExecAndI2Environment`,
+`TestI2ExplicitTCPUnderMultipathEnvironment`). I-3: CI prüft mit gepinntem
+Govulncheck das aus dem gebauten Image entnommene Binary (`TestI3BinaryVulnerabilityCheck`).
+Die korrigierten Abhängigkeiten x/net und edwards25519 werden durch die vollständige
+Suite einschließlich S4b-Vertragsprüfung abgesichert; S4b-Laufzeitcode bleibt unverändert.
+
+H-1: Syntaxprüfung vor Relay-Aufruf; ungültig ergibt 403 ohne Body oder Gateway-Aufruf,
+zulässig wird nur domain weitergereicht (`TestH1RelaySyntaxAndOnlyDomainAtHTTP`).
+Öffentliche Zertifikate veröffentlichen App-Namen in CT-Logs: keine Kunden-,
+Personen- oder Projektnamen; interne Box-Zertifikate sind ausgenommen.
+
+Caddy wird über zwei optionale Imports aktiviert: apps-global.d im globalen Block,
+apps.d auf Site-Ebene. Der benannte app_login_log filtert code auch am Callback;
+Cookie-/Authorization-/Set-Cookie-Header werden nicht geloggt. Der explizite
+Caddy-Fehlerhandler verhindert auch den Code-Abfluss bei unerreichbarem Apphost;
+Entfernen dieses Handlers wird an der echten Caddy-Instanz rot geprüft. Die Box-Kopien sind
+bis auf tls internal gleich. `probe/apphost.ps1` prüft die wirklichen Imports,
+leere Verzeichnisse, Zertifikatsfreigabe über das Relay, Logfilter, Upstream und
+Netztrennung mit Caddy 2.11.7. Die Mutation ohne delete code muss dabei die volle
+Apphost-Suite rot machen; ein Syntaxfehler allein zählt nicht.

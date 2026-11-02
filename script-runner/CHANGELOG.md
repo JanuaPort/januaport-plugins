@@ -2,6 +2,12 @@
 
 ## Unveröffentlicht — #1277 SEC F1 (2026-11-02)
 
+- Apphost: getrennte optionale Caddy-Imports einschließlich Box-Kopien,
+  Callback-Logfilter auch bei Upstream-Ausfall und CT-Hinweis; keine CORS-Header, explizit deaktiviertes MPTCP.
+  CI prüft das Image-Binary mit Govulncheck 1.9.0. x/net auf 0.62.0 und
+  edwards25519 auf 1.1.1 aktualisiert, um die beim Binaryscan gemeldeten
+  Schwachstellen zu schließen; S4b-Laufzeitcode unverändert.
+
 - Optionaler Unterbefehl `apphost`: verifizierte Browser-Apps aus gitobjects.v1,
   Anmeldung mit einmaligem Host-Cookie, privater MCP-Proxy und tls-ask-Relay.
   Eigener nur lesbarer Runtime-Key, ausschließlich Apps-Netz, kein Store oder Socket.
