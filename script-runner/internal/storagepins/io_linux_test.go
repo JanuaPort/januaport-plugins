@@ -80,3 +80,18 @@ func TestAtomicStateTempLinkNeverWritten(t *testing.T) {
 		t.Fatal("rename not published")
 	}
 }
+
+func TestAtomicStateExistingRegularTempNeverWritten(t *testing.T) {
+	root := t.TempDir()
+	p := filepath.Join(root, ".state-collision")
+	if e := os.WriteFile(p, []byte("canary"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	if e := atomicWrite(root, []byte("replacement"), func() string { return ".state-collision" }); e == nil {
+		t.Fatal("existing file reused")
+	}
+	b, e := os.ReadFile(p)
+	if e != nil || string(b) != "canary" {
+		t.Fatal("existing file modified")
+	}
+}

@@ -265,7 +265,6 @@ func TestStorageInboxSymlinksAtAdapter(t *testing.T) {
 
 func TestStorageNeverWritesInboxOrGitPaths(t *testing.T) {
 	x := newStorageFixture(t)
-	before := map[string][]byte{}
 	snap := func() map[string][]byte {
 		out := map[string][]byte{}
 		e := filepath.WalkDir(x.root, func(p string, d os.DirEntry, e error) error {
@@ -293,7 +292,7 @@ func TestStorageNeverWritesInboxOrGitPaths(t *testing.T) {
 		}
 		x.write(p, []byte("sentinel"))
 	}
-	before = snap()
+	before := snap()
 	x.f.StorageOnce()
 	x.advance(13 * time.Minute)
 	x.f.StorageOnce()
@@ -345,6 +344,26 @@ func TestStorageTotalBudget(t *testing.T) {
 	x.ready()
 	x.f.storageOnce(int64(len(x.pkg)) - 1)
 	x.failed("fetch_failed")
+}
+
+func TestGitInitLeavesStorageUntouched(t *testing.T) {
+	x := newStorageFixture(t)
+	x.ready()
+	before, e := os.ReadFile(filepath.Join(x.root, "speicher/state.json"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = x.f.initStore(context.Background(), "ssh://git@example.org/org/scripts.git", strings.Repeat("a", 64)); e != nil {
+		t.Fatal(e)
+	}
+	after, e := os.ReadFile(filepath.Join(x.root, "speicher/state.json"))
+	if e != nil || !bytes.Equal(before, after) {
+		t.Fatal("Git reset changed storage state")
+	}
+	b, e := os.ReadFile(x.packagePath())
+	if e != nil || !bytes.Equal(b, x.pkg) {
+		t.Fatal("Git reset changed inbox")
+	}
 }
 
 type storageBlockingGit struct {
