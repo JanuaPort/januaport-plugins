@@ -1,0 +1,178 @@
+[
+  {
+    "case": "valid",
+    "valid": true,
+    "now": "2026-11-02T12:00:00Z",
+    "highestSeen": 8,
+    "maxAge": "5m"
+  },
+  {
+    "case": "same_seq_fresh",
+    "valid": true,
+    "now": "2026-11-02T12:04:00Z",
+    "highestSeen": 9,
+    "maxAge": "5m"
+  },
+  {
+    "case": "future_one_minute",
+    "valid": true,
+    "now": "2026-11-02T11:59:00Z",
+    "highestSeen": 9,
+    "maxAge": "5m"
+  },
+  {
+    "case": "wrong_purpose",
+    "valid": false,
+    "now": "2026-11-02T12:00:00Z",
+    "highestSeen": 0,
+    "maxAge": "5m"
+  },
+  {
+    "case": "field_extra",
+    "valid": false,
+    "now": "2026-11-02T12:00:00Z",
+    "highestSeen": 0,
+    "maxAge": "5m"
+  },
+  {
+    "case": "field_Zweck",
+    "valid": false,
+    "now": "2026-11-02T12:00:00Z",
+    "highestSeen": 0,
+    "maxAge": "5m"
+  },
+  {
+    "case": "field_Purpose",
+    "valid": false,
+    "now": "2026-11-02T12:00:00Z",
+    "highestSeen": 0,
+    "maxAge": "5m"
+  },
+  {
+    "case": "duplicate_key",
+    "valid": false,
+    "now": "2026-11-02T12:00:00Z",
+    "highestSeen": 0,
+    "maxAge": "5m"
+  },
+  {
+    "case": "sha1_commit",
+    "valid": false,
+    "now": "2026-11-02T12:00:00Z",
+    "highestSeen": 0,
+    "maxAge": "5m"
+  },
+  {
+    "case": "unsorted_pins",
+    "valid": false,
+    "now": "2026-11-02T12:00:00Z",
+    "highestSeen": 0,
+    "maxAge": "5m"
+  },
+  {
+    "case": "duplicate_pins",
+    "valid": false,
+    "now": "2026-11-02T12:00:00Z",
+    "highestSeen": 0,
+    "maxAge": "5m"
+  },
+  {
+    "case": "future_over_two_minutes",
+    "valid": false,
+    "now": "2026-11-02T11:57:59Z",
+    "highestSeen": 0,
+    "maxAge": "5m"
+  },
+  {
+    "case": "expired",
+    "valid": false,
+    "now": "2026-11-02T12:05:01Z",
+    "highestSeen": 9,
+    "maxAge": "5m"
+  },
+  {
+    "case": "lower_seq",
+    "valid": false,
+    "now": "2026-11-02T12:00:00Z",
+    "highestSeen": 10,
+    "maxAge": "5m"
+  },
+  {
+    "case": "tampered_signature",
+    "valid": false,
+    "now": "2026-11-02T12:00:00Z",
+    "highestSeen": 0,
+    "maxAge": "5m"
+  },
+  {
+    "case": "tampered_payload",
+    "valid": false,
+    "now": "2026-11-02T12:00:00Z",
+    "highestSeen": 0,
+    "maxAge": "5m"
+  },
+  {
+    "case": "neutral_key",
+    "valid": false,
+    "now": "2026-11-02T12:00:00Z",
+    "highestSeen": 0,
+    "maxAge": "5m",
+    "publicKey": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+  },
+  {
+    "case": "order_four_key",
+    "valid": false,
+    "now": "2026-11-02T12:00:00Z",
+    "highestSeen": 0,
+    "maxAge": "5m",
+    "publicKey": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+  },
+  {
+    "case": "small_order_key_0",
+    "valid": false,
+    "now": "2026-11-02T12:00:00Z",
+    "highestSeen": 0,
+    "maxAge": "5m",
+    "publicKey": "7P///////////////////////////////////////38="
+  },
+  {
+    "case": "small_order_key_1",
+    "valid": false,
+    "now": "2026-11-02T12:00:00Z",
+    "highestSeen": 0,
+    "maxAge": "5m",
+    "publicKey": "JuiVj8KyJ7BFw/SJ8u+Y8NXfrAXTxjM5sTgCiG1T/AU="
+  },
+  {
+    "case": "small_order_key_2",
+    "valid": false,
+    "now": "2026-11-02T12:00:00Z",
+    "highestSeen": 0,
+    "maxAge": "5m",
+    "publicKey": "xxdqcD1N2E+6PAt2DRBnDyogU/osOczGTsf9d5KsA3o="
+  },
+  {
+    "case": "small_order_key_3",
+    "valid": false,
+    "now": "2026-11-02T12:00:00Z",
+    "highestSeen": 0,
+    "maxAge": "5m",
+    "publicKey": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA="
+  },
+  {
+    "case": "small_order_key_4",
+    "valid": false,
+    "now": "2026-11-02T12:00:00Z",
+    "highestSeen": 0,
+    "maxAge": "5m",
+    "publicKey": "JuiVj8KyJ7BFw/SJ8u+Y8NXfrAXTxjM5sTgCiG1T/IU="
+  },
+  {
+    "case": "small_order_key_5",
+    "valid": false,
+    "now": "2026-11-02T12:00:00Z",
+    "highestSeen": 0,
+    "maxAge": "5m",
+    "publicKey": "xxdqcD1N2E+6PAt2DRBnDyogU/osOczGTsf9d5KsA/o="
+  }
+]

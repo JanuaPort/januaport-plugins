@@ -1,0 +1,1 @@
+{"manifest":{"issued_at":"2026-11-02T12:00:00Z","pins":[{"algo":"sha256","commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","name":"demo","path":"scripts/demo"}],"seq":9,"source":"speicher","version":1,"zweck":"skriptlaeufer-pins.v1"},"sig":"1VchH3ythiIs4bnX1eyVkPKb/5dJ6aV239RVE/Z3A6NHw7ViwnzNzrqaLeTy8HA3DbRqrNrdtCRv4NiuP1+rBQ=="}

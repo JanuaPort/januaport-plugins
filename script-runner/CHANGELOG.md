@@ -1,5 +1,54 @@
 # Changelog — script-runner
 
+## Unveröffentlicht — #1277 SEC F1 (2026-11-02)
+
+- Git-/Speicher-Namenskollision am MCP-Adapter abgesichert und im Vertrag
+  festgehalten: beide Pins `invalid/manifest_invalid`, kein Sandbox-Job.
+  Nur Namen aus `state.json/accepted` lösen die Kollision aus; ungeprüfte
+  Inbox-Namen können Git-Pins nicht sperren (H4).
+- Tests für Ablauf/Änderung zwischen Freigabe-Snapshots, Freigabe plus
+  globaler/eigener Fehlermarke und alten gecachten Pin nach Commit-Erneuerung.
+
+## Unveröffentlicht — #1277 SEC H6 (2026-11-02)
+
+- Hygiene-Wächter meldet nicht sicher auflösbare relative und variable
+  Bind-Quellen für jeden nicht berechtigten Dienst als möglichen Schlüsselzugriff.
+  Projektlokale Quellen ohne Elternkomponenten bleiben auf den dokumentierten
+  Ablageort begrenzt; benannte Volumes und die echte Compose bleiben unverändert.
+- Adaptertests für beide Schlüsselordner, alle Dienste und den erlaubten
+  `./seccomp`-Fall; Mutation „relative Quelle ignorieren“ wird rot.
+
+## Unveröffentlicht — #1277 S4b Lauf 2 (2026-11-02)
+
+- Speicherbote im Vermittler: eigener 60-s-Takt, Runtime-Key, rohe atomare
+  Inbox-Veröffentlichung, keine Redirects, begrenzte Antworten, Retry-After
+  und 5-min-Backoff nach 404; feste Log-Codes ohne Bodies oder Schlüssel.
+- Senke mit consumer-seitiger Objektquelle: Freigabe, Frist aus accepted und
+  Pakethash vor jeder Codeübergabe erneut geprüft, auch nach Sandbox-Wartezeit.
+  Speicherpins und Bibliotheken nutzen Vertrag 2 ohne neues Wire-Feld;
+  abgelaufene/entzogene Pakete und nicht referenzierte Bibliotheken werden entfernt.
+- Docker-Sonde mit eigenem Wegwerf-Schlüssel: ready, echter Lauf, Ablauf bei
+  gestopptem Abholer und R8 ohne Deploy-/Public-Key-Mount im Vermittler.
+  Git-/Desktop-Goldens, Compose, Netze und UIDs unverändert.
+
+## Unveröffentlicht — #1277 S4b Lauf 1 (2026-11-02)
+
+- Abholer prüft Speicherpins unabhängig von Git alle 5 s: signierte exakte
+  Pinliste, vertrauenswürdiger Public-Key, 10-Minuten-Frist, SHA-256-Paketgraph
+  und Hashsortierung. Kern-Goldens aus `a28a2376` unverändert samt SHA256SUMS.
+- Atomarer `speicher/state.json` mit Sequenz und Freigaben; bei Höchststand 0
+  Sperre bis streng nach 12 Minuten ab eigener Prozessuhr, auch bei fehlender
+  Datei, Schlüsselwechsel und Neustart. Fehlender/gewechselter Schlüssel
+  entfernt Freigaben sofort. Kein Inbox-Schreibweg und kein Runtime-Key im Abholer.
+- Gehärteter Dateiadapter: keine Symlinks einschließlich Elternkomponenten,
+  nur reguläre Dateien, begrenztes Lesen, exklusive zufällige Temp-Dateien,
+  fsync/Rename/Ordner-fsync. Fehler und Logs ohne fremde Bodies oder Schlüssel.
+- Hygiene-Wächter sperrt Schlüsselordner auch über Eltern-Mounts; Vergleich
+  nach Pfadkomponenten. Test-first für P1, P2, P3 und B3 mit roten Mutationen.
+- Bote, Senke, `tools/list`-Anbindung und Docker-Sonden folgen in Lauf 2;
+  Speicherpins sind noch nicht ausführbar. Vertragskennung 2, Git-/Desktop-
+  Goldens, Compose, Netze, UIDs und Profile unverändert. SEC-R4 bleibt extern.
+
 ## 0.3.1 — 2026-10-26 (Go 1.26.10, CVE-2026-111943)
 
 - **Image:** `sha256:65bb4697333cc6a69185fb00a35f59a08d2702bb2d9348d0a307f522eb93cf43` (Index, nur `linux/amd64`; arm64-Ausnahme bis zur ersten Nachfrage, JanuaPort/januaport#928)

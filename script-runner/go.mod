@@ -3,6 +3,7 @@ module github.com/januaport/januaport-plugins/script-runner
 go 1.26.10
 
 require (
+	filippo.io/edwards25519 v1.1.0
 	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/robfig/cron/v3 v3.0.1
 	golang.org/x/sys v0.49.0

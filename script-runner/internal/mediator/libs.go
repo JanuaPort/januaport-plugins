@@ -19,7 +19,7 @@ import (
 // selbst holt und entpackt der Manager asynchron. Bis libs/<lockhash> fertig
 // ist, bleibt der Pin pending; jede Abweichung ist ein endgültiger
 // invalid-Grund, nie ein Werkzeug.
-func (m *Mediator) libsVerdict(ctx context.Context, p pins.Pin, tree store.Tree, man manifest.Manifest, manifestSHA string) verdict {
+func (m *Mediator) libsVerdict(ctx context.Context, p pins.Pin, tree store.Tree, man manifest.Manifest, manifestSHA string, source *store.Store) verdict {
 	base := verdict{manifest: &man, manifestSHA: manifestSHA, verified: true}
 	fail := func(reason string) verdict {
 		base.manifest = nil
@@ -29,7 +29,7 @@ func (m *Mediator) libsVerdict(ctx context.Context, p pins.Pin, tree store.Tree,
 	if lock == nil || m.libs == nil {
 		return fail(contract.ReasonLibsInvalid)
 	}
-	refs, err := m.store.ListWheels(ctx, p.Commit, p.Path)
+	refs, err := source.ListWheels(ctx, p.Commit, p.Path)
 	if err != nil {
 		if v := invalidVerdict(err); v.state == contract.StateInvalid {
 			return fail(v.reason)
@@ -48,7 +48,7 @@ func (m *Mediator) libsVerdict(ctx context.Context, p pins.Pin, tree store.Tree,
 		return fail(libsReason(err))
 	}
 	base.libs = plan.Lock.Hash
-	switch st := m.libs.Ensure(plan, storeSource{s: m.store, blobs: blobs}); st.Status {
+	switch st := m.libs.Ensure(plan, storeSource{s: source, blobs: blobs}); st.Status {
 	case libs.StatusReady:
 		base.state = contract.StateReady
 	case libs.StatusFailed:
@@ -99,10 +99,11 @@ func (m *Mediator) libsReady(p pinState, tree store.Tree) bool {
 // loadTree liest den Pin-Ordner für einen Lauf: mit Bibliotheken ohne
 // wheels/, sonst wie bisher.
 func (m *Mediator) loadTree(ctx context.Context, p pinState) (store.Tree, error) {
+	source := m.pinSource(p)
 	if p.manifest != nil && p.manifest.UsesLibs() {
-		return m.store.LoadSkippingWheels(ctx, p.pin.Commit, p.pin.Path)
+		return source.LoadSkippingWheels(ctx, p.pin.Commit, p.pin.Path)
 	}
-	return m.store.Load(ctx, p.pin.Commit, p.pin.Path)
+	return source.Load(ctx, p.pin.Commit, p.pin.Path)
 }
 
 // resetLibsOnURLChange leert libs bei einem Wechsel der Repository-URL. Nur

@@ -60,7 +60,7 @@ func (m *Mediator) callTool(ctx context.Context, req *mcp.CallToolRequest) (*mcp
 func (m *Mediator) run(ctx context.Context, p pinState, input json.RawMessage, runToken string, limits contract.RunLimits) (contract.Run, []byte) {
 	// Der Zustand aus tools/list darf eine inzwischen widerrufene Freigabe
 	// nicht ausführbar halten (L3); die Zweigprüfung selbst macht der abholer.
-	if m.fetchVerdict(p.pin.Commit).state != contract.StateReady {
+	if m.pinApproval(p).state != contract.StateReady {
 		m.forget(p.pin)
 		return contract.Run{End: contract.EndRefused, Detail: contract.DetailState}, nil
 	}
@@ -103,7 +103,7 @@ func (m *Mediator) run(ctx context.Context, p pinState, input json.RawMessage, r
 	}
 	defer r.gw.close()
 	// acquire kann warten: direkt vor der Übergabe die Freigabe erneut lesen.
-	if m.fetchVerdict(p.pin.Commit).state != contract.StateReady {
+	if m.pinApproval(p).state != contract.StateReady {
 		m.forget(p.pin)
 		return contract.Run{End: contract.EndRefused, Detail: contract.DetailState}, nil
 	}

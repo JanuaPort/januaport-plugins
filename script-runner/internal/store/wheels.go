@@ -99,6 +99,9 @@ func (s *Store) CopyBlob(ctx context.Context, id string, dst io.Writer, max int6
 	if !gitref.ValidCommit(id) {
 		return 0, &Invalid{Reason: contract.ReasonBadPath, Msg: "ungültige Objekt-ID"}
 	}
+	if s.storage != nil {
+		return s.copyStorageBlob(ctx, id, dst, max)
+	}
 	b, err := s.batch(ctx)
 	if err != nil {
 		return 0, err

@@ -1,8 +1,9 @@
-// Package fetcher ist der abholer: Nur Vorfahren des frisch aufgelösten
+// Package fetcher ist der abholer: Für Git gelten nur Vorfahren des frisch aufgelösten
 // Remote-Standard-Zweigkopfs werden freigegeben (SEC L3, #1083). Er holt Objekte
 // per ssh in den Bare-Store (Vertrag §8, Nachtrag 2a). Er vertraut dem
 // vermittler nicht: jede Zeile aus wanted/ und die repo_url prüft er selbst
 // (V2, M7). Der Git-Anbieter wird nur mit ls-remote und fetch gelesen.
+// Speicherpins prüft storage.go getrennt anhand signierter Liste und Pakethashes.
 package fetcher
 
 import (
@@ -17,11 +18,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/januaport/januaport-plugins/script-runner/internal/contract"
 	"github.com/januaport/januaport-plugins/script-runner/internal/gitref"
+	"github.com/januaport/januaport-plugins/script-runner/internal/storagepins"
 )
 
 // Runner führt git mit genau dieser Umgebung aus.
@@ -66,19 +69,22 @@ func (b *headOutput) Write(p []byte) (int, error) {
 
 // Config des abholers.
 type Config struct {
-	StoreDir   string        // gemeinsames Volume: wanted/, repo_url, store.git, approved/, failed/
+	StoreDir   string        // gemeinsames Volume: Git-Pfade sowie getrennt speicher/
 	KeyPath    string        // Deploy-Key (…/script-runner-git/runtime-key)
 	TmpDir     string        // tmpfs für die Schlüsselkopie
 	Interval   time.Duration // Abstand der Durchläufe
 	RetryAfter time.Duration // Wartezeit nach einem gescheiterten Fetch
 	Git        Runner
 	Logger     *slog.Logger
+	StorageNow func() time.Time // eigene Uhr nur für Speicher; Standard time.Now
 }
 
 // Fetcher ist der abholer.
 type Fetcher struct {
-	cfg      Config
-	rejected atomic.Int64
+	cfg       Config
+	rejected  atomic.Int64
+	storageMu sync.Mutex
+	storage   *storagepins.Journal
 }
 
 // New setzt Standards für leere Felder.
@@ -95,7 +101,7 @@ func New(cfg Config) *Fetcher {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	return &Fetcher{cfg: cfg}
+	return &Fetcher{cfg: cfg, storage: storagepins.NewJournal(filepath.Join(cfg.StoreDir, "speicher"), cfg.StorageNow, cfg.Logger)}
 }
 
 // Rejected zählt verworfene wanted-Einträge.
@@ -103,6 +109,10 @@ func (f *Fetcher) Rejected() int64 { return f.rejected.Load() }
 
 // Run läuft bis ctx endet.
 func (f *Fetcher) Run(ctx context.Context) error {
+	storageCtx, cancelStorage := context.WithCancel(ctx)
+	storageDone := make(chan struct{})
+	go func() { defer close(storageDone); f.runStorage(storageCtx) }()
+	defer func() { cancelStorage(); <-storageDone }()
 	t := time.NewTicker(f.cfg.Interval)
 	defer t.Stop()
 	for {
