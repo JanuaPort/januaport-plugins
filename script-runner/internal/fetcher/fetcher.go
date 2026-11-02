@@ -17,11 +17,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/januaport/januaport-plugins/script-runner/internal/contract"
 	"github.com/januaport/januaport-plugins/script-runner/internal/gitref"
+	"github.com/januaport/januaport-plugins/script-runner/internal/storagepins"
 )
 
 // Runner führt git mit genau dieser Umgebung aus.
@@ -73,12 +75,15 @@ type Config struct {
 	RetryAfter time.Duration // Wartezeit nach einem gescheiterten Fetch
 	Git        Runner
 	Logger     *slog.Logger
+	StorageNow func() time.Time // eigene Uhr nur für Speicher; Standard time.Now
 }
 
 // Fetcher ist der abholer.
 type Fetcher struct {
-	cfg      Config
-	rejected atomic.Int64
+	cfg       Config
+	rejected  atomic.Int64
+	storageMu sync.Mutex
+	storage   *storagepins.Journal
 }
 
 // New setzt Standards für leere Felder.
@@ -95,7 +100,7 @@ func New(cfg Config) *Fetcher {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	return &Fetcher{cfg: cfg}
+	return &Fetcher{cfg: cfg, storage: storagepins.NewJournal(filepath.Join(cfg.StoreDir, "speicher"), cfg.StorageNow, cfg.Logger)}
 }
 
 // Rejected zählt verworfene wanted-Einträge.
@@ -103,6 +108,10 @@ func (f *Fetcher) Rejected() int64 { return f.rejected.Load() }
 
 // Run läuft bis ctx endet.
 func (f *Fetcher) Run(ctx context.Context) error {
+	storageCtx, cancelStorage := context.WithCancel(ctx)
+	storageDone := make(chan struct{})
+	go func() { defer close(storageDone); f.runStorage(storageCtx) }()
+	defer func() { cancelStorage(); <-storageDone }()
 	t := time.NewTicker(f.cfg.Interval)
 	defer t.Stop()
 	for {

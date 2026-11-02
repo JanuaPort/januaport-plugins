@@ -370,6 +370,9 @@ func TestStorageLoopIndependentOfBlockedGitOnce(t *testing.T) {
 	}
 	x.write(filepath.Join(x.root, "wanted", strings.Repeat("a", 64)), nil)
 	x.write(filepath.Join(x.root, "repo_url"), []byte("ssh://git@example.org/org/scripts.git"))
+	if e := os.Remove(filepath.Join(x.root, "speicher/inbox/list.json")); e != nil {
+		t.Fatal(e)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan struct{})
@@ -378,6 +381,13 @@ func TestStorageLoopIndependentOfBlockedGitOnce(t *testing.T) {
 	case <-g.started:
 	case <-time.After(3 * time.Second):
 		t.Fatal("git did not block")
+	}
+	first := time.Now().Add(3 * time.Second)
+	for len(x.state().Approved) != 0 && time.Now().Before(first) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(x.state().Approved) != 0 {
+		t.Fatal("first storage pass missing")
 	}
 	// A second refresh must happen on the independent fixed 5-second timer.
 	x.advance(time.Minute)
