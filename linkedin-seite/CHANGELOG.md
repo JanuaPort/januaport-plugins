@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.2 — 2026-11-02
+
+- Korrektur nach dem ersten Abruf auf der Showcase (02.11. 09:06Z, 502 `source_rejected`,
+  JanuaPort/januaport#1237). Die Query wurde vollständig URL-kodiert, auch die Rest.li-2.0-Struktur
+  von `timeIntervals=(…)` und `shares=List(…)`. Die LinkedIn-Doku 202610 verlangt dort rohe
+  Klammern, Doppelpunkte und Kommas; nur die URN wird kodiert. `restli_query` baut die Query jetzt
+  so. Header (`LinkedIn-Version`, `X-Restli-Protocol-Version: 2.0.0`) und Scopes unverändert.
+  Regression zuerst rot gegen die rohe Query, dann grün; neue Mutation `restli-structure-raw`.
+
 ## 0.1.1 — 2026-11-02
 
 - Korrektur nach der echten LinkedIn-Zustimmung vom 02.11.2026 (JanuaPort/januaport#1237,
