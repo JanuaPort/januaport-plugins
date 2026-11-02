@@ -29,6 +29,8 @@ type storageCourier struct {
 	mu                       sync.Mutex
 	next                     time.Time
 	packageNext              map[string]time.Time
+	pruneMu                  sync.Mutex
+	approvedPackages         map[string]bool
 	packageLimit, totalLimit int64
 }
 

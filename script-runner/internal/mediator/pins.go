@@ -16,7 +16,8 @@ import (
 
 // pinState ist ein Pin mit seinem Zustand (Vertrag §2).
 type pinState struct {
-	pin pins.Pin
+	pin     pins.Pin
+	storage bool
 	verdict
 }
 
@@ -88,6 +89,16 @@ func (m *Mediator) refresh(ctx context.Context) {
 		desktopStates = append(desktopStates, desktopState{pin: p, verdict: m.evaluateDesktop(ctx, p, desktopCache)})
 	}
 
+	storageStates := m.storageStates(ctx)
+	for i := range states {
+		for j := range storageStates {
+			if states[i].pin.Name == storageStates[j].pin.Name {
+				states[i].verdict = verdict{state: contract.StateInvalid, reason: contract.ReasonManifestInvalid}
+				storageStates[j].verdict = states[i].verdict
+			}
+		}
+	}
+	states = append(states, storageStates...)
 	m.mu.Lock()
 	m.key = key
 	m.pins = states
@@ -166,12 +177,16 @@ func (m *Mediator) fetchVerdictFor(sha, url string) verdict {
 // zum Baum, wenn das Manifest `requirements` trägt; sonst verhält sich der Pin
 // wie bisher (Altbestand).
 func (m *Mediator) verify(ctx context.Context, p pins.Pin) verdict {
-	tree, err := m.store.LoadSkippingWheels(ctx, p.Commit, p.Path)
+	return m.verifySource(ctx, p, m.store)
+}
+
+func (m *Mediator) verifySource(ctx context.Context, p pins.Pin, source *store.Store) verdict {
+	tree, err := source.LoadSkippingWheels(ctx, p.Commit, p.Path)
 	if err != nil {
 		return invalidVerdict(err)
 	}
 	if tree.HasWheelsDir && !wantsLibs(tree, p.Name) {
-		if tree, err = m.store.Load(ctx, p.Commit, p.Path); err != nil {
+		if tree, err = source.Load(ctx, p.Commit, p.Path); err != nil {
 			return invalidVerdict(err)
 		}
 	}
@@ -187,7 +202,7 @@ func (m *Mediator) verify(ctx context.Context, p pins.Pin) verdict {
 		return verdict{state: contract.StateInvalid, reason: contract.ReasonManifestInvalid}
 	}
 	if man.UsesLibs() {
-		return m.libsVerdict(ctx, p, tree, man, mf.BlobID)
+		return m.libsVerdict(ctx, p, tree, man, mf.BlobID, source)
 	}
 	return verdict{state: contract.StateReady, manifest: &man, manifestSHA: mf.BlobID, verified: true}
 }
