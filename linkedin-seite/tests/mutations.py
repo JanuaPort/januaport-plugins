@@ -115,6 +115,7 @@ MUTANTS = [
     ('lifetime-int-type', 'oauth.py', 'type(seconds) is not int or ', '', T+'LifetimeTolerance.test_refresh_invalid_types_and_values_rejected'),
     ('access-lifetime-capped', 'oauth.py', 'lifetime(raw[s.EXPIRES_IN], ACCESS_DAYS)', 'raw[s.EXPIRES_IN]', T+'LifetimeTolerance.test_access_overshoot_is_capped_at_exactly_60_days'),
     ('refresh-lifetime-capped', 'oauth.py', 'lifetime(raw[s.REFRESH_EXPIRES_IN], REFRESH_DAYS)', 'raw[s.REFRESH_EXPIRES_IN]', T+'LifetimeTolerance.test_observed_linkedin_overshoot_is_capped_at_exactly_365_days'),
+    ('restli-structure-raw', 'linkedin_adapter.py', "(value if key in s.RESTLI_STRUCTURED else quote(str(value), safe=''))", "quote(str(value), safe='')", A+'test_restli2_query_keeps_structure_raw_and_encodes_urns'),
     ('secret-control-character', 'tools/zustimmung.py', "if any(unicodedata.category(char) == 'Cc' for char in value):", 'if False:', C+'test_control_character_in_secret_is_rejected_with_german_message_and_nothing_is_sent'),
 
 ]

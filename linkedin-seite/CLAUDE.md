@@ -1,4 +1,4 @@
-# linkedin-seite 0.1.1 — Modulvertrag (#1237)
+# linkedin-seite 0.1.2 — Modulvertrag (#1237)
 
 Privater Python-REST-Beisteller, Apache 2.0. PO 29.10.2026 Option (a): ausschließlich
 Stufe A. Synthetisch geprüft, Live-Abnahme offen. Kein eigener MCP-Server.
@@ -12,6 +12,9 @@ Root-CLAUDE.md war im Ausgangscheckout nicht vorhanden.
   Kommentar „aus Herstellerdoku, live zu belegen“. Scopes exakt
   `rw_organization_admin r_organization_social`. Kein weiterer Scope, kein Schreibadapter.
 - `linkedin_adapter.py`: fünf feste REST-Endpunkte, nur einzelne GETs, kein BATCH_GET.
+  Query nach Rest.li 2.0 (`restli_query`, 0.1.2): Werte in `RESTLI_STRUCTURED` (`timeIntervals`,
+  `shares`, `ugcPosts`) gehen roh, nur die URN darin ist kodiert; alle übrigen Werte voll kodiert.
+  Kodierte Klammern beantwortet LinkedIn mit 4xx (`source_rejected`, Showcase 02.11.).
   Follower-Gesamtzahl aus `networkSizes/{kodierte Konfigurations-URN}` mit
   `edgeType=COMPANY_FOLLOWED_BY_MEMBER`, Feld `firstDegreeSize`; Zuwachs sind Zugänge.
   Positivliste verwirft Aufschlüsselungen vor Projektion; Summen, keine Personenlisten.

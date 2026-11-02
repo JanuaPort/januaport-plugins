@@ -1,4 +1,4 @@
-# LinkedIn-Seite 0.1.1 — #1237, Stufe A
+# LinkedIn-Seite 0.1.2 — #1237, Stufe A
 
 Privater Python-REST-Beisteller für Kennzahlen einer fest konfigurierten LinkedIn-Seite.
 PO-Entscheid vom 29.10.2026: Option (a), Stufe A. Synthetisch geprüft;
@@ -58,7 +58,8 @@ Die Organisation kommt ausschließlich aus `config.json`, als numerische ID oder
 `urn:li:organization:<ID>`. `linkedin_version` ist YYYYMM; Vorgabe ist der aktuelle UTC-Monat
 beim Laden (bei Erstellung 202610). Betreiber pinnt eine live unterstützte Version.
 REST: `https://api.linkedin.com/rest/`, Header `LinkedIn-Version` und
-`X-Restli-Protocol-Version: 2.0.0`. Fünf feste Hersteller-Endpunkte, einschließlich
+`X-Restli-Protocol-Version: 2.0.0`; Query in Rest.li-2.0-Form wie die Doku 202610
+(`timeIntervals=(…)` und `shares=List(…)` mit roher Struktur, URNs kodiert). Fünf feste Hersteller-Endpunkte, einschließlich
 `networkSizes`. Development Tier: einzelne GETs, kein BATCH_GET.
 
 Fehler tragen ausschließlich feste Codes in `{"error": code}` (400 Eingabe, 401/403 Bridge,

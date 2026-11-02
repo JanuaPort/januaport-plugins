@@ -47,6 +47,21 @@ class Adapter(unittest.TestCase):
                 self.assertIn(ORG, str(params))
         self.assertEqual(self.fake.calls[-1][2][s.SHARE_IDS], ['List(urn:li:share:789)'])
 
+    def test_restli2_query_keeps_structure_raw_and_encodes_urns(self):
+        # LinkedIn doc 202610, Rest.li 2.0 samples: structure characters stay raw, URNs are encoded.
+        # parse_qs above decodes both forms alike; this checks the wire.
+        report = self.run_report()
+        org = quote(ORG, safe='')
+        start, end = (int(datetime.fromisoformat(report['zeitraum'][k]).replace(tzinfo=timezone.utc).timestamp()) * 1000
+                      for k in ('start', 'ende_exklusiv'))
+        interval = '(timeGranularityType:DAY,timeRange:(start:%d,end:%d))' % (start, end)
+        self.assertEqual(self.fake.raw_queries[-2:], [
+            'q=organization&organization=%s&timeIntervals=%s' % (org, interval),
+            'q=organizationalEntity&organizationalEntity=%s&timeIntervals=%s' % (org, interval)])
+        self.run_report('posts')
+        self.assertEqual(self.fake.raw_queries[-1], 'q=organizationalEntity&organizationalEntity=%s&shares=List(%s)'
+                         % (org, quote('urn:li:share:789', safe='')))
+
     def test_no_person_fields_and_breakdowns_before_projection(self):
         raw = self.fake.default('/rest/' + s.FOLLOWERS, {})
         minimized = minimize(raw, (s.ENTITY, s.FOLLOWER_GAIN))

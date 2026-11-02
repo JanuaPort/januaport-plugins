@@ -28,6 +28,8 @@ INTERVALS = 'timeIntervals'
 INTERVAL_FORMAT = '(timeGranularityType:DAY,timeRange:(start:{start},end:{end}))'
 SHARE_IDS = 'shares'
 UGC_IDS = 'ugcPosts'
+# Rest.li 2.0 structured query values: sent raw, only the URNs inside are encoded.
+RESTLI_STRUCTURED = (INTERVALS, SHARE_IDS, UGC_IDS)
 COUNT = 'count'
 START = 'start'
 SORT = 'sortBy'

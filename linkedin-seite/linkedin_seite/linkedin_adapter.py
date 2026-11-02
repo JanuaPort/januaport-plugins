@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 import re
 import urllib.request
-from urllib.parse import urlencode, quote
+from urllib.parse import quote
 from . import source_contract as s
 from .domain import REPORTS, ReportError
 from .oauth import Tokens, Transport
@@ -94,6 +94,13 @@ def ensure_complete(raw):
         shape()  # no partial sum and no following arbitrary links
 
 
+def restli_query(params):
+    # Rest.li 2.0 (LinkedIn doc 202610): structure characters of record and List values stay raw,
+    # plain values such as URNs are percent-encoded. Encoding the structure makes LinkedIn answer 4xx.
+    return '&'.join(quote(key, safe='') + '=' + (value if key in s.RESTLI_STRUCTURED else quote(str(value), safe=''))
+                    for key, value in params.items())
+
+
 def minimize(raw, keys):
     # Positive allowlist: demographics and all unknown fields are discarded here,
     # before downstream aggregation, including future breakdown names.
@@ -115,7 +122,7 @@ class LinkedInAdapter:
         token = self.tokens.access()
         headers = {'Authorization': 'Bearer ' + token, s.VERSION_HEADER: self.cfg.linkedin_version,
                    s.PROTOCOL_HEADER: s.PROTOCOL_VERSION}
-        return self.transport.send(urllib.request.Request(s.API_ROOT + endpoint + '?' + urlencode(params),
+        return self.transport.send(urllib.request.Request(s.API_ROOT + endpoint + '?' + restli_query(params),
                                    headers=headers, method='GET'))
 
     def stats(self, endpoint, aggregate, req=None, post=None):
@@ -124,7 +131,7 @@ class LinkedInAdapter:
         if req:
             params[s.INTERVALS] = s.INTERVAL_FORMAT.format(start=req.start, end=req.end)
         if post:
-            params[s.SHARE_IDS if post.startswith('urn:li:share:') else s.UGC_IDS] = 'List(' + post + ')'
+            params[s.SHARE_IDS if post.startswith('urn:li:share:') else s.UGC_IDS] = 'List(' + quote(post, safe='') + ')'
         raw = self.get(endpoint, params)
         ensure_complete(raw)
         if post:
