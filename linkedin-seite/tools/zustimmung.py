@@ -17,6 +17,7 @@ import socket
 import sys
 import threading
 import time
+import unicodedata
 from urllib.parse import urlencode, urlsplit, parse_qsl
 import webbrowser
 import warnings
@@ -27,6 +28,11 @@ from linkedin_seite.oauth import Transport, secret, token_result
 from linkedin_seite.domain import encode_response
 
 TIMEOUT = 300
+# Fixed ASCII text, never the typed value. Under cmd, pasting into getpass inserts Ctrl+V (#1237).
+CONTROL_CHARACTER_MESSAGE = (
+    'Das Client-Secret enthaelt Steuerzeichen (z. B. durch Einfuegen per Strg+V in cmd). '
+    'Eingabe verworfen, nichts gesendet. Unter Windows in PowerShell 7 mit Read-Host -MaskInput '
+    'einlesen und per --secret-stdin uebergeben (siehe SETUP.md).')
 
 
 def authorization(client_id, state, verifier=None):
@@ -153,6 +159,9 @@ def main():
         with warnings.catch_warnings():
             warnings.simplefilter('error', getpass.GetPassWarning)
             value = sys.stdin.readline(8194).rstrip('\r\n') if args.secret_stdin else getpass.getpass('Client-Secret: ')
+        if any(unicodedata.category(char) == 'Cc' for char in value):
+            print(CONTROL_CHARACTER_MESSAGE, file=sys.stderr)
+            return 1
         def expired():
             # Hard wall-clock deadline also covers slow headers/token responses.
             # Only this standalone helper process exits; stdout is still empty.
