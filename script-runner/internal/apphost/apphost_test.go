@@ -169,6 +169,8 @@ func (f *fixture) gateway(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 	case "/mcp":
 		f.proxied = r.Header.Clone()
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Set-Cookie", "gateway=forbidden")
 		w.WriteHeader(f.proxyStatus)
 		_, _ = io.WriteString(w, `{"ok":true}`)
@@ -548,7 +550,7 @@ func TestStaticLogoutAndRelaySeparationAtHTTP(t *testing.T) {
 	for _, tc := range []struct {
 		path   string
 		status int
-	}{{"/tls-ask?domain=a.apps.example.test", 200}, {"/tls-ask?domain=b.apps.example.test", 404}, {"/tls-ask?domain=a.apps.foreign.test", 404}, {"/mcp", 404}, {"/", 404}} {
+	}{{"/tls-ask?domain=a.apps.example.test", 200}, {"/tls-ask?domain=b.apps.example.test", 404}, {"/tls-ask?domain=a.apps.foreign.test", 403}, {"/mcp", 404}, {"/", 404}} {
 		resp, err := http.Get(relay.URL + tc.path)
 		if err != nil {
 			t.Fatal(err)
