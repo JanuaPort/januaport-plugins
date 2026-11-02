@@ -61,3 +61,63 @@ func TestKeyMountComparisonUsesComponents(t *testing.T) {
 		}
 	}
 }
+
+// H6: assert the key-specific finding at the real YAML adapter, not merely
+// another sandbox mount-policy finding. Unknown sources can expose either key.
+func TestUnresolvedKeyMountSourcesAtComposeAdapter(t *testing.T) {
+	for _, source := range []string{"../../run/jnpt", "./seccomp/../../../run/jnpt", "run/jnpt", "~/run/jnpt", "${KEYDIR}", "$KEYDIR", "/opt/${KEYDIR}", "${KEYDIR:-/run/jnpt}"} {
+		for _, svc := range []string{mediator, fetcher, sandbox, initializer} {
+			t.Run(svc+"/"+source, func(t *testing.T) {
+				findings := CheckCompose(composeWithExtraMount(t, svc, source+":/p"))
+				want := []string{}
+				if svc != mediator {
+					want = append(want, svc+": Schlüsselordner des vermittlers eingehängt")
+				}
+				if svc != fetcher {
+					want = append(want, svc+": Deploy-Key eingehängt")
+				}
+				for _, reason := range want {
+					found := false
+					for _, v := range findings {
+						if v == reason {
+							found = true
+						}
+					}
+					if !found {
+						t.Errorf("missing %q for %s: %v", reason, source, findings)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestSafeProjectRelativeMountAtAuthorizedServices(t *testing.T) {
+	for _, svc := range []string{mediator, fetcher} {
+		t.Run(svc, func(t *testing.T) {
+			if v := CheckCompose(composeWithExtraMount(t, svc, "./seccomp:/x")); len(v) != 0 {
+				t.Fatalf("safe project-relative source rejected: %v", v)
+			}
+		})
+	}
+	// The real file, including named volumes and a relative security_opt
+	// profile (not a bind source), must remain clean.
+	if v := CheckCompose([]byte(readCompose(t))); len(v) != 0 {
+		t.Fatal(v)
+	}
+}
+
+func composeWithExtraMount(t *testing.T, svc, mount string) []byte {
+	t.Helper()
+	var c map[string]any
+	if err := yaml.Unmarshal([]byte(readCompose(t)), &c); err != nil {
+		t.Fatal(err)
+	}
+	s := c["services"].(map[string]any)[svc].(map[string]any)
+	s["volumes"] = append(s["volumes"].([]any), mount)
+	b, err := yaml.Marshal(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
