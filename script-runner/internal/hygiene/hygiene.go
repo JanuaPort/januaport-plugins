@@ -6,6 +6,7 @@ package hygiene
 import (
 	"bytes"
 	"fmt"
+	"path"
 	"slices"
 	"strings"
 
@@ -312,13 +313,13 @@ func checkCommon(name string, s service) []string {
 		if strings.Contains(m, "docker.sock") {
 			add("docker.sock eingehängt")
 		}
-		if name != mediator && strings.HasPrefix(m, keyDir+":") {
+		if name != mediator && exposesKey(m, keyDir) {
 			add("Schlüsselordner des vermittlers eingehängt")
 		}
 		if name != mediator && name != sandbox && name != initializer && (strings.HasPrefix(m, "libs:") || strings.Contains(m, ":/libs")) {
 			add("libs eingehängt (nur vermittler, Sandbox und Init)")
 		}
-		if name != fetcher && strings.HasPrefix(m, gitKeyDir) {
+		if name != fetcher && exposesKey(m, gitKeyDir) {
 			add("Deploy-Key eingehängt")
 		}
 	}
@@ -329,6 +330,29 @@ func checkCommon(name string, s service) []string {
 		add("Host-Port %q (keine Host-Ports erlaubt)", p)
 	}
 	return v
+}
+
+// exposesKey compares Linux host path components. Parent mounts expose the
+// key directory too; child mounts may expose an individual key (SEC B3).
+func exposesKey(mount, protected string) bool {
+	source, _, ok := strings.Cut(mount, ":")
+	if !ok || !path.IsAbs(source) {
+		return false
+	}
+	source = path.Clean(source)
+	return pathContains(source, protected) || pathContains(protected, source)
+}
+
+func pathContains(parent, child string) bool {
+	for {
+		if parent == child {
+			return true
+		}
+		if child == "/" {
+			return false
+		}
+		child = path.Dir(child)
+	}
 }
 
 func checkMediator(s service, nets map[string]network) []string {
