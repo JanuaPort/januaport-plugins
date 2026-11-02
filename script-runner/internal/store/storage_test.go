@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,7 +20,7 @@ import (
 )
 
 func TestStorageSourceAtRealFetcherAdapter(t *testing.T) {
-	for _, mode := range []string{"valid", "inbox_only", "missing_key", "expired", "revoked", "hash", "symlink", "wrong_identity", "state_extra"} {
+	for _, mode := range []string{"valid", "inbox_only", "missing_key", "expired", "revoked", "hash", "symlink", "wrong_identity", "state_extra", "expires_during_read", "approval_changes_during_read"} {
 		t.Run(mode, func(t *testing.T) {
 			now := time.Now().UTC().Truncate(time.Second)
 			root := t.TempDir()
@@ -106,8 +107,33 @@ func TestStorageSourceAtRealFetcherAdapter(t *testing.T) {
 				}
 				write(p, append([]byte(`{"expires_at":"2099",`), b[1:]...))
 			}
-			s := OpenStorage(filepath.Join(root, "speicher"), pin, func() time.Time { return now })
+			reads := 0
+			s := OpenStorage(filepath.Join(root, "speicher"), pin, func() time.Time {
+				reads++
+				if mode == "expires_during_read" && reads == 2 {
+					return now.Add(10*time.Minute + time.Nanosecond)
+				}
+				if mode == "approval_changes_during_read" && reads == 1 {
+					// ReadState already captured the first approval. Publish a
+					// different, well-formed hash before the second snapshot.
+					state, _, err := storagepins.ReadState(filepath.Join(root, "speicher"))
+					if err != nil {
+						t.Fatal(err)
+					}
+					state.Approved[0].PackageSHA256 = strings.Repeat("0", 64)
+					b, _ := json.Marshal(state)
+					if err = storagepins.WriteFile(filepath.Join(root, "speicher/state.json"), b, storagepins.MaxListBytes); err != nil {
+						t.Fatal(err)
+					}
+				}
+				return now
+			})
 			tree, e := s.Load(context.Background(), pin.Commit, pin.Path)
+			if mode == "expires_during_read" || mode == "approval_changes_during_read" {
+				if reads != 2 {
+					t.Fatalf("expected two approval snapshots, got %d", reads)
+				}
+			}
 			if mode == "valid" {
 				if e != nil || tree.File("main.py") == nil {
 					t.Fatal("valid source", e)
