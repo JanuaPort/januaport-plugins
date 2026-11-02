@@ -15,13 +15,14 @@ sowie Nachtrag 2a in JanuaPort/januaport#928; lokal `contract/README.md`) und da
 Bedrohungsmodell von SEC (T1–T12, R1–R13, M1–M7, V1–V3); die Nummern in
 Kommentaren und Tests verweisen darauf.
 
-**Ein statisches Go-Binary, ein Image, drei dauerhafte Dienste und ein Init-Dienst** (Unterbefehle):
+**Ein statisches Go-Binary, ein Image, vier dauerhafte Dienste (apphost optional) und ein Init-Dienst** (Unterbefehle):
 
 | Unterbefehl | Dienst | Verantwortung |
 |---|---|---|
 | `mediator` | `script-runner` | vermittler: MCP-Server für das Gateway (Weg A, `:8090` im internen Netz `jnpt_plugins`), prüft `runtime-key` (R13), liest `pins.json` und `desktop-pins.json`, Speicherbote und Leser von `speicher/state.json` (#1277 S4b), einzige Senke für Code (R6, M5), hält den einen Slot, misst Wandzeit und Größen selbst (M2, M4), ruft innere Werkzeuge mit dem Lauf-Token (Weg B), `/healthz` auf `:8091`; Taktgeber für Zeitpläne (#1039 S1, liest `schedules.json`, löst über das Gateway aus) |
 | `guard` | `script-runner-sandbox` | Wächter: PID 1 der Sandbox, `PR_SET_DUMPABLE 0`, meldet `hello`, nimmt **genau einen** job, startet `python -I`, räumt den Prozessbaum ab (V1/V3), hält die Instanz 10,5 s (B1) |
 | `fetcher` | `script-runner-fetcher` | abholer: prüft Git-Pins gegen den Standard-Zweig und holt Objekte per ssh in den Bare-Store, prüft `wanted/` und `repo_url` selbst (V2, M7); unabhängige Speicherprüfung alle 5 s (#1277 S4b) |
+| `apphost` | `script-runner-apphost` | optionales Profil `apps`, Browser `:8080`, internes tls-ask-Relay `:8081`, ausschließlich `jnpt_apps`, nur RAM und eigener Schlüsselordner |
 | `init-libs` | `script-runner-init` | kurzlebiger Volume-Init als 65532, ohne Netz; legt `ready` (0755) und `staging` (0700) an und beendet sich vor dem Sandbox-Start |
 
 **Nicht hier, mit Absicht:** Katalogeintrag und Signatur (die liegt auf dem
@@ -52,6 +53,7 @@ und `fetch` gelesen.
 | `internal/mediator` | vermittler: MCP, Auth, Pins, Slot/V1, Lauf, Weg B |
 | `internal/guard` | Wächter (`guard_linux.go`; anderswo nur ein Platzhalter) |
 | `internal/fetcher` | abholer |
+| `internal/apphost` | Browser-Listener, tls-ask-Relay, verifizierte statische Apps und Browser-Anmeldung; eigener Gatewayadapter ohne Proxy-Umgebung oder Redirects |
 | `internal/gitobjects` | geprüfte Kopie des Paketvertrags: SHA-256, sortierte Objekte, vollständiger Baum ohne Git-Aufruf |
 | `internal/storagepins` | signierte Speicherliste, gehärteter Dateiadapter, atomarer Höchststand und Speicherfreigaben |
 | `internal/hygiene` | Wächter-Tests für Compose (Vertrag §6, SEC-Zeile 3), Seccomp-Profil, Dockerfile |
@@ -384,7 +386,7 @@ expandiert. Die Paketreihenfolge ist deterministisch (siehe Vertrag).
 | Ungültiges Manifest/fehlende Pflichtdatei öffnet keinen Paketweg; Fehler ohne Echo | `TestDesktopInvalidManifestAtHTTP`, `TestDesktopMissingRequiredFilesAtHTTP` |
 | Desktop-Pins sind keine MCP-Werkzeuge und senden keinen Sandbox-Job; auch ein gleichnamiger lokaler Pin öffnet keinen Weg | `TestDesktopMetadataAndNoSandboxOrWheelExtraction` (zählender Unix-Adapter: 0 Jobs) |
 | Kein Aufruf des Bibliotheksadapters und kein Entpacken, auch nicht für Windows-Wheels | `TestDesktopWheelPreparationSeamZero` (Windows und `any`, 0 Vorbereitungen, leere Ready-/Staging-Ordner) |
-| HTTP-Clients nur für MCP, Taktgeber und Speicherboten; kein Paketindex | `TestNoDownloadClientInSource` |
+| HTTP-Clients nur für MCP, Taktgeber, Speicherboten und den privaten Apphost-Gatewayadapter; kein Paketindex | `TestNoDownloadClientInSource` |
 | Desktop-Pins zählen als bekannt; Zeitpläne werden lokal nur gemeldet, das Gerät taktet aus dem Manifest | `TestDesktopTickerNeverFiresAtHTTP` (keine HTTP-Auslösung und keine lokalen Lauf-/Missed-/Busy-Werte) |
 | SHA-1 und SHA-256; unveränderte Goldens sind byte-gleich | `TestDesktopSHA256AtHTTP`, `TestDesktopPackageGolden` (direkter Import beider Golden-Pakete in echte Git-Objektdatenbanken) |
 
@@ -552,7 +554,7 @@ nicht von `isolation` ab; `/healthz` behält seine lokale Sandbox-Bedeutung.
     **Ausgang hat nur der abholer** (eigenes Netz `egress`, git über ssh); er
     hängt nie an `jnpt_plugins` oder `jnpt_default`. Die Sandbox hat
     `network_mode: none`. Jeder andere Dienst hat kein Netz oder nur
-    `jnpt_plugins`; ohne Netzliste hinge er am Projekt-Default mit Ausgang.
+    `jnpt_plugins`; der optionale Apphost hängt ausschließlich an `jnpt_apps`. Ohne Netzliste hinge er am Projekt-Default mit Ausgang.
     Mechanik: `internal/hygiene` (`checkNoEgress`, `checkMediator`,
     `checkFetcher`, Proben in `TestComposeMutationsAreCaught`,
     `TestNoServiceButFetcherHasEgress`), im Kern-Repo der Vorlagen-Wächter
@@ -566,8 +568,8 @@ nicht von `isolation` ab; `/healthz` behält seine lokale Sandbox-Bedeutung.
 11. **Bibliotheken (#1041), Invarianten 1–5 und 7 des Plans.** Details im
     Abschnitt „Python-Bibliotheken“; je Invariante die Tests:
     - **Kein pip, kein Paketindex:** `TestNoDownloadClientInSource` (HTTP-Clients
-      ausschließlich in MCP, Taktgeber und Speicherboten; `libs`/`store` und Abholer ohne HTTP-Client,
-      kein pip, keine Index-Adresse; `http.*`-Client nur in Weg B und
+      ausschließlich in MCP, Taktgeber, Speicherboten und Apphost; `libs`/`store` und Abholer ohne HTTP-Client,
+      kein pip, keine Index-Adresse; `http.*`-Client nur in Weg B, Apphost und
       Taktgeber), Sonden `TestLibsNoPip` und `TestR12ImageHasNoPipAndSha1dcGit`,
       `net_probe` unverändert.
     - **Hash-Abweichung ist fail-closed:** `TestEnsureTamperedWheelFailsClosed`,
@@ -1170,3 +1172,83 @@ P2_IMAGE=ghcr.io/januaport/script-runner@sha256:… sh script-runner/probe/run.s
 # Workflows
 docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:latest
 ```
+
+## Apphost: eigener Dienst und eigene Vertrauensgrenze
+
+`internal/apphost` ist ein zusätzlicher HTTP-Adapter. Er verwendet die geprüfte
+S4b-Bibliothek `gitobjects.Objects` (ruft `Verify` auf), verändert aber weder
+Speicher-Abholer noch Vermittler oder Senke. Konfiguration, Paket-/Login-Vertrag
+und Betriebsgrenzen stehen im README-Abschnitt „Browser-Apps mit apphost“.
+
+Die Kernzusage wird am realen HTTP-Adapter mit unabhängig erzeugten
+`gitobjects.v1`-Paketen geprüft: ein verändertes Blob oder ein fremder App-Pfad
+liefert keine Datei. RAM-Sitzungen verhindern, dass beliebige Browser-Cookies
+als Anmeldung gelten. Die Anmeldung ist zustandslos: Der Verifier liegt nur im
+hostgebundenen Login-Cookie mit fünf Minuten Laufzeit, ohne serverseitige Login-Tabelle.
+Vor Exchange werden Cookie-Pflicht und Verifier-Form geprüft. Der Kern prüft
+App, S256(Verifier), Einmaligkeit und die 60 Sekunden Laufzeit des Codes.
+Paketdaten und Sitzungen liegen ausschließlich im RAM; ein Neustart löscht die
+Sitzungen, verhindert aber keinen Callback mit noch gültigem Code und Cookie.
+Die ETag-Abfrage erfolgt je App frühestens fünf Sekunden nach Abrufabschluss;
+404 und Fehler geben keine alte Fassung frei. Pro App läuft höchstens ein Abruf,
+wartende Anfragen teilen das Ergebnis und können unabhängig abbrechen. Während
+Netzabruf und Paketprüfung bleibt der globale Mutex frei, andere Apps werden nicht
+blockiert. Laufende Abrufe zählen zur Cache-Grenze und werden nicht verdrängt.
+Die Sitzungstabelle bleibt auf 4096 Einträge begrenzt: zuerst abgelaufene entfernen,
+bei weiter voller Tabelle den frühesten Ablauf verdrängen, statt Anmeldungen mit
+503 zu sperren. Das Erneuern eines vorhandenen Tokens verdrängt keine andere Sitzung.
+
+| Invariante | Adaptertest |
+|---|---|
+| Hash und Pfad | `TestInvariant1VerifiedPackageAtHTTP` |
+| Lade-Regeln einschließlich Grenzen und Geheimnis-Mustern | `TestInvariant2LoadRulesAtHTTP` |
+| Exakter App-Host | `TestInvariant3HostAtHTTP` |
+| Login-Cookie und Verifier-Form vor Exchange | `TestInvariant4BrowserBindingAtHTTP` |
+| Zustandsloser Callback, Code-Bindung und Einmaligkeit im Kern-Stub | `TestF2StatelessCallbackCoreBindingAtHTTP` |
+| 5000 anonyme Navigationen sperren keine Anmeldung; frühesten Sitzungsablauf verdrängen | `TestF2AnonymousNavigationsCannotExhaustLoginAtHTTP`, `TestF2SessionCapacityEvictsEarliestAtHTTP` |
+| Paketabrufe je App zusammenfassen, andere Apps nicht blockieren | `TestH2PackageFetchIsolationAndCoalescingAtHTTP` |
+| App ausschließlich aus dem Host | `TestInvariant5AppFromHostAtHTTP` |
+| Cookie- und CSP-Literale, begrenzte Sitzungsdauer | `TestInvariant6CookiesAndCSPAtHTTP` |
+| Origin, Headerfilter, Bodygrenze, 401 und Geheimnisfreiheit | `TestInvariant7ProxyAtHTTP`, `TestLogsNeverContainCredentialsOrQuery` |
+| Getrennte Listener und Abmeldung | `TestStaticLogoutAndRelaySeparationAtHTTP` |
+| ETag, Widerruf und Schlüsselrotation | `TestCacheETagRevocationAndKeyRotationAtHTTP` |
+| Genau Apps-Netz, genau ein Schlüsselmount, Box-Gleichheit | `TestInvariant10ApphostNetworkAndMounts` |
+| Wirkliche Netztrennung und Caddy | `TestInvariant10RealNetworkIsolation`, `TestInvariant11RealCaddy` (Docker-Probe) |
+
+`probe/mutate_apphost.py --docker` führt für jede Mutation die **volle**
+Apphost-Paketsuite aus und stellt die Originaldatei im `finally` wieder her.
+Jede Probe muss durch einen ausgeführten Test scheitern; reine Buildfehler
+zählen nicht. Die Caddy-Probe benötigt den echten Container `caddy:2.11.7`.
+
+### SEC-Bedingungen für Apphost
+
+C-1: SameSite ist nur zweite Schicht; App- und Gateway-Hosts können same-site
+sein. Origin plus X-Jnpt-App plus CSP bilden die Grenze. Apphost erzeugt und
+übernimmt nie Access-Control-Antwortheader (`TestC1NoCORSOnAnyResponse`).
+C-2: Callback-Ziel ist das Literal `/`, der vollständige Kopfsatz einschließlich
+no-referrer gilt auch dort (`TestC2CallbackHasLiteralRefreshAndSecurityHeaders`).
+C-3: 32 Byte crypto/rand für den Cookie-Verifier, beide __Host-Cookies ohne Domain,
+Path=/ und Secure (`TestC3VerifierEntropyAndHostCookies`).
+
+I-1: exec-Form direkt auf das Binary. I-2: explizites TCP an beiden Listenern und
+am Dialer, unabhängig von einem entgegenstehenden GODEBUG; Compose setzt
+multipathtcp=0 (`TestI1ApphostExecAndI2Environment`,
+`TestI2ExplicitTCPUnderMultipathEnvironment`). I-3: CI prüft mit gepinntem
+Govulncheck das aus dem gebauten Image entnommene Binary (`TestI3BinaryVulnerabilityCheck`).
+Die korrigierten Abhängigkeiten x/net und edwards25519 werden durch die vollständige
+Suite einschließlich S4b-Vertragsprüfung abgesichert; S4b-Laufzeitcode bleibt unverändert.
+
+H-1: Syntaxprüfung vor Relay-Aufruf; ungültig ergibt 403 ohne Body oder Gateway-Aufruf,
+zulässig wird nur domain weitergereicht (`TestH1RelaySyntaxAndOnlyDomainAtHTTP`).
+Öffentliche Zertifikate veröffentlichen App-Namen in CT-Logs: keine Kunden-,
+Personen- oder Projektnamen; interne Box-Zertifikate sind ausgenommen.
+
+Caddy wird über zwei optionale Imports aktiviert: apps-global.d im globalen Block,
+apps.d auf Site-Ebene. Der benannte app_login_log filtert code auch am Callback;
+Cookie-/Authorization-/Set-Cookie-Header werden nicht geloggt. Der explizite
+Caddy-Fehlerhandler verhindert auch den Code-Abfluss bei unerreichbarem Apphost;
+Entfernen dieses Handlers wird an der echten Caddy-Instanz rot geprüft. Die Box-Kopien sind
+bis auf tls internal gleich. `probe/apphost.ps1` prüft die wirklichen Imports,
+leere Verzeichnisse, Zertifikatsfreigabe über das Relay, Logfilter, Upstream und
+Netztrennung mit Caddy 2.11.7. Die Mutation ohne delete code muss dabei die volle
+Apphost-Suite rot machen; ein Syntaxfehler allein zählt nicht.

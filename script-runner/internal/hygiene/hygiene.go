@@ -27,6 +27,7 @@ const (
 	sandbox     = "script-runner-sandbox"
 	fetcher     = "script-runner-fetcher"
 	initializer = "script-runner-init"
+	apphost     = "script-runner-apphost"
 	socketMount = "sockets:/run/script-runner"
 	// libsMount ist der Volume mit den entpackten Python-Bibliotheken (#1041):
 	// beim vermittler beschreibbar, in der Sandbox read-only — der EINE
@@ -58,6 +59,7 @@ type compose struct {
 // dazu die gefährlichen, die checkCommon ausdrücklich verbietet. Alles andere
 // weist KnownFields ab (deny by default).
 type service struct {
+	Profiles    []string          `yaml:"profiles"`
 	Image       string            `yaml:"image"`
 	Environment map[string]string `yaml:"environment"`
 	DependsOn   dependencies      `yaml:"depends_on"`
@@ -214,21 +216,50 @@ func CheckCompose(src []byte) []string {
 	if _, ok := c.Volumes["libs"]; !ok {
 		add("Volume libs fehlt")
 	}
-	for _, want := range []string{mediator, sandbox, fetcher, initializer} {
+	for _, want := range []string{mediator, sandbox, fetcher, initializer, apphost} {
 		if _, ok := c.Services[want]; !ok {
 			add("Dienst %s fehlt", want)
 		}
 	}
 	for name, s := range c.Services {
 		v = append(v, checkCommon(name, s)...)
-		if name != fetcher {
+		if name != fetcher && name != apphost {
 			v = append(v, checkNoEgress(name, s, c.Networks)...)
+		}
+		if name != apphost {
+			for _, net := range s.Networks {
+				if net == "jnpt_apps" || c.Networks[net].Name == "jnpt_apps" {
+					add("%s: Läufer am Apps-Netz", name)
+				}
+			}
 		}
 	}
 	v = append(v, checkMediator(c.Services[mediator], c.Networks)...)
 	v = append(v, checkSandbox(c.Services[sandbox])...)
 	v = append(v, checkFetcher(c.Services[fetcher], c.Networks)...)
 	v = append(v, checkInit(c.Services[initializer])...)
+	v = append(v, checkApphost(c.Services[apphost], c.Networks)...)
+	return v
+}
+
+func checkApphost(s service, nets map[string]network) []string {
+	var v []string
+	add := func(s string) { v = append(v, "apphost: "+s) }
+	if !slices.Equal(s.Networks, []string{"jnpt_apps"}) || s.NetworkMode != "" || nets["jnpt_apps"].Name != "jnpt_apps" || !nets["jnpt_apps"].External {
+		add("Netze müssen genau {jnpt_apps} sein")
+	}
+	if !slices.Equal(s.Command, []string{"apphost"}) || !slices.Equal(s.Profiles, []string{"apps"}) {
+		add("Unterbefehl/Profil")
+	}
+	if s.User != "65532:65532" {
+		add("UID")
+	}
+	if s.Environment["GODEBUG"] != "multipathtcp=0" {
+		add("MPTCP muss abgeschaltet sein")
+	}
+	if !slices.Equal([]string(s.Volumes), []string{"/run/jnpt/plugins/apphost:/run/secrets/jnpt:ro"}) || len(s.Tmpfs) != 0 {
+		add("einziger Mount muss der Schlüsselordner read-only sein")
+	}
 	return v
 }
 
@@ -310,6 +341,9 @@ func checkCommon(name string, s service) []string {
 		add("Image nicht aus JNPT_SCRIPT_RUNNER_IMAGE")
 	}
 	for _, m := range s.Volumes {
+		if name != apphost && exposesKey(m, "/run/jnpt/plugins/apphost") {
+			add("Apphost-Schlüsselordner eingehängt")
+		}
 		if strings.Contains(m, "docker.sock") {
 			add("docker.sock eingehängt")
 		}

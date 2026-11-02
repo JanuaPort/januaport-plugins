@@ -36,6 +36,14 @@ jobs:
         run: go vet ./... && go vet -tags docker ./probe/
       - name: go test
         run: go test -count=1 ./...
+      - name: govulncheck auf dem ausgelieferten Binary
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          docker build -t k4-script-runner-vulncheck .
+          docker create --name k4-script-runner-vulncheck --network none k4-script-runner-vulncheck apphost --help
+          trap 'docker rm -f k4-script-runner-vulncheck' EXIT
+          docker cp k4-script-runner-vulncheck:/usr/local/bin/script-runner "$RUNNER_TEMP/script-runner"
+          govulncheck -mode binary "$RUNNER_TEMP/script-runner"
       - name: Seccomp-Profil = Herleitung
         run: python3 seccomp/derive.py --check
 
