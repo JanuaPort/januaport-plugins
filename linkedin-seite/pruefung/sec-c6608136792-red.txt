@@ -1,0 +1,316 @@
+test_action_daily_cap_is_200_with_nonexecution_for_every_write (test_sec_outcome.Outcome.test_action_daily_cap_is_200_with_nonexecution_for_every_write) ... FAIL
+test_bridge_failure_never_becomes_a_200_nonexecution_result (test_sec_outcome.Outcome.test_bridge_failure_never_becomes_a_200_nonexecution_result) ... FAIL
+test_cap_after_upload_initialization_remains_unclear (test_sec_outcome.Outcome.test_cap_after_upload_initialization_remains_unclear) ... ok
+test_closed_pool_is_definite_without_starting_a_job (test_sec_outcome.Outcome.test_closed_pool_is_definite_without_starting_a_job) ... FAIL
+test_disabled_write_service_is_200_only_after_header_check (test_sec_outcome.Outcome.test_disabled_write_service_is_200_only_after_header_check) ... FAIL
+test_entry_validation_and_media_format_and_size_are_definite (test_sec_outcome.Outcome.test_entry_validation_and_media_format_and_size_are_definite) ... FAIL
+test_expired_token_is_definite_before_any_linkedin_request (test_sec_outcome.Outcome.test_expired_token_is_definite_before_any_linkedin_request) ... FAIL
+test_gateway_rejection_before_sending_is_definite (test_sec_outcome.Outcome.test_gateway_rejection_before_sending_is_definite) ... FAIL
+test_http_daily_cap_before_first_attempt_is_definite_for_every_write (test_sec_outcome.Outcome.test_http_daily_cap_before_first_attempt_is_definite_for_every_write) ... FAIL
+test_invalid_header_and_hash_are_409_without_either_outcome_field (test_sec_outcome.Outcome.test_invalid_header_and_hash_are_409_without_either_outcome_field) ... FAIL
+test_preview_error_keeps_error_status_and_has_no_outcome (test_sec_outcome.Outcome.test_preview_error_keeps_error_status_and_has_no_outcome) ... ok
+test_refresh_rejection_is_definite_without_a_business_write (test_sec_outcome.Outcome.test_refresh_rejection_is_definite_without_a_business_write) ... FAIL
+test_rejected_first_business_request_still_has_no_outcome_flags (test_sec_outcome.Outcome.test_rejected_first_business_request_still_has_no_outcome_flags) ... ok
+test_request_validation_with_valid_header_is_definite_for_every_write (test_sec_outcome.Outcome.test_request_validation_with_valid_header_is_definite_for_every_write) ... FAIL
+test_frozen_sha256_and_optional_local_core_bytes (test_fixture_bytes.FixtureBytes.test_frozen_sha256_and_optional_local_core_bytes) ... 
+  test_frozen_sha256_and_optional_local_core_bytes (test_fixture_bytes.FixtureBytes.test_frozen_sha256_and_optional_local_core_bytes) (file='linkedin_vorschau_beispiel.json') ... FAIL
+test_json_fixtures_use_lf (test_fixture_bytes.FixtureBytes.test_json_fixtures_use_lf) ... 
+  test_json_fixtures_use_lf (test_fixture_bytes.FixtureBytes.test_json_fixtures_use_lf) (file='linkedin_vorschau_beispiel.json') ... FAIL
+
+======================================================================
+FAIL: test_action_daily_cap_is_200_with_nonexecution_for_every_write (test_sec_outcome.Outcome.test_action_daily_cap_is_200_with_nonexecution_for_every_write)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\tests\test_sec_outcome.py", line 31, in test_action_daily_cap_is_200_with_nonexecution_for_every_write
+    self.definite(*await self.write_call(route, rid), 'schreib_tageslimit')
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\tests\test_sec_outcome.py", line 16, in definite
+    self.assertEqual((status, body), (200, {'error': code, 'nicht_ausgefuehrt': True}))
+AssertionError: Tuples differ: (429, {'error': 'schreib_tageslimit', 'nicht_ausgefuehrt': True}) != (200, {'error': 'schreib_tageslimit', 'nicht_ausgefuehrt': True})
+
+First differing element 0:
+429
+200
+
+- (429, {'error': 'schreib_tageslimit', 'nicht_ausgefuehrt': True})
+?  - ^
+
++ (200, {'error': 'schreib_tageslimit', 'nicht_ausgefuehrt': True})
+?   ^^
+
+
+======================================================================
+FAIL: test_bridge_failure_never_becomes_a_200_nonexecution_result (test_sec_outcome.Outcome.test_bridge_failure_never_becomes_a_200_nonexecution_result)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\tests\test_sec_outcome.py", line 113, in test_bridge_failure_never_becomes_a_200_nonexecution_result
+    self.assertNotIn('nicht_ausgefuehrt', body)
+AssertionError: 'nicht_ausgefuehrt' unexpectedly found in {'error': 'bridge_unauthorized', 'nicht_ausgefuehrt': True}
+
+======================================================================
+FAIL: test_closed_pool_is_definite_without_starting_a_job (test_sec_outcome.Outcome.test_closed_pool_is_definite_without_starting_a_job)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\tests\test_sec_outcome.py", line 59, in test_closed_pool_is_definite_without_starting_a_job
+    self.definite(*await self.write_call('create_post', rid), 'service_stopping')
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\tests\test_sec_outcome.py", line 16, in definite
+    self.assertEqual((status, body), (200, {'error': code, 'nicht_ausgefuehrt': True}))
+AssertionError: Tuples differ: (503, {'error': 'service_stopping', 'nicht_ausgefuehrt': True}) != (200, {'error': 'service_stopping', 'nicht_ausgefuehrt': True})
+
+First differing element 0:
+503
+200
+
+- (503, {'error': 'service_stopping', 'nicht_ausgefuehrt': True})
+?  ^ ^
+
++ (200, {'error': 'service_stopping', 'nicht_ausgefuehrt': True})
+?  ^ ^
+
+
+======================================================================
+FAIL: test_disabled_write_service_is_200_only_after_header_check (test_sec_outcome.Outcome.test_disabled_write_service_is_200_only_after_header_check)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\tests\test_sec_outcome.py", line 48, in test_disabled_write_service_is_200_only_after_header_check
+    self.definite(reply.status, await reply.json(), 'schreiben_nicht_eingerichtet')
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\tests\test_sec_outcome.py", line 16, in definite
+    self.assertEqual((status, body), (200, {'error': code, 'nicht_ausgefuehrt': True}))
+AssertionError: Tuples differ: (503, {'error': 'schreiben_nicht_eingerichtet', 'nicht_ausgefuehrt': True}) != (200, {'error': 'schreiben_nicht_eingerichtet', 'nicht_ausgefuehrt': True})
+
+First differing element 0:
+503
+200
+
+- (503, {'error': 'schreiben_nicht_eingerichtet', 'nicht_ausgefuehrt': True})
+?  ^ ^
+
++ (200, {'error': 'schreiben_nicht_eingerichtet', 'nicht_ausgefuehrt': True})
+?  ^ ^
+
+
+======================================================================
+FAIL: test_entry_validation_and_media_format_and_size_are_definite (test_sec_outcome.Outcome.test_entry_validation_and_media_format_and_size_are_definite)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\tests\test_sec_outcome.py", line 84, in test_entry_validation_and_media_format_and_size_are_definite
+    self.definite(*await self.write_call('create_post', rid, headers={**AUTH, **HEADER}), code)
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\tests\test_sec_outcome.py", line 16, in definite
+    self.assertEqual((status, body), (200, {'error': code, 'nicht_ausgefuehrt': True}))
+AssertionError: Tuples differ: (422, {'error': 'pseudonym_im_feld', 'nicht_ausgefuehrt': True}) != (200, {'error': 'pseudonym_im_feld', 'nicht_ausgefuehrt': True})
+
+First differing element 0:
+422
+200
+
+- (422, {'error': 'pseudonym_im_feld', 'nicht_ausgefuehrt': True})
+?  - ^
+
++ (200, {'error': 'pseudonym_im_feld', 'nicht_ausgefuehrt': True})
+?   ^^
+
+
+======================================================================
+FAIL: test_expired_token_is_definite_before_any_linkedin_request (test_sec_outcome.Outcome.test_expired_token_is_definite_before_any_linkedin_request)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\tests\test_sec_outcome.py", line 65, in test_expired_token_is_definite_before_any_linkedin_request
+    self.definite(*await self.write_call('create_post', rid), 'token_abgelaufen')
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\tests\test_sec_outcome.py", line 16, in definite
+    self.assertEqual((status, body), (200, {'error': code, 'nicht_ausgefuehrt': True}))
+AssertionError: Tuples differ: (503, {'error': 'token_abgelaufen', 'nicht_ausgefuehrt': True}) != (200, {'error': 'token_abgelaufen', 'nicht_ausgefuehrt': True})
+
+First differing element 0:
+503
+200
+
+- (503, {'error': 'token_abgelaufen', 'nicht_ausgefuehrt': True})
+?  ^ ^
+
++ (200, {'error': 'token_abgelaufen', 'nicht_ausgefuehrt': True})
+?  ^ ^
+
+
+======================================================================
+FAIL: test_gateway_rejection_before_sending_is_definite (test_sec_outcome.Outcome.test_gateway_rejection_before_sending_is_definite)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\tests\test_sec_outcome.py", line 90, in test_gateway_rejection_before_sending_is_definite
+    self.definite(*await self.write_call('create_post', rid), 'gateway_zugang_verweigert')
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\tests\test_sec_outcome.py", line 16, in definite
+    self.assertEqual((status, body), (200, {'error': code, 'nicht_ausgefuehrt': True}))
+AssertionError: Tuples differ: (502, {'error': 'gateway_zugang_verweigert', 'nicht_ausgefuehrt': True}) != (200, {'error': 'gateway_zugang_verweigert', 'nicht_ausgefuehrt': True})
+
+First differing element 0:
+502
+200
+
+- (502, {'error': 'gateway_zugang_verweigert', 'nicht_ausgefuehrt': True})
+?  ^ ^
+
++ (200, {'error': 'gateway_zugang_verweigert', 'nicht_ausgefuehrt': True})
+?  ^ ^
+
+
+======================================================================
+FAIL: test_http_daily_cap_before_first_attempt_is_definite_for_every_write (test_sec_outcome.Outcome.test_http_daily_cap_before_first_attempt_is_definite_for_every_write)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\tests\test_sec_outcome.py", line 38, in test_http_daily_cap_before_first_attempt_is_definite_for_every_write
+    self.definite(*await self.write_call(route, rid), 'schreib_http_tageslimit')
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\tests\test_sec_outcome.py", line 16, in definite
+    self.assertEqual((status, body), (200, {'error': code, 'nicht_ausgefuehrt': True}))
+AssertionError: Tuples differ: (429, {'error': 'schreib_http_tageslimit'}) != (200, {'error': 'schreib_http_tageslimit', 'nicht_ausgefuehrt': True})
+
+First differing element 0:
+429
+200
+
+- (429, {'error': 'schreib_http_tageslimit'})
++ (200, {'error': 'schreib_http_tageslimit', 'nicht_ausgefuehrt': True})
+
+======================================================================
+FAIL: test_invalid_header_and_hash_are_409_without_either_outcome_field (test_sec_outcome.Outcome.test_invalid_header_and_hash_are_409_without_either_outcome_field)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\tests\test_sec_outcome.py", line 105, in test_invalid_header_and_hash_are_409_without_either_outcome_field
+    self.assertEqual((status, body), (409, {'error': 'nicht_freigegeben'}))
+AssertionError: Tuples differ: (409, {'error': 'nicht_freigegeben', 'nicht_ausgefuehrt': True}) != (409, {'error': 'nicht_freigegeben'})
+
+First differing element 1:
+{'error': 'nicht_freigegeben', 'nicht_ausgefuehrt': True}
+{'error': 'nicht_freigegeben'}
+
+- (409, {'error': 'nicht_freigegeben', 'nicht_ausgefuehrt': True})
++ (409, {'error': 'nicht_freigegeben'})
+
+======================================================================
+FAIL: test_refresh_rejection_is_definite_without_a_business_write (test_sec_outcome.Outcome.test_refresh_rejection_is_definite_without_a_business_write)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\tests\test_sec_outcome.py", line 98, in test_refresh_rejection_is_definite_without_a_business_write
+    self.definite(*await self.write_call('create_post', rid), 'unexpected_source_shape')
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\tests\test_sec_outcome.py", line 16, in definite
+    self.assertEqual((status, body), (200, {'error': code, 'nicht_ausgefuehrt': True}))
+AssertionError: Tuples differ: (502, {'error': 'unexpected_source_shape', 'nicht_ausgefuehrt': True}) != (200, {'error': 'unexpected_source_shape', 'nicht_ausgefuehrt': True})
+
+First differing element 0:
+502
+200
+
+- (502, {'error': 'unexpected_source_shape', 'nicht_ausgefuehrt': True})
+?  ^ ^
+
++ (200, {'error': 'unexpected_source_shape', 'nicht_ausgefuehrt': True})
+?  ^ ^
+
+
+======================================================================
+FAIL: test_request_validation_with_valid_header_is_definite_for_every_write (test_sec_outcome.Outcome.test_request_validation_with_valid_header_is_definite_for_every_write)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\tests\test_sec_outcome.py", line 71, in test_request_validation_with_valid_header_is_definite_for_every_write
+    self.definite(reply.status, await reply.json(), 'invalid_input')
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\tests\test_sec_outcome.py", line 16, in definite
+    self.assertEqual((status, body), (200, {'error': code, 'nicht_ausgefuehrt': True}))
+AssertionError: Tuples differ: (400, {'error': 'invalid_input', 'nicht_ausgefuehrt': True}) != (200, {'error': 'invalid_input', 'nicht_ausgefuehrt': True})
+
+First differing element 0:
+400
+200
+
+- (400, {'error': 'invalid_input', 'nicht_ausgefuehrt': True})
+?  ^
+
++ (200, {'error': 'invalid_input', 'nicht_ausgefuehrt': True})
+?  ^
+
+
+======================================================================
+FAIL: test_frozen_sha256_and_optional_local_core_bytes (test_fixture_bytes.FixtureBytes.test_frozen_sha256_and_optional_local_core_bytes) (file='linkedin_vorschau_beispiel.json')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\tests\test_fixture_bytes.py", line 29, in test_frozen_sha256_and_optional_local_core_bytes
+    self.assertEqual(hashlib.sha256(local).hexdigest(), expected)
+AssertionError: '6ea59e7aa1d07676d7e676a9b87193f48ad39b0bbdde8d63641f134798ed7454' != 'c238d1617f0582ed7eaf46901368e04de92c47194f61c2bf9cc45f4bdcb54050'
+- 6ea59e7aa1d07676d7e676a9b87193f48ad39b0bbdde8d63641f134798ed7454
++ c238d1617f0582ed7eaf46901368e04de92c47194f61c2bf9cc45f4bdcb54050
+
+
+======================================================================
+FAIL: test_json_fixtures_use_lf (test_fixture_bytes.FixtureBytes.test_json_fixtures_use_lf) (file='linkedin_vorschau_beispiel.json')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\tests\test_fixture_bytes.py", line 21, in test_json_fixtures_use_lf
+    self.assertNotIn(b'\r', data)
+AssertionError: b'\r' unexpectedly found in b'{\r\n  "eintrag_id": "0123456789abcdef",\r\n  "aktion": "posten",\r\n  "format": "dokument",\r\n  "ziel_urn": "urn:li:organization:123",\r\n  "text": "Beispielbeitrag mit Dokument.",\r\n  "medien": [\r\n    {\r\n      "name": "Bericht.pdf",\r\n      "sha256": "a97f6897c09069432f1bea89499f7743d5cf5c754f7c67770bac61b05e9eced8",\r\n      "datei": "Bericht.pdf",\r\n      "art": "dokument",\r\n      "bytes": 22\r\n    }\r\n  ],\r\n  "umfrage": null,\r\n  "post_text": "Beispielbeitrag mit Dokument.",\r\n  "post_urn": null,\r\n  "kommentar_text": null,\r\n  "dokument_titel": "Bericht.pdf",\r\n  "hash": "freigabe:v2:sha256:aa06444db1fc47914b129eecb99918427908cc807efd4f2b0e937a4bc5621187"\r\n}\r\n'
+
+----------------------------------------------------------------------
+Ran 16 tests in 28.358s
+
+FAILED (failures=13)

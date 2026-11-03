@@ -97,8 +97,9 @@ class Boundary(Service):
                 self.assertEqual(reply.status, status)
         for body in (b'', b'{}', json.dumps({'eintrag_id': rid, 'post_text': 'anderer Text'}).encode(),
                      json.dumps({'eintrag_id': rid, 'datei': 'x.png'}).encode(), b'x' * 2048):
-            reply = await self.client.post('/v1/linkedin-post/create_post', data=body, headers=AUTH)
-            self.assertIn(reply.status, (400,))
+            reply = await self.client.post('/v1/linkedin-post/create_post', data=body, headers={**AUTH, 'X-Jnpt-Freigabe': 'hash=freigabe:v2:sha256:' + 'a'*64})
+            self.assertEqual(reply.status, 200)
+            self.assertIs((await reply.json())['nicht_ausgefuehrt'], True)
         reply = await self.client.get('/v1/linkedin-post/vorschau', params={'eintrag_id': rid, 'aktion': 'posten'},
                                       headers=AUTH, data=b'{}')
         self.assertEqual(reply.status, 400)
@@ -122,7 +123,7 @@ class Boundary(Service):
             for method, path in (('POST', 'create_post'), ('GET', 'vorschau?eintrag_id=00000000000000ab&aktion=posten')):
                 reply = await client.request(method, '/v1/linkedin-post/' + path, headers={**AUTH, 'X-Jnpt-Freigabe': 'hash=freigabe:v2:sha256:' + 'a'*64},
                                              data=json.dumps({'eintrag_id': '00000000000000ab'}) if method == 'POST' else None)
-                self.assertEqual((reply.status, await reply.json()), (503, {'error': 'schreiben_nicht_eingerichtet', **({'nicht_ausgefuehrt': True} if method == 'POST' else {})}))
+                self.assertEqual((reply.status, await reply.json()), (200 if method == 'POST' else 503, {'error': 'schreiben_nicht_eingerichtet', **({'nicht_ausgefuehrt': True} if method == 'POST' else {})}))
             reply = await client.post('/v1/linkedin-post/create_post', data=b'{}')
             self.assertEqual(reply.status, 401)
         finally:
@@ -178,7 +179,7 @@ class Flow(Service):
     async def test_not_approved_is_409_and_counts_nothing(self):
         rid = self.plan(post_text='x')
         status, body = await self.write_call('create_post', rid)
-        self.assertEqual((status, body), (409, {'error': 'nicht_freigegeben', 'nicht_ausgefuehrt': True}))
+        self.assertEqual((status, body), (409, {'error': 'nicht_freigegeben'}))
         self.assertEqual((self.li.calls, sum(self.writes.actions.values())), ([], 0))
 
     async def test_five_write_actions_per_utc_day_over_all_actions(self):
@@ -201,7 +202,7 @@ class Flow(Service):
         await self.approve(rid, 'bearbeiten')
         before = len(self.li.calls)
         status, body = await self.write_call('edit_post', rid)
-        self.assertEqual((status, body), (429, {'error': 'schreib_tageslimit', 'nicht_ausgefuehrt': True}))
+        self.assertEqual((status, body), (200, {'error': 'schreib_tageslimit', 'nicht_ausgefuehrt': True}))
         self.assertEqual(len(self.li.calls), before)
         self.day[0] = '2026-11-03'
         status, body = await self.write_call('edit_post', rid)
@@ -245,7 +246,7 @@ class Background(Service):
             await asyncio.sleep(0.02)
         self.assertFalse(task.done())
         status, body = await self.write_call('create_post', rid)
-        self.assertEqual((status, body), (429, {'error': 'schreiben_belegt', 'nicht_ausgefuehrt': True}))
+        self.assertEqual((status, body), (200, {'error': 'schreiben_belegt', 'nicht_ausgefuehrt': True}))
         status, body = await task
         self.assertEqual((status, body['ausgefuehrt']), (200, True))
         self.assertEqual(len(self.li.api('POST', '/rest/posts')), 1)
