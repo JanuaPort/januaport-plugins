@@ -214,12 +214,20 @@ func TestWindowsPipeClientDarfKeineInstanzAnlegen(t *testing.T) {
 	// Both positive-control endpoints must originate in a standard PROCESS.
 	// Thread impersonation left the first server endpoint in the elevated runner.
 	t.Run("standard_process", func(t *testing.T) {
+		requireNativeTokenProbes(t)
 		out, err := runPipeRightsHelper(t, token, false)
 		t.Log(string(out))
 		if err != nil || !strings.Contains(string(out), "PIPE_RIGHTS_HELPER_OK") {
 			t.Fatalf("standard process control: %v", err)
 		}
 	})
+}
+
+func requireNativeTokenProbes(t *testing.T) {
+	t.Helper()
+	if os.Getenv("JNPT_NATIVE_TOKEN_PROBES") != "1" {
+		t.Skip("opt-in: Hilfsprozess mit gefiltertem Token braucht interaktive Sitzung (JNPT_NATIVE_TOKEN_PROBES=1)")
+	}
 }
 
 func runPipeRightsHelper(t *testing.T, token windows.Token, restricting bool) ([]byte, error) {
@@ -242,6 +250,7 @@ func runPipeRightsHelper(t *testing.T, token windows.Token, restricting bool) ([
 }
 
 func TestWindowsPipeRestrictingSIDsVerweigert(t *testing.T) {
+	requireNativeTokenProbes(t)
 	token := standardPipeToken(t)
 	out, err := runPipeRightsHelper(t, token, true)
 	if err == nil || !strings.Contains(string(out), "1 restricting SIDs would add a second access check") || strings.Contains(string(out), "PIPE_RIGHTS_HELPER_OK") {

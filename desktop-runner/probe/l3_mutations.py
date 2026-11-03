@@ -84,6 +84,8 @@ NATIVE = [
     ("native-create-instance-bit", "pipe", "TestWindowsPipeClientDarfKeineInstanzAnlegen", [p("security.go", '0x12008b', '0x12008f', 2)]),
     ("native-create-instance-child", "pipe", "TestWindowsPipeClientDarfKeineInstanzAnlegen/standard_process", [p("security.go", '0x12008b', '0x12008f', 2)]),
     ("native-helper-token", "pipe", "TestWindowsPipeClientDarfKeineInstanzAnlegen/standard_process", [p("transport_windows_test.go", 'Token: syscall.Token(token), HideWindow: true', 'Token: syscall.Token(0), HideWindow: true')]),
+    ("native-helper-start", "pipe", "TestWindowsPipeClientDarfKeineInstanzAnlegen/standard_process", [p("transport_windows_test.go", 'cmd := exec.CommandContext(ctx, exe, "-test.run=^TestWindowsPipeRightsHelper$"', 'cmd := exec.CommandContext(ctx, exe+".missing", "-test.run=^TestWindowsPipeRightsHelper$"')]),
+    ("native-restricting-helper-start", "pipe", "TestWindowsPipeRestrictingSIDsVerweigert", [p("transport_windows_test.go", 'cmd := exec.CommandContext(ctx, exe, "-test.run=^TestWindowsPipeRightsHelper$"', 'cmd := exec.CommandContext(ctx, exe+".missing", "-test.run=^TestWindowsPipeRightsHelper$"')]),
     ("native-restricting-token", "pipe", "TestWindowsPipeRestrictingSIDsVerweigert", [p("transport_windows_test.go", 'if count := pipeRestrictingSIDCount(t, token); count != 0 {', 'if count := pipeRestrictingSIDCount(t, token); count != 0 && false {')]),
     ("native-client-path", "pipe", "TestWindowsServerPrueftClientbildUndReconnect", [p("transport_windows.go", '!sameFolder(own, p.Image, "jnpt-bedienfeld.exe")', '!sameFolder(own, p.Image, "jnpt-bedienfeld.exe") && false')]),
     ("native-server-check", "pipe", "TestWindowsClientPrueftEchtenServer", [p("transport_windows.go", 'return verifyServer(own, server)', '_ = own; _ = server; return nil'), p("transport_windows.go", 'processPeer(pid, true)', 'processPeer(pid, false)'), p("transport_windows.go", 'processPeer(windows.GetCurrentProcessId(), true)', 'processPeer(windows.GetCurrentProcessId(), false)')]),
@@ -99,6 +101,9 @@ def command(args, timeout=120, cwd=ROOT):
 
 def run(case, native=False, execute_native=False):
     label, package, test, changes = case
+    if execute_native and label in {"native-create-instance-child", "native-helper-token", "native-helper-start", "native-restricting-helper-start", "native-restricting-token"} and os.environ.get("JNPT_NATIVE_TOKEN_PROBES") != "1":
+        print(f"{label}: SKIPPED (opt-in: Hilfsprozess mit gefiltertem Token braucht interaktive Sitzung (JNPT_NATIVE_TOKEN_PROBES=1))", flush=True)
+        return
     # Go splits -run at slashes before compiling each subtest expression.
     pattern = "/".join("^(" + part + ")$" for part in test.split("/"))
     originals = {}

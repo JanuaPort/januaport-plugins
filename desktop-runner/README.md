@@ -118,7 +118,18 @@ wird in einer eigenen Gegenprobe abgewiesen. Schmale und breite DACL werden
 im selben Kind geprüft; die Negativprobe gegen die Produktions-DACL im
 Elternprozess bleibt zusätzlich erhalten. Beide Instanzen behalten ausdrückliche
 Deskriptoren; Besitzer, Label und Kontroll-ACE werden am Handle nachgeprüft.
-Keine Ausnahme oder Rückfall auf einen erhöhten Helfer bei erhöhten CI-Runnern.
+Kein Rückfall auf einen erhöhten Helfer. Die Hilfsprozess-Proben sind Opt-in
+über `JNPT_NATIVE_TOKEN_PROBES=1`: `workflow_dispatch` mit gesetzter Variable
+in einer interaktiven Sitzung oder GATE auf dem Testgerät. Betroffen sind nur
+`TestWindowsPipeClientDarfKeineInstanzAnlegen/standard_process` und
+`TestWindowsPipeRestrictingSIDsVerweigert`. Ohne Variable melden sie:
+„opt-in: Hilfsprozess mit gefiltertem Token braucht interaktive Sitzung (JNPT_NATIVE_TOKEN_PROBES=1)“.
+Mit gesetzter Variable bleibt ein Startfehler ein Fehler, niemals ein Skip.
+Gehostete Dienst-Sitzungen können den Helfer mit `STATUS_DLL_INIT_FAILED`
+abweisen; Window-Station- und Desktop-ACLs werden dafür nicht verändert.
+Die Negativprobe `production_server` gegen die Produktions-DACL läuft weiterhin
+ohne Hilfsprozess und ohne Opt-in. Low-IL READ/WRITE, Fremdkonto, Remote,
+Squatting und die strukturellen DACL-Tests unter Linux bleiben unabhängig davon.
 Ausdrückliches Label `S:(ML;;NWNR;;;ME)` sperrt Low-IL beim Lesen und Schreiben;
 keine AppContainer-/Capability-ACE. `PIPE_REJECT_REMOTE_CLIENTS` sperrt Remote-
 Clients. **B2:** `FILE_FLAG_FIRST_PIPE_INSTANCE`, erste Instanz bleibt auch beim
@@ -215,6 +226,11 @@ H1: `native-create-instance` und `native-create-instance-bit` erweitern die
 Produktions-ACL. `native-create-instance-child` prüft die Mutation isoliert im
 Hilfsprozess; `native-helper-token` entfernt dessen gefiltertes Prozesstoken,
 `native-restricting-token` entfernt die Restricting-SID-Prüfung.
+`native-helper-start` und `native-restricting-helper-start` erzwingen einen
+Startfehler; beide Opt-in-Proben müssen dann rot werden.
+Diese Hilfsprozess-Mutationen benötigen bei `--native` ebenfalls
+`JNPT_NATIVE_TOKEN_PROBES=1`; ohne Opt-in werden sie ausdrücklich als übersprungen
+gemeldet, nicht als erkannte Mutationen. Cross-Kompilierung bleibt ohne Opt-in möglich.
 H3: `native-h3` und `native-h3-python` vererben das echte
 Serverhandle; beide Kindtests müssen jeweils einzeln rot werden.
 Fehlende Kontoanlage-Rechte, ein fehlender lokaler SMB-Transport oder eine fehlende Python-ZIP

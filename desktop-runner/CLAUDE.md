@@ -190,7 +190,16 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     wird vor jeder Pipe-Anlage geprüft. Quelle, gefiltertes Token und Kind haben
     null Restricting-SIDs, damit keine zweite Zugriffsprüfung die Abweisung
     verursacht. Im Kind laufen schmale und breite DACL; die Negativprobe gegen
-    die Produktions-DACL des Elternprozesses bleibt zusätzlich erhalten.
+    die Produktions-DACL des Elternprozesses bleibt ohne Opt-in verpflichtend.
+    Nur die Hilfsprozess-Proben (`standard_process` und
+    `TestWindowsPipeRestrictingSIDsVerweigert`) sind Opt-in über
+    `JNPT_NATIVE_TOKEN_PROBES=1`: `workflow_dispatch` mit gesetzter Variable
+    in einer interaktiven Sitzung oder GATE auf dem Testgerät. Ohne Variable
+    fester Skip-Text; mit Variable ist jeder Startfehler ein Testfehler.
+    Die Dienst-Sitzung gehosteter Runner kann den gefilterten Helfer mit
+    `STATUS_DLL_INIT_FAILED` abweisen. Keine Änderung von Window-Station-/Desktop-ACLs.
+    Low-IL READ/WRITE, Fremdkonto, Remote, Squatting und Linux-DACL-Strukturtests
+    bleiben vom Opt-in unabhängig.
     `CreateFile(FILE_APPEND_DATA)` allein belegt keine Instanzanlage. L3-1: ausdrücklich
     `S:(ML;;NWNR;;;ME)`; Low-IL READ und WRITE werden abgewiesen.
     `PIPE_REJECT_REMOTE_CLIENTS` und `FILE_FLAG_FIRST_PIPE_INSTANCE`; die erste

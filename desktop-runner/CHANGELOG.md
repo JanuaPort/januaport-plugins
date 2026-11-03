@@ -18,6 +18,11 @@
   SIDs müssen in Quelle, gefiltertem Token und Kind fehlen. Eigener Negativtest
   mit echter Restricting-SID und Mutationen für Kind-Token und Kind-DACL.
   Die Negativprobe gegen die Produktions-DACL des Elternprozesses bleibt erhalten.
+- Die beiden H1-Hilfsprozess-Proben und ihre nativen Mutationen sind Opt-in
+  über `JNPT_NATIVE_TOKEN_PROBES=1` in einer interaktiven Sitzung. Ohne Opt-in
+  fester Skip-Hinweis, mit Opt-in bleiben Startfehler rot. Die Negativprobe
+  gegen die Produktions-DACL und die übrigen Pipe-Sicherheitsprüfungen bleiben
+  unabhängig davon; keine Änderung von Window-Station- oder Desktop-ACLs.
 - Lokale Windows-Pipe zwischen Läufer und künftigem Bedienfeld (#1240 L3):
   geschlossenes JSON-Schema mit 4-KiB-Rahmen und eigenem Golden, genau ein
   benannter Listener. B1/B2, ausdrückliches Medium-Label mit No-Read-Up und
