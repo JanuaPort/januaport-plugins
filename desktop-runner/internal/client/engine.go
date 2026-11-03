@@ -362,7 +362,14 @@ func (e *Engine) executeReserved(ctx context.Context, r Result, env Environment,
 		// Completion capture shares the five-attempt budget. Its own bounded
 		// context permits an end capture after the script's wall deadline.
 		captureCtx, captureCancel := context.WithTimeout(ctx, 10*time.Second)
-		_ = helpers.screenshot(captureCtx, true)
+		// F1: local Halt cancels runCtx, not ctx. Check L2 state at the
+		// capture boundary under its mutex; GDI and HTTP must run unlocked.
+		e.mu.Lock()
+		captureBlocked := e.haltedLocked(time.Now())
+		e.mu.Unlock()
+		if !captureBlocked {
+			_ = helpers.screenshot(captureCtx, true)
+		}
 		captureCancel()
 		e.mu.Lock()
 		e.active = nil

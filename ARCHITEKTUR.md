@@ -6,6 +6,8 @@ jeder Aufnahme signiertes `test_device:true`, Geräte-Testpin und Jobbindung.
 Letztes Ergebnis bis 64 KiB nur für Testaufträge; `None` lässt `result` weg.
 GDI: primärer Bildschirm, PNG bis 4 MiB, fünf Versuche einschließlich
 automatischer Endaufnahme; gesperrte Sitzung kann den Sperrbildschirm zeigen.
+SEC-R4 F1: keine Endaufnahme nach lokalem Anhalten; Haltprüfung direkt davor
+unter der Engine-Sperre, Aufnahme außerhalb. Wandzeitablauf erlaubt sie weiterhin.
 H3-Handleliste, Kind-Umgebung und Kommandozeile bleiben unverändert.
 
 | Modul | Verantwortung |

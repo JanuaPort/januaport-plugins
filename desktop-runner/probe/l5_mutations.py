@@ -11,6 +11,9 @@ def edit(path, old, new):
     return path, old, new
 
 CASES = [
+    ("completion-halt", "client", "TestL5EndaufnahmeNachHaltUndWandzeit", [edit("internal/client/engine.go", "captureBlocked := e.haltedLocked(time.Now())", "captureBlocked := false")]),
+    ("completion-wall-context", "client", "TestL5EndaufnahmeNachHaltUndWandzeit", [edit("internal/client/engine.go", "context.WithTimeout(ctx, 10*time.Second)", "context.WithTimeout(runCtx, 10*time.Second)")]),
+    ("run-pin-binding", "client", "TestL5LaufpinSeparatGebunden", [edit(HELPERS, " && pin.Pin == o.Pin", "")]),
     ("test-device", "client", "TestScreenshotNurTestgeraet", [edit(HTTP, "!m.TestDevice ||", "")]),
     ("test-pin", "client", "TestScreenshotNurTestgeraet", [edit(HTTP, 'j.Pin != "test_"+c.DeviceID[:8] ||', "")]),
     ("capture-authorization", "client", "TestScreenshotNurTestgeraet", [edit(HELPERS, "!h.allowed ||", "")]),
