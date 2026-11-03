@@ -9,6 +9,7 @@ import unittest
 from linkedin_seite import redaktion as r
 from support_post import ORG, PNG, PDF, TOOL_GET, TOOL_FILE
 from test_post_server import Service, AUTH
+from test_f2_preview import effect_of
 
 GOLDEN = Path(__file__).with_name('data') / 'hash_golden.json'
 
@@ -83,7 +84,9 @@ class F4(Service):
             digest = preview['hash']
             for value in ('hash=freigabe:v2:sha256:' + 'f'*64, digest, 'hash=' + digest.upper(),
                           'hash= ' + digest, 'hash=' + digest + ',hash=' + digest,
-                          'hash=' + digest.removeprefix('freigabe:v2:sha256:')):
+                          'hash=' + digest.removeprefix('freigabe:v2:sha256:'),
+                          'hash=' + digest + ';auftrag_id=0123456789abcdef',
+                          'auftrag_id=0123456789abcdef,hash=' + digest):
                 status, body = await self.call_with(route, rid, value)
                 self.assertEqual(status, 409, (route, value, body))
                 self.flags(body, before=True)
@@ -112,7 +115,7 @@ class F4(Service):
             _, preview = await self.vorschau(rid, action)
             expected = {'aktion': action, 'medien': [], 'text': 'c' if action == 'kommentar' else '' if action == 'loeschen' else 'x',
                         'umfrage': None, 'ziel_urn': ORG if action == 'posten' else 'urn:li:share:7'}
-            self.assertEqual(preview['wirkung'], expected)
+            self.assertEqual(effect_of(preview), expected)
             self.assertEqual(preview['hash'], r.wirkung_hash(expected))
             self.gw.calls.clear()
             status, body = await self.call_with(route, rid, 'hash=' + preview['hash'])
@@ -144,7 +147,7 @@ class F4(Service):
     async def test_organization_is_bound_to_preview_and_header(self):
         rid = self.plan(post_text='x')
         _, preview = await self.vorschau(rid)
-        other = dict(preview['wirkung'], ziel_urn='urn:li:organization:999')
+        other = dict(effect_of(preview), ziel_urn='urn:li:organization:999')
         status, body = await self.call_with('create_post', rid, 'hash=' + r.wirkung_hash(other))
         self.assertEqual(status, 409)
         self.flags(body, before=True)
@@ -162,10 +165,10 @@ class F4(Service):
         self.gw.result_hook = change_after_read
         _, preview = await self.vorschau(rid)
         self.assertEqual(preview['post_text'], 'original')
-        self.assertEqual(preview['wirkung']['text'], 'original')
-        self.assertEqual(preview['wirkung']['medien'], [{'name': 'a.pdf', 'sha256': hashlib.sha256(PDF).hexdigest()}])
-        self.assertEqual(preview['dokument_titel'], preview['wirkung']['medien'][0]['name'])
-        self.assertEqual(preview['hash'], r.wirkung_hash(preview['wirkung']))
+        self.assertEqual(effect_of(preview)['text'], 'original')
+        self.assertEqual(effect_of(preview)['medien'], [{'name': 'a.pdf', 'sha256': hashlib.sha256(PDF).hexdigest()}])
+        self.assertEqual(preview['dokument_titel'], effect_of(preview)['medien'][0]['name'])
+        self.assertEqual(preview['hash'], r.wirkung_hash(effect_of(preview)))
         self.assertEqual([c[1] for c in self.gw.tool_calls()], [TOOL_GET, TOOL_FILE])
         self.assertEqual(self.li.calls, [])
 

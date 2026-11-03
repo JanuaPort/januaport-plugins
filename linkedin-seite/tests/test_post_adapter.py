@@ -319,13 +319,13 @@ class Approval(Base):
         preview = self.vorschau(rid)
         self.assertEqual(preview['post_text'], 'Hallo (x)')
         self.assertEqual(preview['format'], 'bilder')
-        self.assertEqual(preview['medien'], [{'datei': 'a.png', 'art': 'bild', 'bytes': len(PNG), 'sha256': r.sha256_hex(PNG)},
-                                             {'datei': 'b.png', 'art': 'bild', 'bytes': len(PNG) + 1,
+        self.assertEqual(preview['medien'], [{'name': 'a.png', 'datei': 'a.png', 'art': 'bild', 'bytes': len(PNG), 'sha256': r.sha256_hex(PNG)},
+                                             {'name': 'b.png', 'datei': 'b.png', 'art': 'bild', 'bytes': len(PNG) + 1,
                                               'sha256': r.sha256_hex(PNG + b'2')}])
         self.assertNotIn('freigegeben', preview)
         self.assertEqual(self.li.calls, [])
         self.approve(rid)
-        self.assertEqual(self.vorschau(rid)['wirkung']['text'], 'Hallo (x)')
+        self.assertEqual(self.vorschau(rid)['text'], 'Hallo (x)')
         self.assertEqual(self.li.calls, [])
 
 

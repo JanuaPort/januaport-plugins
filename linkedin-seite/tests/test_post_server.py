@@ -137,8 +137,13 @@ class Flow(Service):
         with self.assertLogs('linkedin_seite', level='INFO') as logs:
             status, first = await self.write_call('create_post', rid)
         self.assertEqual(status, 200, first)
+        self.assertIs(first['ausgefuehrt'], True)
+        self.assertNotIn('nicht_ausgefuehrt', first)
         self.assertEqual((first['post_urn'], first['hash']), ('urn:li:share:7000000000000000001', digest))
         status, again = await self.write_call('create_post', rid)
+        self.assertIs(again['ausgefuehrt'], True)
+        self.assertNotIn('nicht_ausgefuehrt', again)
+        self.assertEqual(again['hash'], digest)
         self.assertEqual((status, again['post_urn'], again['wiederholt']), (200, first['post_urn'], True))
         self.assertEqual(len(self.li.api('POST', '/rest/posts')), 1)
         self.assertEqual(sum(self.writes.actions.values()), 1)

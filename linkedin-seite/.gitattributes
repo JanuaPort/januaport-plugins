@@ -1,1 +1,2 @@
 tests/data/hash_golden.json -text
+tests/data/linkedin_vorschau_beispiel.json -text

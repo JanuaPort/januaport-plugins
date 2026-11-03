@@ -1,0 +1,22 @@
+{
+  "eintrag_id": "0123456789abcdef",
+  "aktion": "posten",
+  "format": "dokument",
+  "ziel_urn": "urn:li:organization:123",
+  "text": "Beispielbeitrag mit Dokument.",
+  "medien": [
+    {
+      "name": "Bericht.pdf",
+      "sha256": "a97f6897c09069432f1bea89499f7743d5cf5c754f7c67770bac61b05e9eced8",
+      "datei": "Bericht.pdf",
+      "art": "dokument",
+      "bytes": 22
+    }
+  ],
+  "umfrage": null,
+  "post_text": "Beispielbeitrag mit Dokument.",
+  "post_urn": null,
+  "kommentar_text": null,
+  "dokument_titel": "Bericht.pdf",
+  "hash": "freigabe:v2:sha256:aa06444db1fc47914b129eecb99918427908cc807efd4f2b0e937a4bc5621187"
+}
