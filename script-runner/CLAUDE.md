@@ -215,6 +215,14 @@ kommt ausschließlich aus dem vorhandenen nur lesend eingehängten
 verlangt Standard-Base64 für genau 32 Byte plus ein LF. RFC-8032-Testschlüssel,
 Kern-Golden-Testschlüssel und Punkte kleiner Ordnung werden abgewiesen.
 
+Fehlt `inbox/list.json` (auch bei fehlendem Inbox-Ordner), gilt für das Log
+„keine Speicherpins“: einmal INFO `storage_list_missing` beim ersten Fehlen,
+danach genau einmal INFO je Wechsel (`storage_list_present` bei Rückkehr).
+Unverändert fehlend erzeugt kein WARN; Freigaben werden weiterhin sofort
+fail-closed entzogen. Signatur-, Hash- und Lesefehler einschließlich defekter
+Symlinks warnen in jedem Durchlauf mit `storage_fetch_failed`. Die zusätzliche
+Lstat-Abfrage wählt ausschließlich das Log-Level, niemals eine Freigabe.
+
 Freigabe verlangt Schlüssel, frische signierte Liste und passenden Pakethash.
 Die Liste prüft Zweck `skriptlaeufer-pins.v1`, exakte Feldschreibweise und
 Pflichtfelder, Signatur, sortierte eindeutige Pins mit SHA-256-Commit und
@@ -283,6 +291,7 @@ sind keine Bind-Quellen. Die echte Compose bleibt unverändert und sauber.
 | Frist ausschließlich aus accepted | `TestExpiryDerivedOnlyFromAcceptedManifest` |
 | Inbox und Git-Dateien bleiben bytegleich; Git-Reset erhält Speicher | `TestStorageNeverWritesInboxOrGitPaths`, `TestGitInitLeavesStorageUntouched` |
 | Git kann die Speicherverlängerung nicht blockieren | `TestStorageLoopIndependentOfBlockedGitOnce` |
+| Fehlende Liste: INFO nur bei Wechsel, weiter fail-closed; sonst WARN je Takt | `TestStorageMissingListLogsOnlyTransitionsAtAdapter`, `TestStorageErrorsWarnEveryTickAtAdapter` |
 | Eltern-Mounts und Einzelschlüssel gesperrt | `TestKeyMountParentsAtComposeAdapter`, `TestKeyMountComparisonUsesComponents` |
 | Unaufgelöste relative/variable Bind-Quellen gesperrt; projektlokale sichere Quelle bleibt erlaubt | `TestUnresolvedKeyMountSourcesAtComposeAdapter`, `TestSafeProjectRelativeMountAtAuthorizedServices`, `TestShippedComposeIsClean` |
 
@@ -1191,7 +1200,9 @@ Paketdaten und Sitzungen liegen ausschließlich im RAM; ein Neustart löscht die
 Sitzungen, verhindert aber keinen Callback mit noch gültigem Code und Cookie.
 Die ETag-Abfrage erfolgt je App frühestens fünf Sekunden nach Abrufabschluss;
 404 und Fehler geben keine alte Fassung frei. Pro App läuft höchstens ein Abruf,
-wartende Anfragen teilen das Ergebnis und können unabhängig abbrechen. Während
+wartende Anfragen teilen das Ergebnis und können unabhängig abbrechen, auch der
+erste Anfrager. Der Flight verwendet `context.WithoutCancel` plus eigene feste
+30-Sekunden-Frist; Anfrageabbrüche schreiben kein Fehlerergebnis in den Cache. Während
 Netzabruf und Paketprüfung bleibt der globale Mutex frei, andere Apps werden nicht
 blockiert. Laufende Abrufe zählen zur Cache-Grenze und werden nicht verdrängt.
 Die Sitzungstabelle bleibt auf 4096 Einträge begrenzt: zuerst abgelaufene entfernen,
@@ -1207,6 +1218,7 @@ bei weiter voller Tabelle den frühesten Ablauf verdrängen, statt Anmeldungen m
 | Zustandsloser Callback, Code-Bindung und Einmaligkeit im Kern-Stub | `TestF2StatelessCallbackCoreBindingAtHTTP` |
 | 5000 anonyme Navigationen sperren keine Anmeldung; frühesten Sitzungsablauf verdrängen | `TestF2AnonymousNavigationsCannotExhaustLoginAtHTTP`, `TestF2SessionCapacityEvictsEarliestAtHTTP` |
 | Paketabrufe je App zusammenfassen, andere Apps nicht blockieren | `TestH2PackageFetchIsolationAndCoalescingAtHTTP` |
+| Erster Anfrager bricht unabhängig ab, Cache bleibt nutzbar; eigene Flight-Frist 30 s | `TestFlightFirstCallerCancellationAtHTTP`, `TestFlightOwnDeadlineAtHTTP` |
 | App ausschließlich aus dem Host | `TestInvariant5AppFromHostAtHTTP` |
 | Cookie- und CSP-Literale, begrenzte Sitzungsdauer | `TestInvariant6CookiesAndCSPAtHTTP` |
 | Origin, Headerfilter, Bodygrenze, 401 und Geheimnisfreiheit | `TestInvariant7ProxyAtHTTP`, `TestLogsNeverContainCredentialsOrQuery` |

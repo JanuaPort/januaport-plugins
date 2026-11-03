@@ -21,7 +21,9 @@ def edit(file, old, new, count=1):
 
 CASES = [
     ("default-button", "internal/panel", "TestFokusWaechter", [edit(UI, "buttonStyle      = 0x40000000 | 0x10000000", "BS_DEFPUSHBUTTON = 1\n\tbuttonStyle      = 0x40000000 | 0x10000000 | BS_DEFPUSHBUTTON")]),
-    ("foreground-api", "internal/panel", "TestFokusWaechter", [edit(UI, "var (", 'var setForeground = user.MustFindProc("SetForegroundWindow")\n\nvar (')]),
+    ("foreground-api", "internal/panel", "TestFokusWaechter", [edit(UI, "var (", 'var setForeground = user.proc("SetForegroundWindow")\n\nvar (')]),
+    ("missing-api-connects", "internal/panel", "TestBedienfeldProcAufloesung", [edit(UI, "if nativeLoadError == nil {", "if true {")]),
+    ("must-find-proc", "internal/panel", "TestBedienfeldProcAufloesung", [edit(UI, "var (", 'var unsafeProc = syscall.MustLoadDLL("user32.dll").MustFindProc("ShowWindow")\n\nvar (')]),
     ("activating-dialog", "internal/panel", "TestFokusWaechter", [edit(UI, "WS_EX_NOACTIVATE | 0x00000008", "0x00000008")]),
     ("activating-show", "internal/panel", "TestFokusWaechter", [edit(UI, "showNoActivate   = 4", "showNoActivate   = 5")]),
     ("http-import", "internal/panel", "TestPanelImportWaechter", [edit(UI, "import (", 'import (\n\t_ "net/' + 'http"')]),
@@ -68,6 +70,7 @@ CASES = [
 ]
 
 NATIVE = [
+    ("missing-proc-panics", "cmd/bedienfeld", "TestWindowsBedienfeldFehlenderProc", [edit("cmd/bedienfeld/native_windows.go", "if p.err != nil {\n\t\treturn 0, 0, p.err", "if false {\n\t\treturn 0, 0, p.err")]),
     ("inherited-handle", "cmd/bedienfeld", "TestWindowsBedienfeldProzesssonde", [edit("cmd/bedienfeld/process_windows_test.go", "nil, nil, inherit,", "nil, nil, true,")]),
     ("process-argument", "cmd/bedienfeld", "TestWindowsBedienfeldProzesssonde", [edit("cmd/bedienfeld/process_windows_test.go", "windows.StringToUTF16(`\"` + exe + `\"`)", "windows.StringToUTF16(`\"` + exe + `\" jnpt_probe`)" )]),
     ("process-environment", "cmd/bedienfeld", "TestWindowsBedienfeldProzesssonde", [edit("cmd/bedienfeld/process_windows_test.go", "env = append(env, 0)", 'env = append(env, windows.StringToUTF16("jnpt_probe=synthetic")...); env = append(env, 0)')]),

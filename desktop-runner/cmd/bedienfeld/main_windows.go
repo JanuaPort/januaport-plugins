@@ -16,15 +16,6 @@ import (
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/pipe"
 )
 
-func systemDLL(name string) *syscall.DLL {
-	load := syscall.NewLazyDLL("kernel32.dll").NewProc("LoadLibraryExW")
-	h, _, err := load.Call(uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr(name))), 0, 0x00000800)
-	if h == 0 {
-		panic(err)
-	}
-	return &syscall.DLL{Name: name, Handle: syscall.Handle(h)}
-}
-
 type guid struct {
 	Data1        uint32
 	Data2, Data3 uint16
@@ -34,31 +25,31 @@ type guid struct {
 var (
 	user             = systemDLL("user32.dll")
 	shell            = systemDLL("shell32.dll")
-	registerClass    = user.MustFindProc("RegisterClassExW")
-	createWindowEx   = user.MustFindProc("CreateWindowExW")
-	defWindowProc    = user.MustFindProc("DefWindowProcW")
-	getMessage       = user.MustFindProc("GetMessageW")
-	translateMessage = user.MustFindProc("TranslateMessage")
-	dispatchMessage  = user.MustFindProc("DispatchMessageW")
-	showWindow       = user.MustFindProc("ShowWindow")
-	postMessage      = user.MustFindProc("PostMessageW")
-	postQuit         = user.MustFindProc("PostQuitMessage")
-	destroyWindow    = user.MustFindProc("DestroyWindow")
-	setTimer         = user.MustFindProc("SetTimer")
-	notifyIcon       = shell.MustFindProc("Shell_NotifyIconW")
-	createPopupMenu  = user.MustFindProc("CreatePopupMenu")
-	appendMenu       = user.MustFindProc("AppendMenuW")
-	trackPopupMenu   = user.MustFindProc("TrackPopupMenu")
-	destroyMenu      = user.MustFindProc("DestroyMenu")
-	getCursorPos     = user.MustFindProc("GetCursorPos")
-	createIcon       = user.MustFindProc("CreateIcon")
-	destroyIcon      = user.MustFindProc("DestroyIcon")
-	registerMessage  = user.MustFindProc("RegisterWindowMessageW")
-	sendMessage      = user.MustFindProc("SendMessageW")
-	getStockObject   = systemDLL("gdi32.dll").MustFindProc("GetStockObject")
-	getSystemMetrics = user.MustFindProc("GetSystemMetrics")
-	loadCursor       = user.MustFindProc("LoadCursorW")
-	getModuleHandle  = systemDLL("kernel32.dll").MustFindProc("GetModuleHandleW")
+	registerClass    = user.proc("RegisterClassExW")
+	createWindowEx   = user.proc("CreateWindowExW")
+	defWindowProc    = user.proc("DefWindowProcW")
+	getMessage       = user.proc("GetMessageW")
+	translateMessage = user.proc("TranslateMessage")
+	dispatchMessage  = user.proc("DispatchMessageW")
+	showWindow       = user.proc("ShowWindow")
+	postMessage      = user.proc("PostMessageW")
+	postQuit         = user.proc("PostQuitMessage")
+	destroyWindow    = user.proc("DestroyWindow")
+	setTimer         = user.proc("SetTimer")
+	notifyIcon       = shell.proc("Shell_NotifyIconW")
+	createPopupMenu  = user.proc("CreatePopupMenu")
+	appendMenu       = user.proc("AppendMenuW")
+	trackPopupMenu   = user.proc("TrackPopupMenu")
+	destroyMenu      = user.proc("DestroyMenu")
+	getCursorPos     = user.proc("GetCursorPos")
+	createIcon       = user.proc("CreateIcon")
+	destroyIcon      = user.proc("DestroyIcon")
+	registerMessage  = user.proc("RegisterWindowMessageW")
+	sendMessage      = user.proc("SendMessageW")
+	getStockObject   = systemDLL("gdi32.dll").proc("GetStockObject")
+	getSystemMetrics = user.proc("GetSystemMetrics")
+	loadCursor       = user.proc("LoadCursorW")
+	getModuleHandle  = systemDLL("kernel32.dll").proc("GetModuleHandleW")
 )
 
 const (
@@ -164,15 +155,17 @@ func main() {
 	if id, _, _ := setTimer.Call(a.window, 1, 200, 0); id == 0 {
 		return
 	}
-	go panelio.Run(ctx, pipe.Dial, a.requests, func(e panelio.Event) bool {
-		select {
-		case a.events <- e:
-		case <-ctx.Done():
-			return false
-		}
-		ok, _, _ := postMessage.Call(a.window, wmEvents, 0, 0)
-		return ok != 0
-	})
+	if nativeLoadError == nil {
+		go panelio.Run(ctx, pipe.Dial, a.requests, func(e panelio.Event) bool {
+			select {
+			case a.events <- e:
+			case <-ctx.Done():
+				return false
+			}
+			ok, _, _ := postMessage.Call(a.window, wmEvents, 0, 0)
+			return ok != 0
+		})
+	}
 	var msg winMessage
 	for {
 		r, _, _ := getMessage.Call(uintptr(unsafe.Pointer(&msg)), 0, 0, 0)

@@ -1,5 +1,15 @@
 # Changelog — script-runner
 
+## Unreleased
+
+- #1299: Eine fehlende Speicher-Pinliste erzeugt INFO nur beim ersten Fehlen
+  und bei Zustandswechseln. Andere Lese-, Signatur- und Hashfehler warnen je
+  Durchlauf; Entzug der Freigaben und Fünf-Sekunden-Takt bleiben unverändert.
+
+- #1296: Apphost-Lade-Flights sind vom Kontext des ersten Anfragers entkoppelt
+  und haben eine eigene feste Frist von 30 Sekunden. Anfrageabbrüche treffen
+  weder andere Wartende noch schreiben sie Fehlerergebnisse in den Cache.
+
 ## 0.4.0 — 2026-11-03 (JanuaPort/januaport#1277 S4b, #1048 K4b)
 
 - **Image:** `sha256:a1c7105bcf9979e1466bbe4c0ba5b91d2f50935f541fb402267538106c744365` (Index, nur `linux/amd64`; arm64-Ausnahme siehe 0.3.1, JanuaPort/januaport#928; Release-Lauf 41558177704)
