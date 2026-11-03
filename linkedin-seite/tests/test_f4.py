@@ -2,11 +2,12 @@
 import copy
 import hashlib
 import json
+import asyncio
 from pathlib import Path
 import unittest
 
 from linkedin_seite import redaktion as r
-from support_post import ORG, PNG, PDF, TOOL_GET, TOOL_FILE, config
+from support_post import ORG, PNG, PDF, TOOL_GET, TOOL_FILE
 from test_post_server import Service, AUTH
 
 GOLDEN = Path(__file__).with_name('data') / 'hash_golden.json'
@@ -87,6 +88,14 @@ class F4(Service):
                 self.assertEqual(status, 409, (route, value, body))
                 self.flags(body, before=True)
             self.assertEqual(self.li.calls, [])
+
+    async def test_action_cannot_be_exchanged_even_with_identical_target_and_text(self):
+        rid = self.plan(post_text='same', kommentar_text='same', post_urn='urn:li:share:7')
+        _, preview = await self.vorschau(rid, 'bearbeiten')
+        status, body = await self.call_with('create_comment', rid, 'hash=' + preview['hash'])
+        self.assertEqual(status, 409)
+        self.flags(body, before=True)
+        self.assertEqual(self.li.calls, [])
 
     async def test_duplicate_header_rejected(self):
         rid = self.plan(post_text='x')
@@ -189,6 +198,60 @@ class F4(Service):
             self.assertEqual(status, 422)
             self.flags(body, before=True)
         self.assertEqual(self.li.calls, [])
+
+    async def test_accepted_but_unconfirmed_response_is_unclear(self):
+        for route, action in r.AKTIONEN.items():
+            rid = self.plan(post_text='x', kommentar_text='c', **({} if action == 'posten' else {'post_urn': 'urn:li:share:7'}))
+            _, preview = await self.vorschau(rid, action)
+            self.li.override = lambda call: (202, {'x-restli-id': 'urn:li:share:7'}, b'')
+            status, body = await self.call_with(route, rid, 'hash=' + preview['hash'])
+            self.assertEqual(status, 502)
+            self.flags(body)
+
+    async def test_worker_exit_before_and_after_first_real_write(self):
+        import time
+        for after_write in (False, True):
+            with self.subTest(after_write=after_write):
+                rid = self.plan(post_text='x')
+                _, preview = await self.vorschau(rid)
+                self.gw.calls.clear()
+                self.li.calls.clear()
+                if after_write:
+                    self.li.override = lambda call: (time.sleep(1), None)[1]
+                else:
+                    self.gw.result_hook = lambda n, a, result: (time.sleep(1), result)[1]
+                task = asyncio.create_task(self.call_with('create_post', rid, 'hash=' + preview['hash']))
+                for _ in range(200):
+                    if self.li.calls if after_write else self.gw.tool_calls():
+                        break
+                    await asyncio.sleep(0.01)
+                self.assertTrue(self.li.calls if after_write else self.gw.tool_calls())
+                self.writes.job.proc.kill()
+                status, body = await task
+                self.assertEqual(status, 502)
+                self.flags(body, before=not after_write)
+                if not after_write:
+                    self.assertEqual(self.li.calls, [])
+                self.gw.result_hook = None
+                self.li.override = None
+
+    async def test_cached_success_still_requires_current_matching_header(self):
+        rid = self.plan(post_text='x')
+        _, preview = await self.vorschau(rid)
+        value = 'hash=' + preview['hash']
+        status, body = await self.call_with('create_post', rid, value)
+        self.assertEqual(status, 200)
+        self.flags(body, success=True)
+        before = len(self.li.calls)
+        for header in (None, 'hash=freigabe:v2:sha256:' + 'f'*64):
+            status, body = await self.call_with('create_post', rid, header)
+            self.assertEqual(status, 409)
+            self.flags(body, before=True)
+        self.gw.plan[rid]['fields']['post_text'] = 'changed'
+        status, body = await self.call_with('create_post', rid, value)
+        self.assertEqual(status, 409)
+        self.flags(body, before=True)
+        self.assertEqual(len(self.li.calls), before)
 
 
 if __name__ == '__main__':

@@ -45,9 +45,9 @@ class SetupGuide(unittest.TestCase):
     def test_stage_b1_write_consent_and_approval_handgriffe(self):
         guide = self.guide()
         for phrase in ('w_organization_social', 'w_organization_social_feed', '--schreiben', 'jnpt credential set --name plugin-linkedin-seite-post-oauth',
-                       'redaktion_freigabe', 'linkedin_seite_vorschau', 'SSO', 'hash', '5 schreibende Aktionen',
+                       'X-Jnpt-Freigabe', 'linkedin_seite_vorschau', 'Kern', 'hash', '5 schreibende Aktionen',
                        'Lese- und Schreib-Token', 'http://jnpt:8484/mcp', 'jnpt_plugins', '/admin/mcp',
-                       'redaktionsplan_get', 'redaktion_freigabe_search', 'redaktion_medien_get_file',
+                       'redaktionsplan_get', 'redaktion_medien_get_file',
                        'plugin-linkedin-seite-gateway'):
             self.assertIn(phrase, guide)
         self.assertRegex(guide, r'Read-Host -MaskInput [^\n]*\| python [^\n]*zustimmung\.py --client-id APP_CLIENT_ID '
@@ -56,6 +56,6 @@ class SetupGuide(unittest.TestCase):
     def test_readme_names_gateway_route_token_tools_and_live_gates(self):
         readme = (ROOT/'README.md').read_text(encoding='utf-8')
         for phrase in ('http://jnpt:8484/mcp', 'jnpt_plugins', '/admin/mcp', 'redaktionsplan_get',
-                       'redaktion_freigabe_search', 'redaktion_medien_get_file', 'plugin-linkedin-seite-gateway',
-                       'plugin-linkedin-seite-post-oauth', 'Live-Gate', 'www.linkedin.com', 'updated_via'):
+                       'redaktion_medien_get_file', 'plugin-linkedin-seite-gateway',
+                       'plugin-linkedin-seite-post-oauth', 'Live-Gate', 'www.linkedin.com', 'freigabe:v2:sha256:'):
             self.assertIn(phrase, readme)

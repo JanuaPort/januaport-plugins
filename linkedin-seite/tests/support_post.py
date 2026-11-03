@@ -20,9 +20,8 @@ from linkedin_seite.post_adapter import PostAdapter, WriteTransport
 
 ORG = 'urn:li:organization:123456'
 PLAN = 'redaktionsplan'
-FREIGABE = 'redaktion_freigabe'
 ABLAGE = 'redaktion-medien'
-TOOL_GET, TOOL_SEARCH, TOOL_FILE = 'redaktionsplan_get', 'redaktion_freigabe_search', 'redaktion_medien_get_file'
+TOOL_GET, TOOL_FILE = 'redaktionsplan_get', 'redaktion_medien_get_file'
 GATEWAY_TOKEN = 'jnpt_' + 'a1b2c3d4' + '_' + 'GATEWAYCANARY' + 'x' * 24
 MiB = 1024 * 1024
 
@@ -54,7 +53,7 @@ def write_identity(port, days=60, refresh=False):
 
 def config(gateway_port, **extra):
     schreiben = {'gateway_url': 'http://127.0.0.1:%d/mcp' % gateway_port, 'redaktionsplan': PLAN,
-                 'freigabe': FREIGABE, 'medien_ablage': ABLAGE, **extra}
+                 'medien_ablage': ABLAGE, **extra}
     return Config.from_dict({'organization': ORG, 'linkedin_version': '202610', 'schreiben': schreiben})
 
 
@@ -65,15 +64,8 @@ def new_id():
     return '%016x' % next(_ids)
 
 
-def record(rid, fields, via='inb-redaktion', updated_via=None):
-    return {'id': rid, 'fields': fields, 'source': 'redaktion', 'as_of': '2026-11-02', 'team': 'Redaktion',
-            'author': 'INB', 'via': via, 'created_at': '2026-11-02T10:00:00Z',
-            'updated_at': '2026-11-02T10:00:00Z', 'updated_by': 'INB',
-            'updated_via': via if updated_via is None else updated_via}
-
-
-def freigabe(eintrag_id, aktion, digest, via='SSO', updated_via=None):
-    return record(new_id(), {'eintrag_id': eintrag_id, 'aktion': aktion, 'hash': digest}, via, updated_via)
+def record(rid, fields):
+    return {'id': rid, 'fields': fields}
 
 
 class _Server:
@@ -95,7 +87,7 @@ class FakeGateway(_Server):
 
     def __init__(self, token=GATEWAY_TOKEN, sse=False):
         self.token, self.sse = token, sse
-        self.plan, self.freigaben, self.files, self.after_read = {}, [], {}, {}
+        self.plan, self.files, self.after_read = {}, {}, {}
         self.calls, self.paths = [], []
         self.status = 200
         self.tool_errors = set()
@@ -171,9 +163,6 @@ class FakeGateway(_Server):
             if rec is None:
                 return {'content': [{'type': 'text', 'text': 'Satz nicht gefunden'}], 'isError': True}
             return self.text({'notice': notice, 'record': rec})
-        if name == TOOL_SEARCH:
-            hits = [r for r in self.freigaben if r['fields'].get('eintrag_id') == args.get('eintrag_id')]
-            return self.text({'notice': notice, 'records': hits[:args.get('limit', 20)]})
         if name == TOOL_FILE:
             data = self.files.get(args.get('file'))
             if data is None:
@@ -366,7 +355,7 @@ class Link:
         self.hashes.append(digest)
         return digest not in self.repeat
 
-    def final_request(self):
+    def write_request(self):
         self.finals = getattr(self, 'finals', 0) + 1
 
     def expiry(self, value):

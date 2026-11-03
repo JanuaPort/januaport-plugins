@@ -1,0 +1,22 @@
+b5-trace-text (corrected format arguments): DETECTED
+F
+======================================================================
+FAIL: test_post_then_idempotent_repeat_returns_the_same_urn (test_post_server.Flow.test_post_then_idempotent_repeat_returns_the_same_urn)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\.mutation-x269kow8\tests\test_post_server.py", line 147, in test_post_then_idempotent_repeat_returns_the_same_urn
+    self.assertRegex(spur[0], r'spur aktion=posten eintrag_id=%s hash=%s code=ok urn=urn:li:share:7000000000000000001 bytes=%d$'
+AssertionError: Regex didn't match: 'spur aktion=posten eintrag_id=00038d7ea4c68000 hash=freigabe:v2:sha256:cf8a2f826574d16db29a538ff2b504ea8ed3b987e4438146270c8483e8e60d51 code=ok urn=urn:li:share:7000000000000000001 bytes=21$' not found in "INFO:linkedin_seite:spur aktion=posten eintrag_id=00038d7ea4c68000 WriteRequest(aktion='posten', eintrag_id='00038d7ea4c68000', vorschau=False, freigabe='freigabe:v2:sha256:cf8a2f826574d16db29a538ff2b504ea8ed3b987e4438146270c8483e8e60d51'){'aktion': 'posten', 'eintrag_id': '00038d7ea4c68000', 'hash': 'freigabe:v2:sha256:cf8a2f826574d16db29a538ff2b504ea8ed3b987e4438146270c8483e8e60d51', 'format': 'bild', 'post_urn': 'urn:li:share:7000000000000000001', 'state': 'veroeffentlicht', 'bytes': 21, 'ausgefuehrt': True} hash=freigabe:v2:sha256:cf8a2f826574d16db29a538ff2b504ea8ed3b987e4438146270c8483e8e60d51 code=ok urn=urn:li:share:7000000000000000001 bytes=21"
+
+----------------------------------------------------------------------
+Ran 1 test in 2.184s
+
+FAILED (failures=1)
+
+originals unchanged; targeted probe PASS

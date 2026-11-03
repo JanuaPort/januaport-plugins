@@ -42,6 +42,12 @@ class Version(unittest.TestCase):
                        'w_organization_social_feed'):
             self.assertIn(phrase, section.group(0))
 
+    def test_f4_ships_consistently_as_0_3_0(self):
+        self.assertEqual(self.versions(), ('0.3.0',)*3)
+        self.assertIn('org.opencontainers.image.version="0.3.0"', self.read('Dockerfile'))
+        self.assertIn("'version': '0.3.0'", self.read('linkedin_seite/gateway.py'))
+        self.assertIn('#1306', self.read('CHANGELOG.md'))
+
 
 if __name__ == '__main__':
     unittest.main()

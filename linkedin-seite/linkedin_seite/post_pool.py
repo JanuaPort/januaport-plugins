@@ -1,20 +1,9 @@
-"""Stufe B1 (#1237): write jobs, brake and trace in the long-running server process.
+"""#1306 F4: spawned write jobs with RAM counters and result cache.
 
-Every write action runs in its OWN spawned process (private RAM copy of the media, process ends
-after the action). The server process holds what a job must not be able to reset:
-  * 5 write actions per UTC day over all actions (SEC Bed. 5), counted when the job asks for
-    permission right before its first LinkedIn request; a video counts from initializeUpload,
-  * 45 LinkedIn HTTP attempts per UTC day for writes (Development Tier 100 per member and day,
-    Stufe A keeps its own 50), every attempt asks first,
-  * the idempotency map eintrag_id + hash -> result (in-process only, lost on restart),
-  * eintrag_id + hash whose non-idempotent final request (create post/comment) went out and then
-    failed: the outcome is unknown, the same approval is refused with `ergebnis_unbekannt`.
-A job cannot reach LinkedIn without a grant over its pipe: if the server is gone, the pipe is
-closed and the job stops before the next request.
-
-At most one write job runs. The HTTP request waits WAIT_SECONDS; a longer job (video) answers
-202 `in_arbeit` and keeps running up to JOB_HARD_SECONDS — a client disconnect does not kill it.
-A repeat call for the same entry and action reports the state, later the result.
+The core owns durable approval/start/outcome locks. The cache only avoids repeated successful
+writes within this process. A job must report every first write attempt before transport;
+all later failures are unclear, including upload initialization, edits and deletes.
+The HTTP request awaits the completed result (hard bound 25 minutes), without intermediate state.
 """
 import asyncio
 from collections import deque
@@ -30,7 +19,6 @@ LOG = logging.getLogger('linkedin_seite')
 
 WRITE_ACTIONS_PER_DAY = 5
 WRITE_HTTP_PER_DAY = 45
-WAIT_SECONDS = 20
 VORSCHAU_BUDGET = 20
 VORSCHAU_PER_MINUTE = 10
 JOB_HARD_SECONDS = 25 * 60
@@ -58,8 +46,8 @@ class PipeLink:
     def report_hash(self, digest):
         return self.ask('hash', digest)[0] == 'weiter'
 
-    def final_request(self):
-        self.ask('final')
+    def write_request(self):
+        self.ask('write')
 
     def expiry(self, value):
         self.conn.send(('expiry', value))
@@ -95,33 +83,23 @@ def job_main(conn, cfg, identity, gateway_token, req, adapter_factory=None):
 class Job:
     def __init__(self, req, proc, conn, loop):
         self.req, self.proc, self.conn = req, proc, conn
-        self.key = (req.eintrag_id, req.aktion)
         self.future = loop.create_future()
         self.digest = None
-        self.abgeholt = False
-        self.final = False  # the non-idempotent final request was about to be sent
+        self.write_started = False  # IPC acknowledgement precedes every possible provider write
         self.task = None
 
 
-def in_arbeit(job):
-    payload = {'aktion': job.req.aktion, 'eintrag_id': job.req.eintrag_id, 'state': 'in_arbeit'}
-    if job.digest:
-        payload['hash'] = job.digest
-    return 202, encode_response(payload)
-
-
 class WritePool:
-    def __init__(self, cfg, identity, gateway_token, *, adapter_factory=None, today=None, wait=WAIT_SECONDS,
+    def __init__(self, cfg, identity, gateway_token, *, adapter_factory=None, today=None,
                  hard=JOB_HARD_SECONDS, budget=VORSCHAU_BUDGET):
         self.cfg, self.identity, self.token = cfg, identity, gateway_token
         self.factory = adapter_factory
         self.context = multiprocessing.get_context('spawn')
         self.today = today or (lambda: datetime.now(timezone.utc).date().isoformat())
-        self.wait, self.hard, self.budget = wait, hard, budget
+        self.hard, self.budget = hard, budget
         self.actions = {}   # UTC day -> counted write actions (SEC Bed. 5)
         self.http = {}      # UTC day -> LinkedIn HTTP attempts of write jobs
         self.done = {}      # (eintrag_id, hash) -> result payload, in-process idempotency
-        self.unbekannt = set()  # (eintrag_id, hash) whose final request went out and then failed
         self.job = None
         self.vorschau_job = None
         self.vorschau_rate = deque()
@@ -162,7 +140,7 @@ class WritePool:
             if current and timestamp(message[1]) < timestamp(current):
                 self.identity['refresh_expires_at'] = message[1]
             return None
-        if kind not in ('permit', 'aktion', 'hash', 'final'):
+        if kind not in ('permit', 'aktion', 'hash', 'write'):
             return message  # final message
         try:
             if job.req.vorschau:
@@ -173,16 +151,13 @@ class WritePool:
             elif kind == 'aktion':
                 self._count(self.actions, WRITE_ACTIONS_PER_DAY, 'schreib_tageslimit')
                 job.conn.send(('granted',))
-            elif kind == 'final':
-                job.final = True
+            elif kind == 'write':
+                job.write_started = True
                 job.conn.send(('granted',))
             else:
                 job.digest = message[1] if isinstance(message[1], str) and r.HASH.fullmatch(message[1]) else None
                 if job.digest is None:
                     raise ReportError(502, 'worker_failed')
-                if (job.req.eintrag_id, job.digest) in self.unbekannt:
-                    # A post/comment may exist already; never send it again on the same approval.
-                    raise ReportError(409, 'ergebnis_unbekannt')
                 job.conn.send(('fertig',) if (job.req.eintrag_id, job.digest) in self.done else ('weiter',))
         except ReportError as exc:
             job.conn.send(('error', exc.status, exc.code))
@@ -224,8 +199,7 @@ class WritePool:
             self._kill(job)
 
     def _finish_error(self, job, exc):
-        if job.final and job.digest:
-            self.unbekannt.add((job.req.eintrag_id, job.digest))
+        exc.nicht_ausgefuehrt = not job.write_started
         self._trace(job, exc.code, {})
         if not job.future.done():
             job.future.set_exception(exc)
@@ -255,31 +229,17 @@ class WritePool:
 
     async def run(self, req):
         if self.closed:
-            raise ReportError(503, 'service_stopping')
+            exc = ReportError(503, 'service_stopping')
+            exc.nicht_ausgefuehrt = True
+            raise exc
         if req.vorschau:
             return await self._vorschau(req)
-        key = (req.eintrag_id, req.aktion)
         if self.job is not None and not self.job.future.done():
-            if self.job.key == key:
-                return in_arbeit(self.job)
-            raise ReportError(429, 'schreiben_belegt')
-        previous = self.job
-        if previous is not None and previous.key == key and not previous.abgeholt:
-            previous.abgeholt = True
-            failed = previous.future.exception()
-            if failed is not None:
-                raise ReportError(failed.status, failed.code)  # the outcome after a 202, reported once
-            return previous.future.result()  # first delivery of a result that finished after its 202
+            exc = ReportError(429, 'schreiben_belegt')
+            exc.nicht_ausgefuehrt = True  # this request never started a job
+            raise exc
         self.job = job = self._start(req)
-        try:
-            result = await asyncio.wait_for(asyncio.shield(job.future), self.wait)
-        except TimeoutError:
-            return in_arbeit(job)
-        except ReportError:
-            job.abgeholt = True
-            raise
-        job.abgeholt = True
-        return result
+        return await asyncio.shield(job.future)
 
     async def _vorschau(self, req):
         started = time.monotonic()

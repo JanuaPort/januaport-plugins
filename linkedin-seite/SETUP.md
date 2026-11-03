@@ -1,4 +1,4 @@
-# LinkedIn-Seite einrichten — Stufe A und Stufe B1
+# LinkedIn-Seite 0.3.0 einrichten — Stufe A und Stufe B1
 
 Diese Anleitung führt den Admin durch LinkedIn-Zustimmung und Tresoreintrag. Der Betreiber
 installiert vorher den Beisteller, legt die beiden Tresor-Stellen an und setzt den Bridge-Key.
@@ -123,7 +123,7 @@ höchstens in den Passwortmanager. Niemals Tokens in ein Supportticket kopieren.
 
 ## Stufe B1: Posten nach Freigabe
 
-Ab Version 0.2.0 kann der Beisteller auf der eigenen Unternehmensseite posten, bearbeiten, löschen
+Ab Version 0.3.0 (#1306 F4) kann der Beisteller auf der eigenen Unternehmensseite posten, bearbeiten, löschen
 und eigene Kommentare setzen — nur für Einträge des Redaktionsplans, die ein Mensch freigegeben hat.
 Dafür gibt es eine **zweite, eigene Zustimmung** mit genau den Scopes `w_organization_social`
 (Posten, Bearbeiten, Löschen, Medien) und `w_organization_social_feed` (eigene Kommentare). Der
@@ -157,32 +157,42 @@ Datei umleiten. Laufzeit und Erneuerung wie beim Lese-Token (60 Tage, Refresh h�
 
 ### Gateway-Zugang des Beistellers
 
-Der Beisteller liest Redaktionsplan, Freigaben und Medien selbst über das Gateway, im internen Netz
+Der Beisteller liest Redaktionsplan und Medien selbst über das Gateway, im internen Netz
 `jnpt_plugins` unter **`http://jnpt:8484/mcp`** (Eintrag `schreiben.gateway_url` in der
 Betreiber-Konfiguration). Erlaubt ist nur `/mcp`, nie `/admin/mcp`; jede andere Adresse verhindert
 den Start. Dafür bekommt er einen eigenen Team-Token in der Stelle `plugin-linkedin-seite-gateway`
-mit **genau** diesen drei Werkzeugen und sonst nichts: `redaktionsplan_get`,
-`redaktion_freigabe_search` und `redaktion_medien_get_file`. Der Team-Token der KI erhält auf
-`redaktion_freigabe` keinen Zugriff. Kein Token darf das Label `SSO` tragen.
+mit **genau** diesen zwei Werkzeugen und sonst nichts: `redaktionsplan_get` und
+`redaktion_medien_get_file`. Frühere Freigabe-Suchrechte entfernen; auch den alten
+Konfigurationsschlüssel `schreiben.freigabe` entfernen (wird beim Start abgewiesen).
 
 ### Freigeben
 
-Die KI legt den Inhalt im Redaktionsplan ab (`post_text`, `medien`, `umfrage`, `post_urn`,
-`kommentar_text`) und die Medien in der Medien-Ablage. Freigeben kann sie nicht: Die Freigabe ist ein
-eigener Satz in der Kartei `redaktion_freigabe`, auf die nur das Redaktions-Team der Menschen
-Zugriff hat.
+Die KI legt Inhalt und Medien im Redaktionsplan bzw. in der Medien-Ablage ab.
+Die unveränderlichen Freigabe-Aufträge und ihre menschliche Entscheidung verwaltet der Kern.
 
-1. Das Werkzeug `linkedin_seite_vorschau` mit der Kartei-ID und der Aktion (`posten`, `bearbeiten`,
-   `loeschen` oder `kommentar`) aufrufen. Es zeigt Text, Format, Umfrage, Ziel-URN und je Datei
-   Dateiname, Größe und sha256 — und den `hash`.
-2. Die genannten Dateien in der Ablage selbst öffnen und ansehen. Der Hash bindet die Freigabe an
-   genau diese Bytes; dass der Mensch sie angesehen hat, prüft er nicht.
-3. Über die Freigabe-Seite, angemeldet per SSO, einen Satz in `redaktion_freigabe` anlegen:
-   `eintrag_id`, `aktion`, `hash`. Es zählen nur Sätze, die per **SSO** angelegt und geändert wurden;
-   ein Satz über einen Token zählt nicht.
-4. Erst dann ruft die KI das Schreibwerkzeug auf. Ändert sich danach Text, Umfrage, Ziel-URN oder eine
-   Datei, passt der Hash nicht mehr: `nicht_freigegeben`, es geht nichts an LinkedIn. Jede Aktion
-   braucht ihren eigenen Satz, auch Löschen. Zurückziehen: den Freigabesatz vor der Aktion löschen.
+1. `linkedin_seite_vorschau` mit Kartei-ID und Aktion (`posten`, `bearbeiten`, `loeschen`,
+   `kommentar`) aufrufen. Anzeige und vollständige `wirkung` samt `hash` stammen aus
+   demselben einmal gelesenen Eintrag und denselben geprüften Dateien.
+2. Dateien ansehen und im Kern den Auftrag prüfen und freigeben. Der Hash bindet Aktion,
+   Ziel-URN, exakten Text, geordnete Mediennamen/Dokumenttitel mit Datei-SHA-256 sowie
+   Umfragefrage, jede Antwort samt Reihenfolge und ganzzahlige Dauer.
+3. Der Kern startet den freigegebenen Auftrag und sendet genau einen Header:
+   `X-Jnpt-Freigabe: hash=<freigabe:v2:sha256:…>`. Der Beisteller berechnet den aktuellen
+   Hash selbst. Ohne exakte Gleichheit, auch ohne Header, kommt 409 nicht_freigegeben
+   vor jedem LinkedIn-Schreibaufruf. Auch Löschen braucht diesen Header.
+4. Bestätigter Erfolg enthält `ausgefuehrt: true`; bewiesener Abbruch vor dem ersten
+   LinkedIn-Schreibversuch `nicht_ausgefuehrt: true`. Fehler danach enthalten keines
+   der Felder, bereits ab Upload-Start, auch bei Edit/Delete. Der Kern wertet dies als
+   unklar und hält den Sperrvermerk. Der RAM-Ergebnis-Cache (`report_hash`) im Beisteller
+   ist Komfort und kein Sperrvermerk; ein Neustart leert ihn.
+
+Hash v2: Präfix `freigabe:v2:sha256:` + SHA-256 über UTF-8 `freigabe:v2`, LF und kompaktes
+JSON mit Feldfolge aktion, medien, text, umfrage, ziel_urn. Medien geordnet {name, sha256};
+Umfrage null oder {antworten, dauer, frage}. Kein HTML-Escaping, keine Unicode-Normalisierung.
+Beim Posten ist ziel_urn die konfigurierte Organisation, sonst post_urn; text ist der genaue
+Post-/Kommentartext, bei Löschen leer. Medien/Umfrage nur beim Posten. Vorschau enthält keine
+Freigabeentscheidung. HTTP wartet auf das Endergebnis, maximal 25 Minuten; Connector-Timeout
+entsprechend einstellen. Gemeinsame Live-Abnahme mit dem Kern bleibt Aufgabe von GATE.
 
 Es gelten höchstens **5 schreibende Aktionen** je UTC-Tag, über Posten, Bearbeiten, Löschen und
 Kommentieren zusammen; ein Video zählt ab dem Upload-Start als eine Aktion. Eine Umfrage lässt sich

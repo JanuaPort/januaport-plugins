@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0 — 2026-11-03
+
+- JanuaPort/januaport#1306 F4, Plan v2/v2.1, SEC c-6602359446 A1/A3 und c-6604738594 H1–H3.
+- Freigabeprüfung über genau `X-Jnpt-Freigabe: hash=<freigabe:v2:sha256:…>` für alle vier
+  Schreibaktionen. 409 vor LinkedIn bei fehlendem/abweichendem Header. Kartei-Freigabeprüfung
+  und Herkunftslabels entfernt; Gateway-Token nur noch zwei Lesewerkzeuge, alter Config-Key entfällt.
+- Vollständige Wirkung aus demselben Eintragsstand wie die Vorschau; Kern-Hash v2 samt
+  unveränderten Golden-Vektoren, Bindung sichtbarer Medientitel und Umfrage.
+- Eindeutige Ergebnisfelder: ausgefuehrt bei bestätigtem Erfolg, nicht_ausgefuehrt nur bei
+  bewiesenem Abbruch vor erstem Schreibversuch, danach unklar ohne beide Felder.
+- Dauerhafter Sperrvermerk im Kern; report_hash bleibt RAM-Komfort. HTTP liefert das Endergebnis,
+  Zwischenzustand und Nachfrage-Fenster entfallen. Migration/Timeout in README und SETUP.
+- Echte Adapter-/HTTP-/Prozesstests und Pflichtmutanten. Synthetisch verifiziert; Live-Abnahme offen.
+
 ## 0.2.0 — 2026-11-02
 
 - Stufe B1, Posten nach Freigabe (JanuaPort/januaport#1237; PO-Zuruf 02.11., SEC-PASS c-6575359082

@@ -10,7 +10,7 @@ from pathlib import Path
 import time
 from aiohttp import web
 from .domain import Config, ReportError, parse_request, encode_response, strict_json, REPORTS
-from .redaktion import ROUTES as POST_ROUTES, VORSCHAU, parse_vorschau, parse_write
+from .redaktion import ROUTES as POST_ROUTES, VORSCHAU, FREIGABE_HEADER, parse_vorschau, parse_write
 from .workers import WorkerPool
 
 LOG = logging.getLogger("linkedin_seite")
@@ -110,6 +110,8 @@ def create_app(cfg, key, pool, write_pool=None):
         started = time.monotonic()
         code = "ok"
         route = "unknown"
+        write_route = request.path.startswith("/v1/linkedin-post/") and request.method == "POST"
+        dispatched = False
         try:
             if len(request.raw_path.encode()) > 8192:
                 raise ReportError(400, "request_too_large")
@@ -129,20 +131,19 @@ def create_app(cfg, key, pool, write_pool=None):
                 if request.method != ("GET" if parts[3] == VORSCHAU else "POST"):
                     raise ReportError(405, "method_not_allowed")
                 check_bridge(request, key)
-                if write_pool is None:
-                    raise ReportError(503, "schreiben_nicht_eingerichtet")
                 if parts[3] == VORSCHAU:
                     if request.body_exists:
                         raise ReportError(400, "unexpected_body")
                     req = parse_vorschau(list(request.query.items()))
                 else:
-                    req = parse_write(parts[3], await bounded_body(request))
+                    req = parse_write(parts[3], await bounded_body(request), request.headers.getall(FREIGABE_HEADER, []))
+                if write_pool is None:
+                    raise ReportError(503, "schreiben_nicht_eingerichtet")
+                dispatched = True
                 status, payload = await write_pool.run(req)
                 extra = write_pool.warning()
                 if extra:
                     payload = encode_response({**json.loads(payload), **extra})
-                if status == 202:
-                    code = "in_arbeit"
                 return web.Response(status=status, body=payload, content_type="application/json")
             if len(parts) != 4 or parts[1:3] != ["v1", "linkedin"] or parts[3] not in REPORTS:
                 raise ReportError(404, "route_not_found")
@@ -172,13 +173,19 @@ def create_app(cfg, key, pool, write_pool=None):
             return web.Response(body=payload, content_type="application/json")
         except ReportError as exc:
             code = exc.code
-            return web.json_response({"error": code}, status=exc.status)
+            payload = {"error": code}
+            if write_route and (not dispatched or getattr(exc, 'nicht_ausgefuehrt', False)):
+                payload['nicht_ausgefuehrt'] = True
+            return web.json_response(payload, status=exc.status)
         except asyncio.CancelledError:
             code = "client_cancelled"
             raise
         except Exception:
             code = "internal_error"
-            return web.json_response({"error": code}, status=503)
+            payload = {"error": code}
+            if write_route and not dispatched:
+                payload['nicht_ausgefuehrt'] = True
+            return web.json_response(payload, status=503)
         finally:
             LOG.info(
                 "route=%s code=%s duration_ms=%d",
