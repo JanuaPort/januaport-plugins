@@ -7,7 +7,9 @@ Kopplung, signiertes Manifest, lokaler Takt, Paket-/Runtimeprüfung,
 COM-Autostart und DPAPI-Journal sind implementiert. Fake-Kern, Linux-Race-Tests
 und native Windows-Sonden; signiertes Windows-Release `desktop-runner-v0.1.0`
 vorhanden, Live-Anlage steht aus. Manueller Installationstest: README „Installationstest“.
-Maßgeblich: [Draht-Vertrag v1/v2](contract/README.md).
+Windows spricht Vertrag 4, Linux-Server unverändert Vertrag 2.
+Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
+[contract/](contract/README.md) bleibt der eingefrorene historische D0-Vertrag 1.
 
 ## Aufbau
 
@@ -20,7 +22,7 @@ Maßgeblich: [Draht-Vertrag v1/v2](contract/README.md).
 | engine.go, bootstrap.py | Gemeinsamer Laufplatz, Takt, Claim/Start, Rahmenkanal/MCP |
 | state.go, replace_* | Atomare OS-geschützte Dateien, Journal/Marker/Slot-Transaktion, Löschung |
 | runtemp.go | Lauf-TEMP: RunID/RunTemps, Anlegen nur neu, Aufräumen/Besen ohne Reparse-Punkte, Kind-Umgebung |
-| log.go | Geschlossene numerische Codes (1–6), 5 × 1 MiB |
+| log.go | Geschlossene numerische Codes (1–7), 5 × 1 MiB |
 | internal/platform/*_windows.go | DPAPI/ACL (SecureRoot, MkdirPrivate), WTS/LastInput, suspendierter Prozess/Job Object, COM/HKCU |
 | internal/platform/install.go, other.go | Windows-Nähte und Fail-closed-Stubs für andere Systeme |
 | internal/platform/security_linux.go, server_linux.go | Linux-HMAC/Dateirechte, Sperre und Server-Konfiguration |
@@ -56,18 +58,28 @@ Maßgeblich: [Draht-Vertrag v1/v2](contract/README.md).
    alte/gleiche seq oder falsche Signatur → Klasse `manifest`; alter Stand
    und letzter erfolgreicher Sync bleiben erhalten. seq uint64, dauerhaft,
    ab 1, je erfolgreichem Sync erhöht, auch bei gleichen Pins.
-4. JSON streng mit `DisallowUnknownFields`. Vertrag-1-Heartbeat ausschließlich
+4. JSON streng mit `DisallowUnknownFields`. Windows-Vertrag-4-Heartbeat ausschließlich
    `contract`, `ready`, `runner_version`, `manifest_seq`; kein Sitzungsstatus,
    keine Leerlaufzeit, kein Konto. Antwort ergänzt `manifest_seq_current`;
-   bei höherem Wert Manifest holen. Ergebnis hat kein Ausgabefeld.
+   bei höherem Wert Manifest holen. Nur Testaufträge dürfen `result` (JSON bis 64 KiB) senden;
+   der normale Report-Weg weist es ab. `apps` wird unter v4 abgewiesen,
+   Setup-Beschriftungen über 40 Unicode-Zeichen ebenfalls.
 5. Takt auf dem Gerät: 1 min vor jedem geplanten Lauf Manifest und bei
    neuem Commit unter Windows das Paket voll prüfen; Server prüfen vor Start
    Pull und Image-Digest. Offline nur ohne declared_tools und
-   `jetzt − letzter erfolgreicher Sync < grace_hours` (1–72 h), sonst
+   `max(Uhr, persistente Uhrmarke) − letzter erfolgreicher Sync < grace_hours`
+   (1–72 h), sonst
    `refused/offline`. Werkzeuge brauchen Box/Lauf-Token. Deterministischer
    `run_key = pin/schedule/UTC-Slot`; Online-Start mit Werkzeugen über
    `runs/start`, Standbindung per `X-Jnpt-Manifest-Seq`, veraltet 409 manifest.
    Ad-hoc bleibt claim → jobs/start; Job liefert seine Freigabe-manifest_seq.
+   Windows K8: Pinfrist vor Gerätefrist, auch längere Pinfristen. Atomare
+   DPAPI-Datei `clock`, fortgeschrieben bei Sync, Takt und Offline-Start. Während
+   des Prozesses läuft die Marke monoton weiter; nach Neustart gilt mindestens
+   die gespeicherte Marke. Defekte Uhrmarke sperrt. Ablauf verweigert mit
+   Logcode `7 1`. Auch offline verweigerte Windows-Versuche tragen
+   `ran_offline:true`. Das Kernarchiv hält die längste wirksame Pinfrist + 24 h
+   Puffer (`Manifest.RetainUntil` als Abgleich); das Journal verfällt nicht.
 6. Ein Platz je Gerät für beide Laufarten. Zweiter Claim sofort 204,
    geplanter Start bei anderem Lauf 409 busy; zweiter Start desselben Laufs
    409 already_started ohne Token. MCP verlangt beide Token, zustandslos.
@@ -97,7 +109,7 @@ Maßgeblich: [Draht-Vertrag v1/v2](contract/README.md).
    Alle anderen Fehler (409, 429, 503, Netz) verwerfen nie. Kein Tokenablauf-Cutoff.
 10. Box hält Ad-hoc-Aufträge persistent, löscht Eingabe bei Ende; Claim nach
     Box-Neustart funktioniert. Auch Start-/Ergebnis-/Manifesthistorie bleibt;
-    kein pauschales Neustart-404 mit Verwerfen. Windows: Contract 1 und Paketversion 1; Linux-Server: Contract 2,
+    kein pauschales Neustart-404 mit Verwerfen. Windows: Contract 4 und unverändert Paketversion 1; Linux-Server: Contract 2,
     Updates zuerst Kern, dann Läufer; geschlossene Klassen inkl. offline und idle.
 11. `refused/idle` (#1245 L): Die Startregel ist nicht erfüllt, weil nur der
     Leerlauf fehlt (Sitzung aktiv, Konto passt, Modus `idle`, Leerlauf kürzer als
@@ -120,6 +132,20 @@ Maßgeblich: [Draht-Vertrag v1/v2](contract/README.md).
     Geheimnisse liegen nie unter `tmp\`. Die Kind-Umgebung enthält kein
     `LOCALAPPDATA`/`USERPROFILE`/`APPDATA`/`HOME*`/`TMPDIR`; ein Wert aus diesen
     Variablen wird gefiltert, `TEMP`/`TMP` zeigen nur auf das Laufverzeichnis.
+
+13. Testauftrag: signiertes `test_device:true` UND Pinname
+    `test_<erste 8 Zeichen der Geräte-ID>`, zusätzlich geprüfte Geräte-,
+    Signatur- und Jobbindung (Pin, Commit, Pfad, Algo, Freigabe-seq).
+    Claims enthalten kein Testmerkmal. `test_device` wird in v1/v2/v3/v4
+    angenommen (#1298). `Screenshot` und `ReportTest` prüfen vor HTTP;
+    `Report` weist `result` ab. Historische Freigaben liegen separat in
+    DPAPI-Dateien `test-<job_id>`, nur Bindungsfelder und signiertes Manifest,
+    keine Claim-Eingabe; Journaländerung nur Feld `result`. Replay
+    prüft erneut. Testresultate weder offline noch über Setup-run_key.
+    `StartSetup` prüft das signierte Manifest, erzeugt 128 Zufallsbits über
+    `crypto/rand` (22 Zeichen base64url) und bindet `X-Jnpt-Manifest-Seq`.
+    `Halt` meldet nur. Halt-Verhalten, Pipe, Bedienfeld, Helfer und Aufnahme
+    folgen in L2–L5. L1 erfasst keinen Bildschirm.
 
 ## Benannte Grenzen
 
@@ -146,6 +172,7 @@ gegen jemanden mit Zugriff auf diese Sitzung (C4).
 | Widerruf an allen Wegen, keine Wiederbelebung | TestWiderrufAnAllenHTTPWegen, TestWiderrufAllesWeg, TestRevokeFolgtKeinemVerweisInTmp, TestRevokeFolgtKeinerJunctionInTmp (Windows) |
 | Native DPAPI/ACL/Entropie/Prozessbaum | TestWindowsFehlerBehaltenUrsache, TestPrivateACLAliasUndVerbote, TestPrivateACLAmDateisystem, TestSecureRootVerweigertJunction, TestDPAPIUndACL, TestWindowsDPAPIBrauchtEntropie, TestWindowsSuspendBisJobZuordnung, TestWindowsJobCloseBeendetEnkel |
 | Task ohne Admin und begrenzter Rückfall | TestWindowsAufgabeOhneAdmin, TestAutostartRueckfallNurBeiRichtlinie |
+| Vertrag 4 / Testweg / K8 (#1240 L1) | TestVertragJeGeraeteart, TestGoldenV3AusKern, TestManifestV4StriktAmAdapter, TestTestgeraeteSynchronisieren1298, TestScreenshotNurTestgeraet, TestErgebnisNurTestauftrag, TestTestadapterVerweigernFalscheBindung, TestSetupUndHaltAmHTTPAdapter, TestSetupSchemaAmAdapter, TestSetupStartVerweigertFremdeFreigaben, TestL1WiderrufAmHTTPAdapter, TestOfflineFristJePinUndUhrMarke, TestOfflineNachmeldungAmAdapter, TestK8ArchivLaengsteWirksameFrist, TestErgebnisNachNeustartMitSignierterFreigabe, TestVertrag4ClaimUndErgebnisOhneServerfelder; Windows-CI: TestWindowsK8UhrmarkeDPAPINeustart |
 | Hygiene | TestLoggerDeckelUndFesteCodes, TestStriktesJSONAmAdapter, TestFrameGrenzen, TestReleaseUndWindowsCI |
 
 Übernommene Funktionen sind im Dateikopf markiert. Wächter vergleichen die
@@ -233,7 +260,7 @@ dort belegt TestRunTempJunctionKanarienvogel das Aufräumen an einer echten Junc
 
 ## Linux-Server: zusätzliche Invarianten (JanuaPort/januaport#1195)
 
-- Server ausschließlich Vertrag 2, Windows ausschließlich Vertrag 1. Header,
+- Server ausschließlich Vertrag 2, Windows ausschließlich Vertrag 4. Header,
   Config-Geräteart und signiertes Manifest müssen zusammenpassen. Container-Pins:
   SHA256-Commit = Image-Digest, leerer Pfad, keine declared_tools, kein Paketweg.
   Kanonisierung unverändert; neues K1-Golden in contract/golden-v2 neben den
@@ -288,7 +315,7 @@ dort belegt TestRunTempJunctionKanarienvogel das Aufräumen an einer echten Junc
 | Cleanup, kein Wiederstart | TestVerwaisteContainerNachNeustart, TestAbbruchUndWandzeitKillRm, TestContainerFehlgeschlageneBereinigungSperrtNeustart, TestContainerCleanupWartetAufEntfernung, TestContainerHeartbeatAbbruchAmHTTPAdapter, TestContainerWiderrufStopptVorLoeschen, TestDockerAbbruchWandzeitUndNeustart (auch echter Docker) |
 | Geheimnis-Schnittmenge, Symlink, kein Env | TestGeheimnisseNurDeklariertUndOhneSymlink, TestGeheimnisseNieAlsEnv, TestKeinGeheimnisMountBeiFehlgeschlagenemStart, TestDockerGeheimnisMountReadOnlyUndInspect (echter Docker) |
 | Rootless und Mindestversion | TestRootlessErkennung, TestRuntimeFehltOderZuAlt |
-| E1/Vertrag, beide Startwege, alte Bytes | TestVertrag2ManifestGolden, TestVertrag1WindowsUnveraendert, TestVertrag2AmHTTPAdapterUndBeideStartwege, TestVertrag2VerweigertFremdeArtUndGeheimnisfelder |
+| E1/Vertrag, beide Startwege, alte Bytes | TestVertrag2ManifestGolden, TestVertrag1GoldensUnveraendert, TestVertragJeGeraeteart, TestVertrag2AmHTTPAdapterUndBeideStartwege, TestVertrag2VerweigertFremdeArtUndGeheimnisfelder |
 | Linux-Speicher, Rechte und Dienst | TestLinuxDateirechteJournalUndIntegritaet, TestLinuxPrivatePfadeVerweigernSymlinkUndFremdeRechte, TestLinuxDateiUndSperreAmAdapter, TestLinuxKonfigurationUndDienst |
 
 Linux-CI setzt JNPT_DOCKER_REQUIRED=1: kein Skip ohne Docker. Lokale Prüfung
@@ -296,3 +323,14 @@ auch im Linux-Prüfcontainer mit Docker-Socket möglich, /tmp für Bind-Proben a
 gleichen Hostpfad einbinden und Go-TMPDIR auf ein ausführbares Verzeichnis setzen.
 probe/container_mutations.py mutiert neue Sperren mit kompilierenden roten Tests
 und stellt jede Datei bytegenau wieder her. Nur exklusiv, keine parallelen Tests.
+
+L1-Mutationen: `python probe/l1_mutations.py` nutzt den laufenden Container
+`l1-test` mit Go 1.26.10, ohne parallele Tests. Jeder Mutant muss kompilieren
+und am benannten Adaptertest rot werden; `finally` stellt die Bytes wieder her.
+Windows-CI ergänzt `TestWindowsK8UhrmarkeDPAPINeustart` (DPAPI, ACL,
+Neustart, Manipulation). Keine GUI-Probe für L1.
+Upgrade-Regression: `TestTestgeraetUpgradeSynchronisiertVertrag4` und
+`TestAlterCacheSperrtClaims` prüfen alten Cache, neuen Sync und die Claim-Sperre.
+Kern-Restgrenzen: unbekannte abgelaufene Offline-Slots/Werkzeugläufe werden
+vor dem Zählen abgewiesen, `result:null` ebenfalls (README). Nicht durch
+Klassenumdeutung umgehen; Kern bleibt außerhalb von L1.

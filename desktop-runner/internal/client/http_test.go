@@ -92,7 +92,7 @@ func TestNurAnlageUndKeinePrivatenBodys(t *testing.T) {
 	c.StartPolicy.Mode = "idle"
 	c.StartPolicy.IdleMinutes = 3
 	s := Session{Active: true, Account: "PRIVATE_ACCOUNT", Idle: 999999999999}
-	_, e = api.Heartbeat(context.Background(), Heartbeat{1, Ready(s, c, true), "test", 1})
+	_, e = api.Heartbeat(context.Background(), Heartbeat{4, Ready(s, c, true), "test", 1})
 	if e != nil {
 		t.Fatal(e)
 	}

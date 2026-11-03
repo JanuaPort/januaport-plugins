@@ -355,7 +355,7 @@ func TestVertrag2ManifestGolden(t *testing.T) {
 	}
 }
 
-func TestVertrag1WindowsUnveraendert(t *testing.T) {
+func TestVertrag1GoldensUnveraendert(t *testing.T) {
 	b, e := os.ReadFile("../../contract/golden/manifest_canonical.bin")
 	if e != nil {
 		t.Fatal(e)

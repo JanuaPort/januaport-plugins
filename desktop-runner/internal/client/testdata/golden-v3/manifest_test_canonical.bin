@@ -1,0 +1,1 @@
+{"contract":1,"device_id":"aaaaaaaaaaaaaaaa","grace_hours":24,"issued_at":"2026-10-31T12:00:00Z","pins":[{"algo":"sha1","commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","declared_tools":[],"path":"demo","pin":"test_aaaaaaaa","schedules":[]}],"seq":42,"test_device":true}

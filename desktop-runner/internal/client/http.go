@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
@@ -136,7 +137,11 @@ func (a *API) request(ctx context.Context, method, endpoint string, body any, se
 	}
 	var reader io.Reader
 	if body != nil {
-		raw, e := json.Marshal(body)
+		raw, binary := body.([]byte)
+		var e error
+		if !binary {
+			raw, e = json.Marshal(body)
+		}
 		if e != nil || len(raw) > 8<<20 {
 			return nil, 0, ErrProtocol
 		}
@@ -155,6 +160,9 @@ func (a *API) request(ctx context.Context, method, endpoint string, body any, se
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+		if _, binary := body.([]byte); binary {
+			req.Header.Set("Content-Type", "image/png")
+		}
 	}
 	if seq != 0 {
 		req.Header.Set("X-Jnpt-Manifest-Seq", strconv.FormatUint(seq, 10))
@@ -321,7 +329,7 @@ func (a *API) Claim(ctx context.Context) (*Job, error) {
 		return nil, ErrProtocol
 	}
 	j := out.Job
-	if !uuidRE.MatchString(j.JobID) || !safeName(j.Pin) || !validID(j.Algo, j.Commit) || ((a.Contract() == 1 && (!safePath(j.Path) || j.AllowedSecretNames != nil)) || (a.Contract() == 2 && (j.Path != "" || j.Algo != "sha256" || !secretNamesValid(j.AllowedSecretNames)))) || j.ManifestSeq == 0 || !inputOK(j.Input) || !utc(j.StartBy) || j.Limits.WallS < 1 || j.Limits.WallS > 86400 || j.Limits.ToolCalls < 0 {
+	if !uuidRE.MatchString(j.JobID) || !safeName(j.Pin) || !validID(j.Algo, j.Commit) || ((a.Contract() != 2 && (!safePath(j.Path) || j.AllowedSecretNames != nil)) || (a.Contract() == 2 && (j.Path != "" || j.Algo != "sha256" || !secretNamesValid(j.AllowedSecretNames)))) || j.ManifestSeq == 0 || !inputOK(j.Input) || !utc(j.StartBy) || j.Limits.WallS < 1 || j.Limits.WallS > 86400 || j.Limits.ToolCalls < 0 {
 		return nil, ErrProtocol
 	}
 	return &j, nil
@@ -376,7 +384,13 @@ func (a *API) MCP(ctx context.Context, token string, id int64, name string, args
 	return reply.Result, nil
 }
 func (a *API) Report(ctx context.Context, r Result) error {
-	if r.Log != "" || (a.Contract() == 1 && r.MountedSecretNames != nil) || (a.Contract() == 2 && (r.MountedSecretNames == nil || *r.MountedSecretNames == nil || !secretNamesValid(*r.MountedSecretNames))) {
+	if len(r.Result) != 0 {
+		return ErrProtocol
+	}
+	return a.report(ctx, r)
+}
+func (a *API) report(ctx context.Context, r Result) error {
+	if r.Log != "" || (a.Contract() != 2 && r.MountedSecretNames != nil) || (a.Contract() == 2 && (r.MountedSecretNames == nil || *r.MountedSecretNames == nil || !secretNamesValid(*r.MountedSecretNames))) {
 		return ErrProtocol
 	}
 	_, s, e := a.request(ctx, "POST", "runs/result", r, 0, "", 80<<10)
@@ -403,11 +417,143 @@ func (a *API) Contract() int {
 	if a.contract == 2 {
 		return 2
 	}
-	return 1
+	return 4
 }
 func (a *API) validDeviceConfig(c Config) bool {
 	if a.Contract() == 2 {
 		return c.Device.Kind == "server" && c.StartPolicy.Mode == "always"
 	}
 	return c.ExpectedAccount != "" && (c.Device.Kind == "dedicated" || c.Device.Kind == "workstation")
+}
+
+type SetupStartReply struct {
+	RunKey    string          `json:"run_key"`
+	Input     json.RawMessage `json:"input"`
+	RunToken  string          `json:"run_token"`
+	ExpiresAt string          `json:"expires_at"`
+	MCPPath   string          `json:"mcp_path"`
+}
+
+// StartSetup only accepts an entry of the verified manifest. Local readiness,
+// the single run slot and the UI's free-input restriction belong to L3/L4.
+func (a *API) StartSetup(ctx context.Context, signed SignedManifest, c Credential, pin, setup string, frei json.RawMessage) (SetupStartReply, error) {
+	var out SetupStartReply
+	m, err := VerifyManifest(signed, c.Pubkey, c.DeviceID, 0)
+	if err != nil || a.Contract() != 4 || m.Contract != 4 {
+		return out, ErrManifest
+	}
+	found := false
+	for _, p := range m.Pins {
+		if p.Pin == pin {
+			for _, s := range p.Setups {
+				if s.Name == setup {
+					found = true
+				}
+			}
+		}
+	}
+	if !found {
+		return out, ErrManifest
+	}
+	if len(frei) == 0 {
+		frei = json.RawMessage(`{}`)
+	}
+	if !inputOK(frei) {
+		return out, ErrProtocol
+	}
+	var random [16]byte
+	if _, err = rand.Read(random[:]); err != nil {
+		return out, err
+	}
+	nonce := base64.RawURLEncoding.EncodeToString(random[:])
+	body := struct {
+		Pin     string          `json:"pin"`
+		SetupID string          `json:"setup_id"`
+		Nonce   string          `json:"nonce"`
+		Frei    json.RawMessage `json:"frei"`
+	}{pin, setup, nonce, frei}
+	b, status, err := a.request(ctx, "POST", "runs/start", body, m.Seq, "", (256<<10)+16<<10)
+	if err != nil {
+		return out, err
+	}
+	if status != 200 || strict(b, &out) != nil || out.RunKey != "setup/"+pin+"/"+setup+"/"+nonce || !inputOK(out.Input) || out.RunToken == "" || !utc(out.ExpiresAt) || out.MCPPath != "/api/device/v1/mcp" {
+		return SetupStartReply{}, ErrProtocol
+	}
+	return out, nil
+}
+
+// Halt reports local state; it never changes engine state or starts a run.
+func (a *API) Halt(ctx context.Context, state, until string) error {
+	if a.Contract() != 4 || (state != "arbeitet" && state != "pausiert" && state != "angehalten") || (until != "" && (state != "pausiert" || !utc(until))) {
+		return ErrProtocol
+	}
+	body := struct {
+		Contract int    `json:"contract"`
+		State    string `json:"state"`
+		Until    string `json:"until,omitempty"`
+	}{a.Contract(), state, until}
+	_, status, err := a.request(ctx, "POST", "halt", body, 0, "", 16<<10)
+	if err != nil {
+		return err
+	}
+	if status != 204 {
+		return ErrProtocol
+	}
+	return nil
+}
+
+// TestOrder keeps the signed authorization separately from the journal. Claims
+// have no test bit. Never authorize from the pin name or an unsigned bool alone.
+type TestOrder struct {
+	Envelope    SignedManifest `json:"envelope"`
+	JobID       string         `json:"job_id"`
+	Pin         string         `json:"pin"`
+	Commit      string         `json:"commit"`
+	Path        string         `json:"path"`
+	Algo        string         `json:"algo"`
+	ManifestSeq uint64         `json:"manifest_seq"`
+}
+
+// NewTestOrder retains binding fields only, never the claim input or limits.
+func NewTestOrder(envelope SignedManifest, j Job) TestOrder {
+	return TestOrder{envelope, j.JobID, j.Pin, j.Commit, j.Path, j.Algo, j.ManifestSeq}
+}
+
+func (o TestOrder) verified(c Credential) bool {
+	m, err := VerifyManifest(o.Envelope, c.Pubkey, c.DeviceID, 0)
+	j := o
+	if err != nil || !m.TestDevice || len(c.DeviceID) < 8 || j.Pin != "test_"+c.DeviceID[:8] || !uuidRE.MatchString(j.JobID) || j.ManifestSeq == 0 || j.ManifestSeq > m.Seq {
+		return false
+	}
+	for _, p := range m.Pins {
+		if p.Pin == j.Pin && p.Commit == j.Commit && p.Path == j.Path && p.Algo == j.Algo && p.Container == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// ReportTest is the only result-bearing report path. Ordinary Report refuses
+// result, including journal replay without a verified historical TestOrder.
+func (a *API) ReportTest(ctx context.Context, r Result, c Credential, o TestOrder) error {
+	if a.Contract() != 4 || !o.verified(c) || r.JobID != o.JobID || r.RunKey != "" || r.ManifestSeq != o.ManifestSeq || r.Commit != o.Commit || r.RanOffline || len(r.Result) > 64<<10 {
+		return ErrProtocol
+	}
+	return a.report(ctx, r)
+}
+
+// Screenshot uploads existing bytes. Capture and the per-run count belong to
+// L5; the core also enforces the five-image limit and its two-minute deadline.
+func (a *API) Screenshot(ctx context.Context, c Credential, o TestOrder, png []byte) error {
+	if a.Contract() != 4 || !o.verified(c) || len(png) > 4<<20 || !bytes.HasPrefix(png, []byte{137, 80, 78, 71, 13, 10, 26, 10}) {
+		return ErrProtocol
+	}
+	_, status, err := a.request(ctx, "POST", "jobs/"+o.JobID+"/screenshot", png, 0, "", 16<<10)
+	if err != nil {
+		return err
+	}
+	if status != 204 {
+		return ErrProtocol
+	}
+	return nil
 }

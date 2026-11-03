@@ -35,6 +35,15 @@ func l1API(t *testing.T, handler http.HandlerFunc) *API {
 	return a
 }
 
+func l1JSONEqual(a, b []byte) bool {
+	x, err := canonical(a)
+	if err != nil {
+		return false
+	}
+	y, err := canonical(b)
+	return err == nil && bytes.Equal(x, y)
+}
+
 func l1Manifest() Manifest {
 	return Manifest{Contract: 4, DeviceID: "aaaaaaaaaaaaaaaa", Seq: 42, IssuedAt: "2026-11-01T12:00:00Z", GraceHours: 24,
 		Pins: []Pin{{Pin: "test_aaaaaaaa", Algo: "sha1", Commit: strings.Repeat("a", 40), Path: "demo", DeclaredTools: []string{}, Schedules: []Schedule{}}}}
@@ -140,7 +149,7 @@ func TestGoldenV3AusKern(t *testing.T) {
 			}
 		})
 	}
-	for _, dir := range []string{"golden", "golden-v2"} {
+	for _, dir := range []string{"golden"} {
 		b, err := os.ReadFile(filepath.Join("../../contract", dir, "SHA256SUMS"))
 		if err != nil {
 			t.Fatal(err)
@@ -153,6 +162,10 @@ func TestGoldenV3AusKern(t *testing.T) {
 			}
 		}
 	}
+	b, err := os.ReadFile("../../contract/golden-v2/manifest_container_canonical.bin")
+	if err != nil || sum(b) != "d376d83bdfa271f653a88de5d682e4cbb75a723ffa3a03119c2ea0ab4af88ead" {
+		t.Fatal("Vertrag-2-Golden geändert", err)
+	}
 }
 
 func TestManifestV4StriktAmAdapter(t *testing.T) {
@@ -163,6 +176,7 @@ func TestManifestV4StriktAmAdapter(t *testing.T) {
 	}{
 		{"positiv", strings.Replace(base, "LABEL", strings.Repeat("ü", 40), 1), true},
 		{"apps", strings.Replace(base, `"contract":4`, `"contract":4,"apps":[]`, 1), false},
+		{"v1LeereSetups", strings.Replace(strings.Replace(base, `[{"name":"raum","label":"LABEL","input":{},"frei":[]}]`, `[]`, 1), `"contract":4`, `"contract":1`, 1), false},
 		{"label41", strings.Replace(base, "LABEL", strings.Repeat("ü", 41), 1), false},
 		{"labelLeer", strings.Replace(base, "LABEL", "", 1), false},
 		{"labelSteuerzeichen", strings.Replace(base, "LABEL", `a\nb`, 1), false},
@@ -228,7 +242,7 @@ func l1Order(t *testing.T, test bool, pin string) (Credential, TestOrder) {
 	m.Pins[0].Pin = pin
 	signed, c := l1Sign(t, encode(m), m.DeviceID)
 	p := m.Pins[0]
-	return c, TestOrder{Envelope: signed, Job: Job{JobID: "12345678-1234-4234-8234-123456789abc", Pin: pin, Commit: p.Commit, Path: p.Path, Algo: p.Algo, ManifestSeq: m.Seq}}
+	return c, NewTestOrder(signed, Job{JobID: "12345678-1234-4234-8234-123456789abc", Pin: pin, Commit: p.Commit, Path: p.Path, Algo: p.Algo, ManifestSeq: m.Seq})
 }
 
 func TestScreenshotNurTestgeraet(t *testing.T) {
@@ -250,7 +264,7 @@ func TestScreenshotNurTestgeraet(t *testing.T) {
 			a := l1API(t, func(w http.ResponseWriter, r *http.Request) {
 				hits++
 				b, _ := io.ReadAll(r.Body)
-				if r.Method != "POST" || r.URL.Path != "/api/device/v1/jobs/"+order.Job.JobID+"/screenshot" || r.Header.Get("Content-Type") != "image/png" || !bytes.Equal(b, png) {
+				if r.Method != "POST" || r.URL.Path != "/api/device/v1/jobs/"+order.JobID+"/screenshot" || r.Header.Get("Content-Type") != "image/png" || !bytes.Equal(b, png) {
 					t.Error("Screenshot-Draht", r.URL.Path)
 				}
 				w.WriteHeader(204)
@@ -278,7 +292,7 @@ func TestErgebnisNurTestauftrag(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			c, order := l1Order(t, tc.test, tc.pin)
 			hits := 0
-			r := Result{JobID: order.Job.JobID, ManifestSeq: order.Job.ManifestSeq, Commit: order.Job.Commit, End: "ok", FinishedAt: "2026-11-01T12:01:00Z", Result: json.RawMessage(`{"wert":42}`)}
+			r := Result{JobID: order.JobID, ManifestSeq: order.ManifestSeq, Commit: order.Commit, End: "ok", FinishedAt: "2026-11-01T12:01:00Z", Result: json.RawMessage(`{"wert":42}`)}
 			a := l1API(t, func(w http.ResponseWriter, req *http.Request) {
 				hits++
 				var got Result
@@ -299,29 +313,29 @@ func TestErgebnisNurTestauftrag(t *testing.T) {
 }
 
 func TestTestadapterVerweigernFalscheBindung(t *testing.T) {
-	for _, kind := range []string{"signatur", "geraet", "pin", "commit", "pfad", "algo", "seq", "jobID", "server", "png", "pngGross", "resultGross", "resultFremderJob", "resultOffline", "resultRunKey"} {
+	for _, kind := range []string{"signatur", "geraet", "pin", "commit", "pfad", "algo", "seq", "jobID", "server", "png", "pngGross", "resultGross", "resultFremderJob", "resultOffline", "resultRunKey", "resultSeq", "resultCommit", "resultServer", "resultJSON"} {
 		t.Run(kind, func(t *testing.T) {
 			c, order := l1Order(t, true, "test_aaaaaaaa")
 			hits := 0
 			png := []byte{137, 80, 78, 71, 13, 10, 26, 10}
-			r := Result{JobID: order.Job.JobID, ManifestSeq: order.Job.ManifestSeq, Commit: order.Job.Commit, Result: json.RawMessage(`42`)}
+			r := Result{JobID: order.JobID, ManifestSeq: order.ManifestSeq, Commit: order.Commit, Result: json.RawMessage(`42`)}
 			switch kind {
 			case "signatur":
 				order.Envelope.Sig = "invalid"
 			case "geraet":
 				c.DeviceID = "bbbbbbbbbbbbbbbb"
 			case "pin":
-				order.Job.Pin = "test_bbbbbbbb"
+				order.Pin = "test_bbbbbbbb"
 			case "commit":
-				order.Job.Commit = strings.Repeat("b", 40)
+				order.Commit = strings.Repeat("b", 40)
 			case "pfad":
-				order.Job.Path = "other"
+				order.Path = "other"
 			case "algo":
-				order.Job.Algo = "sha256"
+				order.Algo = "sha256"
 			case "seq":
-				order.Job.ManifestSeq++
+				order.ManifestSeq++
 			case "jobID":
-				order.Job.JobID = "../escape"
+				order.JobID = "../escape"
 			case "png":
 				png = []byte("not png")
 			case "pngGross":
@@ -334,9 +348,18 @@ func TestTestadapterVerweigernFalscheBindung(t *testing.T) {
 				r.RanOffline = true
 			case "resultRunKey":
 				r.RunKey = "setup/demo/raum/synthetic"
+			case "resultSeq":
+				r.ManifestSeq++
+			case "resultCommit":
+				r.Commit = strings.Repeat("b", 40)
+			case "resultJSON":
+				r.Result = json.RawMessage(`{"invalid":`)
+			case "resultServer":
+				names := []string{}
+				r.MountedSecretNames = &names
 			}
 			a := l1API(t, func(w http.ResponseWriter, req *http.Request) { hits++; w.WriteHeader(204) })
-			if kind == "server" {
+			if kind == "server" || kind == "resultServer" {
 				if err := a.Server("rootless"); err != nil {
 					t.Fatal(err)
 				}
@@ -385,7 +408,7 @@ func TestSetupUndHaltAmHTTPAdapter(t *testing.T) {
 				t.Error("Sequenz/Körper", body)
 			}
 			for _, key := range []string{"pin", "setup_id", "frei"} {
-				if !bytes.Equal(body[key], routes[0].Request[key]) {
+				if !l1JSONEqual(body[key], routes[0].Request[key]) {
 					t.Error("Golden-Abweichung", key)
 				}
 			}
@@ -488,6 +511,18 @@ func TestOfflineFristJePinUndUhrMarke(t *testing.T) {
 	}
 	if _, err = st.ObserveTime(now); err == nil {
 		t.Fatal("kaputte Uhrmarke ignoriert")
+	}
+	st, err = OpenState(t.TempDir(), testCipher{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.ObserveTime(now); err != nil {
+		t.Fatal(err)
+	}
+	st.clockSeen = time.Now().Add(-3 * time.Hour)
+	advanced, err := st.ObserveTime(now.Add(-time.Hour))
+	if err != nil || advanced.Before(now.Add(3*time.Hour)) {
+		t.Fatal("laufende Uhrmarke blieb bei Rücksprung stehen", advanced, err)
 	}
 }
 

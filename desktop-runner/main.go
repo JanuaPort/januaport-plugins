@@ -16,7 +16,7 @@ import (
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/platform"
 )
 
-var version = "0.1.0-dev"
+var version = "0.3.0"
 
 func main() {
 	if run(os.Args[1:], os.Stdout) != nil {
