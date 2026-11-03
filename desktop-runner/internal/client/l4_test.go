@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"io"
+	"strings"
 	"testing"
 	"time"
 )
@@ -107,5 +108,30 @@ func TestH4FrageOhnePanelUndAbbruch(t *testing.T) {
 	out, _ := json.Marshal(v)
 	if string(out) != `{"type":"antwort","id":"q1","wahl":null}` {
 		t.Fatal(string(out))
+	}
+}
+
+func TestH4RoheFrageGrenzen(t *testing.T) {
+	good := `{"type":"frage","id":"q1","text":"x","optionen":["Ja","Nein"],"frist_s":5}`
+	for _, raw := range []string{
+		strings.Replace(good, `"text":"x"`, `"text":"`+strings.Repeat("ü", 501)+`"`, 1),
+		strings.Replace(good, `["Ja","Nein"]`, `["Ja"]`, 1),
+		strings.Replace(good, `["Ja","Nein"]`, `["a","b","c","d","e"]`, 1),
+		strings.Replace(good, `"Nein"`, `"`+strings.Repeat("ü", 41)+`"`, 1),
+		strings.Replace(good, `:5`, `:4`, 1), strings.Replace(good, `:5`, `:3601`, 1),
+		strings.Replace(good, `"id":"q1"`, `"id":"q1","id":"q2"`, 1),
+		strings.Replace(good, `"text":"x"`, `"text":null`, 1),
+		strings.Replace(good, `"text":"x"`, `"text":"x","input":{}`, 1),
+	} {
+		b := pipeBed(t)
+		b.exit = func(w *io.PipeWriter) {
+			var h [4]byte
+			binary.BigEndian.PutUint32(h[:], uint32(len(raw)))
+			w.Write(h[:])
+			w.Write([]byte(raw))
+		}
+		if r := b.execute(); r.End != "internal" {
+			t.Fatal("ungültige rohe Frage angenommen", raw, r)
+		}
 	}
 }

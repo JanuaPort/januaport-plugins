@@ -23,6 +23,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 | state.go, replace_* | Atomare OS-geschützte Dateien, Journal/Marker/Slot-Transaktion, Löschung |
 | runtemp.go | Lauf-TEMP: RunID/RunTemps, Anlegen nur neu, Aufräumen/Besen ohne Reparse-Punkte, Kind-Umgebung |
 | log.go | Geschlossene numerische Codes (1–9), 5 × 1 MiB |
+| cmd/bedienfeld, internal/panel, internal/panelio | Nativer Tray-Prozess, reines Modell und getrennter Pipe-I/O-Adapter |
 | internal/pipe, internal/client/pipe.go | Lokales Schema, Windows-Pipe, Serverprüfung, Setup-Zulassung und interne Rückfragen |
 | internal/platform/*_windows.go | DPAPI/ACL (SecureRoot, MkdirPrivate), WTS/LastInput, suspendierter Prozess/Job Object, COM/HKCU |
 | internal/platform/install.go, other.go | Windows-Nähte und Fail-closed-Stubs für andere Systeme |
@@ -146,8 +147,8 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     `StartSetup` prüft das signierte Manifest, erzeugt 128 Zufallsbits über
     `crypto/rand` (22 Zeichen base64url) und bindet `X-Jnpt-Manifest-Seq`.
     `API.Halt` meldet nur; `Engine.Halt` steuert seit L2 lokal (Invariante 14).
-    L3 ergänzt die Pipe und die Go-seitige Setup-Zulassung. Bedienfeld, Helfer
-    und Aufnahme folgen in L4/L5. L1–L3 erfassen keinen Bildschirm.
+    L3 ergänzt Pipe und Setup-Zulassung, L4 das native Bedienfeld. Helfer
+    und Aufnahme folgen in L5. L1–L4 erfassen keinen Bildschirm.
 
 14. Lokaler Halt (#1240 L2, nur Windows): atomare DPAPI-Datei `halt`
     (`{state, until}`), vor jedem ersten Takt gelesen. B6: offline und über
@@ -226,11 +227,19 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Offline-Warteschlange für Setup-Befehle. Halt/Freigabewechsel während HTTP
     sperrt den Spawn. Unmittelbar vor Spawn wird die Setup-Freigabe unter derselben
     Engine-Sperre erneut gebunden; die L2-Haltprüfung bleibt unverändert.
-    Rückfragen intern lokal: 500 Zeichen, 2–4 Optionen zu je 40 Zeichen,
-    5–3600 Sekunden, höchstens eine offen; ohne Panel/bei Frist/Abbruch `nil`,
-    `antwort.wahl` ist nullbasiert. Anhalten schließt die Frage. L5 bindet den
-    Python-Kanal an diese Prüfung und den Laufkontext. Rohe Skript-Rahmen für
-    `frage`/`ergebnis`/`screenshot` bleiben bis L5 abgewiesen; kein Aufnahmeweg.
+    Rückfragen lokal: `frage{id,titel,text,optionen,frist_s}`, Titel höchstens
+    40 Zeichen, Text 500 Zeichen, 2–4 Optionen zu je 40 Zeichen, 5–3600 Sekunden.
+    H4: Titel aus dem Manifest-Pin, nie Skripttext. Vertrag 4 hat kein Pin-Label;
+    Rückfall Pin-Name, auf 40 Zeichen begrenzt. Höchstens eine offene Frage je
+    Lauf, in Go am echten stdout-Adapter geprüft. L4 ergänzt diesen H4-Rahmenweg
+    samt Laufkontext; skriptseitiger Titel, ungültiger Rahmen oder zweite offene
+    Frage → `abgewiesen`, Lauf `internal`. Ohne Panel/bei Frist `wahl:null`;
+    Abbruch/Anhalten schließt ohne Wahl. `antwort.wahl` ist nullbasiert.
+    L5 ergänzt den Python-Helfer; `bootstrap.py` bleibt unverändert.
+    Rohe `ergebnis`/`screenshot` bleiben bis L5 abgewiesen; kein Aufnahmeweg.
+    Setup-Projektion: Pflicht-Bool `braucht_eingabe` ausschließlich aus
+    `len(frei)>0` des verifizierten Manifests; `startbar` fasst alle Sperren
+    zusammen. Die zweite Schemaänderung ermöglicht den genauen Eingabehinweis.
     Ergebnis und Screenshot bleiben zusätzlich durch die L1-Testauftragsprüfung
     geschützt (Invariante 13). H3: Pipe-Serverhandles sind nicht vererbbar und
     stehen nie in der expliziten Python-Handleliste (nur stdin/stdout/NUL).
@@ -239,6 +248,37 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Unbenannte/unlesbare Pipe-Endpunkte werden bei der Namensabfrage übersprungen;
     Erkennung der Eltern-Pipe, absichtlich vererbtes Handle und eine eigene
     Python-Kontrollpipe sichern die Sonden gegen falsch grüne Ergebnisse.
+
+16. Bedienfeld (#1240 L4; Plan-Invarianten 14/15/18): `jnpt-bedienfeld.exe`,
+    separater Windows-Prozess ohne CGO, gebaut mit `-H=windowsgui`.
+    `internal/panel`: reines Linux-testbares Modell. `internal/panelio`: I/O.
+    `cmd/bedienfeld`: UI-Thread mit LockOSThread und Message-Loop; Pipe-Lesen
+    in Goroutines, Übergabe per PostMessage. Kein Credential/eigener Netzweg.
+    Transitive Importe: kein `net/http`/`internal/client`, `net` nur über Pipe.
+    Benannte Ausnahmeliste `importExceptions` in `TestPanelImportWaechter`
+    leer (K6b später). Win32 via syscall/System32; x/sys/windows nur hinter Pipe.
+    Ausschließlich `pipe.Dial()` prüft Bildpfad, Authenticode und Benutzer-SID.
+    Nichts vor erfolgreicher Prüfung schreiben; kein Ausweichname, Wiederholung
+    mit 5–60 Sekunden Abstand. Fünf Sekunden ohne Status oder bei blockiertem
+    Schreiben beenden die Verbindung.
+    §6.6: Störung aus Zustand, Fehler, Nichterreichbarkeit oder Serverprüfung
+    bleibt dauerhaft violett mit exakt
+    „Störung. Anhalten: abmelden oder über den Admin halten lassen.“
+    Erst gültiger `zustand` nach erneuter erfolgreicher Prüfung löscht sie.
+    Menü: Zustand, Pause 15/60/bis Weiter, Weiter, Anhalten/Fortsetzen, Setups,
+    „Test“ nur auf Testgeräten, Beenden nur des Bedienfelds. `bis` lokal;
+    offline + Fristablauf → „offline, Frist abgelaufen“. Graue Setups nur bei
+    `braucht_eingabe:true` mit „braucht Eingabe“ ergänzen.
+    Fenster erst nach Klick, kein Hotkey/Toast/Sprechblase/Autostart-Code.
+    Dialog „JanuaPort – <titel>“, statischer Text, 2–4 gewöhnliche Knöpfe,
+    `WS_EX_NOACTIVATE`, `SW_SHOWNOACTIVATE`, kein `BS_DEFPUSHBUTTON`, kein
+    Anfangsfokus/SetForegroundWindow/SetFocus/SetActiveWindow. Höchstens einer
+    offen; zweite Frage nicht anzeigen. `frage_weg`, Anhalten, Trennung und
+    Frist schließen ohne Antwort; Antwort nur `antwort{id,wahl}`.
+    Native Prozesssonde: echte Exe ohne Argumente, PEB/Umgebung ohne `jnpt*`
+    (Exe-Name ausgenommen), Handle-Vererbung samt Gegenprobe. Läuft über den
+    bestehenden Windows-Job. Kein Tray-Rauchtest/lokaler GUI-Start.
+    Installation/zweite Aufgabe/Release bleiben L6, HTML/WebView erst K6b.
 
 ## Benannte Grenzen
 
@@ -253,8 +293,10 @@ ist Tiefenverteidigung, keine Grenze gegen gleichberechtigte Prozesse,
 UI-Automation oder Austausch von Dateien im eigenen Ordner. Die Medium-
 Integritätsmarke schützt gegen lesende und schreibende Low-IL-Clients.
 Störung bleibt lokal; eine Pipe kann durch einen gleichberechtigten Prozess
-belegt oder blockiert werden. Dauerhafte Tray-Anzeige und Ausweichtext
-„anhalten: abmelden oder über den Admin halten lassen“ gehören zu L4.
+belegt oder blockiert werden. L4 zeigt dauerhaft eigene Farbe und exakt
+„Störung. Anhalten: abmelden oder über den Admin halten lassen.“
+UIA-Skripte desselben Benutzers können das Bedienfeld bedienen; eine Pause kann
+das laufende Skript selbst aufheben, endgültig für den Baum ist nur Anhalten.
 
 ## Tragende Adaptertests
 
@@ -278,6 +320,7 @@ belegt oder blockiert werden. Dauerhafte Tray-Anzeige und Ausweichtext
 | Lokaler Halt B3/B6, L2-1/L2-2 (#1240 L2) | TestHaltUeberstehtNeustart, TestHaltDateiFehltOderDefekt, TestHaltZwischenClaimUndSpawn, TestHaltBeiWriteFrameFehler, TestAnhaltenBeendetLaufOhneNetz, TestPauseLaesstLaufendenZuEnde, TestFortsetzenHoltNichtsNach, TestHaltBefehleStartenNie, TestPauseEndetAutomatisch, TestHaltMeldungKoalesziert, TestHaltRunSperrtClaimsUndHaeltHeartbeat, TestHaltSpeicherfehlerSperrt, TestHaltMeldungNeustartUndBestaetigung, TestHaltMeldungOhneDauerhafteBremseGesperrt, TestHaltBrichtOffenenClaimAb, TestHaltDirekteStartwegeGesperrt, TestPauseNeustartUndAblaufOhneNachholen, TestHaltMeldungWiederholtFehler, TestHaltLaesstServerUnveraendert, TestHaltSperrtSlotreservierung; Windows-CI: TestWindowsAnhaltenBeendetEnkel |
 | Hygiene | TestLoggerDeckelUndFesteCodes, TestStriktesJSONAmAdapter, TestFrameGrenzen, TestReleaseUndWindowsCI |
 | Pipe B1/B2, L3-1/L3-2, H1–H3 (#1240 L3) | TestPipeDACLStruktur, TestPipeBesetztStartetOhnePipe, TestClientPrueftServerbild, TestPipeBefehleGeschlossen, TestPipeGolden, TestPipeRoheRahmenAmLaeufer, TestPipeOhneTraeger, TestSetupStartNurAusManifest, TestSetupStartAmPipeHTTPAdapter, TestSetupHaltWaerendHTTP, TestSetupVeralteteFreigabeStartetNicht, TestSetupFreigabeDirektVorSpawn, TestSetupSperrtUndBrichtClaimAb, TestSetupSperrtAndereStartwege, TestSetupDirektesExecuteBleibtGesperrt, TestSetupFehlerNieOfflineNachmelden, TestPipeHaltBefehle, TestSkriptRoheTestfunktionenBleibenGesperrt, TestPipeKindHandleListe; native Windows-Sonden siehe README „Lokale Pipe“ |
+| Bedienfeld, Plan 14/15/18, §6.6, H4 | TestPanelZustaende, TestPanelMenueBefehleUndSetupEingabe, TestPanelFrageNurLokal, TestPanelStoerungBleibtBisNeuGeprueftemZustand, TestPanelServerpruefungSperrtBefehle, TestServerpruefungSendetNichtsAmAdapter, TestVerbindungVerwirftAlteBefehleUndBrichtSchreibenAb, TestBlockiertesSchreibenTrotzHeartbeatWirdGetrennt, TestFokusWaechter, TestBedienfeldNurGepruefterDial, TestPanelImportWaechter, TestL4SchemaPflichtfelder, TestH4RoheFragenAmLaeufer, TestH4SkriptTitelAbgewiesen, TestH4RoheFrageGrenzen, TestPanelEingabeAusVerifiziertemManifest; Windows: TestWindowsBedienfeldProzesssonde |
 | Rückfragen intern, L3-Anteil | TestFrageNurLokal, TestFrageFristUndDisconnect, TestPipeFrageAntwortWeiterleitung, TestPipeHaltSchliesstFrage |
 
 Übernommene Funktionen sind im Dateikopf markiert. Wächter vergleichen die
@@ -361,6 +404,10 @@ Compilerfehler zählen nicht. finally stellt Quelldateien byte-genau wieder her.
 Nach externer Zwangsbeendigung den betroffenen Guard ausdrücklich prüfen.
 Abschlussbericht ausschließlich im Chat, keine Berichtsdatei im Repository.
 
+L4-Mutationen: `python probe/l4_mutations.py`, exklusiv in `l4-test`, Go 1.26.10.
+Kompilierende rote Mutanten, bytegenaue Wiederherstellung. Native Mutanten
+lokal nur cross-kompilieren; Ausführung durch LEAD in CI, Fokus/Tray am GATE.
+
 L3-Mutationen: `python probe/l3_mutations.py`, exklusiv im Container `l3-test`
 mit `golang:1.26.10` und Repo-Mount `/workspace`. Jeder Linux-Mutant muss
 kompilieren und seinen Zieltest tatsächlich rot machen; alle Bytes werden in
@@ -378,8 +425,8 @@ Die Mutation „Spawn-Gate nur für angehalten“ muss im Fall `pausiert` rot we
 nach Anhalten `cancelled`, ohne Anhalten weiterhin `internal`; beide Zuordnungen
 sind durch Mutationen abgesichert. Native Sonde
 `TestWindowsAnhaltenBeendetEnkel` lokal nur kompilieren; LEAD startet Windows-CI.
-Störung bleibt in L2 als Logcode + Statusflag lokal; dauerhafte Tray-Anzeige und
-Ausweichtext folgen in L4. Außerhalb des Job-Baums gestartete Prozesse bleiben
+Störung bleibt lokal; L2 liefert Logcode/Statusflag, L4 zeigt dauerhaft Farbe
+und festen Ausweichtext (Invariante 16). Außerhalb des Job-Baums gestartete Prozesse bleiben
 eine Grenze; Bedienung durch Prozesse derselben Person ebenfalls (README).
 
 Native Windows-Mutationen zusätzlich: probe/mutations-windows.ps1 (ohne Admin).

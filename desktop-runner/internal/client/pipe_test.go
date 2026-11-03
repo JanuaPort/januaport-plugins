@@ -251,7 +251,7 @@ func TestPipeFrageAntwortWeiterleitung(t *testing.T) {
 		t.Fatal(err)
 	}
 	panel.ReadFrame(ui)
-	q := panel.Message{Type: "frage", ID: "q1", Text: "Weiter?", Optionen: []string{"Ja", "Nein"}, FristS: 5}
+	q := panel.Message{Type: "frage", Titel: "Demo", ID: "q1", Text: "Weiter?", Optionen: []string{"Ja", "Nein"}, FristS: 5}
 	answer := make(chan *int, 1)
 	go func() { v, _ := b.engine.Questions.Ask(ctx, q); answer <- v }()
 	raw, err := panel.ReadFrame(ui)

@@ -29,8 +29,8 @@ gespeichert und vor dem Senden erneut geprüft. Der Kern begrenzt Bilder auf fü
 und auf laufende Tests beziehungsweise zwei Minuten nach deren Ende.
 
 L1 enthält Adapter und K8; L2 ergänzt den lokalen Halt im Engine.
-L3 ergänzt die lokale Pipe und die Setup-Zulassung im Läufer. Bedienfeld,
-Python-Helfer und Bildschirmaufnahme folgen in L4/L5.
+L3 ergänzt Pipe und Setup-Zulassung, L4 das native Bedienfeld.
+Python-Helfer und Bildschirmaufnahme folgen in L5.
 Unveränderte Kernreferenzen mit SHA-256:
 [golden-v3](internal/client/testdata/golden-v3/README.md).
 
@@ -78,11 +78,12 @@ unlesbar oder nicht schreibbar, bleibt die Meldung ausstehend. Eine rückwärts
 gestellte Uhr verzögert die Nachlieferung. Ein Neustart meldet den letzten
 gespeicherten Halt erneut. Störung bleibt lokal; auf dem Draht steht `angehalten`.
 
-Die Anzeige der Störung und der feste Ausweichtext „anhalten: abmelden oder über
-den Admin halten lassen“ folgen im Bedienfeld (L4). Der Job-Abbruch erfasst den
+Das Bedienfeld zeigt Störungen dauerhaft mit eigener Farbe und dem festen Text
+„Störung. Anhalten: abmelden oder über den Admin halten lassen.“ Der Job-Abbruch erfasst den
 Job-Baum, keine über WMI, Aufgabenplanung oder COM außerhalb gestarteten Prozesse.
 DPAPI und diese Schnittstelle bilden keine Grenze gegen andere Prozesse derselben
-Person; eine Pause kann später auch durch deren UI-Automation aufgehoben werden.
+Person. UIA-Skripte desselben Benutzers können das Bedienfeld bedienen; eine Pause
+kann das laufende Skript selbst aufheben, endgültig für den Baum ist nur Anhalten.
 Linux-Server und Vertrag 2 bleiben unverändert.
 
 Prüfung: `python probe/l2_mutations.py` im exklusiven Worktree mit Container
@@ -90,13 +91,65 @@ Prüfung: `python probe/l2_mutations.py` im exklusiven Worktree mit Container
 `TestWindowsAnhaltenBeendetEnkel` prüft in Windows-CI den echten Job-Baum und
 DPAPI-Neustart. Lokal wird diese native Sonde nur kompiliert.
 
+## Bedienfeld (0.4.0 in Arbeit, L4)
+
+`cmd/bedienfeld` baut `jnpt-bedienfeld.exe`, Windows-only, ohne CGO:
+`CGO_ENABLED=0 GOOS=windows go build -ldflags=-H=windowsgui -o jnpt-bedienfeld.exe ./cmd/bedienfeld`.
+Eigener Benutzerprozess; Installation, zweite Anmelde-Aufgabe und Signierung
+beider Exe folgen in L6. Ein unsignierter Branch-Build besteht absichtlich
+die Serverprüfung nicht.
+
+Tray: grün „Arbeitet“, gelb „Pausiert“, rot „Angehalten“, violett „Störung“.
+Menü: Zustand, Pause 15 min / 1 h / bis Weiter, Weiter, Anhalten/Fortsetzen,
+Manifest-Setups, auf Testgeräten „Test“ als Anzeige, Beenden nur des Bedienfelds.
+Gesperrte Setups sind grau; nur `braucht_eingabe:true` ergänzt „braucht Eingabe“.
+`bis` erscheint als lokale Uhrzeit, offline + Fristablauf als
+„offline, Frist abgelaufen“.
+
+§6.6: `stoerung`, `fehler{stoerung}`, unerreichbare Pipe oder gescheiterte
+Serverprüfung bleiben dauerhaft violett mit exakt
+„Störung. Anhalten: abmelden oder über den Admin halten lassen.“
+Erst erneute erfolgreiche Serverprüfung und gültiger `zustand` löschen die
+Störung. Andere Fehler löschen sie nicht. Wiederverbindung nur über `pipe.Dial()`,
+mit 5 bis 60 Sekunden Abstand, ohne Ausweichnamen; nichts an ungeprüfte Pipes.
+Fehlender Status oder blockierendes Schreiben bricht die Verbindung nach fünf Sekunden ab.
+
+`internal/panel` entscheidet als reines Linux-testbares Modell über Anzeige,
+Menü, Dialog und Befehle. `internal/panelio` ist der getrennte I/O-Adapter.
+Win32 rendert auf einem mit `runtime.LockOSThread` gebundenen UI-Thread;
+Pipe-Goroutines wecken ihn über `PostMessage`, ohne Go-Zeiger in LPARAM.
+Kein Credential und kein eigener Netzweg. `TestPanelImportWaechter` verbietet
+transitiv `net/http`, `internal/client` und `net` außer über `internal/pipe`.
+Die benannte Ausnahmeliste `importExceptions` ist leer. Win32 nutzt `syscall`
+mit System32-DLLs; direktes `x/sys/windows` würde dessen transitives `net` hereinziehen.
+
+Plan-Invariante 14: Fenster erst nach Klick auf „Rückfrage anzeigen“;
+Titel „JanuaPort – <titel>“, statischer Text und 2–4 gewöhnliche Knöpfe.
+`WS_EX_NOACTIVATE`, `SW_SHOWNOACTIVATE`, kein Default-Knopf, Anfangsfokus,
+`SetForegroundWindow`, `SetFocus` oder `SetActiveWindow`. Keine Toasts,
+Sprechblasen oder Hotkeys. Höchstens ein Dialog; zweite Frage nicht anzeigen.
+`frage_weg`, Anhalten, Trennung und Frist schließen ohne Antwort. X verbirgt
+die Frage bis zum erneuten Klick oder Fristende.
+UIA-Skripte desselben Benutzers können das Bedienfeld bedienen;
+endgültig für den Baum ist nur Anhalten.
+
+Prüfung: `python probe/l4_mutations.py`, exklusiver Container `l4-test`
+(Go 1.26.10), Linux-Race-Tests, Linux-/Windows-vet, GUI-Cross-Build und D0.
+`TestWindowsBedienfeldProzesssonde` baut die echte Exe, startet ohne Argumente
+und prüft PEB/Umgebung sowie Handle-Vererbung mit positiver Gegenprobe.
+Sie läuft bereits durch `go test ./...` im bestehenden Windows-Job;
+keine Workflowänderung. Die Startsonde prüft keinen sichtbaren Tray;
+ein Tray-Rauchtest ist nicht enthalten. Lokal native Tests/Mutanten nur kompilieren.
+Fokusverhalten, Tray und signierte Verbindung bleiben Nachweise durch CI/GATE
+auf dem Testgerät, niemals lokale GUI-Proben auf dem Arbeitsrechner.
+
 ## Lokale Pipe (0.4.0 in Arbeit, L3)
 
 Der Windows-Läufer bietet genau einen benannten Listener unter
 `\\.\pipe\JanuaPort.Bedienfeld.<SHA-256(SID)[:16]>` an; der Suffix sind die ersten
 16 kleinen Hex-Zeichen des Hashes der Benutzer-SID als UTF-8. Linux-Server und
-Vertrag 2 bleiben unverändert. L3 enthält keine Bedienfeld-Exe, keinen Tray und
-keinen Python-Helfer; `bootstrap.py`, Installation und Release bleiben unverändert.
+Vertrag 2 bleiben unverändert. L4 ergänzt Bedienfeld-Exe und Tray;
+`bootstrap.py`, Installation und Release bleiben unverändert.
 
 **B1 / L3-1 / H1:** geschützte DACL nur für Benutzer- und Logon-SID mit
 `FILE_GENERIC_READ | FILE_WRITE_DATA` (`0x12008b`). Kein `GENERIC_WRITE`, weil
@@ -151,8 +204,8 @@ Er hat die Rechte derselben Person auf Medium-IL. Der Bildpfad ist
 Tiefenverteidigung, keine Grenze gegen gleichberechtigte Prozesse oder
 UI-Automation. Die Integritätsmarke schützt gegen Low-IL-Clients. Belegung
 oder Blockieren durch gleichberechtigte Prozesse bleibt möglich. Störung ist
-lokal; die dauerhafte Tray-Anzeige mit „anhalten: abmelden oder über den Admin
-halten lassen“ folgt in L4.
+lokal; die dauerhafte Tray-Anzeige nennt den Ausweichweg wörtlich:
+„Störung. Anhalten: abmelden oder über den Admin halten lassen.“
 
 Das Protokoll besteht aus vier Byte Big-Endian-Länge und 1–4096 Byte UTF-8-JSON.
 `DisallowUnknownFields`, genaue Feldmengen und Prüfung auf doppelte Schlüssel,
@@ -163,7 +216,7 @@ bytegleich. Zulässige Nachrichten:
 | Richtung | Nachrichten |
 |---|---|
 | Client → Läufer | `status`, `pause{minuten:15\|60\|0}`, `weiter`, `anhalten`, `fortsetzen`, `setup_start{pin,setup}`, `antwort{id,wahl}` |
-| Läufer → Client | `zustand{zustand,bis?,test,netz,beschaeftigt,frist_abgelaufen?,setups:[{pin,setup,label,startbar}]}`, `frage{id,text,optionen,frist_s}`, `frage_weg{id}`, `fehler{code}` |
+| Läufer → Client | `zustand{zustand,bis?,test,netz,beschaeftigt,frist_abgelaufen?,setups:[{pin,setup,label,startbar,braucht_eingabe}]}`, `frage{id,titel,text,optionen,frist_s}`, `frage_weg{id}`, `fehler{code}` |
 
 Alle Nachrichten tragen `type`. `zustand` ist `arbeitet`, `pausiert`,
 `angehalten` oder `stoerung`; `bis` ist UTC. Fehlercodes sind ausschließlich
@@ -176,8 +229,9 @@ die letzte Sync-/Heartbeat-Beobachtung, keine garantierte künftige Erreichbarke
 **L3-2:** Der Läufer prüft rohe Rahmen selbst in Go. `setup_start` wird vor der
 Kernanfrage abgewiesen bei Halt/Pause, Belegung/Reservierung, fehlender Online-
 Beobachtung, unpassendem Konto/Sitzung, unbekanntem oder unverifiziertem Setup
-und Setups mit `frei`. Diese sind nicht startbar; L4 kann „braucht Eingabe“
-anzeigen. Zulässige Starts verwenden unverändert den L1-Adapter mit Manifest-
+und Setups mit `frei`. Diese sind nicht startbar. Das Pflicht-Bool
+`braucht_eingabe` stammt ausschließlich aus `len(frei)>0` im verifizierten Manifest;
+L4 zeigt genau bei true „braucht Eingabe“, sonst keinen Zusatztext. Zulässige Starts verwenden unverändert den L1-Adapter mit Manifest-
 Sequenz und Zufallsnonce. Eine gemeinsame Windows-Reservierung deckt HTTP,
 Prozessvorbereitung und Lauf ab und schließt Zeitplan, Ad-hoc und direktes
 Execute aus. Halt/Freigabewechsel während HTTP verhindert den Start; die L2-
@@ -187,15 +241,20 @@ verworfen und neue Claims während des Setup-Laufs gesperrt. Ein gescheiterter S
 wird nicht offline vorgemerkt oder erneut gesendet (`9 2`); ausgeführte Läufe
 benutzen das bestehende Ergebnisjournal mit `run_key=setup/…`, `ran_offline:false`.
 
-`Engine.Questions` ist die interne lokale Weiterleitung für L5: Text höchstens
+`Engine.Questions` ist die interne lokale Weiterleitung: Text höchstens
 500 Unicode-Zeichen, 2–4 Optionen zu höchstens 40 Zeichen, Frist 5–3600 Sekunden,
-höchstens eine offene Frage. `wahl` ist ein nullbasierter Index; fremde/abgelaufene
-Antworten werden abgewiesen. Ohne Panel, nach Frist oder Abbruch kommt `nil`
-zurück; L5 bildet das auf Python `None` ab und liefert den Laufkontext sowie
-eindeutige lokale IDs. Anhalten sendet `frage_weg` und beendet den Lauf.
-Rohe Skript-Rahmen für `frage`, `ergebnis` und `screenshot` werden bis L5
-weiterhin von Go abgewiesen. Es gibt in L3 keine GDI-Aufnahme. Die L1-Adapter
-erlauben Ergebnis/Screenshot weiterhin nur bei verifiziertem Testauftrag
+höchstens eine offene Frage je Lauf. `wahl` ist nullbasiert; fremde/abgelaufene
+Antworten werden abgewiesen. H4: Pflichtfeld `titel`, höchstens 40 Zeichen,
+aus dem Manifest-Pin, nie aus Skripttext. Vertrag 4 hat kein Pin-Label;
+Rückfall ist der Pin-Name (auf 40 Zeichen begrenzt).
+L4 bindet hierfür rohe `frage`-Rahmen an den Go-Laufkontext und prüft Grenzen,
+skriptseitige Titel und parallele Fragen am echten Execute-Adapter. Ungültige
+oder zweite offene Rahmen werden mit `abgewiesen` zurückgewiesen, Laufende
+`internal`. Ohne Panel oder nach Frist ist die Skriptantwort `wahl:null`;
+Abbruch/Anhalten schließt ohne Wahl. Panel-Antwort nur `antwort{id,wahl}`.
+L5 ergänzt den Python-Helfer; `bootstrap.py` bleibt unverändert. Rohe
+`ergebnis`-/`screenshot`-Rahmen bleiben gesperrt. Die L1-Adapter erlauben
+Ergebnis/Screenshot weiterhin nur bei verifiziertem Testauftrag
 (signiertes `test_device` und Testpin samt Jobbindung).
 
 **H3:** Serverhandles sind nicht vererbbar; der Python-Prozess erhält über

@@ -40,6 +40,9 @@ func question() pipe.Message {
 }
 
 func TestPanelZustaende(t *testing.T) {
+	local := time.Local
+	time.Local = time.FixedZone("test-local", 2*60*60)
+	t.Cleanup(func() { time.Local = local })
 	for _, tc := range []struct {
 		state, color, text        string
 		pause, next, halt, resume bool
@@ -52,6 +55,11 @@ func TestPanelZustaende(t *testing.T) {
 		t.Run(tc.state, func(t *testing.T) {
 			m := ready(t, tc.state)
 			v := m.View()
+			for _, i := range v.Menu {
+				if i.ID == "test" {
+					t.Fatal("Test auf normalem Gerät")
+				}
+			}
 			if v.Color != tc.color || !strings.Contains(v.Tooltip, tc.text) {
 				t.Fatal(v)
 			}
@@ -112,7 +120,7 @@ func TestPanelServerpruefungSperrtBefehle(t *testing.T) {
 		m := ready(t, "arbeitet")
 		receive(t, m, question())
 		m.Connection(conn)
-		for _, id := range []string{"status", "pause15", "pause60", "pause0", "weiter", "anhalten", "fortsetzen", "setup:0", "frage"} {
+		for _, id := range []string{"status", "pause15", "pause60", "pause0", "weiter", "anhalten", "fortsetzen", "setup:demo/a", "frage"} {
 			if e := m.Choose(id, now); len(e.Commands) != 0 {
 				t.Fatal(id, e)
 			}
@@ -154,16 +162,16 @@ func TestPanelMenueBefehleUndSetupEingabe(t *testing.T) {
 		{Pin: "demo", Setup: "b", Label: "B", Startbar: true, BrauchtEingabe: true},
 		{Pin: "demo", Setup: "c", Label: "C", Startbar: false},
 	}})
-	if !item(t, m, "setup:0").Enabled || item(t, m, "setup:1").Enabled || item(t, m, "setup:2").Enabled {
+	if !item(t, m, "setup:demo/a").Enabled || item(t, m, "setup:demo/b").Enabled || item(t, m, "setup:demo/c").Enabled {
 		t.Fatal(m.View())
 	}
-	if !strings.Contains(item(t, m, "setup:1").Text, "braucht Eingabe") || strings.Contains(item(t, m, "setup:2").Text, "braucht Eingabe") {
+	if !strings.Contains(item(t, m, "setup:demo/b").Text, "braucht Eingabe") || strings.Contains(item(t, m, "setup:demo/c").Text, "braucht Eingabe") {
 		t.Fatal(m.View())
 	}
-	if len(m.Choose("setup:1", now).Commands) != 0 || len(m.Choose("setup:2", now).Commands) != 0 || len(m.Choose("setup:99", now).Commands) != 0 {
+	if len(m.Choose("setup:demo/b", now).Commands) != 0 || len(m.Choose("setup:demo/c", now).Commands) != 0 || len(m.Choose("setup:99", now).Commands) != 0 {
 		t.Fatal("grau startet")
 	}
-	e := m.Choose("setup:0", now)
+	e := m.Choose("setup:demo/a", now)
 	b, _ := json.Marshal(e.Commands)
 	if string(b) != `[{"pin":"demo","setup":"a","type":"setup_start"}]` {
 		t.Fatal(string(b))
@@ -182,6 +190,9 @@ func TestPanelFrageNurLokal(t *testing.T) {
 			d := m.View().Dialog
 			if d == nil || d.Visible || d.Title != "JanuaPort – Manifest" {
 				t.Fatal(d)
+			}
+			if len(m.Answer(0, now).Commands) != 0 {
+				t.Fatal("unsichtbare Frage beantwortet")
 			}
 			m.Choose("frage", now)
 			if !m.View().Dialog.Visible {
@@ -235,5 +246,22 @@ func TestPanelFrageNurLokal(t *testing.T) {
 				t.Fatal("zweite Antwort")
 			}
 		})
+	}
+}
+
+func TestPanelSetupsBleibenAnPinUndNameGebunden(t *testing.T) {
+	m := ready(t, "arbeitet")
+	a := pipe.Setup{Pin: "demo", Setup: "a", Label: "Gleich", Startbar: true}
+	b := pipe.Setup{Pin: "demo", Setup: "b", Label: "Gleich", Startbar: true}
+	receive(t, m, pipe.Message{Type: "zustand", Zustand: "arbeitet", Netz: true, Setups: []pipe.Setup{a, b}})
+	old := item(t, m, "setup:demo/a").ID
+	receive(t, m, pipe.Message{Type: "zustand", Zustand: "arbeitet", Netz: true, Setups: []pipe.Setup{b, a}})
+	e := m.Choose(old, now)
+	if len(e.Commands) != 1 || e.Commands[0].Setup != "a" {
+		t.Fatal("umgeleiteter Menü-Klick", e)
+	}
+	receive(t, m, pipe.Message{Type: "zustand", Zustand: "arbeitet", Netz: true, Setups: []pipe.Setup{b}})
+	if len(m.Choose(old, now).Commands) != 0 {
+		t.Fatal("entzogenes Setup gewählt")
 	}
 }

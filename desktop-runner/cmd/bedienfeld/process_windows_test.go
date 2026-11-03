@@ -30,7 +30,7 @@ func TestWindowsBedienfeldProzesssonde(t *testing.T) {
 	}
 	defer windows.CloseHandle(event)
 	for _, inherit := range []bool{false, true} {
-		t.Run(map[bool]string{false: "ohne_Ver erbung", true: "Gegenprobe"}[inherit], func(t *testing.T) {
+		t.Run(map[bool]string{false: "ohne_Vererbung", true: "Gegenprobe"}[inherit], func(t *testing.T) {
 			var env []uint16
 			for _, key := range []string{"SystemRoot", "WINDIR", "TEMP", "TMP", "PATH"} {
 				if v := os.Getenv(key); v != "" {

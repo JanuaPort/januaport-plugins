@@ -67,7 +67,7 @@ func (e *Engine) panelStatus() panel.Message {
 		}
 		for _, s := range p.Setups {
 			_, present := b.Environments[envKey(p)]
-			m.Setups = append(m.Setups, panel.Setup{Pin: p.Pin, Setup: s.Name, Label: s.Label, Startbar: len(s.Frei) == 0 && m.Zustand == "arbeitet" && !m.Beschaeftigt && m.Netz && ready && present})
+			m.Setups = append(m.Setups, panel.Setup{Pin: p.Pin, Setup: s.Name, Label: s.Label, BrauchtEingabe: len(s.Frei) > 0, Startbar: len(s.Frei) == 0 && m.Zustand == "arbeitet" && !m.Beschaeftigt && m.Netz && ready && present})
 		}
 	}
 	// The manifest can contain more setups than the local 4 KiB protocol fits.

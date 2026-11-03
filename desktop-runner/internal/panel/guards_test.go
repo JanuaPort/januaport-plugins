@@ -143,7 +143,7 @@ func TestFokusWaechter(t *testing.T) {
 		t.Fatalf("unprüfbarer Stil %T", e)
 		return 0
 	}
-	if value(constants["dialogExStyle"])&0x08000000 == 0 || value(constants["buttonStyle"])&0xf != 0 || value(constants["showNoActivate"]) != 4 {
+	if value(constants["dialogExStyle"])&0x08000000 == 0 || value(constants["buttonStyle"])&0xf != 0 || value(constants["showNoActivate"]) != 4 || value(constants["trayFlags"])&0x10 != 0 {
 		t.Fatal("aktivierender Dialogstil")
 	}
 	f := funcs["openDialog"]
@@ -165,5 +165,43 @@ func TestFokusWaechter(t *testing.T) {
 		if !styles[name] {
 			t.Error("Stil nicht am Adapter verwendet", name)
 		}
+	}
+}
+
+func TestBedienfeldNurGepruefterDial(t *testing.T) {
+	f, err := parser.ParseFile(token.NewFileSet(), filepath.Join("..", "..", "cmd", "bedienfeld", "main_windows.go"), nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dials, locks, wakes := 0, 0, 0
+	ast.Inspect(f, func(n ast.Node) bool {
+		if x, ok := n.(*ast.SelectorExpr); ok {
+			if id, ok := x.X.(*ast.Ident); ok {
+				if id.Name == "pipe" && x.Sel.Name == "Dial" {
+					dials++
+				}
+				if id.Name == "runtime" && x.Sel.Name == "LockOSThread" {
+					locks++
+				}
+			}
+		}
+		if x, ok := n.(*ast.BasicLit); ok && x.Kind == token.STRING {
+			v, _ := strconv.Unquote(x.Value)
+			if v == "PostMessageW" {
+				wakes++
+			}
+			for _, bad := range []string{"CreateFileW", "CreateNamedPipeW", "WinVerifyTrust", "GetNamedPipeServerProcessId", "OpenProcess", "EDIT"} {
+				if v == bad {
+					t.Error("zweiter Prüf-/Pipe-Weg oder Edit-Feld", v)
+				}
+			}
+			if strings.Contains(v, `JanuaPort.Bedienfeld.`) {
+				t.Error("eigener Pipe-Name", v)
+			}
+		}
+		return true
+	})
+	if dials != 1 || locks != 1 || wakes != 1 {
+		t.Fatal("Dial/UI-Thread/Wake-Anbindung", dials, locks, wakes)
 	}
 }

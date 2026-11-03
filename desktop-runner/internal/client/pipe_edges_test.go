@@ -98,7 +98,7 @@ func TestPipeHaltSchliesstFrage(t *testing.T) {
 	defer detach()
 	done := make(chan *int, 1)
 	go func() {
-		v, _ := b.engine.Questions.Ask(context.Background(), panel.Message{Type: "frage", ID: "q1", Text: "Frage", Optionen: []string{"a", "b"}, FristS: 5})
+		v, _ := b.engine.Questions.Ask(context.Background(), panel.Message{Type: "frage", Titel: "Demo", ID: "q1", Text: "Frage", Optionen: []string{"a", "b"}, FristS: 5})
 		done <- v
 	}()
 	<-events

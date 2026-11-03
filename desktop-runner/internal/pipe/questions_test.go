@@ -8,7 +8,7 @@ import (
 
 func TestFrageNurLokal(t *testing.T) {
 	var h Questions
-	q := Message{Type: "frage", ID: "q1", Text: "Fortfahren?", Optionen: []string{"Ja", "Nein"}, FristS: 5}
+	q := Message{Type: "frage", Titel: "Demo", ID: "q1", Text: "Fortfahren?", Optionen: []string{"Ja", "Nein"}, FristS: 5}
 	if got, err := h.Ask(context.Background(), q); err != nil || got != nil {
 		t.Fatal("ohne Bedienfeld", got, err)
 	}
@@ -67,7 +67,7 @@ func TestFrageFristUndDisconnect(t *testing.T) {
 	for _, disconnect := range []bool{false, true} {
 		var h Questions
 		events, detach, _ := h.Attach()
-		q := Message{Type: "frage", ID: "q1", Text: "Frage", Optionen: []string{"a", "b"}, FristS: 5}
+		q := Message{Type: "frage", Titel: "Demo", ID: "q1", Text: "Frage", Optionen: []string{"a", "b"}, FristS: 5}
 		done := make(chan *int, 1)
 		go func() { v, _ := h.Ask(context.Background(), q); done <- v }()
 		<-events
@@ -90,7 +90,7 @@ func TestFrageAntwortNachFristUndDoppelt(t *testing.T) {
 	var h Questions
 	events, detach, _ := h.Attach()
 	defer detach()
-	q := Message{Type: "frage", ID: "q1", Text: "Frage", Optionen: []string{"a", "b"}, FristS: 5}
+	q := Message{Type: "frage", Titel: "Demo", ID: "q1", Text: "Frage", Optionen: []string{"a", "b"}, FristS: 5}
 	done := make(chan struct{})
 	go func() { h.Ask(context.Background(), q); close(done) }()
 	<-events
@@ -123,7 +123,7 @@ func TestFrageQueueReserviertEntfernung(t *testing.T) {
 		h.events <- Message{Type: "frage_weg", ID: "old"}
 	}
 	h.mu.Unlock()
-	q := Message{Type: "frage", ID: "q1", Text: "Frage", Optionen: []string{"a", "b"}, FristS: 5}
+	q := Message{Type: "frage", Titel: "Demo", ID: "q1", Text: "Frage", Optionen: []string{"a", "b"}, FristS: 5}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if answer, err := h.Ask(ctx, q); err != nil || answer != nil {
