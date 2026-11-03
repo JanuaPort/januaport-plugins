@@ -222,14 +222,51 @@ Start-Sleep -Milliseconds 1500
 '@
             [IO.File]::WriteAllText($lifeFixture, $lifeSource.Replace('__FIXTURE__', $fixtureScript))
             $lifePrefix = @('-NoProfile', '-File', $lifeFixture)
-            $runner = Start-InstalltestProcess $Fixture ($lifePrefix + @('run'))
+            $runner = $null
+            $statuses = [Collections.Generic.Queue[Diagnostics.Process]]::new()
             try {
+                # Start all native children outside the observation window. Two
+                # status samples cover one second with the real 500 ms cadence.
+                $startupDeadline = [DateTime]::UtcNow.AddSeconds(30)
+                $runner = Start-InstalltestProcess $Fixture ($lifePrefix + @('run'))
+                for ($i = 0; $i -lt 2; $i++) {
+                    $statuses.Enqueue((Start-InstalltestProcess $Fixture ($lifePrefix + @('status'))))
+                }
+                foreach ($child in (@($runner) + $statuses.ToArray())) {
+                    $operation = if ($child.Id -eq $runner.Id) { 'run' } else { 'status' }
+                    $ready = Join-Path $testRoot ("$operation-" + $child.Id + '.ready')
+                    while (-not (Test-Path -LiteralPath $ready -PathType Leaf)) {
+                        if ($child.HasExited) { throw 'fixture_exited_before_ready' }
+                        if ([DateTime]::UtcNow -ge $startupDeadline) { throw 'fixture_ready_timeout' }
+                        Start-Sleep -Milliseconds 25
+                    }
+                }
+                # This override lives only in this test's scriptblock scope.
+                # Invoke-InstalltestCommand/Complete-InstalltestProcess consume
+                # real native output and retain the one-second status timeout.
+                function Start-InstalltestProcess {
+                    param([string]$FilePath, [string[]]$Arguments)
+                    if ($FilePath -cne $Fixture -or $Arguments[-1] -cne 'status' -or $statuses.Count -eq 0) {
+                        throw 'fixture_unexpected_command'
+                    }
+                    return $statuses.Dequeue()
+                }
                 $observation = [Diagnostics.Stopwatch]::StartNew()
                 Wait-InstalltestLife $Fixture $testRoot $runner 1 $lifePrefix
                 if ($observation.Elapsed.TotalSeconds -lt 1) { throw 'life_observation_shortened' }
             }
             finally {
-                $runner.Kill($true); $runner.WaitForExit(); $runner.Dispose()
+                while ($statuses.Count -gt 0) {
+                    $child = $statuses.Dequeue()
+                    try {
+                        if (-not $child.HasExited) { $child.Kill($true); $child.WaitForExit() }
+                    } finally { $child.Dispose() }
+                }
+                if ($runner) {
+                    try {
+                        if (-not $runner.HasExited) { $runner.Kill($true); $runner.WaitForExit() }
+                    } finally { $runner.Dispose() }
+                }
                 Remove-Item -LiteralPath $path
             }
         }
