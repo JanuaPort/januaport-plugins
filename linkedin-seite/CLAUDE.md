@@ -101,12 +101,18 @@ der frühere Konfigurationsschlüssel freigabe ist entfernt und wird abgewiesen.
 
 - `redaktion.py`: Schreiben nimmt ausschließlich `{"eintrag_id":"<16 Hex>"}` an.
   create_post, edit_post, delete_post und create_comment verlangen genau einen Header
-  `X-Jnpt-Freigabe: hash=<freigabe:v2:sha256:…>`; keine zweite Form. Fehlender,
+  `X-Jnpt-Freigabe: hash=<freigabe:v2:sha256:…>`; ohne Auftrags-ID, keine zweite Form. Fehlender,
   mehrfacher, falsch formatierter oder abweichender Wert ergibt 409 nicht_freigegeben.
   Vor Hash-Gleichheit erfolgt kein LinkedIn-Schreibaufruf.
 - `post_adapter.py`: ein Gateway-Lesevorgang, ein unveränderliches Entry-Objekt für
   Vorschau UND Wirkung (H3); Medien einmal in private RAM-Kopien lesen und prüfen.
-  Die Vorschau liefert zusätzlich wirkung; Freigabezustand gehört zum Kern.
+  Die Vorschau entspricht dem F2-Anschlussvertrag: exakt eintrag_id, aktion, format,
+  ziel_urn, text, medien[{name, sha256, datei, art, bytes}], umfrage, post_text, post_urn,
+  kommentar_text, dokument_titel, hash. Kein zusätzliches verschachteltes Wirkungsfeld.
+  Wirkung und Anzeige verwenden dasselbe Entry-Objekt; der Kern berechnet seinen Hash neu
+  aus den direkten Wirkungsfeldern. Unveränderte Formreferenz:
+  tests/data/linkedin_vorschau_beispiel.json. Optionale Ablaufhinweise erlaubt F2 ausdrücklich:
+  warnung, ablaufdatum, warnung_schreiben, ablaufdatum_schreiben. Freigabezustand gehört zum Kern.
   Jede Aktion lädt den aktuellen Stand neu und vergleicht ihren selbst berechneten Hash.
   Ablauf: Eintrag → Medien → Wirkung/Hash → Header-Gleichheit → report_hash → Zählen → LinkedIn.
   Kopien werden im finally überschrieben und verworfen.
@@ -134,9 +140,11 @@ der frühere Konfigurationsschlüssel freigabe ist entfernt und wird abgewiesen.
   Konservative Unklarheit ist zulässig, falsche Nichtausführung nicht (A1).
 - Ein Schreibauftrag gleichzeitig; parallele Anfrage 429 schreiben_belegt vor eigenem Start.
   HTTP wartet auf das Endergebnis, höchstens 25 Minuten; Vorschau 20 Sekunden, 10/Minute.
-  Client-Abbruch beendet einen Schreibprozess nicht. Keine Zwischenantwort und kein Nachfrage-Fenster.
+  F2 begrenzt den Call aktuell auf 25 Sekunden (Runtime-Decke 120 Sekunden); lange Videojobs
+  können im Kern daher bereits vorher unklar werden. Client-Abbruch beendet einen Schreibprozess nicht. Keine Zwischenantwort und kein Nachfrage-Fenster.
   report_hash und Ergebnis-Cache im RAM vermeiden Wiederholung bestätigter Erfolge; Neustart
-  leert sie. Dieser Komfort ist kein Sperrvermerk; dauerhafte Ausführungs-/Unklar-Sperren hält der Kern.
+  leert sie. Wiederholung liefert wiederholt: true UND ausgefuehrt: true, ohne zweiten Post.
+  Dieser Komfort ist kein Sperrvermerk; dauerhafte Ausführungs-/Unklar-Sperren hält der Kern.
 - `server.py`: Bridge-Prüfung vor Facharbeit, Header über HTTP und WriteRequest bis zum Adapter.
   Frühfehler der Schreibrouten erhalten die Nichtausführung; nach Dispatch nur mit IPC-Nachweis.
   Lese- und Schreib-Grant bleiben getrennt, WRITE_SCOPES exakt w_organization_social und

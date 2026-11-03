@@ -171,6 +171,11 @@ MUTANTS = [
     ('f4-missing-nonexecution', 'post_pool.py', 'exc.nicht_ausgefuehrt = not job.write_started', 'exc.nicht_ausgefuehrt = False', F4+'test_validation_and_media_errors_are_definitely_not_executed'),
     ('f4-first-write-marker', 'post_adapter.py', 'self.link.write_request()', 'pass', F4+'test_upload_initialization_already_makes_failure_unclear'),
     ('f4-unconfirmed-success', 'post_adapter.py', 'if status != expected:', 'if False:', F4+'test_accepted_but_unconfirmed_response_is_unclear'),
+    # LEAD F2 preview contract: direct fields only, visible name, confirmed cached success.
+    ('f2-preview-extra-field', 'post_adapter.py', "'hash': digest}\n        finally:", "'hash': digest, 'wirkung': effect}\n        finally:", 'test_f2_preview.F2Preview.test_exact_f2_example_shape_types_and_effect_hash'),
+    ('f2-preview-direct-fields', 'post_adapter.py', "'ziel_urn': effect['ziel_urn'], 'text': effect['text'],", "'wirkung': effect,", 'test_f2_preview.F2Preview.test_all_actions_have_only_f2_keys_and_direct_effect_fields'),
+    ('f2-preview-media-name', 'post_adapter.py', "'name': m.name, 'sha256': m.sha256, 'datei': m.name,", "'sha256': m.sha256, 'datei': m.name,", 'test_f2_preview.F2Preview.test_exact_f2_example_shape_types_and_effect_hash'),
+    ('f2-repeat-confirmed', 'post_pool.py', "stored['wiederholt'] = True", "stored['wiederholt'] = True; stored.pop('ausgefuehrt', None)", SF+'test_post_then_idempotent_repeat_returns_the_same_urn'),
     ('f4-single-entry', 'post_adapter.py', 'effect = r.wirkung(req.aktion, entry, media, self.cfg.organization)', 'effect = r.wirkung(req.aktion, r.entry_from_record(self.gateway.eintrag(req.eintrag_id), req.eintrag_id, req.aktion), media, self.cfg.organization)', F4+'test_preview_and_effect_use_one_entry_read'),
     # SEC Bed. 3: back channel only reading, only the two tools, only /mcp, no path.
     ('b3-closed-tools', 'gateway.py', 'if tool not in self.tools:', 'if False:', G+'test_any_other_tool_is_refused_before_http'),

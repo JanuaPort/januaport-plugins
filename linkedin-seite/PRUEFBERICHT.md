@@ -1,5 +1,83 @@
 # Prüfbericht #1306 F4 — linkedin-seite 0.3.0
 
+## Nachtrag LEAD — F2-Anschlussvertrag (aktueller Prüfstand)
+
+- Nur lesend abgeglichen: `../jpwt-1306f2/docs/connector-linkedin-seite.md` (Ablauf/
+  Antwortvertrag, gemeinsames Vorschau-Beispiel) und `internal/connector/testdata/
+  linkedin_vorschau_beispiel.json` desselben Worktrees.
+- Befund auf `b2a3c05`: ziel_urn/text und medien[].name fehlten direkt; ein zusätzliches
+  wirkung-Objekt wurde ausgegeben. Korrigiert in post_adapter.py:99: genau die zwölf
+  Schlüssel eintrag_id, aktion, format, ziel_urn, text, medien, umfrage, post_text,
+  post_urn, kommentar_text, dokument_titel, hash; pro Medium name, sha256, datei, art, bytes.
+  Die vier ausdrücklich von F2 erwarteten Ablaufhinweise bleiben optional erlaubt.
+  Hash und direkte Wirkungsfelder kommen aus demselben einmal gelesenen Entry (H3).
+- `a8d6312` — eigener Test-Commit vor Code: Beispiel unverändert kopiert, Form-/Typ-/
+  Hash-Tests am echten HTTP-/Spawn-/Gateway-/LinkedIn-Adapter; bestehende H3-Tests angepasst.
+  Erst rot: 5 Tests, 4 Assertion-Fehlschläge wegen der Vorschauform; Wiederholungsfall grün
+  (`pruefung/f2-preview-red.txt`).
+- Nach Korrektur: 6 gezielte Tests grün, 12.418 s (`pruefung/f2-preview-green.txt`).
+  Der Beispielhash wird unabhängig mit hashlib nachgerechnet; für den entsprechenden echten
+  Eintrag sind Schlüssel und Typen identisch und alle Werte bis auf Datei-Bytes/-Hash und
+  daraus folgenden Wirkungshash gleich. Das Kern-Beispiel verwendet die synthetischen Bytes
+  `synthetisches Dokument` ohne PDF-Signatur; der echte Adaptertest verwendet gültige
+  synthetische PDF-Bytes und umgeht keine Medienprüfung. Die Beispieldatei bleibt bytegleich,
+  SHA-256 `6ea59e7aa1d07676d7e676a9b87193f48ad39b0bbdde8d63641f134798ed7454`.
+- Header geprüft: ausschließlich hash=<v2-Hash mit Präfix>, ohne Auftrags-ID; negative
+  Varianten mit ergänzter Auftrags-ID ergeben 409. Kein Header-Code musste geändert werden.
+- Wiederholung geprüft: erster Erfolg ausgefuehrt: true; derselbe Hash anschließend
+  wiederholt: true UND ausgefuehrt: true, dieselbe URN, genau ein Post und eine gezählte
+  Aktion. Produktionscode dafür war bereits korrekt (post_pool.py:185, PostAdapter.run).
+- Komplette Suite: **225 Tests OK, 0 übersprungen**, 254.573 s
+  (`pruefung/f2-preview-baseline.txt`). **172/172 Mutationen erkannt**, Originalquellen unverändert; Gesamtlauf erfolgreich
+  (`pruefung/f2-preview-mutations.txt`). Vier neue Mutanten: unerwartetes
+  Wirkungsobjekt, fehlende direkte Felder, fehlender Medienname, Erfolgssignal bei
+  wiederholtem Ergebnis entfernt. Originale bleiben unverändert; kein Syntaxfehler oder
+  Timeout gilt als Kontrollnachweis.
+- [x] Modulvertrag, README, SETUP, CHANGELOG, ARCHITEKTUR und Bericht nachgezogen.
+  F2-Fristen präzisiert: Call aktuell 25 Sekunden, Runtime-Decke 120 Sekunden; der
+  Beisteller wartet bis 25 Minuten. Lange Jobs können daher im Kern früher unklar werden.
+  Keine Veränderung an Version 0.3.0, Docker, Compose, Gatewayrechten oder Kern-Dateien nötig.
+- Folgender Implementierungscommit: `fix(linkedin-seite): align preview with F2 response contract (#1306)`.
+  Kopf-SHA im Abschluss. Nur lokale Commits, keine Live-Abnahme und kein Push.
+- Abweichungen: keine vom Anschlussvertrag; PDF-Testdaten wie oben erläutert.
+  RUECKFRAGE: nein.
+
+Repo-weite Suche nach alter Antwortform UND weiteren Wegen (Adapter, HTTP-Middleware,
+Ergebnis-Cache, Tests und Mutanten): `pruefung/f2-preview-invarianten.txt`.
+Ein verschachteltes Wirkungsfeld verbleibt nur als absichtlicher Negativmutant; historische
+Prüfdateien beschreiben den vorigen Stand. Die Suchtreffer dieses Nachtrags sind:
+
+```text
+ARCHITEKTUR.md:18
+linkedin-seite/CHANGELOG.md:5
+linkedin-seite/CHANGELOG.md:8
+linkedin-seite/CLAUDE.md:109
+linkedin-seite/CLAUDE.md:114
+linkedin-seite/CLAUDE.md:146
+linkedin-seite/README.md:279
+linkedin-seite/README.md:354
+linkedin-seite/SETUP.md:193
+linkedin-seite/linkedin_seite/redaktion.py:291
+linkedin-seite/linkedin_seite/redaktion.py:307
+linkedin-seite/linkedin_seite/post_pool.py:185
+linkedin-seite/linkedin_seite/post_adapter.py:99
+linkedin-seite/linkedin_seite/post_adapter.py:103
+linkedin-seite/linkedin_seite/post_adapter.py:104
+linkedin-seite/tests/test_post_server.py:65
+linkedin-seite/tests/test_post_adapter.py:46
+linkedin-seite/tests/test_f2_preview.py:12
+linkedin-seite/tests/test_f2_preview.py:15
+linkedin-seite/tests/test_f2_preview.py:21
+linkedin-seite/tests/mutations.py:165
+linkedin-seite/tests/mutations.py:175
+linkedin-seite/tests/mutations.py:176
+linkedin-seite/tests/mutations.py:177
+linkedin-seite/tests/mutations.py:178
+```
+
+## Vorheriger F4-Prüfstand (vor dem LEAD-Nachtrag)
+
+
 Grundlage: Auftrag / Plan v2/v2.1, SEC c-6602359446 (A1, A3), c-6604738594 (H1–H3).
 Branch `feat/1306-f4-beisteller`, ausschließlich Worktree `jpp-1306f4` im Repo januaport-plugins.
 Root-CLAUDE.md ist im Checkout nicht vorhanden. Modul-CLAUDE, README, SETUP, bisheriger

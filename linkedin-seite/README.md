@@ -220,14 +220,14 @@ keinen Text, keine Datei, keine URN. Text, Umfrage und Medien liest der Beistell
 
 | Werkzeug (Vorschlag Katalog) | Route | Wirkung |
 |---|---|---|
-| `linkedin_seite_vorschau` | `GET vorschau?eintrag_id=…&aktion=posten\|bearbeiten\|loeschen\|kommentar` | lesend: Text, Format, Umfrage, Ziel-URN, Medienliste mit Ablage-Dateiname, Größe und sha256 je Datei, `hash`, vollständige `wirkung`. Kein LinkedIn-Aufruf. |
+| `linkedin_seite_vorschau` | `GET vorschau?eintrag_id=…&aktion=posten\|bearbeiten\|loeschen\|kommentar` | lesend: Text, Format, Umfrage, Ziel-URN, Medienliste mit Ablage-Dateiname, Größe und sha256 je Datei, `hash`; direkte Wirkungsfelder `aktion`, `ziel_urn`, `text`, `medien[{name, sha256, datei, art, bytes}]`, `umfrage`. Kein LinkedIn-Aufruf. |
 | `linkedin_seite_create_post` | `POST create_post` | Post anlegen (`posten`) |
 | `linkedin_seite_edit_post` | `POST edit_post` | Text eines eigenen Posts ändern (`bearbeiten`, nur `commentary`) |
 | `linkedin_seite_delete_post` | `POST delete_post` | Post löschen (`loeschen`) |
 | `linkedin_seite_create_comment` | `POST create_comment` | eigener Kommentar als Organisation unter `post_urn` (`kommentar`) |
 
 Alle vier POST-Routen verlangen zusätzlich genau einen Header:
-`X-Jnpt-Freigabe: hash=<freigabe:v2:sha256:…>` (keine zweite Form).
+`X-Jnpt-Freigabe: hash=<freigabe:v2:sha256:…>` (ohne Auftrags-ID, keine zweite Form).
 Fehlend, doppelt, falsche Form oder keine Gleichheit mit dem selbst berechneten Hash:
 `409 nicht_freigegeben`, vor jedem LinkedIn-Schreibaufruf.
 
@@ -241,7 +241,9 @@ bei initializeUpload und gilt auch für Bearbeiten und Löschen. Ein 2xx mit unb
 Antwort ist unklar. Keine automatische Wiederholung durch den Kern bei unklarem Ergebnis.
 
 HTTP wartet auf das Endergebnis (harte Grenze 25 Minuten), ohne Zwischenantwort.
-Connector-Timeout entsprechend setzen. Weitere feste Fehlercodes: `schreib_tageslimit`,
+F2 hat derzeit 25 Sekunden Call-Frist und eine Runtime-Decke von 120 Sekunden.
+Lange Videojobs können im Kern früher unklar werden; eine Spec-Anhebung auf 25 Minuten
+reicht wegen der Runtime-Decke nicht aus. Weitere feste Fehlercodes: `schreib_tageslimit`,
 `schreib_http_tageslimit`, `schreiben_belegt` (429), `bereits_veroeffentlicht` (409),
 Eingabe-/Medien-/Umfragefehler (422/413), Gateway-/Quell-/Upload-/Videofehler (502), Zeitbudget (504).
 Stufe-A-Fehler behalten ihren bisherigen Vertrag.
@@ -268,8 +270,15 @@ Kern höchstens 4 KiB groß.
 
 Freigeben, Starten und dauerhafte Sperrvermerke liegen im Kern. Der Beisteller liest
 keine Freigabesätze; alte Herkunftslabels sind keine Berechtigungsquelle.
-Die Vorschau und die vollständige `wirkung` entstehen aus genau einem gelesenen
-Eintrag und denselben geprüften Medienkopien. Für die Ausführung wird der aktuelle
+Die Vorschau und ihre direkten Wirkungsfelder entstehen aus genau einem gelesenen
+Eintrag und denselben geprüften Medienkopien. Die Antwort enthält genau `eintrag_id`,
+`aktion`, `format`, `ziel_urn`, `text`, `medien`, `umfrage`, `post_text`, `post_urn`,
+`kommentar_text`, `dokument_titel`, `hash`. Jedes Medium enthält genau `name`, `sha256`,
+`datei`, `art`, `bytes`; `name` ist der sichtbare Name/Dokumenttitel. Kein zusätzliches
+verschachteltes Wirkungsobjekt. Referenz ist die unveränderte F2-Datei
+`tests/data/linkedin_vorschau_beispiel.json`. F2 erlaubt bei nahendem Tokenablauf zusätzlich
+`warnung`, `ablaufdatum`, `warnung_schreiben`, `ablaufdatum_schreiben`.
+Der Kern liest die Vorschau serverseitig und berechnet seinen Hash daraus selbst neu. Für die Ausführung wird der aktuelle
 Stand neu geladen und sein Hash mit dem Header des Kerns verglichen.
 
 `hash` = `freigabe:v2:sha256:` + SHA-256 über die UTF-8-Bytes `freigabe:v2`, ein LF,
@@ -342,7 +351,7 @@ Erben-Bit. Die Medien-Ablage darf **nicht** pseudonymisiert sein (sonst verweige
   für Schreibaufträge (Development Tier: 100 je Mitglied; Stufe A hat eigene 50). Höchstens ein
   Schreibauftrag gleichzeitig, harte Grenze 25 Minuten; Vorschau 20 Sekunden, 10 je Minute.
 - **Idempotenz:** `eintrag_id` + `hash` → bestätigtes Ergebnis, nur im RAM. Wiederholung
-  liefert dieselbe URN mit `wiederholt: true`. `report_hash` ist ein Komfort gegen doppelte
+  liefert dieselbe URN mit `wiederholt: true` und `ausgefuehrt: true`, ohne zweiten Post. `report_hash` ist ein Komfort gegen doppelte
   erfolgreiche Aufrufe und kein Sperrvermerk. Der Kern hält den dauerhaften Ausführungs-
   und Unklar-Sperrvermerk. Ein Neustart leert Zähler und Cache. `post_urn` pflegt die KI;
   es ist Komfort. Ohne IPC-Permit des Serverprozesses erfolgt kein LinkedIn-Aufruf.
@@ -393,7 +402,8 @@ https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares
    `… | jnpt credential set --name plugin-linkedin-seite-gateway`. Alte Freigabe-Suchrechte aus dem Beisteller-Token entfernen;
    den alten Konfigurationsschlüssel `schreiben.freigabe` entfernen.
 6. Schreib-Zustimmung des PO (SETUP.md) in `plugin-linkedin-seite-post-oauth`.
-7. Connector-Vorlage um die fünf Werkzeuge ergänzen, Timeout für das Endergebnis bis 25 Minuten vorsehen. Audit für SSO und Token auf Metadaten; die Vorschau-Antwort enthält den Post-Text.
+7. Connector-Vorlage um die fünf Werkzeuge ergänzen, F2-Call-Frist derzeit 25 Sekunden (Runtime-Decke 120 Sekunden),
+   unabhängig von der Jobgrenze des Beistellers von 25 Minuten; lange Jobs können unklar werden. Audit für SSO und Token auf Metadaten; die Vorschau-Antwort enthält den Post-Text.
 
 ### Live-Gates Stufe B1
 

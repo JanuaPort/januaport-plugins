@@ -99,14 +99,15 @@ class PostAdapter:
     def vorschau(self, req):
         try:
             entry, media, fmt, digest, effect = self._laden(req)
-            umfrage = entry.umfrage
-            return {'eintrag_id': req.eintrag_id, 'aktion': req.aktion, 'format': fmt, 'hash': digest,
-                    'wirkung': effect, 'post_text': entry.post_text if req.aktion in ('posten', 'bearbeiten') else None,
+            return {'eintrag_id': req.eintrag_id, 'aktion': req.aktion, 'format': fmt,
+                    'ziel_urn': effect['ziel_urn'], 'text': effect['text'],
+                    'medien': [{'name': m.name, 'sha256': m.sha256, 'datei': m.name,
+                                'art': m.art, 'bytes': m.groesse} for m in media],
+                    'umfrage': effect['umfrage'],
+                    'post_text': entry.post_text if req.aktion in ('posten', 'bearbeiten') else None,
                     'post_urn': entry.post_urn, 'kommentar_text': entry.kommentar_text if req.aktion == 'kommentar' else None,
-                    'umfrage': None if umfrage is None else {'frage': umfrage.frage, 'antworten': list(umfrage.antworten),
-                                                             'dauer': umfrage.dauer},
                     'dokument_titel': media[0].name if fmt == 'dokument' else None,
-                    'medien': [{'datei': m.name, 'art': m.art, 'bytes': m.groesse, 'sha256': m.sha256} for m in media]}
+                    'hash': digest}
         finally:
             self._wipe()
 

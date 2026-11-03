@@ -171,28 +171,35 @@ Die KI legt Inhalt und Medien im Redaktionsplan bzw. in der Medien-Ablage ab.
 Die unveränderlichen Freigabe-Aufträge und ihre menschliche Entscheidung verwaltet der Kern.
 
 1. `linkedin_seite_vorschau` mit Kartei-ID und Aktion (`posten`, `bearbeiten`, `loeschen`,
-   `kommentar`) aufrufen. Anzeige und vollständige `wirkung` samt `hash` stammen aus
-   demselben einmal gelesenen Eintrag und denselben geprüften Dateien.
+   `kommentar`) aufrufen. Anzeige, direkte Wirkungsfelder `aktion`, `ziel_urn`, `text`, `medien` und `umfrage`
+   sowie `hash` stammen aus demselben einmal gelesenen Eintrag und denselben geprüften Dateien.
+   Medien enthalten `name`, `sha256`, `datei`, `art`, `bytes`; bei PDF ist name der Dokumenttitel.
+   Weitere Antwortfelder: eintrag_id, format, post_text, post_urn, kommentar_text, dokument_titel.
+   Es wird kein zusätzliches Wirkungsobjekt gesendet. Nur die vier von F2 erwarteten
+   Ablaufhinweise warnung, ablaufdatum, warnung_schreiben, ablaufdatum_schreiben sind optional.
+   Der Kern holt die Vorschau selbst und berechnet den Freigabehash daraus neu.
 2. Dateien ansehen und im Kern den Auftrag prüfen und freigeben. Der Hash bindet Aktion,
    Ziel-URN, exakten Text, geordnete Mediennamen/Dokumenttitel mit Datei-SHA-256 sowie
    Umfragefrage, jede Antwort samt Reihenfolge und ganzzahlige Dauer.
 3. Der Kern startet den freigegebenen Auftrag und sendet genau einen Header:
-   `X-Jnpt-Freigabe: hash=<freigabe:v2:sha256:…>`. Der Beisteller berechnet den aktuellen
+   `X-Jnpt-Freigabe: hash=<freigabe:v2:sha256:…>`, ohne Auftrags-ID. Der Beisteller berechnet den aktuellen
    Hash selbst. Ohne exakte Gleichheit, auch ohne Header, kommt 409 nicht_freigegeben
    vor jedem LinkedIn-Schreibaufruf. Auch Löschen braucht diesen Header.
 4. Bestätigter Erfolg enthält `ausgefuehrt: true`; bewiesener Abbruch vor dem ersten
    LinkedIn-Schreibversuch `nicht_ausgefuehrt: true`. Fehler danach enthalten keines
    der Felder, bereits ab Upload-Start, auch bei Edit/Delete. Der Kern wertet dies als
    unklar und hält den Sperrvermerk. Der RAM-Ergebnis-Cache (`report_hash`) im Beisteller
-   ist Komfort und kein Sperrvermerk; ein Neustart leert ihn.
+   ist Komfort und kein Sperrvermerk; ein Neustart leert ihn. Wiederholung desselben Hashs
+   liefert wiederholt: true zusammen mit ausgefuehrt: true und erzeugt keinen zweiten Post.
 
 Hash v2: Präfix `freigabe:v2:sha256:` + SHA-256 über UTF-8 `freigabe:v2`, LF und kompaktes
 JSON mit Feldfolge aktion, medien, text, umfrage, ziel_urn. Medien geordnet {name, sha256};
 Umfrage null oder {antworten, dauer, frage}. Kein HTML-Escaping, keine Unicode-Normalisierung.
 Beim Posten ist ziel_urn die konfigurierte Organisation, sonst post_urn; text ist der genaue
 Post-/Kommentartext, bei Löschen leer. Medien/Umfrage nur beim Posten. Vorschau enthält keine
-Freigabeentscheidung. HTTP wartet auf das Endergebnis, maximal 25 Minuten; Connector-Timeout
-entsprechend einstellen. Gemeinsame Live-Abnahme mit dem Kern bleibt Aufgabe von GATE.
+Freigabeentscheidung. HTTP wartet auf das Endergebnis, maximal 25 Minuten im Beisteller. F2 begrenzt den Call aktuell auf
+25 Sekunden (Runtime-Decke 120 Sekunden). Lange Videojobs können deshalb im Kern schon vorher
+unklar werden; eine bloße Spec-Anhebung auf 25 Minuten überwindet die Runtime-Decke nicht. Gemeinsame Live-Abnahme mit dem Kern bleibt Aufgabe von GATE.
 
 Es gelten höchstens **5 schreibende Aktionen** je UTC-Tag, über Posten, Bearbeiten, Löschen und
 Kommentieren zusammen; ein Video zählt ab dem Upload-Start als eine Aktion. Eine Umfrage lässt sich
