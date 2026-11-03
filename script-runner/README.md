@@ -268,6 +268,9 @@ fertige Verzeichnis einmal gegen sein Manifest und verwirft Abweichungen.
   erscheinen im bestehenden `tools/list`-Vertrag 2, ohne zusätzliche Felder.
   `runner-pins.pub` liegt neben dem Deploy-Key und wird je Durchlauf neu gelesen.
   Fehlender/gewechselter Schlüssel entfernt Speicherfreigaben sofort. Bei
+  fehlender `inbox/list.json` gilt „keine Speicherpins“: einmal INFO beim ersten
+  Fehlen und je Wechsel vorhanden/fehlend, kein wiederholtes WARN. Freigaben
+  entfallen weiterhin sofort; Signatur-, Hash- und Lesefehler warnen je Takt. Bei
   Höchststand 0 (auch Erstinstallation, Rücksetzung und Neustart in der Sperre)
   gilt ab eigener Prozessuhr eine Sperre bis streng nach 12 Minuten; danach
   verlangt die Liste einen höchstens 10 Minuten alten Signierzeitpunkt.

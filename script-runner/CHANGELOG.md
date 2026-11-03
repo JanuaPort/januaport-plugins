@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- #1299: Eine fehlende Speicher-Pinliste erzeugt INFO nur beim ersten Fehlen
+  und bei Zustandswechseln. Andere Lese-, Signatur- und Hashfehler warnen je
+  Durchlauf; Entzug der Freigaben und Fünf-Sekunden-Takt bleiben unverändert.
+
 - #1296: Apphost-Lade-Flights sind vom Kontext des ersten Anfragers entkoppelt
   und haben eine eigene feste Frist von 30 Sekunden. Anfrageabbrüche treffen
   weder andere Wartende noch schreiben sie Fehlerergebnisse in den Cache.
