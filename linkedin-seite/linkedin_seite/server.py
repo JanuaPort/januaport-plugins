@@ -10,7 +10,7 @@ from pathlib import Path
 import time
 from aiohttp import web
 from .domain import Config, ReportError, parse_request, encode_response, strict_json, REPORTS
-from .redaktion import ROUTES as POST_ROUTES, VORSCHAU, FREIGABE_HEADER, parse_vorschau, parse_write
+from .redaktion import ROUTES as POST_ROUTES, VORSCHAU, FREIGABE_HEADER, parse_freigabe, parse_vorschau, parse_write
 from .workers import WorkerPool
 
 LOG = logging.getLogger("linkedin_seite")
@@ -112,6 +112,7 @@ def create_app(cfg, key, pool, write_pool=None):
         route = "unknown"
         write_route = request.path.startswith("/v1/linkedin-post/") and request.method == "POST"
         dispatched = False
+        header_checked = False
         try:
             if len(request.raw_path.encode()) > 8192:
                 raise ReportError(400, "request_too_large")
@@ -136,6 +137,9 @@ def create_app(cfg, key, pool, write_pool=None):
                         raise ReportError(400, "unexpected_body")
                     req = parse_vorschau(list(request.query.items()))
                 else:
+                    # A valid bridge and header form precede definite local rejections.
+                    parse_freigabe(request.headers.getall(FREIGABE_HEADER, []))
+                    header_checked = True
                     req = parse_write(parts[3], await bounded_body(request), request.headers.getall(FREIGABE_HEADER, []))
                 if write_pool is None:
                     raise ReportError(503, "schreiben_nicht_eingerichtet")
@@ -174,8 +178,10 @@ def create_app(cfg, key, pool, write_pool=None):
         except ReportError as exc:
             code = exc.code
             payload = {"error": code}
-            if write_route and (not dispatched or getattr(exc, 'nicht_ausgefuehrt', False)):
+            if (write_route and header_checked and code != 'nicht_freigegeben'
+                    and (not dispatched or getattr(exc, 'nicht_ausgefuehrt', False))):
                 payload['nicht_ausgefuehrt'] = True
+                return web.json_response(payload, status=200)
             return web.json_response(payload, status=exc.status)
         except asyncio.CancelledError:
             code = "client_cancelled"
@@ -183,8 +189,9 @@ def create_app(cfg, key, pool, write_pool=None):
         except Exception:
             code = "internal_error"
             payload = {"error": code}
-            if write_route and not dispatched:
+            if write_route and header_checked and not dispatched:
                 payload['nicht_ausgefuehrt'] = True
+                return web.json_response(payload, status=200)
             return web.json_response(payload, status=503)
         finally:
             LOG.info(

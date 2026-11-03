@@ -209,8 +209,9 @@ Freigabevertrag seit #1306: Plan v2/v2.1, SEC c-6602359446 A1/A3 und c-660473859
 Unternehmensseite — **ausschließlich** für Einträge des Redaktionsplans, die ein Mensch im
 Kern mit passendem Wirkungs-Hash freigegeben hat. Formate: Text (mit Link), ein
 Bild, mehrere Bilder (2–20), PDF-Dokument, Umfrage, Video. Stufe A bleibt in Verhalten und
-Scopes unverändert; ohne Schreib-Konfiguration antworten die Schreibrouten
-`503 schreiben_nicht_eingerichtet`.
+Scopes unverändert; ohne Schreib-Konfiguration liefern die Schreibrouten nach gültiger
+Bridge-/Headerprüfung HTTP 200 mit `nicht_ausgefuehrt: true` und
+`error: schreiben_nicht_eingerichtet`. Die Vorschau behält dafür HTTP 503.
 
 ### Werkzeuge
 
@@ -229,13 +230,19 @@ keinen Text, keine Datei, keine URN. Text, Umfrage und Medien liest der Beistell
 Alle vier POST-Routen verlangen zusätzlich genau einen Header:
 `X-Jnpt-Freigabe: hash=<freigabe:v2:sha256:…>` (ohne Auftrags-ID, keine zweite Form).
 Fehlend, doppelt, falsche Form oder keine Gleichheit mit dem selbst berechneten Hash:
-`409 nicht_freigegeben`, vor jedem LinkedIn-Schreibaufruf.
+`409 nicht_freigegeben`, vor jedem LinkedIn-Schreibaufruf, ohne eines der Ergebnisfelder.
 
 Bestätigter Erfolg: `ausgefuehrt: true`, `aktion`, `eintrag_id`, `hash`, `format`,
 `state` (`veroeffentlicht`, `bearbeitet`, `geloescht`, `kommentiert`), `post_urn`,
 bei Video `video_urn`, bei Kommentar `kommentar_id`, `bytes`.
-Nachweislicher Abbruch vor dem ersten LinkedIn-Schreibversuch: `nicht_ausgefuehrt: true`,
-etwa bei 409, Validierung oder Medienprüfung. Fehler nach einem möglichen Schreibversuch
+Nach gültiger Bridge- und Headerform-Prüfung wird ein nachweislicher Abbruch vor dem
+ersten LinkedIn-Schreibversuch mit **HTTP 200** und `nicht_ausgefuehrt: true` samt festem
+`error`-Code gemeldet (SEC c-6608136792, LEAD Variante a). Dazu zählen Tages-/HTTP-Kappe,
+belegter/geschlossener/nicht eingerichteter Dienst, Validierung, Medienprüfung sowie
+Gateway-/Token-/Quellenfehler vor dem Senden. Der Kern liest das Feld nur aus 2xx-Körpern.
+Die Headerform wird vor diesen lokalen Prüfungen geprüft; die Hash-Gleichheit nach dem Laden.
+Header-/Hash-Abweichung bleibt 409 ohne Ergebnisindikator. Vorschauen sowie Bridge-/Header-
+Fehler erhalten ihre Fehlerstatus und keine Ergebnisfelder. Fehler nach einem möglichen Schreibversuch
 tragen keines der beiden Felder: der Kern behandelt sie als unklar. Das beginnt bereits
 bei initializeUpload und gilt auch für Bearbeiten und Löschen. Ein 2xx mit unbrauchbarer
 Antwort ist unklar. Keine automatische Wiederholung durch den Kern bei unklarem Ergebnis.
@@ -244,8 +251,10 @@ HTTP wartet auf das Endergebnis (harte Grenze 25 Minuten), ohne Zwischenantwort.
 F2 hat derzeit 25 Sekunden Call-Frist und eine Runtime-Decke von 120 Sekunden.
 Lange Videojobs können im Kern früher unklar werden; eine Spec-Anhebung auf 25 Minuten
 reicht wegen der Runtime-Decke nicht aus. Weitere feste Fehlercodes: `schreib_tageslimit`,
-`schreib_http_tageslimit`, `schreiben_belegt` (429), `bereits_veroeffentlicht` (409),
-Eingabe-/Medien-/Umfragefehler (422/413), Gateway-/Quell-/Upload-/Videofehler (502), Zeitbudget (504).
+`schreib_http_tageslimit`, `schreiben_belegt`, `bereits_veroeffentlicht`, Eingabe-/Medien-/
+Umfrage- und Gateway-/Tokenfehler werden bei bewiesener Nichtausführung wie oben als 200
+transportiert. Nach einem Schreibversuch bleiben etwa 429/502/503/504 ohne Ergebnisfelder;
+Vorschaufehler behalten etwa 413/422/502/503/504.
 Stufe-A-Fehler behalten ihren bisherigen Vertrag.
 
 ### Kartei-Schema (VENDOR setzt es auf der Anlage)
@@ -290,6 +299,10 @@ fehlende/null Umfrage wird `null`; ein vorhandenes leeres Umfrageobjekt bleibt v
 UTF-8 ohne Normalisierung, kein HTML- oder JavaScript-Escaping, JSON-Kontrollzeichen,
 keine Leerzeichen. Verbindliche unveränderte Kern-Vektoren: `tests/data/hash_golden.json`.
 Kein v1-Fallback.
+Die gemeinsamen JSON-Dateien in `tests/data` haben LF-Zeilenenden; Root-.gitattributes
+setzt dafür `text eol=lf`. Tests pinnen Datei-SHA-256 und vergleichen bei vorhandenem
+Kern-Worktree mit dessen kanonischen Git-Bytes, einschließlich kontrollierter Windows-
+Checkout-Konvertierung. Ohne Kern-Worktree gelten die gleichen SHA-256-Pins in CI.
 
 | Aktion | text | ziel_urn | medien / umfrage |
 |---|---|---|---|

@@ -184,9 +184,13 @@ Die unveränderlichen Freigabe-Aufträge und ihre menschliche Entscheidung verwa
 3. Der Kern startet den freigegebenen Auftrag und sendet genau einen Header:
    `X-Jnpt-Freigabe: hash=<freigabe:v2:sha256:…>`, ohne Auftrags-ID. Der Beisteller berechnet den aktuellen
    Hash selbst. Ohne exakte Gleichheit, auch ohne Header, kommt 409 nicht_freigegeben
-   vor jedem LinkedIn-Schreibaufruf. Auch Löschen braucht diesen Header.
-4. Bestätigter Erfolg enthält `ausgefuehrt: true`; bewiesener Abbruch vor dem ersten
-   LinkedIn-Schreibversuch `nicht_ausgefuehrt: true`. Fehler danach enthalten keines
+   vor jedem LinkedIn-Schreibaufruf, ohne Ergebnisindikator. Auch Löschen braucht diesen Header.
+4. Bestätigter Erfolg enthält `ausgefuehrt: true`. Nach gültiger Bridge- und Headerform-
+   Prüfung liefert ein bewiesener Abbruch vor dem ersten LinkedIn-Schreibversuch **HTTP 200**
+   mit `nicht_ausgefuehrt: true` und festem `error`-Code: etwa Tageskappe, Dienst nicht bereit,
+   Validierung, Medienprüfung oder vor dem Senden abgewiesene Quelle. Nur in 2xx liest der
+   Kern dieses Feld. Header-/Hash-Abweichungen bleiben 409 ohne dieses Feld; Vorschauen
+   und Bridge-Fehler behalten ihre Fehlerstatus ohne Ergebnisindikatoren. Fehler ab dem ersten LinkedIn-Schreibversuch enthalten keines
    der Felder, bereits ab Upload-Start, auch bei Edit/Delete. Der Kern wertet dies als
    unklar und hält den Sperrvermerk. Der RAM-Ergebnis-Cache (`report_hash`) im Beisteller
    ist Komfort und kein Sperrvermerk; ein Neustart leert ihn. Wiederholung desselben Hashs

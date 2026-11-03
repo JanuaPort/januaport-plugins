@@ -1,6 +1,169 @@
 # Prüfbericht #1306 F4 — linkedin-seite 0.3.0
 
-## Nachtrag LEAD — F2-Anschlussvertrag (aktueller Prüfstand)
+## SEC c-6608136792 — Variante a und LF-Fixtures (aktueller Prüfstand)
+
+- `b750de8`: eigener Test-Commit vor Produktionscode; 16 neue Tests zunächst mit
+  13 erwarteten Assertion-Fehlschlägen (28.358 s), kein Syntax-/Importfehler.
+  Nachweis: `pruefung/sec-c6608136792-red.txt`.
+- Implementierungscommit: `fix(linkedin-seite): expose definite nonexecution in 2xx and pin LF fixtures (#1306)`;
+  vollständiger Kopf-SHA im Abschluss. Nur lokale Commits, kein Push und keine Kern-Änderung.
+- LEAD Variante a: Nach Bridge- und strenger Headerform-Prüfung liefert ein bewiesener
+  Abbruch vor dem ersten LinkedIn-Schreibversuch HTTP 200 mit
+  `{"error":"<fester Code>","nicht_ausgefuehrt":true}`. Der Kern wertet dieses Feld nur
+  aus 2xx-Körpern aus. Nach Dispatch wird ausschließlich der IPC-Nachweis des Elternprozesses
+  verwendet; keine Rückschlüsse allein aus einem HTTP-Status der Quelle.
+- Header-/Hash-Abweichung bleibt 409 ohne beide Ergebnisfelder. Die Headerform wird vor
+  Body-/Fachvalidierung und Bereitschaft geprüft; die selbst berechnete Hash-Gleichheit
+  bleibt nach dem Lesen und vor jedem Schreiben Pflicht. Validierungs-/Medien-/Bereitschafts-
+  Abbrüche können schon vor der Hashberechnung auftreten und sind nach gültiger Headerform
+  sicher nicht ausgeführt. Bridge-Fehler und Vorschauen behalten ihre Fehlerstatus ohne Ergebnisfelder.
+- Der erste Schreibmarker liegt jetzt nach erfolgreichem lokalem HTTP-Permit unmittelbar
+  vor dem möglichen Senden. So ist die erste HTTP-Tageskappe eindeutig nicht ausgeführt;
+  dieselbe Kappe nach initializeUpload bleibt unklar, mit 429 und ohne beide Felder.
+  Quellfehler nach erstem POST/PUT/Edit/Delete sowie verlorene Antworten bleiben unverändert unklar.
+- Gezielter Lauf: **49 Tests OK**, 127.355 s (`pruefung/sec-c6608136792-green.txt`).
+  Neue echte HTTP-/Spawn-/Adaptertests belegen Tageskappe und erste HTTP-Kappe für alle vier
+  Schreibaktionen, Dienst nicht eingerichtet, Pool geschlossen, Token abgelaufen,
+  Body-/Eintragsvalidierung, Medienformat/-größe, Gateway-Abweisung und OAuth-Antwortabweisung
+  vor dem ersten Fach-Schreibaufruf. Sie verlangen jeweils 200 + Nichtausführung und zählen
+  null LinkedIn-Fach-Schreibaufrufe; außer beim ausdrücklich separat geprüften OAuth-Tausch
+  sogar null LinkedIn-HTTP-Aufrufe. Antworten haben feste Codes und keine Credentials.
+  Negativtests lösen Gate-/Bridgefehler, Vorschaufehler, einen ersten POST mit 403 sowie
+  die HTTP-Kappe nach initializeUpload aus und prüfen Status und fehlende Ergebnisfelder.
+- Komplette Suite: **241 Tests OK, 0 übersprungen**, 287.613 s
+  (`pruefung/sec-c6608136792-baseline.txt`). **186/186 Mutationen erkannt**, Originalquellen unverändert; kompletter Lauf erfolgreich
+  (`pruefung/sec-c6608136792-mutations.txt`). 14 neue Mutanten prüfen die sieben frühen
+  200-Fälle, Ergebnis-Sperre bei Gate-/Bridgefehlern, Marker nach HTTP-Permit sowie je Fixture
+  CRLF und Inhaltsdrift. Syntaxfehler und Timeouts zählen nicht als Kontrollerkennung.
+- Vorschau-Beispiel auf LF normalisiert: Datei-SHA-256
+  `c238d1617f0582ed7eaf46901368e04de92c47194f61c2bf9cc45f4bdcb54050`.
+  hash_golden.json war bereits LF und bleibt bytegleich, SHA-256
+  `566c635e69c43e5341e12293256518663e008dd23e6f9cc68588d2ee3f88dd00`.
+  Root-.gitattributes: `linkedin-seite/tests/data/*.json text eol=lf`;
+  die zwei früheren untergeordneten -text-Regeln sind entfernt.
+  `git check-attr text eol` bestätigt text=set, eol=lf für beide Dateien.
+- `test_fixture_bytes` prüft rohe Plugin-Dateibytes auf LF und feste SHA-256-Pins.
+  Lokal werden beide Kern-Dateien in ../jpwt-1306f2 zusätzlich verglichen; CI ohne diesen
+  Worktree verwendet dieselben festen Pins, ohne den Byte-Test zu überspringen.
+  Befund der lokalen Windows-Arbeitskopie: Auch die F2-Kern-Beispieldatei hat CRLF,
+  ihre Git-Fassung (HEAD/Index) hat LF. Der Test liest in diesem Fall nur die LF-Git-Fassung,
+  prüft die exakte reine CRLF-Checkout-Konvertierung und vergleicht dann rohe Plugin-Bytes
+  gegen die kanonischen Kern-Bytes. Keine Normalisierung von Wirkungs-/Post-Texten.
+  Abweichung von der Annahme im Auftrag: Der lokale Kern-Checkout war ebenfalls CRLF;
+  die kanonische Kern-Datei ist LF. Kein Kern-Code und keine Kern-Datei wurde verändert.
+- [x] CLAUDE.md, CHANGELOG, README, SETUP, ARCHITEKTUR und aktueller Prüfbericht nachgezogen.
+- [x] Neue Tests zuerst separat committet; bestehende HTTP-Status-/Gate-Tests aktualisiert.
+- [x] LF-Regel, rohe SHA-256-Tests, lokaler Kern-Abgleich und CI-Pins für beide Fixtures.
+- RUECKFRAGE: nein. Keine Live-Abnahme (GATE), keine Spec-/GUI-/Kern-Änderung.
+
+Repo-weite Suche nach Nichtausführungs-/Status-Invarianten UND allen weiteren Wegen
+(HTTP-Grenze, Parser, Pool/IPC, API-/Upload-Transport, Quellen, Tests, Mutanten, Git-Attribute
+und Fixture-Abgleich): `pruefung/sec-c6608136792-invarianten.txt`.
+Fachfremde Attribute/Pins anderer Module beeinflussen den LinkedIn-Pfad nicht und bleiben
+unverändert. Alte Prüfartefakte und folgende ältere Berichtsstände sind historische Nachweise;
+aktuell gelten ausschließlich die Regeln dieses SEC-Nachtrags. Einschlägige Treffer:
+
+```text
+ARCHITEKTUR.md:18
+linkedin-seite/tests/mutations.py:170
+linkedin-seite/tests/mutations.py:171
+linkedin-seite/tests/mutations.py:175
+linkedin-seite/tests/mutations.py:176
+linkedin-seite/tests/mutations.py:177
+linkedin-seite/tests/mutations.py:178
+linkedin-seite/tests/mutations.py:179
+linkedin-seite/tests/mutations.py:180
+linkedin-seite/tests/mutations.py:181
+linkedin-seite/tests/mutations.py:182
+linkedin-seite/tests/mutations.py:183
+linkedin-seite/tests/mutations.py:184
+linkedin-seite/tests/mutations.py:212
+linkedin-seite/tests/mutations.py:243
+linkedin-seite/tests/mutations.py:244
+linkedin-seite/tests/mutations.py:245
+linkedin-seite/SETUP.md:155
+linkedin-seite/SETUP.md:190
+linkedin-seite/README.md:213
+linkedin-seite/README.md:214
+linkedin-seite/README.md:239
+linkedin-seite/README.md:253
+linkedin-seite/README.md:254
+linkedin-seite/tests/test_sec_outcome.py:16
+linkedin-seite/tests/test_sec_outcome.py:31
+linkedin-seite/tests/test_sec_outcome.py:38
+linkedin-seite/tests/test_sec_outcome.py:48
+linkedin-seite/tests/test_sec_outcome.py:87
+linkedin-seite/tests/test_sec_outcome.py:113
+linkedin-seite/tests/test_sec_outcome.py:130
+linkedin-seite/tests/test_post_server.py:102
+linkedin-seite/tests/test_post_server.py:126
+linkedin-seite/tests/test_post_server.py:142
+linkedin-seite/tests/test_post_server.py:146
+linkedin-seite/tests/test_post_server.py:205
+linkedin-seite/tests/test_post_server.py:249
+linkedin-seite/tests/test_post_domain.py:174
+linkedin-seite/tests/test_post_adapter.py:260
+linkedin-seite/tests/test_post_adapter.py:274
+linkedin-seite/tests/test_f4.py:66
+linkedin-seite/tests/test_f4.py:70
+linkedin-seite/linkedin_seite/server.py:115
+linkedin-seite/linkedin_seite/server.py:142
+linkedin-seite/linkedin_seite/server.py:145
+linkedin-seite/linkedin_seite/server.py:181
+linkedin-seite/linkedin_seite/server.py:182
+linkedin-seite/linkedin_seite/server.py:183
+linkedin-seite/linkedin_seite/server.py:192
+linkedin-seite/linkedin_seite/server.py:193
+linkedin-seite/tests/support_post.py:351
+linkedin-seite/linkedin_seite/post_pool.py:149
+linkedin-seite/linkedin_seite/post_pool.py:152
+linkedin-seite/linkedin_seite/post_pool.py:202
+linkedin-seite/linkedin_seite/post_pool.py:233
+linkedin-seite/linkedin_seite/post_pool.py:238
+linkedin-seite/linkedin_seite/post_pool.py:239
+linkedin-seite/linkedin_seite/post_adapter.py:33
+linkedin-seite/linkedin_seite/post_adapter.py:36
+linkedin-seite/linkedin_seite/post_adapter.py:37
+linkedin-seite/linkedin_seite/post_adapter.py:143
+linkedin-seite/linkedin_seite/post_adapter.py:175
+linkedin-seite/linkedin_seite/post_adapter.py:189
+linkedin-seite/linkedin_seite/domain.py:33
+linkedin-seite/CHANGELOG.md:6
+linkedin-seite/CHANGELOG.md:24
+linkedin-seite/CLAUDE.md:106
+linkedin-seite/CLAUDE.md:140
+linkedin-seite/CLAUDE.md:146
+linkedin-seite/CLAUDE.md:147
+linkedin-seite/CLAUDE.md:156
+.gitattributes:1
+linkedin-seite/CHANGELOG.md:9
+linkedin-seite/CLAUDE.md:115
+linkedin-seite/CLAUDE.md:126
+linkedin-seite/CLAUDE.md:177
+linkedin-seite/README.md:288
+linkedin-seite/README.md:300
+linkedin-seite/README.md:303
+linkedin-seite/README.md:402
+linkedin-seite/tests/mutations.py:75
+linkedin-seite/tests/mutations.py:160
+linkedin-seite/tests/mutations.py:168
+linkedin-seite/tests/mutations.py:185
+linkedin-seite/tests/mutations.py:186
+linkedin-seite/tests/mutations.py:187
+linkedin-seite/tests/mutations.py:188
+linkedin-seite/tests/mutations.py:217
+linkedin-seite/linkedin_seite/source_contract.py:96
+linkedin-seite/tests/test_f2_preview.py:12
+linkedin-seite/tests/test_f4.py:14
+linkedin-seite/tests/test_fixture_bytes.py:9
+linkedin-seite/tests/test_fixture_bytes.py:11
+linkedin-seite/tests/test_fixture_bytes.py:24
+```
+
+## Vorheriger LEAD-/F2-Prüfstand (vor SEC c-6608136792)
+
+
+## Nachtrag LEAD — F2-Anschlussvertrag (historischer Prüfstand)
 
 - Nur lesend abgeglichen: `../jpwt-1306f2/docs/connector-linkedin-seite.md` (Ablauf/
   Antwortvertrag, gemeinsames Vorschau-Beispiel) und `internal/connector/testdata/

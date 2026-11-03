@@ -2,6 +2,14 @@
 
 ## 0.3.0 — 2026-11-03
 
+- SEC c-6608136792 / LEAD Variante a: Nach gültiger Headerform und bewiesener Nichtausführung
+  HTTP 200 mit nicht_ausgefuehrt: true, damit der Kern den Indikator aus 2xx lesen kann.
+  Gate-Abweichungen bleiben 409 ohne Ergebnisfelder; Fehler nach erstem Schreibversuch
+  bleiben unklar ohne beide Felder. Schreibmarkierung erst nach lokalem HTTP-Permit.
+- Beide gemeinsamen JSON-Fixtures durch text eol=lf gesichert; Vorschau-Beispiel von CRLF
+  auf LF normalisiert. Datei-SHA-256 gegen Kern-Git-Fassung lokal und feste Pins in CI,
+  samt CRLF-/Dateidrift-Mutanten. Kern-Checkout bleibt unverändert.
+
 - LEAD-Nachtrag F2-Anschluss: Vorschau mit direkten ziel_urn/text und medien[].name,
   zusätzliches Wirkungsobjekt entfernt. Exakte Schlüssel/Typen nach der unverändert kopierten
   Kern-Beispieldatei, Hash separat aus direkten Wirkungsfeldern geprüft; H3 bleibt erhalten.

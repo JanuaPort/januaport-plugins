@@ -30,9 +30,11 @@ class Erledigt(Exception):
 class WriteTransport(Transport):
     """Same fixed HTTPS transport (no proxy, no redirect, no retry); returns status and headers too."""
 
-    def exchange(self, request, expect_json=True, timeout=API_TIMEOUT):
+    def exchange(self, request, expect_json=True, timeout=API_TIMEOUT, *, before_send=None):
         self.permit()  # server-process grant before every LinkedIn attempt, failures included
         self.timeout = timeout
+        if before_send is not None:
+            before_send()  # after local quota checks, immediately before possible provider effect
         try:
             with self._open(request) as response:
                 raw = response.read(MAX_SOURCE + 1)
@@ -169,9 +171,8 @@ class PostAdapter:
             headers['Content-Type'] = 'application/json'
             data = json.dumps(body, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
         request = urllib.request.Request(s.API_ROOT + path, data=data, headers=headers, method=method)
-        if method != 'GET':
-            self._schreiben()
-        status, response_headers, data = self.transport.exchange(request, expect_json=expect_json)
+        status, response_headers, data = self.transport.exchange(
+            request, expect_json=expect_json, before_send=self._schreiben if method != 'GET' else None)
         expected = 201 if op in ('post_create', 'comment_create') else 204 if op in ('post_update', 'post_delete') else 200
         if status != expected:
             shape()
@@ -184,12 +185,12 @@ class PostAdapter:
         if s.UPLOAD_TOKEN[art]:
             headers['Authorization'] = 'Bearer ' + self.tokens.access()
         request = urllib.request.Request(ziel, data=daten, headers=headers, method=s.UPLOAD_METHOD)
-        self._schreiben()
-        _, response_headers, _ = self.transport.exchange(request, expect_json=False, timeout=UPLOAD_TIMEOUT)
+        _, response_headers, _ = self.transport.exchange(
+            request, expect_json=False, timeout=UPLOAD_TIMEOUT, before_send=self._schreiben)
         return response_headers
 
     def _schreiben(self):
-        # Conservative boundary before transport: includes init, edit, delete and upload.
+        # After the HTTP permit, before sending: includes init, edit, delete and upload.
         self.link.write_request()
         self.schreibversuch = True
 

@@ -1,0 +1,6 @@
+............................................................................................................................................................................................................................Executing <Task pending name='Task-1032' coro=<RequestHandler.start() running at C:\Users\MartinKammerer\AppData\Roaming\Python\Python312\site-packages\aiohttp\web_protocol.py:686> wait_for=<Task pending name='Task-1038' coro=<RequestHandler._handle_request() running at C:\Users\MartinKammerer\AppData\Roaming\Python\Python312\site-packages\aiohttp\web_protocol.py:577> wait_for=<Future pending cb=[shield.<locals>._outer_done_callback() at C:\ProgramData\miniconda3\Lib\asyncio\tasks.py:922, Task.task_wakeup()] created at C:\ProgramData\miniconda3\Lib\asyncio\base_events.py:448> cb=[Task.task_wakeup()] created at C:\Users\MartinKammerer\AppData\Roaming\Python\Python312\site-packages\aiohttp\web_protocol.py:682> created at C:\Users\MartinKammerer\AppData\Roaming\Python\Python312\site-packages\aiohttp\web_protocol.py:381> took 0.203 seconds
+.....................
+----------------------------------------------------------------------
+Ran 241 tests in 287.613s
+
+OK

@@ -103,6 +103,7 @@ der frühere Konfigurationsschlüssel freigabe ist entfernt und wird abgewiesen.
   create_post, edit_post, delete_post und create_comment verlangen genau einen Header
   `X-Jnpt-Freigabe: hash=<freigabe:v2:sha256:…>`; ohne Auftrags-ID, keine zweite Form. Fehlender,
   mehrfacher, falsch formatierter oder abweichender Wert ergibt 409 nicht_freigegeben.
+  Diese Gate-Antwort trägt weder nicht_ausgefuehrt noch ausgefuehrt.
   Vor Hash-Gleichheit erfolgt kein LinkedIn-Schreibaufruf.
 - `post_adapter.py`: ein Gateway-Lesevorgang, ein unveränderliches Entry-Objekt für
   Vorschau UND Wirkung (H3); Medien einmal in private RAM-Kopien lesen und prüfen.
@@ -133,12 +134,17 @@ der frühere Konfigurationsschlüssel freigabe ist entfernt und wird abgewiesen.
   Medienname vor Abruf prüfen, Antwort begrenzen, keine Proxies/Redirects.
 - `post_pool.py`: eigener spawn-Prozess je Auftrag, 5 Aktionen und 45 HTTP-Versuche je UTC-Tag
   im Serverprozess. IPC-Permit vor jedem LinkedIn-Aufruf. Vor jedem möglichen Schreibversuch
-  meldet der Adapter write, bevor der Transport läuft: auch initializeUpload/Edit/Delete/PUT.
-  Bestätigter Erfolg liefert ausgefuehrt: true. Nur nachweislicher Abbruch vor dem ersten
-  Schreibversuch liefert nicht_ausgefuehrt: true. Fehler danach tragen keines der Felder,
+  meldet der Adapter write nach erfolgreichem HTTP-Permit unmittelbar vor dem Senden:
+  auch initializeUpload/Edit/Delete/PUT. Ablehnung der ersten HTTP-Quote bleibt so eindeutig vor Wirkung.
+  Bestätigter Erfolg liefert ausgefuehrt: true. Nach Bridge- und Headerform-Prüfung liefert
+  nur nachweislicher Abbruch vor dem ersten Schreibversuch HTTP 200 mit nicht_ausgefuehrt: true
+  und festem error-Code (SEC c-6608136792, LEAD Variante a). Das gilt für lokale Tages-/HTTP-Kappe,
+  belegten/geschlossenen/nicht eingerichteten Dienst, Validierung, Medienprüfung und Quellenfehler
+  vor dem Senden. Der Kern liest diesen Indikator nur aus 2xx-Antworten. Fehler ab dem ersten möglichen Schreibversuch tragen keines der Felder,
   auch bei Timeout, Prozessende, fehlerhafter Erfolgsantwort oder Abbruch der Videoverarbeitung.
   Konservative Unklarheit ist zulässig, falsche Nichtausführung nicht (A1).
-- Ein Schreibauftrag gleichzeitig; parallele Anfrage 429 schreiben_belegt vor eigenem Start.
+- Ein Schreibauftrag gleichzeitig; parallele Anfrage HTTP 200, schreiben_belegt und
+  nicht_ausgefuehrt: true vor eigenem Start.
   HTTP wartet auf das Endergebnis, höchstens 25 Minuten; Vorschau 20 Sekunden, 10/Minute.
   F2 begrenzt den Call aktuell auf 25 Sekunden (Runtime-Decke 120 Sekunden); lange Videojobs
   können im Kern daher bereits vorher unklar werden. Client-Abbruch beendet einen Schreibprozess nicht. Keine Zwischenantwort und kein Nachfrage-Fenster.
@@ -146,7 +152,11 @@ der frühere Konfigurationsschlüssel freigabe ist entfernt und wird abgewiesen.
   leert sie. Wiederholung liefert wiederholt: true UND ausgefuehrt: true, ohne zweiten Post.
   Dieser Komfort ist kein Sperrvermerk; dauerhafte Ausführungs-/Unklar-Sperren hält der Kern.
 - `server.py`: Bridge-Prüfung vor Facharbeit, Header über HTTP und WriteRequest bis zum Adapter.
-  Frühfehler der Schreibrouten erhalten die Nichtausführung; nach Dispatch nur mit IPC-Nachweis.
+  Die strenge Headerform wird vor Body-/Fachvalidierung und Bereitschaft geprüft; danach
+  dürfen eindeutige Frühfehler als HTTP 200 mit nicht_ausgefuehrt: true zurückkommen,
+  nach Dispatch ausschließlich mit IPC-Nachweis. Hash-Gleichheit wird nach dem Laden geprüft:
+  nicht_freigegeben bleibt immer 409 ohne Ergebnisfeld. Ohne erfolgreiche Bridge-/Headerprüfung
+  sowie für Vorschauen bleiben Fehlerstatus und fehlende Ergebnisindikatoren erhalten.
   Lese- und Schreib-Grant bleiben getrennt, WRITE_SCOPES exakt w_organization_social und
   w_organization_social_feed, Gateway-Token in eigener Tresor-Stelle.
 
@@ -162,3 +172,11 @@ Pflichtmutanten: Hashvergleich/fehlender Header, jedes Hashfeld, geänderter Gol
 Ergebnisfelder vor/nach erstem Schreibversuch, zwei Gateway-Werkzeuge, bestehende SEC-Sperren.
 Isolierte Kopien müssen rot werden; Originale bleiben unverändert. Ausgang und Doku-Checkliste
 stehen im PRUEFBERICHT. Synthetische Tests ersetzen kein Live-Gate.
+
+Gemeinsame JSON-Fixtures sind LF-Dateien. Root-.gitattributes enthält
+`linkedin-seite/tests/data/*.json text eol=lf`; untergeordnete -text-Ausnahmen entfallen.
+`test_fixture_bytes` prüft LF, feste Datei-SHA-256 und lokal die Kern-Dateien aus
+../jpwt-1306f2. Bei Windows-CRLF im Kern-Checkout wird dessen exakte LF-Git-Fassung gelesen
+und die reine Checkout-Konvertierung geprüft; der Kern wird nicht geändert. CI ohne den
+Kern-Worktree verwendet dieselben fest eingetragenen SHA-256-Werte. Dies betrifft nur
+Dateizeilenenden der Fixtures, niemals Normalisierung der freizugebenden Texte.
