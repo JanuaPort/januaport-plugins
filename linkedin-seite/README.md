@@ -1,8 +1,10 @@
-# LinkedIn-Seite 0.1.2 — #1237, Stufe A
+# LinkedIn-Seite 0.2.0 — #1237, Stufe A und Stufe B1
 
 Privater Python-REST-Beisteller für Kennzahlen einer fest konfigurierten LinkedIn-Seite.
-PO-Entscheid vom 29.10.2026: Option (a), Stufe A. Synthetisch geprüft;
-Herstellervertrag und produktive Freigabe sind **noch nicht live belegt**. Apache 2.0.
+PO-Entscheid vom 29.10.2026: Option (a), Stufe A. Seit 0.2.0 zusätzlich Stufe B1: Posten,
+Bearbeiten, Löschen und eigener Kommentar, nur nach Freigabe in der Kartei `redaktion_freigabe`
+(Abschnitt unten). Synthetisch geprüft; Herstellervertrag und produktive Freigabe sind **noch nicht
+live belegt**. Apache 2.0.
 
 ## Werkzeuge und Messvertrag
 
@@ -125,10 +127,11 @@ Andere Bindefehler brechen ebenfalls ab; unter Windows werden Sockets exklusiv g
 1. Admin führt [SETUP.md](SETUP.md) aus. Er gibt die Organisations-ID und die verifizierte
    API-Version an den Betreiber. `config.example.json` enthält ausschließlich synthetische
    Werte. Die Konfiguration nach `/opt/jnpt/plugins/linkedin-seite/config.json` legen.
-2. Die zwei Zeilen aus `deploy/jnpt-plugins-linkedin-seite.conf.example` in
+2. Die Zeilen aus `deploy/jnpt-plugins-linkedin-seite.conf.example` in
    `/etc/tmpfiles.d/jnpt-plugins.conf` übernehmen; `systemd-tmpfiles --create` ausführen.
-   Beide Ordner gehören 65532:65532, Modus 0750. Das Gateway stellt daraus die zwei
-   Tresor-Stellen bereit und schreibt deren `runtime-key` nach jedem Boot neu.
+   Alle Ordner gehören 65532:65532, Modus 0750. Das Gateway stellt daraus die Tresor-Stellen
+   bereit (seit 0.2.0 vier, die zwei der Stufe B1 sind optional) und schreibt deren
+   `runtime-key` nach jedem Boot neu.
 3. Einen zufälligen Bridge-Key per stdin in beide Stellen setzen, danach verwerfen:
 
    ```bash
@@ -144,7 +147,9 @@ Andere Bindefehler brechen ebenfalls ab; unter Windows werden Sockets exklusiv g
    den später signierten Image-Digest verwenden. REQUIRE enthält Konfiguration und beide
    Laufzeitschlüssel; fehlende Dateien bedeuten `unprovisioned`. Compose hängt die Ordner
    `/run/jnpt/plugins/linkedin-seite` nach `/run/secrets/jnpt` und
-   `/run/jnpt/plugins/linkedin-seite-oauth` nach `/run/secrets/oauth`, beide read-only.
+   `/run/jnpt/plugins/linkedin-seite-oauth` nach `/run/secrets/oauth`, seit 0.2.0 zusätzlich
+   `…-post-oauth` nach `/run/secrets/post-oauth` und `…-gateway` nach `/run/secrets/gateway`,
+   alle read-only. REQUIRE verlangt nur die zwei Stufe-A-Schlüssel.
 5. `jnpt-linkedin-seite-key.path` und `.service` nach `/etc/systemd/system/` legen;
    `systemctl daemon-reload`, dann `systemctl enable --now jnpt-linkedin-seite-key.path`.
    Nur die Path-Unit aktivieren. Zwei `PathChanged` beobachten atomare Schlüsselwechsel;
@@ -195,6 +200,210 @@ Offene Live-Gates: Follower-Gesamtsummenform, Zugangssemantik, Reaktionssemantik
 Freigaben, Scope-Negativprobe, PKCE-Unterstützung, Refresh-Verfügbarkeit/-Rotation und
 Netz-/Auditprüfung am Zielhost. Vollständige Namensliste und Negativnachweis: `PRUEFBERICHT.md`.
 
-Stufe B braucht später einen eigenen PO-Auftrag, SEC-Prüfung, getrennte Schreibrechte,
-feste Post-Routen, Vorschau/Freigabe, Inhaltsprüfung, Schreibquote, Idempotenz und Audit.
-Sie ist hier nicht implementiert.
+## Stufe B1 — Posten nach Freigabe (0.2.0)
+
+PO-Zuruf 02.11.2026 („Ihr sollt Beiträge erstellen können“, „voll einsatzbereit“), SEC-PASS
+c-6575359082 (Bedingungen 1–5) und c-6575837332 (Umfrage, Video V1–V3). Synthetisch geprüft,
+**nicht live belegt**. Der Beisteller postet, bearbeitet, löscht und kommentiert auf der eigenen
+Unternehmensseite — **ausschließlich** für Einträge des Redaktionsplans, die ein Mensch in der
+Kartei `redaktion_freigabe` mit passendem Hash freigegeben hat. Formate: Text (mit Link), ein
+Bild, mehrere Bilder (2–20), PDF-Dokument, Umfrage, Video. Stufe A bleibt in Verhalten und
+Scopes unverändert; ohne Schreib-Konfiguration antworten die Schreibrouten
+`503 schreiben_nicht_eingerichtet`.
+
+### Werkzeuge
+
+Eigener Route-Präfix `/v1/linkedin-post/`, derselbe Bridge-Key wie Stufe A. Die schreibenden
+Werkzeuge nehmen **nur die Kartei-ID** (`{"eintrag_id": "<16 Hex>"}` als JSON-Rumpf, sonst nichts),
+keinen Text, keine Datei, keine URN. Text, Umfrage und Medien liest der Beisteller selbst.
+
+| Werkzeug (Vorschlag Katalog) | Route | Wirkung |
+|---|---|---|
+| `linkedin_seite_vorschau` | `GET vorschau?eintrag_id=…&aktion=posten\|bearbeiten\|loeschen\|kommentar` | lesend: Text, Format, Umfrage, Ziel-URN, Medienliste mit Ablage-Dateiname, Größe und sha256 je Datei, `hash`, `freigegeben`. Kein LinkedIn-Aufruf. |
+| `linkedin_seite_create_post` | `POST create_post` | Post anlegen (`posten`) |
+| `linkedin_seite_edit_post` | `POST edit_post` | Text eines eigenen Posts ändern (`bearbeiten`, nur `commentary`) |
+| `linkedin_seite_delete_post` | `POST delete_post` | Post löschen (`loeschen`) |
+| `linkedin_seite_create_comment` | `POST create_comment` | eigener Kommentar als Organisation unter `post_urn` (`kommentar`) |
+
+Antwort bei Erfolg: `aktion`, `eintrag_id`, `hash`, `format`, `state` (`veroeffentlicht`,
+`bearbeitet`, `geloescht`, `kommentiert`), `post_urn`, bei Video `video_urn`, bei Kommentar
+`kommentar_id`, `bytes`. Ein Auftrag, der länger als 20 Sekunden läuft (Video), antwortet
+`202 {"state":"in_arbeit"}` und läuft weiter; derselbe Aufruf liefert später den Zustand bzw. das
+Ergebnis. Feste Fehlercodes: `nicht_freigegeben` (403), `schreib_tageslimit` (429),
+`schreiben_belegt` (429, es läuft schon ein Auftrag), `bereits_veroeffentlicht` (409, `posten` mit
+gesetzter `post_urn`), `umfrage_ungueltig`, `umfrage_mit_medien`, `medien_ungueltig`,
+`medium_name_ungueltig`, `medien_kombination_ungueltig`, `medium_format_ungueltig`,
+`pseudonym_im_feld`, `kommentar_erwaehnung`, `post_text_fehlt`, `post_urn_fehlt`,
+`post_urn_ungueltig`, `kommentar_text_fehlt` (422), `ergebnis_unbekannt` (409), `medium_zu_gross` (413),
+`eintrag_nicht_gefunden` (404), `gateway_*`, `upload_ziel_abgewiesen`, `upload_teile_ungueltig`,
+`source_umleitung_abgewiesen`, `video_nicht_verfuegbar`, `video_verarbeitung_fehlgeschlagen` (502).
+
+### Kartei-Schema (VENDOR setzt es auf der Anlage)
+
+Der Kern kennt nur `string|integer|number|boolean` (`internal/kartei/load.go`). Listen und
+Objekte stehen deshalb als **JSON-String** im Feld; der Beisteller parst sie strikt (keine
+doppelten Schlüssel, keine unbekannten Schlüssel). **Keine Datenschutz-Etiketten** an diesen Feldern
+(SEC Bed. 5): ein Kürzel `‹…›` im Text wird mit `pseudonym_im_feld` abgewiesen. Ein Satz ist im
+Kern höchstens 4 KiB groß.
+
+`redaktionsplan` (bestehende Kartei, fünf Felder kommen dazu, alle optional, `type: string`):
+
+| Feld | Inhalt |
+|---|---|
+| `post_text` | Text des Posts (Pflicht für `posten`/`bearbeiten`). Wird im Little-Text-Format gesendet: reservierte Zeichen `\|{}@[]()<>#\*_~` werden escaped, eine Erwähnung ist damit unmöglich; `#Wort` bleibt ein Hashtag. |
+| `medien` | JSON-Liste von Dateinamen der **einen** Medien-Ablage, Reihenfolge zählt, z. B. `["karussell.pdf"]`. Reine Dateinamen (`A–Z a–z 0–9 . _ -`, höchstens 120 Zeichen), kein Pfad, kein `..`. Endungen: `.png .jpg .jpeg .gif` (Bild), `.pdf` (Dokument, Titel = Dateiname), `.mp4` (Video); der Dateiinhalt muss zur Endung passen. Kombinationen: kein Medium, 1 Bild, 2–20 Bilder, 1 PDF oder 1 Video. |
+| `umfrage` | JSON-Objekt `{"frage": "…", "antworten": ["…", "…"], "dauer": 7}`: Frage 1–140 Zeichen, 2–4 verschiedene Antworten je 1–30 Zeichen, `dauer` ∈ {1, 3, 7, 14} Tage. Nichts wird gekürzt; nie zusammen mit `medien`. Eine Umfrage lässt sich bei LinkedIn nachträglich nicht ändern. |
+| `post_urn` | `urn:li:share:<n>` oder `urn:li:ugcPost:<n>`: Ziel für `bearbeiten`, `loeschen`, `kommentar`. Für `posten` muss es leer sein. INB-REDAKTION trägt die URN aus der Werkzeug-Antwort ein. |
+| `kommentar_text` | Text des eigenen Kommentars (Pflicht für `kommentar`). Ohne Escaping gesendet (die Comments-API dokumentiert Little-Text nicht); enthält er eine URN (`urn:li:`), wird er mit `kommentar_erwaehnung` abgewiesen. |
+
+`redaktion_freigabe` (neue Kartei, **Ebene `team`, Owner = das Redaktions-Team der Menschen**):
+`eintrag_id` (string, Pflicht, `filter: true`), `aktion` (string, Pflicht, `enum: [posten,
+bearbeiten, loeschen, kommentar]`), `hash` (string, Pflicht). Der Team-Token der KI bekommt auf
+diese Kartei **keinen** Scope. Die Freigabe-Seite schreibt mit der **SSO-Identität** des Menschen,
+nie mit einem hinterlegten Token.
+
+### Freigabe und Hash (SEC Bed. 2)
+
+`hash` = SHA-256 über `jnpt-linkedin-seite-freigabe/v1\n` + kanonisches JSON (Schlüssel sortiert,
+UTF-8, ohne Leerraum) genau der gepostet-relevanten Felder:
+`posten` {aktion, post_text, medien: [{datei, bytes, sha256}], umfrage | null} ·
+`bearbeiten` {aktion, post_urn, post_text} · `loeschen` {aktion, post_urn} ·
+`kommentar` {aktion, post_urn, kommentar_text}. Jede Mediendatei geht mit Name, Größe und dem
+SHA-256 ihrer **Bytes** ein (gleichwertig zur Bindung an die Bytes selbst, aber nicht wortgleich mit
+SEC Bed. 2 „Bytes jeder Mediendatei“). Antwortreihenfolge der Umfrage zählt; Schlüsselreihenfolge
+und Leerraum im JSON-Feld zählen nicht. Die eingefrorenen Vektoren stehen in
+`tests/test_post_domain.py`. Freigegeben ist ein Aufruf nur, wenn `redaktion_freigabe` einen Satz
+mit gleicher `eintrag_id`, gleicher `aktion` und gleichem `hash` enthält, **der per SSO angelegt
+und zuletzt per SSO geändert wurde** (`via == "SSO"` und `updated_via == "SSO"` in der
+Kartei-Antwort, `cmd/jnpt/principal_teams.go`). Ein Freigabesatz in einem Feld des Redaktionsplans
+zählt nicht. Widerruf = den Freigabesatz löschen, bevor die Aktion läuft. Restlücke: Token-Labels
+vergibt der Admin frei, der Kern reserviert `SSO` nicht — **kein Token darf das Label `SSO`
+tragen** (Betreiberregel).
+
+Ablauf je Auftrag in einem eigenen Prozess: Eintrag lesen → jede Datei **einmal** in eine private
+RAM-Kopie lesen (Größe geprüft) → Hash → Freigabe suchen → erst dann zählen und LinkedIn aufrufen,
+aus der Kopie → Kopien überschreiben und verwerfen, auf jedem Weg. `DRAFT` gibt es nicht: die Doku
+202610 sagt „PUBLISHED is the only accepted field during creation“.
+
+### Rückverbindung zum Gateway (W2, SEC Bed. 3)
+
+Der Beisteller hängt im Netz **`jnpt_plugins`** (`internal: true`). Dort hängt auch der Gateway-
+Dienst `jnpt` und lauscht auf Port **8484** (Kern `docker/docker-compose.prod.yml`, Netzblock
+`plugins`). Die Gateway-URL steht in `config.json` unter `schreiben.gateway_url` und lautet
+**`http://jnpt:8484/mcp`**. Erlaubt ist ausschließlich der Pfad `/mcp`: `/admin/mcp`, Sichten
+(`/mcp/v/…`), Query, Fragment, Zugangsdaten in der URL oder ein fehlender Port brechen den Start mit
+`startup_failed` ab. Protokoll wie `kartei-rpa`: JSON-RPC über Streamable HTTP (`initialize`,
+`notifications/initialized`, `tools/call`), Bearer = eigener Gateway-Token des Beistellers, keine
+Umleitung, kein Proxy.
+
+**Token-Umfang des Gateway-Tokens (genau diese drei Werkzeuge, nichts sonst):**
+
+- `redaktionsplan_get` (Eintrag per ID),
+- `redaktion_freigabe_search` (aufgerufen nur mit `eintrag_id` und `limit: 100`),
+- `redaktion_medien_get_file` (Ablage-Integration `redaktion-medien`, Bytes als eingebettete Ressource).
+
+Die Namen folgen der Kern-Bildung `<name>_<werkzeug>` (Bindestrich → Unterstrich) aus
+`schreiben.redaktionsplan`, `schreiben.freigabe` und `schreiben.medien_ablage`. Nicht dabei: kein
+`_add`, `_update`, `_delete`, kein `redaktionsplan_search`, kein `redaktion_freigabe_get`, kein
+`list_files`/`read_file`/`write_file`/`move_file`, kein integrationsweiter Scope, kein Werkzeug auf
+`/admin/mcp`. Der Client verweigert jeden anderen Namen schon vor dem HTTP-Aufruf. Token-Art:
+**Team-Token** des Teams, in dem die Sätze beider Karteien liegen (Row-Level: der Token sieht nur
+Sätze seines Teams, außer eine Kartei steht auf Ebene `unternehmen`); kein persönlicher Token mit
+Erben-Bit. Die Medien-Ablage darf **nicht** pseudonymisiert sein (sonst verweigert `get_file`), ihr
+`max_file_bytes` höchstens 32 MiB.
+
+### Credentials, Bremse und Spur
+
+- **Schreib-Grant (SEC Bed. 4):** eigene Stelle `plugin-linkedin-seite-post-oauth`, Zustimmung mit
+  `tools/zustimmung.py --schreiben`, angefordert wird **genau** `w_organization_social
+  w_organization_social_feed`, nichts sonst. Das JSON trägt zusätzlich
+  `"scope": "w_organization_social w_organization_social_feed"`: die unveränderte Stufe-A-Prüfung weist
+  JSON mit `scope` ab, die Schreib-Prüfung verlangt genau diese Menge — ein Tausch fällt beim Laden auf.
+  Lese- und Schreib-Token verlassen nie ihren Prozess; jede Erneuerung des Schreib-Tokens muss wieder
+  genau diese zwei Scopes liefern (Trenner Komma oder Leerraum, Reihenfolge egal, Menge exakt).
+  Posten, Bearbeiten, Löschen sowie Bild-, Dokument- und Video-Upload stehen unter
+  `w_organization_social` (Posts-, Images-, Documents-, Videos-API 202610). Kommentieren als
+  Organisation steht unter `w_organization_social_feed`, belegt in der Comments API 202610, Tabelle
+  „Permissions“: „w_organization_social_feed | Post, comment, and react on posts on behalf of an organization“ (https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/comments-api?view=li-lms-2026-10).
+  Die App trägt beide Scopes (VENDOR, Portal vom PO geprüft).
+- **Gateway-Token:** eigene Stelle `plugin-linkedin-seite-gateway` (Hausmuster #887), nie Env, nie
+  Datei im Klartext, nie im Log.
+- **Bremse (SEC Bed. 5):** 5 schreibende Aktionen je UTC-Tag über alle vier Aktionen zusammen, gezählt
+  im Serverprozess unmittelbar vor dem ersten LinkedIn-Aufruf der Aktion (Video ab
+  `initializeUpload`, auch wenn es danach abbricht). Zusätzlich 45 LinkedIn-HTTP-Versuche je UTC-Tag
+  für Schreibaufträge (Development Tier: 100 je Mitglied; Stufe A hat eigene 50). Höchstens ein
+  Schreibauftrag gleichzeitig, harte Grenze 25 Minuten; Vorschau 20 Sekunden, 10 je Minute.
+- **Idempotenz:** `eintrag_id` + `hash` → Ergebnis, nur im RAM des Serverprozesses. Ein zweiter
+  Aufruf postet nicht erneut und liefert dieselbe URN mit `wiederholt: true`. Scheitert ein Auftrag,
+  nachdem der nicht wiederholbare Schlussaufruf (Post bzw. Kommentar anlegen) schon gesendet war,
+  ist der Ausgang unbekannt: dieselbe Freigabe wird danach mit `409 ergebnis_unbekannt` abgewiesen,
+  bis ein Mensch auf der Seite nachsieht und gegebenenfalls einen geänderten Eintrag neu freigibt.
+  Ein Fehler davor (etwa beim Upload) darf wiederholt werden. **Grenzen:** ein Neustart löscht
+  Zähler, Idempotenz und diese Sperre. Gegen Doppelposts über einen Neustart hinweg hilft nur die
+  gesetzte `post_urn` — die schreibt die KI, sie ist also kein Schutz gegen die KI, sondern ein
+  Komfort. Ein Auftrag kann LinkedIn nur mit Erlaubnis über seine Leitung zum Serverprozess
+  aufrufen; ohne Serverprozess endet er vor dem nächsten Aufruf.
+- **Spur:** je beendetem Schreibauftrag genau eine Zeile `spur aktion= eintrag_id= hash= code= urn=
+  bytes=`; nie Text, nie Dateiname, nie Upload-Adresse (sie ist vorsigniert), nie Token.
+
+### Uploads (SEC V1–V3)
+
+Upload-Adressen kommen aus der LinkedIn-Antwort und gehen nur an `https://www.linkedin.com/dms-uploads/…`
+(exakter Host, kein Port, keine Zugangsdaten, kein Fragment, keine Umleitung). Bild und Dokument:
+`PUT` mit Bearer (Images-/Documents-/Vector-Asset-Doku); Video: `PUT` je Teil **ohne** Token
+(Videos-Doku: „The upload call shouldn't include an OAuth token“). Video-Teile müssen die Datei
+lückenlos und ohne Überlappung abdecken, höchstens `ceil(Größe / 4 MiB)` Teile; sonst kein
+`finalizeUpload`. Danach Status alle 30 Sekunden, höchstens 15 Minuten; gepostet wird nur bei
+`AVAILABLE`. Größengrenze `schreiben.max_medium_bytes`, Vorgabe und Höchstwert 32 MiB (= harte
+Kappe der Ablage); je Eintrag höchstens 64 MiB zusammen. Größere Clips gehen auf diesem Weg nicht.
+
+### Endpunkte (geschlossen, `source_contract.WRITE_ENDPOINTS`)
+
+`POST /rest/posts` (inkl. `content.media`, `content.multiImage`, `content.poll`) · `POST
+/rest/posts/{urn}` mit `X-RestLi-Method: PARTIAL_UPDATE` · `DELETE /rest/posts/{urn}` mit
+`X-RestLi-Method: DELETE` · `POST /rest/socialActions/{urn}/comments` · `POST
+/rest/images?action=initializeUpload` · `POST /rest/documents?action=initializeUpload` · `POST
+/rest/videos?action=initializeUpload` · `POST /rest/videos?action=finalizeUpload` · `GET
+/rest/videos/{urn}` · `PUT` an die geprüfte Upload-Adresse. Nichts sonst: kein Kommentar-GET, keine
+Reaktionen, kein Video-DELETE, keine Untertitel, kein Vorschaubild. Autor/`owner`/`actor` ist immer
+die Organisation aus `config.json`. Belege (Microsoft Learn, `?view=li-lms-2026-10`):
+https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api ·
+https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/images-api ·
+https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/documents-api ·
+https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/videos-api ·
+https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/multiimage-post-api ·
+https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/poll-post-api ·
+https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/comments-api ·
+https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/little-text-format
+
+### Betreiberhandgriffe Stufe B1
+
+1. tmpfiles: die zwei neuen Zeilen aus `deploy/jnpt-plugins-linkedin-seite.conf.example`
+   (`linkedin-seite-post-oauth`, `linkedin-seite-gateway`) übernehmen und `systemd-tmpfiles --create`
+   ausführen — **vor** dem Image-Wechsel auf 0.2.0, sonst startet Compose nicht (Ordner-Mounts mit
+   `create_host_path: false`).
+2. Path-Unit aus `deploy/` neu ablegen (vier `PathChanged`), `systemctl daemon-reload`.
+3. `config.json` um den Block `schreiben` ergänzen (`config.example.json`).
+4. Karteien anlegen bzw. erweitern (Schema oben), Medien-Ablage `redaktion-medien` als
+   Ablage-Integration ohne Pseudonymisierung.
+5. Gateway-Token erzeugen (Team-Token, genau die drei Werkzeuge oben) und per stdin setzen:
+   `… | jnpt credential set --name plugin-linkedin-seite-gateway`. Dem KI-Team-Token auf
+   `redaktion_freigabe` nichts geben.
+6. Schreib-Zustimmung des PO (SETUP.md) in `plugin-linkedin-seite-post-oauth`.
+7. Connector-Vorlage um die fünf Werkzeuge ergänzen, Timeout 25 Sekunden genügt (Video antwortet
+   202). Audit für SSO und Token auf Metadaten; die Vorschau-Antwort enthält den Post-Text.
+
+### Live-Gates Stufe B1
+
+Gateway-Netzweg Beisteller → `jnpt:8484` im Netz `jnpt_plugins` (Aufruf aus dem Container) ·
+`team_token_list`: Beisteller-Token mit genau den drei Werkzeugen, KI-Team-Token ohne Scope auf
+`redaktion_freigabe` (SEC Bed. 3, GATE) · Row-Level-Sicht des Team-Tokens auf beide Karteien ·
+Antwortform von `redaktionsplan_get`/`redaktion_freigabe_search`/`get_file` am echten Kern ·
+`via`/`updated_via` = `SSO` bei einem Satz der Freigabe-Seite · Upload-Host `www.linkedin.com` und Token-Pflicht je Upload-Art · ETag-Form der
+Video-Teile · `x-restli-id` von Post und Kommentar · Little-Text bei Kommentaren · Testvideo
+hochladen und abschließen ohne Post · Größe der echten Clips (≤ 32 MiB) und ihr Weg in die Ablage
+(`write_file` trägt nur rund 6 MiB) · PID-/Speichergrenzen des Containers mit laufendem Video und
+mit 20 großen Bildern (Kopien bis 64 MiB plus gepufferte Base64-Antwort bis rund 44 MiB).
+
+Nicht in B1: B3 (fremde Kommentare lesen und beantworten), Lesen von Umfrage-Ergebnissen, Posten
+als Person, Untertitel, Vorschaubild, Video-Löschen, Seitenpflege (Banner, Slogan).

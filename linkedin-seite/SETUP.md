@@ -1,4 +1,4 @@
-# LinkedIn-Seite einrichten — Stufe A
+# LinkedIn-Seite einrichten — Stufe A und Stufe B1
 
 Diese Anleitung führt den Admin durch LinkedIn-Zustimmung und Tresoreintrag. Der Betreiber
 installiert vorher den Beisteller, legt die beiden Tresor-Stellen an und setzt den Bridge-Key.
@@ -120,3 +120,73 @@ seinem eigenen Ablauf nutzbar. Kürzere Herstellerfristen werden eingehalten.
 Bei Verdacht sofort die Autorisierung bei LinkedIn widerrufen und neu zustimmen.
 Entfernen aus dem Tresor ist kein Widerruf beim Hersteller. Eine etwaige Sicherung gehört
 höchstens in den Passwortmanager. Niemals Tokens in ein Supportticket kopieren.
+
+## Stufe B1: Posten nach Freigabe
+
+Ab Version 0.2.0 kann der Beisteller auf der eigenen Unternehmensseite posten, bearbeiten, löschen
+und eigene Kommentare setzen — nur für Einträge des Redaktionsplans, die ein Mensch freigegeben hat.
+Dafür gibt es eine **zweite, eigene Zustimmung** mit genau den Scopes `w_organization_social`
+(Posten, Bearbeiten, Löschen, Medien) und `w_organization_social_feed` (eigene Kommentare). Der
+Lese-Zugang aus Stufe A bleibt unverändert; Lese- und Schreib-Token sind getrennte Tresor-Stellen
+und werden nie getauscht. Ohne diese Zustimmung bleibt Posten aus.
+
+### Schreib-Zustimmung
+
+1. In der LinkedIn-App prüfen, dass das Produkt „Community Management API“ die Scopes
+   `w_organization_social` und `w_organization_social_feed` freigibt. Die zustimmende Person braucht auf der Seite die Rolle
+   Administrator (oder Content-Admin). Die Redirect-URI bleibt dieselbe.
+2. Am PO-Rechner das Zustimmungsskript im Schreib-Modus starten. Es fordert **nur**
+   `w_organization_social` und `w_organization_social_feed` an und schreibt das JSON in eine **andere**
+   Stelle als Stufe A:
+
+```bash
+python linkedin-seite/tools/zustimmung.py --client-id APP_CLIENT_ID --schreiben | jnpt credential set --name plugin-linkedin-seite-post-oauth
+```
+
+Unter Windows wie oben mit PowerShell 7 und maskierter Eingabe:
+
+```powershell
+Read-Host -MaskInput 'Client-Secret' | python linkedin-seite/tools/zustimmung.py --client-id APP_CLIENT_ID --secret-stdin --schreiben | jnpt credential set --name plugin-linkedin-seite-post-oauth
+```
+
+stderr nennt die Ziel-Stelle `plugin-linkedin-seite-post-oauth`. Das JSON trägt zusätzlich das Feld
+`scope`; der Dienst weist es in der Lese-Stelle ab und verlangt es in der Schreib-Stelle. Wer die
+Pipe vertauscht, sieht das beim nächsten Start: Stufe A startet nicht (falsches JSON in der
+Lese-Stelle) bzw. das Schreiben bleibt aus (`schreiben_nicht_eingerichtet`). Die Ausgabe nie in eine
+Datei umleiten. Laufzeit und Erneuerung wie beim Lese-Token (60 Tage, Refresh höchstens 365 Tage).
+
+### Gateway-Zugang des Beistellers
+
+Der Beisteller liest Redaktionsplan, Freigaben und Medien selbst über das Gateway, im internen Netz
+`jnpt_plugins` unter **`http://jnpt:8484/mcp`** (Eintrag `schreiben.gateway_url` in der
+Betreiber-Konfiguration). Erlaubt ist nur `/mcp`, nie `/admin/mcp`; jede andere Adresse verhindert
+den Start. Dafür bekommt er einen eigenen Team-Token in der Stelle `plugin-linkedin-seite-gateway`
+mit **genau** diesen drei Werkzeugen und sonst nichts: `redaktionsplan_get`,
+`redaktion_freigabe_search` und `redaktion_medien_get_file`. Der Team-Token der KI erhält auf
+`redaktion_freigabe` keinen Zugriff. Kein Token darf das Label `SSO` tragen.
+
+### Freigeben
+
+Die KI legt den Inhalt im Redaktionsplan ab (`post_text`, `medien`, `umfrage`, `post_urn`,
+`kommentar_text`) und die Medien in der Medien-Ablage. Freigeben kann sie nicht: Die Freigabe ist ein
+eigener Satz in der Kartei `redaktion_freigabe`, auf die nur das Redaktions-Team der Menschen
+Zugriff hat.
+
+1. Das Werkzeug `linkedin_seite_vorschau` mit der Kartei-ID und der Aktion (`posten`, `bearbeiten`,
+   `loeschen` oder `kommentar`) aufrufen. Es zeigt Text, Format, Umfrage, Ziel-URN und je Datei
+   Dateiname, Größe und sha256 — und den `hash`.
+2. Die genannten Dateien in der Ablage selbst öffnen und ansehen. Der Hash bindet die Freigabe an
+   genau diese Bytes; dass der Mensch sie angesehen hat, prüft er nicht.
+3. Über die Freigabe-Seite, angemeldet per SSO, einen Satz in `redaktion_freigabe` anlegen:
+   `eintrag_id`, `aktion`, `hash`. Es zählen nur Sätze, die per **SSO** angelegt und geändert wurden;
+   ein Satz über einen Token zählt nicht.
+4. Erst dann ruft die KI das Schreibwerkzeug auf. Ändert sich danach Text, Umfrage, Ziel-URN oder eine
+   Datei, passt der Hash nicht mehr: `nicht_freigegeben`, es geht nichts an LinkedIn. Jede Aktion
+   braucht ihren eigenen Satz, auch Löschen. Zurückziehen: den Freigabesatz vor der Aktion löschen.
+
+Es gelten höchstens **5 schreibende Aktionen** je UTC-Tag, über Posten, Bearbeiten, Löschen und
+Kommentieren zusammen; ein Video zählt ab dem Upload-Start als eine Aktion. Eine Umfrage lässt sich
+nach dem Posten nicht mehr ändern; die Admins der Seite sehen bei LinkedIn, wer wie abgestimmt hat,
+der Beisteller liest keine Stimmen. Ein Post-Entwurf (DRAFT) über die Schnittstelle ist bei LinkedIn
+nicht möglich. Rückbau: die Schreib-Autorisierung bei LinkedIn widerrufen und die Stelle
+`plugin-linkedin-seite-post-oauth` leeren; das Entfernen aus dem Tresor allein ist kein Widerruf.

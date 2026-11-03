@@ -1,4 +1,117 @@
-# Prüfbericht #1237 — Abschlusskorrektur Paging / H1b
+# Prüfbericht #1237 — Stufe B1 (0.2.0, Posten nach Freigabe)
+
+Grundlage: SEC-PASS c-6575359082 (Bedingungen 1–5), Nachtrag c-6575372963, c-6575837332
+(Umfrage, Video V1–V3). Branch `feat/1237-stufe-b1` auf main `6ea970c`, eigener Worktree, zuerst
+ein roter Test-Commit, dann der Bau. Kein PR, kein Merge, kein Tag. Alle LinkedIn- und
+Gateway-Aufrufe der Tests gehen an lokale HTTP-Fakes (`tests/support_post.py`) auf freien Ports.
+
+## Prüfstand
+
+- **Zuerst rot:** Commit `test(linkedin-seite): Stufe B1 …` auf `6ea970c`. Lauf: 127 Tests, 6 Fehlschläge
+  und 8 Fehler (vier neue Testmodule scheitern am fehlenden Bau: `linkedin_seite.redaktion`,
+  `.gateway`, `.post_adapter`; Deploy-, Versions- und Doku-Wächter rot). Stufe A unverändert grün.
+- **CI-gleich, Linux:** `python:3.12-slim` am Digest des Dockerfiles (Python 3.12.15),
+  `pip install --require-hashes -r requirements.lock`, `python -m unittest discover -s tests`:
+  **207 Tests OK, 0 übersprungen** (106 s); `python tests/mutations.py`: Baseline grün,
+  **155 von 155 Mutationen erkannt**, Originalquellen unverändert (652 s).
+- **Image-Job:** `docker build`, Tests im Image non-root 65532, read-only, ohne Netz, 512 MiB,
+  1 CPU, 32 PIDs: **207 Tests OK, 52 übersprungen** (Deploy-/Release-/Setup-/PO-Skript-Tests ohne
+  deren Dateien).
+- **Windows, Python 3.12.9 lokal:** vollständige Suite grün.
+- Vorher 115 Tests / 90 Mutationen; nachher 207 / 155 (92 neue Tests, 65 neue Pflichtmutanten).
+  Nachtrag Gate-Befund VENDOR (Schreib-Scopes genau `w_organization_social` + `w_organization_social_feed`):
+  208 Tests / 157 Mutationen, zuerst rot (13 Tests), dann grün; Nachweis ist der CI-Lauf auf dem gemeldeten SHA.
+  Drei Stufe-A-Mutanten haben neue Anker (`get-only`: die gemeinsame `check_bridge`;
+  `expanded-grant`, `scope-exact-set-wire`: `set(scopes)`), Prüfung und Testziel unverändert.
+- **Zweitmeinung (A13):** Design-Check nach dem roten Test (übernommen: URN im Kommentartext
+  abweisen; Neustart-/Waisen-/Widerrufsgrenzen dokumentiert) und Code-Review vor dem Bericht
+  (übernommen: Sperre `ergebnis_unbekannt` nach gesendetem Schlussaufruf, Tests zuerst rot).
+
+## SEC-Bedingung → Code → Test (je mit Pflichtmutante in `tests/mutations.py`)
+
+| Bedingung | Code | Test (Mutante) |
+|---|---|---|
+| Bed. 1 Autor nur Organisation | `post_adapter.py` `_posten` `author`, `_asset` `owner`, `run` `actor` = `cfg.organization` | `Formats.test_text_post_…`, `…single_image…`, `…own_comment…` (`b1-author-person`, `b1-owner-person`, `b1-actor-person`) |
+| Bed. 1 geschlossene Liste | `source_contract.WRITE_ENDPOINTS`, `post_adapter.api` | `ClosedEndpoints.test_endpoint_table…`, `…comment_get_reactions…` (`b1-comment-get`, `b1-closed-list-check`, `b1-endpoint-table`, `b1-foreign-method`, `b1-partial-update-header`) |
+| Bed. 2 Freigabe aus zweiter Kartei, alle vier Aktionen | `redaktion.freigegeben`, `post_adapter.run` | `Approval.*` (`b2-hash-mismatch`, `b2-approval-field-in-plan`, `b2-delete-without-record`) |
+| Bed. 2 Hash über Inhalt und Bytes | `redaktion.canonical`/`freigabe_hash` | `test_post_domain.Hash.*` mit eingefrorenen Vektoren, `Approval.test_media_bytes_exchanged…`, `…text_changed…` (`b2-hash-over-bytes`, `b2-action-in-hash`, `b2-text-in-hash`, `b2-poll-order-in-hash`) |
+| Bed. 2/SEC-Empfehlung nur SSO-Sätze | `redaktion.freigegeben` (`via`, `updated_via`) | `Approval.test_only_sso_written…`, Domäne `Approval` (`b2-sso-only`, `b2-updated-via-sso`) |
+| Bed. 3 W2 nur lesend, werkzeuggenau | `gateway.GatewayClient.call` (geschlossene Liste aus `WriteConfig.tools`) | `test_post_gateway.*` JSON und SSE (`b3-closed-tools`) |
+| Bed. 3 nur `/mcp` | `redaktion.gateway_url` | `WriteConfiguration.test_gateway_url_only_mcp…` (`b3-mcp-only`) |
+| Bed. 3 Pfad der Medien | `redaktion.check_datei` in `parse_medien` und `gateway.datei` | `Gateway.test_paths_rejected_before_any_call`, `Requests.test_media_names…` (`b3-path-before-call`, `b3-plan-path-guard`) |
+| Bed. 4 eigenes Credential, genau `w_organization_social` + `w_organization_social_feed` | `source_contract.WRITE_SCOPES`, `zustimmung.py --schreiben`, `oauth.validate_write_identity`, `server.load_write_side` | `test_post_consent.*`, `Tokens.*`, `WriteToken.*` (`b4-write-scope`, `b4-write-scope-extra`, `b4-write-scope-table`, `b4-consent-scope-string`, `b4-write-identity-marker`, `b4-write-loader`, `b4-write-place`, `b4-write-refresh-scope`) |
+| Bed. 4 Token nie getauscht | getrennte Prozesse/Stellen | `TokenSeparationOnTheWire.*` (`b4-token-exchange`) |
+| Bed. 5 Tagesgrenze 5 über alle Aktionen | `post_pool.WritePool._count` (Serverprozess), `post_adapter._begin` | `Flow.test_five_write_actions…`, `ClosedEndpoints.test_action_is_counted…` (`b5-daily-cap`, `b5-count-before-request`) |
+| Bed. 5 Idempotenz `eintrag_id`+`hash` | `post_pool._reply` (`hash` → `fertig`/`weiter`), `done` | `Flow.test_post_then_idempotent…`, `Background.*` (`b5-idempotency`, `b5-one-job`) |
+| Bed. 5 kein Doppelpost nach unklarem Ausgang | `post_adapter.api` (`final_request` vor `post_create`/`comment_create`), `post_pool.unbekannt` | `Flow.test_unknown_outcome…`, `…failure_before_the_final_request…` (`b5-unknown-outcome`, `b5-final-marker`) |
+| Bed. 5 Log nur IDs/URN/Hash/Größe | `post_pool._trace`, `job_main` ohne Logging | `LogCanary.*` (echter Subprozess, laute Transport-Naht), `Flow…` (`b5-job-log-silence`, `b5-trace-text`) |
+| V1 Upload-Host, https, kein Port/`@`, kein Redirect, Token nur wo nötig | `redaktion.upload_ziel`, `post_adapter.upload`, `oauth.NoRedirect`, `source_contract.UPLOAD_TOKEN` | `UploadTarget.*`, `Formats.test_video…` (`v1-host`, `v1-https`, `v1-userinfo-port`, `v1-path-prefix`, `v1-no-redirect`, `v1-check-before-put`, `v1-video-without-token`) |
+| V2 Freigabe vor `initializeUpload` | `post_adapter.run` (Freigabe vor `_begin`) | `Approval.test_hash_mismatch…` (Video, null Aufrufe) (`v2-approval-before-upload`) |
+| V2 einmal lesen, Upload aus der Kopie, Kopie gelöscht | `gateway.Medium`, `post_adapter._video`/`_wipe` | `UploadBytes.test_file_exchanged…`, `…private_copies…` (`v2-read-once`, `v2-copy-wiped`) |
+| V2 Teile lückenlos, ≤ ceil(Größe/4 MiB) | `redaktion.video_teile` | `UploadBytes.test_part_list…` (`v2-parts-gap-overlap`, `v2-parts-count`, `v2-parts-cover`) |
+| V2 Größengrenze vor dem Lesen | `gateway.zu_gross`, Antwortdeckel in `_post` | `UploadBytes.test_oversized…`, `Gateway.test_size_limit…` (`v2-size-limit`) |
+| V3 Status begrenzt, Post nur bei `AVAILABLE`, zählt einmal | `post_adapter._video` | `VideoStatus.*`, `Flow.test_aborted_video…` (`v3-max-wait`, `v3-available-only`, `v3-failed-status`, `b5-video-counts-once`) |
+| Umfrage-Grenzen, keine Medien | `redaktion.parse_umfrage`, `check_format` | `Polls.*` (`poll-question-length`, `poll-option-count`, `poll-duration`, `poll-no-media`) |
+| Keine Erwähnung | `redaktion.little`, Kommentar ohne URN | `LittleText.*`, `Entries.test_comment_text…` (`little-escape`, `comment-urn-refused`) |
+
+## Herstellerbelege (Microsoft Learn, LinkedIn Marketing API, `?view=li-lms-2026-10`)
+
+| Endpunkt / Aussage | Doku-Seite | Wortlaut (Auszug) |
+|---|---|---|
+| `POST /rest/posts`, 201, `x-restli-id` | shares/posts-api | „You should get a 201 response and the response header x-restli-id contains the Post ID“ |
+| `PARTIAL_UPDATE`, 204, nur `commentary` u. a. | shares/posts-api | „the header `X-RestLi-Method` must be included in the request and set to `PARTIAL_UPDATE`“; „A successful response returns a `204` code.“ |
+| `DELETE /rest/posts/{urn}`, idempotent | shares/posts-api | „Post deletions are idempotent. Deletion requests for a previously deleted UGC Post will return a `204` code“ |
+| kein DRAFT beim Anlegen | shares/post-api-schema | „PUBLISHED is the only accepted field during creation.“; „DRAFT - Represents content that's accessible only to the author and is not yet published.“ |
+| `images?action=initializeUpload`, Upload mit Token | shares/images-api, shares/vector-asset-api | „The upload call requires a valid OAuth token in the 'Authorization' header. This is different than the upload video call which doesn't accept an OAuth token.“ |
+| `documents?action=initializeUpload`, `title` Pflicht | shares/documents-api, shares/post-api-schema | „The media title (Required field for Documents API).“ |
+| Video init/PUT/finalize/Status | shares/videos-api | „The first entry is byte range: 0 - 4194303, the next one with 4194304 - 8388607“; Status `PROCESSING`, `PROCESSING_FAILED`, `AVAILABLE`, `WAITING_UPLOAD` |
+| MultiImage 2–20 | shares/multiimage-post-api | „minimum of 2 images and maximum of 20 images“ |
+| Umfrage-Grenzen | shares/poll-post-api | Frage „Max length of 140 characters“, Optionen „at least two. Maximum 4 options“, „Maximum length of 30 characters“, „Updating poll content is not allowed.“ |
+| Kommentar als Organisation | shares/comments-api | `POST https://api.linkedin.com/rest/socialActions/{shareUrn\|ugcPostUrn\|commentUrn}/comments`, „actor … organization URN or person URN“ |
+| Upload-Host | images-/documents-/videos-api | Beispiele `https://www.linkedin.com/dms-uploads/…` |
+| Little-Text | shares/little-text-format | „All reserved characters need to be escaped with a backslash, even if those characters are not used in one of the supported elements or templates.“ |
+| Scope | shares/posts-api | „w_organization_social — Post, comment, and like posts on behalf of an organization.“ |
+| Scope Kommentar | shares/comments-api, Tabelle „Permissions“ | „w_organization_social_feed — Post, comment, and react on posts on behalf of an organization.“ |
+
+## Scope-Befund
+
+`w_organization_social` deckt laut Posts-, Images-, Documents- und Videos-API Posten, Bearbeiten,
+Löschen und die Uploads. Für Kommentare nennt die Comments API 202610 in ihrer Tabelle „Permissions“
+`w_organization_social_feed` („Post, comment, and react on posts on behalf of an organization“,
+https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/comments-api?view=li-lms-2026-10). Gate-Befund VENDOR: angefordert werden genau diese zwei
+Scopes, kein weiterer; die App trägt beide (Portal vom PO geprüft). Der frühere Live-Gate-Punkt
+„Kommentar-Scope“ ist damit durch diesen Beleg ersetzt.
+
+## Befund `UpdatedViaLabel`
+
+Die Kartei-Antwort liefert die Schreib-Herkunft: `via` (Zugang der Anlage) und `updated_via`
+(Zugang der letzten Änderung), `internal/kartei/render.go` `recordPayload`; für SSO lautet der Wert
+`SSO` (`cmd/jnpt/principal_teams.go` `principalViaSSO`), für Tokens das frei vergebene Token-Label.
+Umgesetzt: beide müssen `SSO` sein. Restlücke: der Kern reserviert das Label `SSO` nicht — ein Token
+mit diesem Label bestünde die Prüfung. Betreiberregel, kein Code.
+
+## Abweichungen und Grenzen
+
+- SEC Bed. 3 nennt `kartei_redaktionsplan_get`/`kartei_redaktion_freigabe_search` und
+  `<einstieg>_read_file`. Am Kern heißen die Werkzeuge `redaktionsplan_get`,
+  `redaktion_freigabe_search` (`karteiQualifiedName`, kein `kartei_`-Präfix) und für Bytes
+  `<ablage>_get_file` (`read_file` liefert nur Text).
+- Hash über den SHA-256 jeder Datei statt über die Rohbytes selbst: gleichwertige Bindung, nicht
+  wortgleich mit Bed. 2.
+- Tageszähler und Idempotenz nur im RAM; Neustart setzt zurück (wie Stufe A). `post_urn` schreibt die
+  KI und ist deshalb kein Schutz gegen sie.
+- Zusätzlich zur Aktionsgrenze 45 LinkedIn-HTTP-Versuche je UTC-Tag für Schreibaufträge
+  (Development Tier 100 je Mitglied); Betriebsgrenze, keine SEC-Bedingung.
+
+## Offene Live-Gates
+
+Siehe README „Live-Gates Stufe B1“.
+
+---
+
+
+# Stufe A (Bestand, unverändert)
+
 
 Basis: `77830b0c52cfaef2b257c7616e5a3e32af37ba9e`. SEC-PASS laut Auftrag für
 658bf9a..77830b0 (#1237 c-6509587143). Genau ein weiterer lokaler Commit, kein Amend/Push/PR/Tag.

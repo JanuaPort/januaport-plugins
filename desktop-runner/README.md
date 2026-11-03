@@ -71,6 +71,11 @@ automatischen Aufnahme am Laufende. Ein Versuch bleibt für diese Endaufnahme
 reserviert; somit höchstens vier explizite Aufnahmen. Uploadfehler ändern das Skriptergebnis nicht; Bilder werden nicht
 nachgeliefert. Bei gesperrter Sitzung zeigt die Aufnahme den Sperrbildschirm;
 GDI kann je nach Sitzung auch nicht verfügbar sein. Linux liefert einen Fehler.
+
+Nach lokalem Anhalten entfällt die Endaufnahme (SEC-R4 F1): Der Läufer prüft
+den L2-Haltzustand unmittelbar davor unter seiner Sperre und nimmt außerhalb
+der Sperre auf. Nach Ablauf der Wandzeit bleibt die Endaufnahme erhalten.
+
 H3 bleibt unverändert: kein Bedienfeld-Pipe-Handle und kein `jnpt*` in der
 Kind-Umgebung/Kommandozeile; das Modul wird ausschließlich im Bootstrap erzeugt.
 

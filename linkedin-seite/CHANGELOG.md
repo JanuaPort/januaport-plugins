@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.2.0 — 2026-11-02
+
+- Stufe B1, Posten nach Freigabe (JanuaPort/januaport#1237; PO-Zuruf 02.11., SEC-PASS c-6575359082
+  Bedingungen 1–5 und c-6575837332 Umfrage/Video V1–V3). Fünf neue Werkzeuge unter dem eigenen
+  Präfix `/v1/linkedin-post/`: `vorschau` (lesend, liefert den Hash), `create_post`, `edit_post`,
+  `delete_post`, `create_comment` (nehmen nur die Kartei-ID). Formate Text, Bild, 2–20 Bilder, PDF,
+  Umfrage, Video. Kein Entwurf: LinkedIn nimmt beim Anlegen nur `PUBLISHED` an.
+- Freigabe nur aus der zweiten Kartei `redaktion_freigabe`: Satz mit gleicher `eintrag_id`, `aktion`
+  und `hash`, angelegt und zuletzt geändert per SSO (`via`/`updated_via`). Hash = SHA-256 über die
+  kanonische Form der gepostet-relevanten Felder und den SHA-256 der Bytes jeder Mediendatei,
+  eingefrorene Vektoren. Freigabe vor jedem LinkedIn-Aufruf, auch vor `initializeUpload`.
+- Rückverbindung W2: eigener MCP-Client an `http://jnpt:8484/mcp` (nur `/mcp`), geschlossene
+  Werkzeugliste `redaktionsplan_get`, `redaktion_freigabe_search`, `<ablage>_get_file`; eigene Stelle
+  `plugin-linkedin-seite-gateway`.
+- Eigener Schreib-Grant `plugin-linkedin-seite-post-oauth` mit genau `w_organization_social` und
+  `w_organization_social_feed` (Gate-Befund VENDOR: Comments API 202610, Tabelle „Permissions“,
+  `w_organization_social_feed` „Post, comment, and react on posts on behalf of an organization“; die App
+  trägt beide), `tools/zustimmung.py --schreiben`; das Schreib-JSON trägt `scope`, die Stufe-A-Prüfung
+  weist es ab. Token-Antwort: Trenner tolerant, Menge exakt. Lese- und Schreib-Token getrennt, auch bei
+  der Erneuerung.
+- Geschlossene Endpunktliste, Autor/owner/actor nur die konfigurierte Organisation, Upload nur an
+  `https://www.linkedin.com/dms-uploads/…` ohne Umleitung, Token nur beim Bild-/Dokument-Upload,
+  Video-Teile lückenlos, Status höchstens 15 Minuten, Post nur bei `AVAILABLE`.
+- Je Aktion ein eigener Prozess mit privater RAM-Kopie der Medien (einmal gelesen, immer gelöscht).
+  5 schreibende Aktionen je UTC-Tag über alle Aktionen, 45 LinkedIn-Schreibversuche je Tag,
+  Idempotenz `eintrag_id` + `hash` im Serverprozess, ein Auftrag zugleich, `202 in_arbeit` für lange
+  Aufträge. Scheitert ein Auftrag nach dem gesendeten Post-/Kommentar-Aufruf, sperrt
+  `409 ergebnis_unbekannt` dieselbe Freigabe (kein Doppelpost). Spur je Auftrag nur IDs, URN, Hash, Größe.
+- Compose: zwei weitere read-only Ordner-Mounts (optional befüllt), tmpfiles vier Ordner, Path-Unit
+  vier Schlüssel, REQUIRE unverändert. `config.json` mit optionalem Block `schreiben`.
+- Stufe A unverändert in Verhalten und Scopes; drei Mutations-Anker an die gemeinsame Bridge-Prüfung
+  und den Scope-Parameter angepasst. Test-first: 93 neue Tests (115 → 208), 67 neue Mutationsproben (90 → 157).
+
 ## 0.1.2 — 2026-11-02
 
 - Korrektur nach dem ersten Abruf auf der Showcase (02.11. 09:06Z, 502 `source_rejected`,

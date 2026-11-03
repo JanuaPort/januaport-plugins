@@ -37,6 +37,19 @@ services:
         target: /run/secrets/oauth
         read_only: true
         bind: {create_host_path: false}
+      # Stufe B1 (#1237, 0.2.0): Schreib-Grant (plugin-linkedin-seite-post-oauth)
+      # und der eigene, nur lesende Gateway-Token (plugin-linkedin-seite-gateway).
+      # Die Ordner müssen per tmpfiles existieren; die Dateien darin sind optional.
+      - type: bind
+        source: /run/jnpt/plugins/linkedin-seite-post-oauth
+        target: /run/secrets/post-oauth
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: /run/jnpt/plugins/linkedin-seite-gateway
+        target: /run/secrets/gateway
+        read_only: true
+        bind: {create_host_path: false}
     networks:
       plugins:
         ipv4_address: ${LINKEDIN_SEITE_PLUGIN_IP:?exact internal network address required}

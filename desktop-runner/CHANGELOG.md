@@ -13,6 +13,10 @@
   in SHA256SUMS/Provenance. Installtest prüft beide Autostartwege und Argumentfreiheit;
   Invariante 19, Negativtests und L6-Mutationen ergänzt. G-L3 vor Geräte-Rollout:
   native Opt-in-Proben und Bedienfeld-Prozesssonde auf dem Testgerät PASS ohne SKIP.
+- L5 SEC-R4 F1: keine Endaufnahme nach lokalem Anhalten. L2-Haltzustand
+  unmittelbar davor unter `e.mu` geprüft, Aufnahme/Upload außerhalb der Sperre;
+  nach Wandzeitablauf bleibt die Endaufnahme erhalten. Regression und Mutationen
+  für Halt/Wandzeit sowie H2: isolierte Bindung des Laufpins an die Testfreigabe.
 
 - `jnpt`-Helfer (#1240 L5) neben `januaport`: lokale Rückfragen, letztes
   JSON-Ergebnis bis 64 KiB nur für Testaufträge, `None` ohne `result`-Feld.

@@ -9,5 +9,7 @@ HEALTH_DOCKER=1
 # dem Eintragen in der Basis-Einrichtung ablegt (Stellen plugin-linkedin-seite
 # und plugin-linkedin-seite-oauth). Fehlt eine, bucht der Aktuator
 # `unprovisioned` statt `failed`.
+# Bewusst NICHT verlangt (Stufe B1, #1237): plugin-linkedin-seite-post-oauth und
+# plugin-linkedin-seite-gateway. Ohne sie läuft Stufe A, die Schreibrouten antworten 503.
 REQUIRE=/opt/jnpt/plugins/linkedin-seite/config.json:/run/jnpt/plugins/linkedin-seite/runtime-key:/run/jnpt/plugins/linkedin-seite-oauth/runtime-key
 # DATA_DIRS intentionally absent: no report persistence.

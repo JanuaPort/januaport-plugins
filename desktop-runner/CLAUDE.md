@@ -157,6 +157,10 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     ganzer primärer Bildschirm, PNG bis 4 MiB, höchstens fünf Versuche pro Lauf
     einschließlich Fehlern; ein Versuch ist für die automatische Endaufnahme
     reserviert, somit höchstens vier explizite Aufnahmen.
+    SEC-R4 F1: Endaufnahme nur ohne aktiven L2-Halt; `haltedLocked()` direkt
+    davor unter `e.mu` prüfen, GDI/Upload außerhalb der Sperre. Der äußere
+    Kontext erhält die Endaufnahme nach Wandzeitablauf. H2: `verified` prüft
+    die Freigabe; der Pin der Laufumgebung muss zusätzlich `order.Pin` gleichen.
     Upload über `API.Screenshot`, keine Bildnachlieferung. Linux-Stub mit Fehler.
     Bei gesperrter Sitzung zeigt die Aufnahme den Sperrbildschirm; je nach
     Sitzung kann GDI nicht verfügbar sein. Das ist eine dokumentierte Grenze.
@@ -371,6 +375,7 @@ mit PASS ohne SKIP laufen. CI/Kompilierung ersetzen diesen Gate-Beleg nicht.
 | Pipe B1/B2, L3-1/L3-2, H1–H3 (#1240 L3) | TestPipeDACLStruktur, TestPipeBesetztStartetOhnePipe, TestClientPrueftServerbild, TestPipeBefehleGeschlossen, TestPipeGolden, TestPipeRoheRahmenAmLaeufer, TestPipeOhneTraeger, TestSetupStartNurAusManifest, TestSetupStartAmPipeHTTPAdapter, TestSetupHaltWaerendHTTP, TestSetupVeralteteFreigabeStartetNicht, TestSetupFreigabeDirektVorSpawn, TestSetupSperrtUndBrichtClaimAb, TestSetupSperrtAndereStartwege, TestSetupDirektesExecuteBleibtGesperrt, TestSetupFehlerNieOfflineNachmelden, TestPipeHaltBefehle, TestSkriptRoheTestfunktionenBleibenGesperrt, TestPipeKindHandleListe; native Windows-Sonden siehe README „Lokale Pipe“ |
 | Bedienfeld, Plan 14/15/18, §6.6, H4 | TestPanelZustaende, TestPanelMenueBefehleUndSetupEingabe, TestPanelFrageNurLokal, TestPanelStoerungBleibtBisNeuGeprueftemZustand, TestPanelServerpruefungSperrtBefehle, TestServerpruefungSendetNichtsAmAdapter, TestVerbindungVerwirftAlteBefehleUndBrichtSchreibenAb, TestBlockiertesSchreibenTrotzHeartbeatWirdGetrennt, TestFokusWaechter, TestBedienfeldNurGepruefterDial, TestPanelImportWaechter, TestL4SchemaPflichtfelder, TestH4RoheFragenAmLaeufer, TestH4SkriptTitelAbgewiesen, TestH4RoheFrageGrenzen, TestPanelEingabeAusVerifiziertemManifest; Windows: TestWindowsBedienfeldProzesssonde |
 | Rückfragen intern, L3-Anteil | TestFrageNurLokal, TestFrageFristUndDisconnect, TestPipeFrageAntwortWeiterleitung, TestPipeHaltSchliesstFrage |
+| L5 SEC-R4 F1/H2 | TestL5EndaufnahmeNachHaltUndWandzeit (Anhalten: 0 Aufnahmen/Uploads; Wandzeit: 1, ohne Engine-Sperre), TestL5LaufpinSeparatGebunden (verified gültig, nur Laufpin abweichend); Mutationen completion-halt, completion-wall-context, run-pin-binding |
 | Helfer L5, Plan 3/15/16/18, L3-2/H3 | TestScreenshotNurTestgeraet/roheRahmen, TestErgebnisNurTestauftrag/roheRahmen, client.TestFrageNurLokal (echter Python-Bootstrap), TestL5ErgebnisNullUndGrenzen, TestL5ScreenshotGrenzen, TestL5RahmenStrikt, TestL5BootstrapModule, TestL5TestauftragAmHTTPAdapter, TestKeineListenerDownloaderOderPip, TestScreenshotPNGBufferGrenze, TestScreenshotLinuxStub; Windows nur kompiliert: TestWindowsScreenshotGDI, TestWindowsScreenshotGDIChild, TestWindowsPythonKindOhneBedienfeldPipe |
 
 Übernommene Funktionen sind im Dateikopf markiert. Wächter vergleichen die
