@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -51,9 +52,15 @@ func (f *Fetcher) storageOnce(budget int64) {
 	}
 	raw, e := storagepins.ReadFile(filepath.Join(root, "inbox", "list.json"), storagepins.MaxListBytes)
 	if e != nil {
-		f.storageFailed()
+		if storageListAbsent(root) {
+			f.logStorageListPresence(false)
+			f.invalidateStorage()
+		} else {
+			f.storageFailed()
+		}
 		return
 	}
+	f.logStorageListPresence(true)
 	signed, list, e := f.storage.Check(raw)
 	if e != nil {
 		f.storageFailed()
@@ -85,13 +92,50 @@ func (f *Fetcher) storageOnce(budget int64) {
 	}
 	// Check freshness again after all IO. Publish writes only canonical verified
 	// metadata and locally computed hashes, never raw bodies or error messages.
+	if len(failed) > 0 {
+		f.cfg.Logger.Warn("storage_fetch_failed")
+	}
 	if f.storage.Publish(signed, list, approved, failed) != nil {
 		f.storageFailed()
 	}
 }
 
+// ReadFile intentionally masks OS errors. This probe only selects the log level;
+// the hardened read and journal invalidation remain the authorization path.
+// Lstat keeps dangling inbox/list links distinguishable from an absent list.
+func storageListAbsent(root string) bool {
+	for _, dir := range []string{root, filepath.Join(root, "inbox")} {
+		info, err := os.Lstat(dir)
+		if os.IsNotExist(err) {
+			return true
+		}
+		if err != nil || !info.IsDir() {
+			return false
+		}
+	}
+	_, err := os.Lstat(filepath.Join(root, "inbox", "list.json"))
+	return os.IsNotExist(err)
+}
+
+func (f *Fetcher) logStorageListPresence(present bool) {
+	missing := !present
+	if f.storageListMissing == missing {
+		return
+	}
+	f.storageListMissing = missing
+	if missing {
+		f.cfg.Logger.Info("storage_list_missing")
+	} else {
+		f.cfg.Logger.Info("storage_list_present")
+	}
+}
+
 func (f *Fetcher) storageFailed() {
 	f.cfg.Logger.Warn("storage_fetch_failed")
+	f.invalidateStorage()
+}
+
+func (f *Fetcher) invalidateStorage() {
 	if f.storage.Fail() != nil {
 		f.cfg.Logger.Warn("storage_io_failed")
 	}

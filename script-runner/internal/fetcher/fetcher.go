@@ -81,10 +81,11 @@ type Config struct {
 
 // Fetcher ist der abholer.
 type Fetcher struct {
-	cfg       Config
-	rejected  atomic.Int64
-	storageMu sync.Mutex
-	storage   *storagepins.Journal
+	cfg                Config
+	rejected           atomic.Int64
+	storageMu          sync.Mutex
+	storage            *storagepins.Journal
+	storageListMissing bool // Log state only; guarded by storageMu.
 }
 
 // New setzt Standards für leere Felder.

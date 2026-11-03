@@ -24,8 +24,12 @@ MUTATIONS = [
     ("F2 Sitzungsverdrängung aus", "internal/apphost/apphost.go", [
         ('delete(h.sessions, earliest)', 'if earliest != "" { h.mu.Unlock(); status(w, 503); return }')]),
     ("H2 globaler Mutex beim Abruf", "internal/apphost/apphost.go", [
-        ('h.mu.Unlock()\n\n\tnext := h.fetchPackage', '// mutation: keep mutex\n\n\tnext := h.fetchPackage'),
-        ('next.checked = h.c.Now()\n\th.mu.Lock()', 'next.checked = h.c.Now()')]),
+        ('defer cancel()\n\t\tnext := h.fetchPackage', 'defer cancel()\n\t\th.mu.Lock()\n\t\tnext := h.fetchPackage'),
+        ('next.checked = h.c.Now()\n\t\th.mu.Lock()', 'next.checked = h.c.Now()')]),
+    ("H-a Flight am ersten Anfrager", "internal/apphost/apphost.go", [
+        ('context.WithTimeout(context.WithoutCancel(ctx), packageFlightTimeout)', 'context.WithTimeout(ctx, packageFlightTimeout)')]),
+    ("H-a Flight ohne eigene Frist", "internal/apphost/apphost.go", [
+        ('context.WithTimeout(context.WithoutCancel(ctx), packageFlightTimeout)', 'context.WithCancel(context.WithoutCancel(ctx))')]),
     ("H2 parallele Abrufe derselben App", "internal/apphost/apphost.go", [
         ('flight := h.flights[app]; flight != nil {', 'flight := h.flights[app]; flight != nil && false {')]),
     ("H2 wartende Anfrage ignoriert Abbruch", "internal/apphost/apphost.go", [

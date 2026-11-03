@@ -24,6 +24,8 @@ import (
 
 const csp = "default-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'"
 
+const packageFlightTimeout = 30 * time.Second
+
 // Config contains operator-controlled endpoints, never request-controlled URLs.
 type Config struct {
 	Domain, GatewayURL, LoginURL, KeyPath string
@@ -209,12 +211,7 @@ func (h *Host) packageFor(ctx context.Context, app, key string) (map[string]asse
 	h.mu.Lock()
 	if flight := h.flights[app]; flight != nil {
 		h.mu.Unlock()
-		select {
-		case <-flight.done:
-			return flight.result.files, flight.result.status
-		case <-ctx.Done():
-			return nil, 503
-		}
+		return waitForPackage(ctx, flight)
 	}
 	now := h.c.Now()
 	old, exists := h.cache[app]
@@ -239,15 +236,30 @@ func (h *Host) packageFor(ctx context.Context, app, key string) (map[string]asse
 	h.cache[app] = old
 	h.mu.Unlock()
 
-	next := h.fetchPackage(ctx, app, key, old)
-	next.checked = h.c.Now()
-	h.mu.Lock()
-	h.cache[app] = next
-	flight.result = next
-	delete(h.flights, app)
-	close(flight.done)
-	h.mu.Unlock()
-	return next.files, next.status
+	// Every caller may leave independently. Only the flight's own fixed deadline
+	// cancels the shared fetch; request cancellation cannot poison the cache.
+	flightCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), packageFlightTimeout)
+	go func() {
+		defer cancel()
+		next := h.fetchPackage(flightCtx, app, key, old)
+		next.checked = h.c.Now()
+		h.mu.Lock()
+		h.cache[app] = next
+		flight.result = next
+		delete(h.flights, app)
+		close(flight.done)
+		h.mu.Unlock()
+	}()
+	return waitForPackage(ctx, flight)
+}
+
+func waitForPackage(ctx context.Context, flight *packageFlight) (map[string]asset, int) {
+	select {
+	case <-flight.done:
+		return flight.result.files, flight.result.status
+	case <-ctx.Done():
+		return nil, 503
+	}
 }
 
 // No shared mutex is held during network I/O or object verification.
