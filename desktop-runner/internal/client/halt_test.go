@@ -93,7 +93,7 @@ func TestHaltZwischenClaimUndSpawn(t *testing.T) {
 	b.engine.API = l1API(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/device/v1/jobs/claim":
-			json.NewEncoder(w).Encode(job)
+			json.NewEncoder(w).Encode(map[string]any{"job": job})
 		case "/api/device/v1/jobs/" + job.JobID + "/start":
 			json.NewEncoder(w).Encode(StartReply{"token", job.StartBy, "/api/device/v1/mcp"})
 		default:
@@ -156,6 +156,21 @@ type haltProcess struct {
 func (p haltProcess) Kill() error { p.kills.Add(1); return p.Process.Kill() }
 
 func TestAnhaltenBeendetLaufOhneNetz(t *testing.T) {
+	// Synchronous witness: removing only Kill cannot hide behind Execute's own
+	// cancellation cleanup racing with the assertion below.
+	probe := haltBed(t)
+	r, w := io.Pipe()
+	defer r.Close()
+	defer w.Close()
+	var directKills atomic.Int32
+	probe.engine.active = haltProcess{&fakeProc{r: r, w: w}, &directKills}
+	var cancelled atomic.Bool
+	probe.engine.activeCancel = func() { cancelled.Store(true) }
+	mustHalt(t, probe.engine, "angehalten", time.Time{})
+	if directKills.Load() != 1 || !cancelled.Load() {
+		t.Fatal("Anhalten ohne synchrones Cancel/Kill")
+	}
+
 	b := haltBed(t)
 	started := make(chan struct{})
 	b.exit = func(w *io.PipeWriter) { close(started) }
@@ -269,6 +284,7 @@ func TestHaltBefehleStartenNie(t *testing.T) {
 	if err := b.engine.Pause(15); err == nil {
 		t.Fatal("Pause hebt Anhalten auf")
 	}
+	mustHalt(t, b.engine, "arbeitet", time.Time{})
 	for _, minutes := range []int{-1, 1, 30, 61} {
 		if err := b.engine.Pause(minutes); err == nil {
 			t.Fatal("freie Pause", minutes)
@@ -314,7 +330,7 @@ func TestHaltMeldungKoalesziert(t *testing.T) {
 	var sent []haltState
 	fail := true
 	b.engine.API = l1API(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/device/v1/halt" || r.Method != "POST" || r.Header.Get("X-Jnpt-Contract") != "4" {
+		if r.URL.Path != "/api/device/v1/halt" || r.Method != "POST" || r.Header.Get("X-Jnpt-Desktop-Contract") != "4" {
 			t.Error(r.URL.Path, r.Header)
 		}
 		var body struct {
@@ -368,7 +384,7 @@ func TestHaltRunSperrtClaimsUndHaeltHeartbeat(t *testing.T) {
 			} else {
 				mustHalt(t, b.engine, "angehalten", time.Time{})
 			}
-			var claims, ready atomic.Int32
+			var claims, ready, reports atomic.Int32
 			b.engine.API = l1API(t, func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
 				case "/api/device/v1/heartbeat":
@@ -382,6 +398,7 @@ func TestHaltRunSperrtClaimsUndHaeltHeartbeat(t *testing.T) {
 					claims.Add(1)
 					w.WriteHeader(204)
 				case "/api/device/v1/halt":
+					reports.Add(1)
 					w.WriteHeader(204)
 				default:
 					w.WriteHeader(503)
@@ -392,8 +409,8 @@ func TestHaltRunSperrtClaimsUndHaeltHeartbeat(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 1200*time.Millisecond)
 			defer cancel()
 			_ = e.Run(ctx)
-			if claims.Load() != 0 || ready.Load() == 0 || len(b.launches) != 0 {
-				t.Fatal(claims.Load(), ready.Load(), len(b.launches))
+			if claims.Load() != 0 || ready.Load() == 0 || reports.Load() == 0 || len(b.launches) != 0 {
+				t.Fatal(claims.Load(), ready.Load(), reports.Load(), len(b.launches))
 			}
 		})
 	}

@@ -39,6 +39,15 @@ type Engine struct {
 	activeDone   chan struct{}
 	cancel       context.CancelFunc
 	syncErr      error
+	halt         haltState
+	haltLoaded   bool
+	haltFault    bool
+	haltPending  bool
+	haltVersion  uint64
+	haltThrough  time.Time
+	haltAttempt  time.Time
+	haltSendMu   sync.Mutex
+	claimCancel  context.CancelFunc
 }
 
 func envKey(p Pin) string      { return p.Commit + "-" + sum([]byte(p.Path)) }
@@ -245,6 +254,9 @@ func refused(r Result, err error) Result {
 	return finish(r, "refused", detail)
 }
 func (e *Engine) Execute(ctx context.Context, r Result, env Environment, input json.RawMessage, runToken string, wall, calls int) Result {
+	if e.workHalted() {
+		return finish(r, "cancelled", "")
+	}
 	if !e.runMu.TryLock() {
 		return finish(r, "internal", "")
 	}
@@ -302,6 +314,11 @@ func (e *Engine) Execute(ctx context.Context, r Result, env Environment, input j
 	runtime := filepath.Join(dir, "runtime")
 	launch := Launch{Dir: tmp, Exe: filepath.Join(runtime, "python.exe"), Args: []string{"-I", "-B", filepath.Join(runtime, "bootstrap.py")}, Env: childEnv(e.ChildEnv, tmp)}
 	e.mu.Lock()
+	// L2-1: this check and Spawn must remain in the same critical section.
+	if e.haltedLocked(time.Now()) {
+		e.mu.Unlock()
+		return finish(r, "cancelled", "")
+	}
 	p, err := e.Spawn(runCtx, launch)
 	if err != nil {
 		e.mu.Unlock()
@@ -323,6 +340,9 @@ func (e *Engine) Execute(ctx context.Context, r Result, env Environment, input j
 		Entry string          `json:"entry"`
 		Input json.RawMessage `json:"input"`
 	}{env.Entry, input}); err != nil {
+		if runCtx.Err() != nil {
+			return finish(r, "cancelled", "")
+		}
 		return finish(r, "internal", "")
 	}
 	exited := make(chan Result, 1)
@@ -470,6 +490,10 @@ func (e *Engine) report(r Result) error {
 	return nil
 }
 func (e *Engine) scheduled(ctx context.Context, p Pin, s Schedule, slot time.Time) error {
+	// B3/B6: skipped slots have no marker and no result; resume never catches up.
+	if e.scheduleHalted(slot) {
+		return nil
+	}
 	b := e.view()
 	m, err := ParseManifest(b.Manifest.Envelope.Manifest)
 	if err != nil {
@@ -479,7 +503,7 @@ func (e *Engine) scheduled(ctx context.Context, p Pin, s Schedule, slot time.Tim
 	if p.Container != nil {
 		r = containerResult(r)
 	}
-	ok, err := e.State.ReserveRun(p.Pin+"/"+s.Name, r)
+	ok, err := e.reserveScheduled(p.Pin+"/"+s.Name, r, slot)
 	if err != nil || !ok {
 		return err
 	}
@@ -583,6 +607,9 @@ func resolveSlot(m Manifest, pin, name string, slot time.Time) (Pin, Schedule, e
 	return Pin{}, Schedule{}, ErrManifest
 }
 func (e *Engine) adhoc(ctx context.Context, j Job) error {
+	if e.workHalted() {
+		return nil
+	}
 	r := Result{JobID: j.JobID, ManifestSeq: j.ManifestSeq, Commit: j.Commit}
 	if e.Container != nil {
 		r = containerResult(r)
@@ -638,7 +665,13 @@ func (e *Engine) Run(ctx context.Context) error {
 	defer cancel()
 	e.mu.Lock()
 	e.cancel = cancel
+	e.loadHaltLocked(time.Now()) // L2-2: before heartbeat, sync, claim or any tick
 	e.mu.Unlock()
+	if e.Container == nil {
+		done := make(chan struct{})
+		go func() { defer close(done); e.runHalt(ctx) }()
+		defer func() { cancel(); <-done }()
+	}
 	if err := e.recoverContainers(ctx); err != nil {
 		return err
 	}
@@ -748,7 +781,7 @@ func (e *Engine) Run(ctx context.Context) error {
 		}
 		if e.isReady() {
 			pollCtx, stop := context.WithTimeout(ctx, wait)
-			job, err := e.API.Claim(pollCtx)
+			job, err := e.claim(pollCtx)
 			stop()
 			if err == nil && job != nil {
 				if err = e.adhoc(ctx, *job); err != nil && errors.Is(err, ErrRevoked) {
