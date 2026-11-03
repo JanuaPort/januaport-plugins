@@ -107,6 +107,11 @@ erhöhter CI ein geprüftes nicht erhöhtes Medium-Token ohne aktive Admin-SID
 oder Privilegien und prüft zusätzlich den Benutzer als Besitzer. Eine Gegenprobe
 mit erweitertem Instanzrecht muss gelingen. `CreateFile(FILE_APPEND_DATA)`
 öffnet nur einen Client-Endpunkt und belegt allein keine weitere Serverinstanz.
+Die Gegenprobe verwendet eine ausdrückliche Benutzer-ACE und das Medium-Label
+`S:(ML;;NWNR;;;ME)`. Auch die zweite Instanz erhält einen ausdrücklichen
+Deskriptor mit Benutzer als Besitzer/Gruppe, damit keine Standardwerte des
+erhöhten Testprozesses einfließen. Besitzer, Label und Kontroll-ACE werden
+nach der Anlage am Handle geprüft; keine Ausnahme für erhöhte CI-Runner.
 Ausdrückliches Label `S:(ML;;NWNR;;;ME)` sperrt Low-IL beim Lesen und Schreiben;
 keine AppContainer-/Capability-ACE. `PIPE_REJECT_REMOTE_CLIENTS` sperrt Remote-
 Clients. **B2:** `FILE_FLAG_FIRST_PIPE_INSTANCE`, erste Instanz bleibt auch beim

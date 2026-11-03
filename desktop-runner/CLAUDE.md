@@ -181,6 +181,9 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Serverinstanz mit freiem Instanzplatz und installierter DACL, auch mit
     Benutzer als Besitzer; geprüftes nicht erhöhtes Medium-Token ohne aktive
     Admin-SID/Privilegien, Gegenprobe mit zusätzlichem Instanzrecht.
+    Die Gegenprobe setzt eine direkte Benutzer-ACE und Medium-NWNR ausdrücklich;
+    beide Instanzanlagen bekommen einen vollständigen Deskriptor statt Token-
+    Standardwerten. Besitzer, Label und Kontroll-ACE werden am Handle nachgeprüft.
     `CreateFile(FILE_APPEND_DATA)` allein belegt keine Instanzanlage. L3-1: ausdrücklich
     `S:(ML;;NWNR;;;ME)`; Low-IL READ und WRITE werden abgewiesen.
     `PIPE_REJECT_REMOTE_CLIENTS` und `FILE_FLAG_FIRST_PIPE_INSTANCE`; die erste

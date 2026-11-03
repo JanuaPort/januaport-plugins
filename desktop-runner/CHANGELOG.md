@@ -10,6 +10,10 @@
   behalten verpflichtende Erkennungskontrollen und getrennte Mutationen für
   Go- und Python-Kind. Kurzer Pfad für die eingebettete Python-Testlaufzeit.
   Produktions-DACL und Handle-Vererbung unverändert.
+- H1-Positivkontrolle: direkte Benutzer-ACE, ausdrückliches Medium-NWNR und
+  Deskriptoren für beide Instanzanlagen, einschließlich Besitzer/Gruppe der
+  zweiten Instanz. Rücklesen von Besitzer, Label und Kontroll-ACE verhindert
+  eine unbemerkte Abhängigkeit von Standardwerten des erhöhten CI-Prozesses.
 - Lokale Windows-Pipe zwischen Läufer und künftigem Bedienfeld (#1240 L3):
   geschlossenes JSON-Schema mit 4-KiB-Rahmen und eigenem Golden, genau ein
   benannter Listener. B1/B2, ausdrückliches Medium-Label mit No-Read-Up und

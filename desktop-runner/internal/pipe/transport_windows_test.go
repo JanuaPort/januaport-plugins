@@ -225,26 +225,16 @@ func TestWindowsPipeClientDarfKeineInstanzAnlegen(t *testing.T) {
 			for _, broad := range []bool{false, true} {
 				t.Run(fmt.Sprintf("access=%d/force_user_owner=%t/broad=%t", access, ownerUser, broad), func(t *testing.T) {
 					descriptor := sd.String()
+					controlMask := uint32(windows.FILE_GENERIC_READ | windows.FILE_WRITE_DATA | windows.FILE_APPEND_DATA)
+					if access == windows.PIPE_ACCESS_DUPLEX {
+						controlMask |= windows.FILE_GENERIC_WRITE
+					}
 					if broad {
 						// Positive control: add the instance bit, and for DUPLEX
 						// also the remaining write rights needed by a server endpoint.
-						acl, _, err := sd.DACL()
-						if err != nil {
-							t.Fatal(err)
-						}
-						descriptor = "D:P"
-						for i := uint16(0); i < acl.AceCount; i++ {
-							var ace *windows.ACCESS_ALLOWED_ACE
-							if err := windows.GetAce(acl, uint32(i), &ace); err != nil {
-								t.Fatal(err)
-							}
-							mask := windows.ACCESS_MASK(windows.FILE_APPEND_DATA)
-							if access == windows.PIPE_ACCESS_DUPLEX {
-								mask = windows.FILE_GENERIC_WRITE
-							}
-							descriptor += fmt.Sprintf("(A;;0x%x;;;%s)", ace.Mask|mask, (*windows.SID)(unsafe.Pointer(&ace.SidStart)).String())
-						}
-						descriptor = "O:" + owner.String() + descriptor + "S:(ML;;NWNR;;;ME)"
+						// No copied grants or token defaults: one direct user ACE,
+						// explicit group/owner and the same Medium label as production.
+						descriptor = fmt.Sprintf("O:%sG:%sD:P(A;;0x%x;;;%s)S:(ML;;NWNR;;;ME)", owner.String(), user, controlMask, user)
 					}
 					fixture, err := windows.SecurityDescriptorFromString(descriptor)
 					if err != nil {
@@ -271,6 +261,64 @@ func TestWindowsPipeClientDarfKeineInstanzAnlegen(t *testing.T) {
 						t.Fatal("first fixture instance", err)
 					}
 					defer windows.CloseHandle(first)
+					installed, err := windows.GetSecurityInfo(first, windows.SE_KERNEL_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION|windows.LABEL_SECURITY_INFORMATION)
+					if err != nil {
+						t.Fatal("fixture security readback", err)
+					}
+					if !strings.Contains(installed.String(), "(ML;;NWNR;;;ME)") {
+						t.Fatal("fixture is not explicitly Medium NWNR")
+					}
+					installedOwner, _, err := installed.Owner()
+					if err != nil {
+						t.Fatal(err)
+					}
+					wantOwner := owner.String()
+					if ownerUser {
+						wantOwner = user
+					}
+					wantSID, err := windows.StringToSid(wantOwner)
+					if err != nil || !windows.EqualSid(installedOwner, wantSID) {
+						t.Fatal("fixture owner mismatch", err)
+					}
+					if broad {
+						acl, _, err := installed.DACL()
+						if err != nil || acl.AceCount != 1 {
+							t.Fatal("control DACL", err)
+						}
+						var ace *windows.ACCESS_ALLOWED_ACE
+						if err := windows.GetAce(acl, 0, &ace); err != nil {
+							t.Fatal(err)
+						}
+						userSID, err := windows.StringToSid(user)
+						if err != nil {
+							t.Fatal(err)
+						}
+						if ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE || ace.Header.AceFlags != 0 || uint32(ace.Mask) != controlMask || !windows.EqualSid((*windows.SID)(unsafe.Pointer(&ace.SidStart)), userSID) {
+							t.Fatal("control user grant mismatch")
+						}
+					}
+					// The second creation must not fall back to the elevated process's
+					// default descriptor while impersonating a standard client. Give
+					// this endpoint an explicit user owner/group and Medium label too.
+					clientSD, err := windows.SecurityDescriptorFromString(fixture.String())
+					if err != nil {
+						t.Fatal(err)
+					}
+					clientSD, err = clientSD.ToAbsolute()
+					if err != nil {
+						t.Fatal(err)
+					}
+					clientSID, err := windows.StringToSid(user)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := clientSD.SetOwner(clientSID, false); err != nil {
+						t.Fatal(err)
+					}
+					if err := clientSD.SetGroup(clientSID, false); err != nil {
+						t.Fatal(err)
+					}
+					clientSA := windows.SecurityAttributes{Length: uint32(unsafe.Sizeof(windows.SecurityAttributes{})), SecurityDescriptor: clientSD}
 					withStandardPipeToken(t, func() {
 						if access == windows.PIPE_ACCESS_DUPLEX && !broad {
 							// Diagnose the original CI probe separately: opening a CLIENT
@@ -285,7 +333,7 @@ func TestWindowsPipeClientDarfKeineInstanzAnlegen(t *testing.T) {
 							}
 						}
 						// This really creates another SERVER endpoint, with a free slot.
-						second, err := windows.CreateNamedPipe(name, access, mode, 2, MaxFrame, MaxFrame, 0, nil)
+						second, err := windows.CreateNamedPipe(name, access, mode, 2, MaxFrame, MaxFrame, 0, &clientSA)
 						if err == nil {
 							windows.CloseHandle(second)
 						}
