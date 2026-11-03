@@ -13,9 +13,54 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
+func l6ProfileTempDir(t *testing.T) string {
+	t.Helper()
+	// Credentialed CI children can inherit TEMP, TMP and LOCALAPPDATA from the
+	// runner account. Resolve the loaded profile of the current token instead.
+	cache, err := windows.KnownFolderPath(windows.FOLDERID_LocalAppData, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, err := os.MkdirTemp(cache, "jnpt-l6-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Error(err)
+		}
+	})
+	return dir
+}
+
+func TestWindowsL6TempIgnoriertGeerbtePfade(t *testing.T) {
+	cache, err := windows.KnownFolderPath(windows.FOLDERID_LocalAppData, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A missing parent makes the inherited paths unusable for TempDir/MkdirTemp.
+	inherited := filepath.Join(cache, "jnpt-l6-missing-"+strconv.Itoa(os.Getpid()), "temp")
+	for _, name := range []string{"TEMP", "TMP", "LOCALAPPDATA"} {
+		t.Setenv(name, inherited)
+	}
+	var dir string
+	t.Run("profile", func(t *testing.T) {
+		dir = l6ProfileTempDir(t)
+		if !strings.EqualFold(filepath.Dir(dir), filepath.Clean(cache)) {
+			t.Fatal("Testverzeichnis liegt nicht im eigenen Profil")
+		}
+		if err := os.WriteFile(filepath.Join(dir, "fixture"), []byte("fixture"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatal("Testverzeichnis nach Cleanup vorhanden", err)
+	}
+}
+
 // Called only by the existing explicit standard-account task probe. Never local.
 func testWindowsL6Installation(t *testing.T) {
-	dir := t.TempDir()
+	dir := l6ProfileTempDir(t)
 	exe := filepath.Join(dir, "desktop-runner.exe")
 	panel := filepath.Join(dir, "jnpt-bedienfeld.exe")
 	name := "JanuaPort-L6-Test-" + strconv.Itoa(os.Getpid())
@@ -126,7 +171,7 @@ func TestWindowsUninstallBeendetNurEigenesBedienfeld(t *testing.T) {
 	var children []*exec.Cmd
 	var paths []string
 	for i := 0; i < 2; i++ {
-		path := filepath.Join(t.TempDir(), "jnpt-bedienfeld.exe")
+		path := filepath.Join(l6ProfileTempDir(t), "jnpt-bedienfeld.exe")
 		if err = os.WriteFile(path, bytes, 0700); err != nil {
 			t.Fatal(err)
 		}
