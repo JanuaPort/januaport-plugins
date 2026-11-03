@@ -13,8 +13,17 @@
 #   linkedin-seite-oauth  runtime-key = das OAuth-JSON
 #                            (Stelle plugin-linkedin-seite-oauth, Zustimmungsskript
 #                            am PO-Rechner, stdout per Pipe in die Betreiber-CLI)
-# Der Dienst liest beide Dateien nur beim Start; den Neustart nach einem
+# Stufe B1 (#1237, 0.2.0), beide optional — ohne sie läuft Stufe A, Schreiben ist aus:
+#   linkedin-seite-post-oauth  runtime-key = das OAuth-JSON des SCHREIB-Grants
+#                            (Stelle plugin-linkedin-seite-post-oauth, genau
+#                            w_organization_social + w_organization_social_feed,
+#                            Zustimmungsskript mit --schreiben)
+#   linkedin-seite-gateway   runtime-key = der eigene, nur lesende Gateway-Token
+#                            des Beistellers (Stelle plugin-linkedin-seite-gateway)
+# Der Dienst liest alle Dateien nur beim Start; den Neustart nach einem
 # Schlüsselwechsel und nach dem Boot löst das Unit-Paar
 # jnpt-linkedin-seite-key.path/.service aus.
 d /run/jnpt/plugins/linkedin-seite 0750 65532 65532 -
 d /run/jnpt/plugins/linkedin-seite-oauth 0750 65532 65532 -
+d /run/jnpt/plugins/linkedin-seite-post-oauth 0750 65532 65532 -
+d /run/jnpt/plugins/linkedin-seite-gateway 0750 65532 65532 -
