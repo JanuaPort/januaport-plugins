@@ -66,7 +66,10 @@ type Invalid struct {
 func (e *Invalid) Error() string { return "store: " + e.Msg }
 
 // Store liest den Bare-Store. Er schreibt nie.
-type Store struct{ gitDir string }
+type Store struct {
+	gitDir  string
+	storage *storageSource
+}
 
 // Open öffnet den Store unter gitDir (…/store.git).
 func Open(gitDir string) *Store { return &Store{gitDir: gitDir} }
@@ -120,11 +123,11 @@ func (s *Store) load(ctx context.Context, commit, path string, skipWheels bool) 
 
 // openPin öffnet eine Sitzung und löst den Pin-Ordner bis zu seinem Baum
 // auf; jedes Objekt auf dem Weg ist nachgerechnet.
-func (s *Store) openPin(ctx context.Context, commit, path string) (*batch, *walker, string, error) {
+func (s *Store) openPin(ctx context.Context, commit, path string) (objectSource, *walker, string, error) {
 	if !gitref.ValidCommit(commit) || !gitref.ValidPinPath(path) {
 		return nil, nil, "", &Invalid{Reason: contract.ReasonBadPath, Msg: "Commit oder Pfad ungültig"}
 	}
-	b, err := s.batch(ctx)
+	b, err := s.openObjects(ctx, commit, path)
 	if err != nil {
 		return nil, nil, "", err
 	}
@@ -156,7 +159,7 @@ func (w *walker) pinTree(commit, path string) (string, error) {
 }
 
 type walker struct {
-	b          *batch
+	b          objectSource
 	hashLen    int
 	total      int
 	skipWheels bool

@@ -148,6 +148,8 @@ Sandbox-Isolation bereit. Auch ein gleichnamiger Eintrag in `pins.json`
 Namen mit `refused/pin` ab. Es werden weder Sandbox-Jobs gesendet noch
 Bibliotheken vorbereitet oder Windows-Wheels entpackt.
 
+Ein gleichnamiger Git-Pin in `pins.json` und Speicher-Pin aus `state.json/accepted` macht **beide** zu `invalid/manifest_invalid`; `tools/call` antwortet mit `refused`, ohne Sandbox-Job. Ungeprüfte Namen aus `inbox/list.json` lösen diese Kollision nicht aus (SEC F1/H4).
+
 ```text
 GET /desktop/package?commit=<hex>&path=<relativer-pin-ordner>
 Authorization: Bearer <runtime-key>
@@ -217,6 +219,47 @@ Speicher, PIDs und Mindestlebensdauer bleiben eigenständige Grenzen.
 
 ## Referenzen und Nachweise
 
+### Speicherquelle (#1277 S4b)
+
+Abholer-Vertrag aus Plan c-6578615445 und SEC c-6578688656: separate Inbox
+`speicher/inbox/list.json` und `speicher/inbox/pkg/<name>-<commit>.pkg`,
+signierte vollständige Pinliste mit `zweck:skriptlaeufer-pins.v1`, ausschließlich
+SHA-256 und nach Hash sortierte Paketobjekte. Das unterscheidet die Reihenfolge
+vom bestehenden Desktop-Paketweg; dessen Goldens und Ausgabe bleiben unverändert.
+Die Signatur bindet Name, Commit und Pfad; Git-Objekthashes binden den Inhalt.
+
+`golden/storage/` ist unverändert aus `januaport` Branch `feat/1277-s4b-kern`
+Commit `a28a2376cd5986c8d062365fd9d07b61cc12057e`,
+`internal/desktop/testdata/runnerpins/` kopiert, einschließlich `SHA256SUMS`.
+`TestCoreGoldenVectorsAndChecksums` prüft sämtliche Hashes und alle Fälle aus
+`expectations.json` (einschließlich Großschreibvarianten und kleiner Ordnung).
+Die Golden-Erwartungen enthalten eine 5-Minuten-Testpolicy; im Betrieb gelten
+fest 10 Minuten plus höchstens 2 Minuten Zukunftstoleranz. Der öffentliche
+Golden-Schlüssel ist ausschließlich für den reinen Prüfer zugelassen; der
+Dateilader weist ihn wie den RFC-8032-Testschlüssel ab.
+
+`TestCopiedContractFunctions` bewacht die Funktionen gegen die gemeinsame
+Referenz in `desktop-runner/contract/contract_test.go`. Die einzigen benannten
+Abweichungen sind der fehlschlagende SHA-1-Zweig, die Hashsortierung und das
+bereits im Desktop-Client geltende DAG-Besuchslimit. Der Gleichlauf mit dem
+Kern wird zusätzlich durch dessen signierte Golden-Vektoren geprüft.
+
+`state.json` ist ein atomarer Version-1-Snapshot mit Fingerprint, höchster
+Sequenz, `accepted:{manifest,sig}`, Freigaben samt `package_sha256` und festen
+Fehlern `{index,state,reason}`. Index -1 bezeichnet die gesamte Liste, sonst
+den Index in der angenommenen Pinliste. Frist ausschließlich aus
+`accepted.manifest.issued_at`; bei Sequenz 0 Sperre ab eigener Prozessuhr bis
+streng nach 12 Minuten, auch bei fehlendem Zustand, Wechsel und Neustart.
+Fehlender/gewechselter Schlüssel entfernt Freigaben im selben Durchlauf.
+Details und Adapterbelege stehen in [CLAUDE.md](../CLAUDE.md#speicherpins-1277-s4b).
+
+Bote, Senke und Meldung sind angebunden: zunächst `pending`, bei Fehlern
+`invalid/fetch_failed` (Liste, Schlüssel, Transport) bzw.
+`invalid/hash_mismatch` (Paketstruktur, Hash). Eine Abholerfreigabe allein
+ist kein `ready`; Manifest-, Bibliotheks- und Sandboxprüfung bleiben erforderlich.
+Kein neues Feld in `tools/list`, Vertragskennung bleibt 2. Bestehende
+Git-/Desktop-Dateien und alle bisherigen Goldens bleiben bytegleich.
+
 - `golden/call_headers.json`: Fassung 5 mit Grenz-Header.
 - `golden/call_headers_v1.json`: unveränderte alten Lauf-Header ohne Grenz-Header;
   `TestRunHeadersGoldenV1AndV2` pinnt ihre Altgrenzen als Literale.
@@ -226,3 +269,13 @@ Speicher, PIDs und Mindestlebensdauer bleiben eigenständige Grenzen.
   `internal/mediator/limits_test.go`; echter Wächter-Adapter:
   `internal/guard/limits_linux_test.go`.
 - [P3-Abschlussbericht](https://github.com/JanuaPort/januaport/issues/1040#issuecomment-6205261051): Verifikation, Mutationsproben und Fundstellen.
+
+Der Speicherbote veröffentlicht unveränderte HTTP-Bytes atomar in der Inbox;
+Redirects, Übergröße und Fehlerantworten werden abgewiesen, `Retry-After` und
+404-Backoff von mindestens 5 Minuten eingehalten. Nur der Abholer erteilt
+Freigaben. Die Senke öffnet das Paket über eine consumer-seitige Objektquelle,
+prüft den exakten Pakethash und die Frist aus demselben `accepted`-Snapshot
+vor jeder Codeübergabe, einschließlich nach dem Warten auf die Sandbox.
+`internal/mediator/testdata/storage.pkg` ist eine separate ausführbare
+Integrationsfixture, kein Kern-Golden. Die Docker-Sonde signiert mit einem
+frisch erzeugten Wegwerf-Schlüssel; der Golden-Schlüssel bleibt gesperrt.

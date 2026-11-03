@@ -11,6 +11,8 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	panel "github.com/januaport/januaport-plugins/desktop-runner/internal/pipe"
 )
 
 type Bundle struct {
@@ -19,26 +21,42 @@ type Bundle struct {
 	Environments map[string]Environment `json:"environments"`
 }
 type Engine struct {
-	Container    ContainerExecutor
-	State        *State
-	API          *API
-	Credential   Credential
-	Version      string
-	Session      func() (Session, error)
-	Spawn        Spawn
-	ChildEnv     []string
-	Temps        *RunTemps // nil: State.Root/tmp ohne OS-Schutz (Tests); main verdrahtet MkdirPrivate
-	Log          *Logger   // optional, nur feste Codes
-	Config       Config
-	mu           sync.Mutex
-	runMu        sync.Mutex
-	bundle       Bundle
-	active       Process
-	activeKey    string
-	activeCancel context.CancelFunc
-	activeDone   chan struct{}
-	cancel       context.CancelFunc
-	syncErr      error
+	Container       ContainerExecutor
+	State           *State
+	API             *API
+	Credential      Credential
+	Version         string
+	Session         func() (Session, error)
+	Spawn           Spawn
+	Capture         func(context.Context) ([]byte, error) // platform GDI, only after Go authorization
+	ChildEnv        []string
+	Temps           *RunTemps // nil: State.Root/tmp ohne OS-Schutz (Tests); main verdrahtet MkdirPrivate
+	Log             *Logger   // optional, nur feste Codes
+	Config          Config
+	mu              sync.Mutex
+	runMu           sync.Mutex
+	bundle          Bundle
+	active          Process
+	activeKey       string
+	activeCancel    context.CancelFunc
+	activeDone      chan struct{}
+	cancel          context.CancelFunc
+	syncErr         error
+	halt            haltState
+	haltLoaded      bool
+	haltFault       bool
+	haltPending     bool
+	haltVersion     uint64
+	haltThrough     time.Time
+	haltAttempt     time.Time
+	haltSendMu      sync.Mutex
+	claimCancel     context.CancelFunc
+	admission       sync.Mutex // Windows admission from request through completion, including setups
+	panelRuns       sync.WaitGroup
+	panelOnline     bool // guarded by mu; last sync/heartbeat observation, never guessed from a UI flag
+	panelPending    bool
+	panelGeneration uint64 // claim replies crossing a setup admission are discarded
+	Questions       panel.Questions
 }
 
 func envKey(p Pin) string      { return p.Commit + "-" + sum([]byte(p.Path)) }
@@ -63,7 +81,8 @@ func (e *Engine) Revoke() error {
 	}
 	return e.State.Revoke()
 }
-func (e *Engine) Sync(ctx context.Context) error {
+func (e *Engine) Sync(ctx context.Context) (err error) {
+	defer func() { e.observePanelNetwork(err) }()
 	config, err := e.API.Config(ctx)
 	if err != nil {
 		return err
@@ -143,7 +162,14 @@ func (e *Engine) Sync(ctx context.Context) error {
 		}
 		envs[key] = env
 	}
-	next := Bundle{ManifestState{signed, time.Now().UTC()}, config, envs}
+	lastSync := time.Now().UTC()
+	if e.Container == nil {
+		lastSync, err = e.State.ObserveTime(lastSync)
+		if err != nil {
+			return err
+		}
+	}
+	next := Bundle{ManifestState{signed, lastSync}, config, envs}
 	if err = e.State.Save("manifest", next); err != nil {
 		return err
 	}
@@ -167,6 +193,9 @@ func (e *Engine) isReady() bool {
 	}
 	if e.Container != nil {
 		return b.Config.Contract == 2 && b.Config.Device.Kind == "server" && b.Config.StartPolicy.Mode == "always"
+	}
+	if b.Config.Contract != 4 {
+		return false
 	}
 	s, err := e.Session()
 	if err != nil {
@@ -235,10 +264,19 @@ func refused(r Result, err error) Result {
 	return finish(r, "refused", detail)
 }
 func (e *Engine) Execute(ctx context.Context, r Result, env Environment, input json.RawMessage, runToken string, wall, calls int) Result {
+	if e.workHalted() {
+		return finish(r, "cancelled", "")
+	}
 	if !e.runMu.TryLock() {
 		return finish(r, "internal", "")
 	}
 	defer e.runMu.Unlock()
+	return e.executeReserved(ctx, r, env, input, runToken, wall, calls)
+}
+
+// The caller owns runMu. Setup admission holds it before runs/start, so no
+// direct Execute can slip between HTTP authorization and process preparation.
+func (e *Engine) executeReserved(ctx context.Context, r Result, env Environment, input json.RawMessage, runToken string, wall, calls int) (out Result) {
 	s, err := e.Session()
 	e.mu.Lock()
 	config := e.Config
@@ -292,6 +330,15 @@ func (e *Engine) Execute(ctx context.Context, r Result, env Environment, input j
 	runtime := filepath.Join(dir, "runtime")
 	launch := Launch{Dir: tmp, Exe: filepath.Join(runtime, "python.exe"), Args: []string{"-I", "-B", filepath.Join(runtime, "bootstrap.py")}, Env: childEnv(e.ChildEnv, tmp)}
 	e.mu.Lock()
+	// L2-1: this check and Spawn must remain in the same critical section.
+	if e.haltedLocked(time.Now()) {
+		e.mu.Unlock()
+		return finish(r, "cancelled", "")
+	}
+	if !e.panelPermitValidLocked(ctx) {
+		e.mu.Unlock()
+		return finish(r, "cancelled", "")
+	}
 	p, err := e.Spawn(runCtx, launch)
 	if err != nil {
 		e.mu.Unlock()
@@ -301,8 +348,29 @@ func (e *Engine) Execute(ctx context.Context, r Result, env Environment, input j
 	e.activeKey = r.Key()
 	e.activeCancel = cancel
 	e.mu.Unlock()
+	questions := newRunQuestions(&e.Questions, env.Origin)
+	helpers := e.newRunHelpers(r, env.Origin)
+	var readerDone chan struct{}
 	defer func() {
+		cancel()
 		p.Close()
+		if readerDone != nil {
+			<-readerDone
+		}
+		questions.wait()
+		out.Result = helpers.result // reader has stopped; last value, including null
+		// Completion capture shares the five-attempt budget. Its own bounded
+		// context permits an end capture after the script's wall deadline.
+		captureCtx, captureCancel := context.WithTimeout(ctx, 10*time.Second)
+		// F1: local Halt cancels runCtx, not ctx. Check L2 state at the
+		// capture boundary under its mutex; GDI and HTTP must run unlocked.
+		e.mu.Lock()
+		captureBlocked := e.haltedLocked(time.Now())
+		e.mu.Unlock()
+		if !captureBlocked {
+			_ = helpers.screenshot(captureCtx, true)
+		}
+		captureCancel()
 		e.mu.Lock()
 		e.active = nil
 		e.activeKey = ""
@@ -313,39 +381,74 @@ func (e *Engine) Execute(ctx context.Context, r Result, env Environment, input j
 		Entry string          `json:"entry"`
 		Input json.RawMessage `json:"input"`
 	}{env.Entry, input}); err != nil {
+		if runCtx.Err() != nil {
+			return finish(r, "cancelled", "")
+		}
 		return finish(r, "internal", "")
 	}
 	exited := make(chan Result, 1)
+	exitResult := func(out Result) {
+		select {
+		case exited <- out:
+		default:
+		}
+	}
+	var inputMu sync.Mutex
+	writeScript := func(v any) error {
+		inputMu.Lock()
+		defer inputMu.Unlock()
+		return WriteFrame(p.Input(), v)
+	}
+	readerDone = make(chan struct{})
 	go func() {
+		defer close(readerDone)
 		used := 0
 		var lastID int64
 		for {
 			b, err := ReadFrame(p.Output())
 			if err != nil {
-				exited <- finish(r, "internal", "")
+				exitResult(finish(r, "internal", ""))
 				return
 			}
 			var kind struct {
 				Type string `json:"type"`
 			}
 			if json.Unmarshal(b, &kind) != nil {
-				exited <- finish(r, "internal", "")
+				exitResult(finish(r, "internal", ""))
 				return
 			}
 			switch kind.Type {
+			case "ergebnis", "screenshot":
+				if helpers.handle(runCtx, kind.Type, b, writeScript) != nil {
+					writeScript(panel.Message{Type: "fehler", Code: "abgewiesen"})
+					exitResult(finish(r, "internal", ""))
+					return
+				}
+			case "frage":
+				if questions.start(runCtx, b, func(v any) error {
+					err := writeScript(v)
+					if err != nil {
+						exitResult(finish(r, "internal", ""))
+					}
+					return err
+				}) != nil {
+					writeScript(panel.Message{Type: "fehler", Code: "abgewiesen"})
+					exitResult(finish(r, "internal", ""))
+					return // Reject a second pending raw question at the runner.
+				}
 			case "exited":
 				var v struct {
 					Type string `json:"type"`
 					Code int    `json:"code"`
 				}
 				if strict(b, &v) != nil {
-					exited <- finish(r, "internal", "")
+					exitResult(finish(r, "internal", ""))
 					return
 				}
 				if v.Code == 0 {
-					exited <- finish(r, "ok", "")
+					exitResult(finish(r, "ok", ""))
 				} else {
-					exited <- finish(r, "error", "")
+					exitResult(finish(r, "error", ""))
 				}
 				return
 			case "tool_call":
@@ -356,30 +459,30 @@ func (e *Engine) Execute(ctx context.Context, r Result, env Environment, input j
 					Arguments json.RawMessage `json:"arguments"`
 				}
 				if strict(b, &v) != nil || v.ID <= lastID || !slices.Contains(env.Tools, v.Name) || !inputOK(v.Arguments) || runToken == "" {
-					exited <- finish(r, "internal", "")
+					exitResult(finish(r, "internal", ""))
 					return
 				}
 				lastID = v.ID
 				if used >= calls {
-					exited <- finish(r, "limit", "tool_calls")
+					exitResult(finish(r, "limit", "tool_calls"))
 					return
 				}
 				used++
 				result, err := e.API.MCP(runCtx, runToken, v.ID, v.Name, v.Arguments)
 				if err != nil {
-					exited <- finish(r, "internal", "")
+					exitResult(finish(r, "internal", ""))
 					return
 				}
-				if err = WriteFrame(p.Input(), struct {
+				if err = writeScript(struct {
 					Type   string          `json:"type"`
 					ID     int64           `json:"id"`
 					Result json.RawMessage `json:"result"`
 				}{"tool_result", v.ID, result}); err != nil {
-					exited <- finish(r, "internal", "")
+					exitResult(finish(r, "internal", ""))
 					return
 				}
 			default:
-				exited <- finish(r, "internal", "")
+				exitResult(finish(r, "internal", ""))
 				return // stdout/log are not accepted frames.
 			}
 		}
@@ -436,7 +539,19 @@ func (e *Engine) removeRunTemp(dir string) {
 // Kern dauerhaft abgelehntes Ergebnis, bleibt davon nur eine feste Logzeile.
 func (e *Engine) deliverOne(ctx context.Context) {
 	before := e.State.Dropped()
-	_ = e.State.DeliverOne(func(r Result) error { return e.API.Report(ctx, r) })
+	_ = e.State.DeliverOne(func(r Result) error {
+		if len(r.Result) > 0 {
+			var order TestOrder
+			if !uuidRE.MatchString(r.JobID) {
+				return ErrProtocol
+			}
+			if err := e.State.Load("test-"+r.JobID, &order); err != nil {
+				return err
+			}
+			return e.API.ReportTest(ctx, r, e.Credential, order)
+		}
+		return e.API.Report(ctx, r)
+	})
 	if after := e.State.Dropped(); after > before {
 		e.logCode(LogResultDropped, after)
 	}
@@ -448,6 +563,16 @@ func (e *Engine) report(r Result) error {
 	return nil
 }
 func (e *Engine) scheduled(ctx context.Context, p Pin, s Schedule, slot time.Time) error {
+	if e.Container == nil {
+		if !e.admission.TryLock() {
+			return nil
+		}
+		defer e.admission.Unlock()
+	}
+	// B3/B6: skipped slots have no marker and no result; resume never catches up.
+	if e.scheduleHalted(slot) {
+		return nil
+	}
 	b := e.view()
 	m, err := ParseManifest(b.Manifest.Envelope.Manifest)
 	if err != nil {
@@ -457,7 +582,7 @@ func (e *Engine) scheduled(ctx context.Context, p Pin, s Schedule, slot time.Tim
 	if p.Container != nil {
 		r = containerResult(r)
 	}
-	ok, err := e.State.ReserveRun(p.Pin+"/"+s.Name, r)
+	ok, err := e.reserveScheduled(p.Pin+"/"+s.Name, r, slot)
 	if err != nil || !ok {
 		return err
 	}
@@ -465,7 +590,21 @@ func (e *Engine) scheduled(ctx context.Context, p Pin, s Schedule, slot time.Tim
 		if !IsOffline(e.syncErr) {
 			return e.report(refused(r, e.syncErr))
 		}
-		if !OfflineAllowed(p, m.GraceHours, b.Manifest.LastSync, time.Now()) {
+		now := time.Now()
+		if e.Container == nil {
+			now, err = e.State.ObserveTime(now)
+			if err != nil {
+				return err
+			}
+		}
+		// Windows K8 also marks refusals for the core's offline counters.
+		if e.Container == nil {
+			r.RanOffline = true
+		}
+		if !OfflineAllowed(p, m.GraceHours, b.Manifest.LastSync, now) {
+			if e.Container == nil {
+				e.logCode(LogOfflineExpired, 1)
+			}
 			return e.report(refused(r, ErrOffline))
 		}
 		r.RanOffline = true
@@ -547,6 +686,15 @@ func resolveSlot(m Manifest, pin, name string, slot time.Time) (Pin, Schedule, e
 	return Pin{}, Schedule{}, ErrManifest
 }
 func (e *Engine) adhoc(ctx context.Context, j Job) error {
+	if e.Container == nil {
+		if !e.admission.TryLock() {
+			return nil
+		}
+		defer e.admission.Unlock()
+	}
+	if e.workHalted() {
+		return nil
+	}
 	r := Result{JobID: j.JobID, ManifestSeq: j.ManifestSeq, Commit: j.Commit}
 	if e.Container != nil {
 		r = containerResult(r)
@@ -574,6 +722,12 @@ func (e *Engine) adhoc(ctx context.Context, j Job) error {
 	if pin == nil || m.Seq < j.ManifestSeq {
 		return e.report(refused(r, ErrManifest))
 	}
+	order := NewTestOrder(b.Manifest.Envelope, j)
+	if e.Container == nil && order.verified(e.Credential) {
+		if err = e.State.Save("test-"+j.JobID, order); err != nil {
+			return err
+		}
+	}
 	if pin.Container != nil {
 		start, err := e.API.Start(ctx, r)
 		if err != nil {
@@ -596,7 +750,13 @@ func (e *Engine) Run(ctx context.Context) error {
 	defer cancel()
 	e.mu.Lock()
 	e.cancel = cancel
+	e.loadHaltLocked(time.Now()) // L2-2: before heartbeat, sync, claim or any tick
 	e.mu.Unlock()
+	if e.Container == nil {
+		done := make(chan struct{})
+		go func() { defer close(done); e.runHalt(ctx) }()
+		defer func() { cancel(); <-done }()
+	}
 	if err := e.recoverContainers(ctx); err != nil {
 		return err
 	}
@@ -605,7 +765,9 @@ func (e *Engine) Run(ctx context.Context) error {
 	}
 	var cached Bundle
 	if err := e.State.Load("manifest", &cached); err == nil {
-		if m, verifyErr := VerifyManifest(cached.Manifest.Envelope, e.Credential.Pubkey, e.Credential.DeviceID, 0); verifyErr != nil || m.Contract != e.API.Contract() {
+		// Older verified Windows caches supply the sequence for the upgrade sync;
+		// they cannot authorize a claim or scheduled execution under contract 4.
+		if m, verifyErr := VerifyManifest(cached.Manifest.Envelope, e.Credential.Pubkey, e.Credential.DeviceID, 0); verifyErr != nil || (m.Contract != e.API.Contract() && !(e.Container == nil && (m.Contract == 1 || m.Contract == 3))) {
 			if verifyErr == nil {
 				verifyErr = ErrManifest
 			}
@@ -630,6 +792,7 @@ func (e *Engine) Run(ctx context.Context) error {
 				seq = m.Seq
 			}
 			h, err := e.API.Heartbeat(ctx, Heartbeat{e.API.Contract(), e.isReady(), e.Version, seq})
+			e.observePanelNetwork(err)
 			if err == nil {
 				e.applyCancellations(h)
 				if h.ManifestSeqCurrent > seq {
@@ -649,6 +812,11 @@ func (e *Engine) Run(ctx context.Context) error {
 	e.syncErr = e.Sync(ctx)
 	var presynced time.Time
 	for ctx.Err() == nil {
+		if e.Container == nil {
+			if _, err := e.State.ObserveTime(time.Now()); err != nil {
+				return err
+			}
+		}
 		select {
 		case <-syncNeeded:
 			e.syncErr = e.Sync(ctx)
@@ -662,7 +830,7 @@ func (e *Engine) Run(ctx context.Context) error {
 		minute := now.UTC().Truncate(time.Minute)
 		b := e.view()
 		m, err := ParseManifest(b.Manifest.Envelope.Manifest)
-		if err == nil {
+		if err == nil && m.Contract == e.API.Contract() {
 			// The same minute boundary drives pre-sync (slot - 1 minute) and due work.
 			canRun := presynced.Equal(minute.Add(-time.Minute))
 			presync := false
@@ -699,7 +867,7 @@ func (e *Engine) Run(ctx context.Context) error {
 		}
 		if e.isReady() {
 			pollCtx, stop := context.WithTimeout(ctx, wait)
-			job, err := e.API.Claim(pollCtx)
+			job, err := e.claim(pollCtx)
 			stop()
 			if err == nil && job != nil {
 				if err = e.adhoc(ctx, *job); err != nil && errors.Is(err, ErrRevoked) {

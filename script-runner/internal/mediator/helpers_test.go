@@ -79,6 +79,10 @@ func newStubGateway(t *testing.T) *stubGateway {
 	server.AddTool(&mcp.Tool{Name: "memory_delete", InputSchema: schema}, handler)
 	h := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 	g.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/plugin/script-runner/storage/") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		g.mu.Lock()
 		g.auth = append(g.auth, r.Header.Get("Authorization"))
 		g.mu.Unlock()

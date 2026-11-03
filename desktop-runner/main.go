@@ -13,10 +13,11 @@ import (
 	"runtime"
 
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/client"
+	"github.com/januaport/januaport-plugins/desktop-runner/internal/pipe"
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/platform"
 )
 
-var version = "0.1.0-dev"
+var version = "0.3.0"
 
 func main() {
 	if run(os.Args[1:], os.Stdout) != nil {
@@ -130,13 +131,15 @@ func run(args []string, out io.Writer) error {
 		}
 		log := client.Logger{Root: root}
 		engine := &client.Engine{State: state, Credential: credential, Version: version, Session: platform.Session, Spawn: platform.Spawn, ChildEnv: platform.WindowsEnv(),
-			Temps: &client.RunTemps{Base: filepath.Join(root, "tmp"), Mkdir: platform.MkdirPrivate}, Log: &log}
+			Capture: platform.CaptureScreenshot, Temps: &client.RunTemps{Base: filepath.Join(root, "tmp"), Mkdir: platform.MkdirPrivate}, Log: &log}
 		api, err := client.NewAPI(credential.Trust, credential.Token, engine.Revoke)
 		if err != nil {
 			return err
 		}
 		defer api.Close()
 		engine.API = api
+		closePanel := engine.StartPanel(ctx, func() (pipe.Acceptor, error) { return pipe.Listen() })
+		defer closePanel()
 		_ = log.Write(client.LogStarted, 1)
 		err = engine.Run(ctx)
 		if err == context.Canceled {

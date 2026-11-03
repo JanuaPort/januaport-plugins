@@ -5,7 +5,352 @@ Der Server-Modus ergänzt Container-Pins (JanuaPort/januaport#1195).
 Implementiert und mit Fake-Kern, Linux-Race-Tests und nativen Windows-Sonden
 geprüft. Signiertes Windows-Release: `desktop-runner-v0.1.0` (#1163 D4).
 Gemeinsame Live-Abnahme mit der Anlage steht aus.
-Maßgeblich ist der [Draht-Vertrag](contract/README.md): v1 für Windows, v2 für Linux-Server.
+Maßgeblich ist der [Draht-Vertrag](contract/README.md): historischer v1-D0-Vertrag und v2 für Linux-Server. Windows spricht ab 0.3.0
+**Vertrag 4** in Header und JSON. Das D0-Modul und die alten Goldens bleiben eingefroren.
+
+## Vertrag 4 und Testaufträge
+
+0.3.0 behebt #1298: Signierte Manifeste mit `test_device:true` werden in allen
+unterstützten Fassungen (v1/v2/v3/v4) angenommen. Der aktuelle Windows-Sync
+verlangt Vertrag 4; ältere verifizierte Caches liefern beim Upgrade nur die
+Sequenz für den neuen Sync. Der Parser bleibt strikt: `apps` ist unter v4
+gesperrt, Setup-Beschriftungen haben höchstens 40 Unicode-Zeichen.
+`pins[].setups` enthält feste Eingabe und `frei`-Felddefinitionen;
+`pins[].grace_hours` überschreibt die Gerätefrist.
+
+Die HTTP-Adapter bieten Setup-Start mit Manifestsequenz und zufälliger Nonce,
+`POST /halt`, Test-`result` und PNG-Upload unter `jobs/{id}/screenshot`.
+Ein Testauftrag verlangt signiertes `test_device:true` **und**
+`test_<erste 8 Zeichen der Geräte-ID>` als Pin, gebunden an den verifizierten Job.
+Normale Ergebnisse dürfen kein `result` tragen; Screenshots gehen nur für
+Testaufträge an die Anlage. Testresultate: JSON bis 64 KiB, PNG bis 4 MiB.
+Die signierte Jobfreigabe wird für späteres Ergebnis-Replay separat mit DPAPI
+gespeichert und vor dem Senden erneut geprüft. Der Kern begrenzt Bilder auf fünf
+und auf laufende Tests beziehungsweise zwei Minuten nach deren Ende.
+
+L1 enthält Adapter und K8; L2 ergänzt den lokalen Halt im Engine.
+L3 ergänzt Pipe und Setup-Zulassung, L4 das native Bedienfeld.
+L5 ergänzt den `jnpt`-Helfer und die Go-seitig freigegebene Bildschirmaufnahme.
+Unveränderte Kernreferenzen mit SHA-256:
+[golden-v3](internal/client/testdata/golden-v3/README.md).
+
+Grenzen des geprüften Kernstands: Bei einem noch unbekannten Lauf weist die
+Nachmelderoute Slots außerhalb der historischen Frist und Werkzeugläufe ab,
+auch bei `refused/offline`. Die markierte Meldung erreicht dann den Offline-Zähler
+nicht; es gilt die bestehende gezählte Verwerfung nach zehn HTTP-400-Antworten.
+Auch `result:null` wird vom geprüften Kernstand abgewiesen. L5 lässt bei
+`jnpt.ergebnis(None)` das Feld vollständig weg (Kern-Folgeänderung #1300).
+
+## Skript-Helfer `jnpt` (0.4.0 in Arbeit, L5)
+
+`import jnpt` steht neben `januaport` bereit. Alle Aufrufe verwenden ausschließlich
+den vorhandenen Rahmenkanal. Der Helfer eröffnet keinen Netzweg.
+
+| Aufruf | Verhalten |
+|---|---|
+| `jnpt.frage(text, optionen, frist_s)` | Nullbasierter Auswahlindex; `None` ohne Bedienfeld, bei Frist oder `fehler`. Text bis 500 Zeichen, 2–4 Optionen mit je bis zu 40 Zeichen, Frist 5–3600 Sekunden. |
+| `jnpt.ergebnis(wert)` | JSON bis 64 KiB; letzter Aufruf gilt. `None` löscht das Ergebnis, kein `result`-Feld. Normale Aufträge verwerfen gültige Werte still. |
+| `jnpt.screenshot()` | `True` nach Aufnahme und Upload, sonst `None`. Nur für Testaufträge mit signiertem `test_device:true` und Geräte-Testpin, niemals eine Aufnahme vor dieser Prüfung. |
+
+Beispiel: `jnpt.ergebnis({"wahl": jnpt.frage("Fortfahren?", ["Ja", "Nein"], 30)})`.
+JSON-Größen gelten in Bytes, einschließlich der Escape-Zeichen des Reports.
+Nicht serialisierbare Werte und NaN/Infinity erzeugen einen Python-Fehler.
+Ungültige rohe Rahmen (auch unbekannte Felder/Typen oder übergroße Ergebnisse)
+beenden den Lauf mit `internal`; gültige Screenshot-Anfragen ohne Freigabe
+antworten mit `fehler`, im Helfer also `None`.
+
+**L3-2:** Sämtliche Grenzen und Berechtigungen werden in Go am Läufer geprüft.
+Python läuft im selben Interpreter wie das Skript und bildet keine Grenze.
+Historische signierte Jobfreigabe, Job-ID, Sequenz, Commit und Pin/Pfad/Algo
+werden vor Aufnahme und Ergebnisannahme gebunden; Setup-/Offline-Läufe sind
+keine Testaufträge. Der unveränderte L1-Adapter prüft vor HTTP erneut.
+
+GDI erfasst in Go ohne CGO den ganzen primären Bildschirm, PNG bis 4 MiB.
+Höchstens fünf Aufnahmeversuche je Lauf, einschließlich Fehlern und der
+automatischen Aufnahme am Laufende. Ein Versuch bleibt für diese Endaufnahme
+reserviert; somit höchstens vier explizite Aufnahmen. Uploadfehler ändern das Skriptergebnis nicht; Bilder werden nicht
+nachgeliefert. Bei gesperrter Sitzung zeigt die Aufnahme den Sperrbildschirm;
+GDI kann je nach Sitzung auch nicht verfügbar sein. Linux liefert einen Fehler.
+
+Nach lokalem Anhalten entfällt die Endaufnahme (SEC-R4 F1): Der Läufer prüft
+den L2-Haltzustand unmittelbar davor unter seiner Sperre und nimmt außerhalb
+der Sperre auf. Nach Ablauf der Wandzeit bleibt die Endaufnahme erhalten.
+
+H3 bleibt unverändert: kein Bedienfeld-Pipe-Handle und kein `jnpt*` in der
+Kind-Umgebung/Kommandozeile; das Modul wird ausschließlich im Bootstrap erzeugt.
+
+Prüfung: `python3 -B -m unittest discover -s internal/client -p test_bootstrap.py`,
+Go-Tests einschließlich echtem Python-Bootstrap und rohen Rahmen sowie
+`python probe/l5_mutations.py` exklusiv in `l5-test` (Go 1.26.10).
+`TestWindowsScreenshotGDI` und `TestWindowsScreenshotGDIChild` werden lokal nur
+cross-kompiliert. LEAD startet CI/GATE mit `JNPT_GDI_PROBE=1`; der Hilfsprozess
+hat eine feste 15-Sekunden-Grenze. Ohne Opt-in bzw. interaktive Sitzung sichtbarer
+Skip, keine lokale Aufnahme. H3: `TestWindowsPythonKindOhneBedienfeldPipe`.
+
+## Lokaler Halt (0.4.0 in Arbeit, L2)
+
+Der Windows-Engine bietet intern `Halt(state, until)`, `Pause(15|60|0)` und
+`HaltStatus()`. Es gibt in L2 noch keinen CLI-Befehl und keine Bedienoberfläche.
+`until` wird als UTC gespeichert; 0 Minuten bedeutet bis zur Fortsetzung.
+Seit L3 führt der Läufer die entsprechenden Pipe-Befehle über diese Schnittstelle aus.
+
+- **Anhalten:** setzt `angehalten` und beendet den laufenden Job-Baum sofort
+  über Cancel/Kill (`TerminateJobObject`), auch ohne Netz. Sein Ergebnis ist
+  `cancelled`. Halt-Prüfung unmittelbar vor Spawn, Zustand und Kill liegen unter
+  derselben Engine-Sperre (L2-1); auch ein bereits abgeholter Claim startet danach
+  keinen Prozess.
+- **Pause:** sperrt neue Slots, Claims und Testaufträge, lässt den laufenden Lauf
+  regulär enden und endet bei `until` automatisch. Offene Long-Polls werden
+  abgebrochen. `ready` im Heartbeat bleibt von Halt und Pause unabhängig.
+  Auch die Slot-/Markerreservierung prüft Halt unter derselben Engine-Sperre.
+- **Fortsetzen:** entfernt nur die lokale Einschränkung (B3). Konto, Sitzung,
+  Paket, Manifest und Offline-Frist gelten weiter. Verpasste Slots einschließlich
+  der angefangenen Fortsetzungsminute werden ohne Ergebnis übersprungen;
+  kein Nachholen. Halt-Befehle selbst starten nichts. Eine Pause kann einen
+  angehaltenen Zustand nicht abschwächen; dafür ist Fortsetzen erforderlich.
+
+Die atomare DPAPI-CurrentUser-Datei `halt` enthält `{state, until}` und wird vor
+dem ersten Takt gelesen (B6). Nur eine fehlende Datei bedeutet `arbeitet`.
+Unlesbare/ungültige Dateien bedeuten `angehalten` und eine dauerhafte lokale
+Störung mit festem Logcode `8 1` (L2-2). `HaltStatus()` liefert das Störungsflag;
+erst ein erfolgreich gespeicherter expliziter Wechsel hebt es auf. Auch ein
+Speicherfehler sperrt lokal und wird zurückgegeben; ohne erfolgreichen Schreibzugriff
+kann ein neuer Halt nicht für den nächsten Neustart garantiert werden.
+
+Wechsel werden über den vorhandenen `POST /halt`-Adapter nachgeliefert,
+auch während eines laufenden Skripts. Es bleibt nur der letzte Zustand offen;
+höchstens ein Versuch je zehn Sekunden, einschließlich Fehlern. Die ebenfalls
+atomar geschützte Datei `halt-attempt` erhält die Bremse über Neustarts. Ist sie
+unlesbar oder nicht schreibbar, bleibt die Meldung ausstehend. Eine rückwärts
+gestellte Uhr verzögert die Nachlieferung. Ein Neustart meldet den letzten
+gespeicherten Halt erneut. Störung bleibt lokal; auf dem Draht steht `angehalten`.
+
+Das Bedienfeld zeigt Störungen dauerhaft mit eigener Farbe und dem festen Text
+„Störung. Anhalten: abmelden oder über den Admin halten lassen.“ Der Job-Abbruch erfasst den
+Job-Baum, keine über WMI, Aufgabenplanung oder COM außerhalb gestarteten Prozesse.
+DPAPI und diese Schnittstelle bilden keine Grenze gegen andere Prozesse derselben
+Person. UIA-Skripte desselben Benutzers können das Bedienfeld bedienen; eine Pause
+kann das laufende Skript selbst aufheben, endgültig für den Baum ist nur Anhalten.
+Linux-Server und Vertrag 2 bleiben unverändert.
+
+Prüfung: `python probe/l2_mutations.py` im exklusiven Worktree mit Container
+`l2-test` (Go 1.26.10). Linux-Race-Tests prüfen die realen HTTP-/State-Adapter;
+`TestWindowsAnhaltenBeendetEnkel` prüft in Windows-CI den echten Job-Baum und
+DPAPI-Neustart. Lokal wird diese native Sonde nur kompiliert.
+
+## Bedienfeld (0.4.0 in Arbeit, L4)
+
+`cmd/bedienfeld` baut `jnpt-bedienfeld.exe`, Windows-only, ohne CGO:
+`CGO_ENABLED=0 GOOS=windows go build -ldflags=-H=windowsgui -o jnpt-bedienfeld.exe ./cmd/bedienfeld`.
+Eigener Benutzerprozess; Installation, zweite Anmelde-Aufgabe und Signierung
+beider Exe folgen in L6. Ein unsignierter Branch-Build besteht absichtlich
+die Serverprüfung nicht.
+
+Tray: grün „Arbeitet“, gelb „Pausiert“, rot „Angehalten“, violett „Störung“.
+Menü: Zustand, Pause 15 min / 1 h / bis Weiter, Weiter, Anhalten/Fortsetzen,
+Manifest-Setups, auf Testgeräten „Test“ als Anzeige, Beenden nur des Bedienfelds.
+Gesperrte Setups sind grau; nur `braucht_eingabe:true` ergänzt „braucht Eingabe“.
+`bis` erscheint als lokale Uhrzeit, offline + Fristablauf als
+„offline, Frist abgelaufen“.
+
+§6.6: `stoerung`, `fehler{stoerung}`, unerreichbare Pipe oder gescheiterte
+Serverprüfung bleiben dauerhaft violett mit exakt
+„Störung. Anhalten: abmelden oder über den Admin halten lassen.“
+Erst erneute erfolgreiche Serverprüfung und gültiger `zustand` löschen die
+Störung. Andere Fehler löschen sie nicht. Wiederverbindung nur über `pipe.Dial()`,
+mit 5 bis 60 Sekunden Abstand, ohne Ausweichnamen; nichts an ungeprüfte Pipes.
+Fehlender Status oder blockierendes Schreiben bricht die Verbindung nach fünf Sekunden ab.
+
+`internal/panel` entscheidet als reines Linux-testbares Modell über Anzeige,
+Menü, Dialog und Befehle. `internal/panelio` ist der getrennte I/O-Adapter.
+Win32 rendert auf einem mit `runtime.LockOSThread` gebundenen UI-Thread;
+Pipe-Goroutines wecken ihn über `PostMessage`, ohne Go-Zeiger in LPARAM.
+Kein Credential und kein eigener Netzweg. `TestPanelImportWaechter` verbietet
+transitiv `net/http`, `internal/client` und `net` außer über `internal/pipe`.
+Die benannte Ausnahmeliste `importExceptions` ist leer. Win32 nutzt `syscall`
+mit System32-DLLs; direktes `x/sys/windows` würde dessen transitives `net` hereinziehen.
+DLL-/Proc-Auflösung ist geprüft und löst keinen Panic aus. Fehlt eine API,
+bleibt das Modell in Störung und startet keine Pipe-Verbindung. Das Tray zeigt
+den festen Störungstext, sofern seine grundlegenden APIs verfügbar sind;
+fehlen diese, endet der Prozess ohne Anzeige und ohne Panic.
+
+Plan-Invariante 14: Fenster erst nach Klick auf „Rückfrage anzeigen“;
+Titel „JanuaPort – <titel>“, statischer Text und 2–4 gewöhnliche Knöpfe.
+`WS_EX_NOACTIVATE`, `SW_SHOWNOACTIVATE`, kein Default-Knopf, Anfangsfokus,
+`SetForegroundWindow`, `SetFocus` oder `SetActiveWindow`. Keine Toasts,
+Sprechblasen oder Hotkeys. Höchstens ein Dialog; zweite Frage nicht anzeigen.
+`frage_weg`, Anhalten, Trennung und Frist schließen ohne Antwort. X verbirgt
+die Frage bis zum erneuten Klick oder Fristende.
+UIA-Skripte desselben Benutzers können das Bedienfeld bedienen;
+endgültig für den Baum ist nur Anhalten.
+
+Prüfung: `python probe/l4_mutations.py`, exklusiver Container `l4-test`
+(Go 1.26.10), Linux-Race-Tests, Linux-/Windows-vet, GUI-Cross-Build und D0.
+`TestWindowsBedienfeldProzesssonde` baut die echte Exe, startet ohne Argumente
+und prüft PEB/Umgebung sowie Handle-Vererbung mit positiver Gegenprobe.
+`CompareObjectHandles` wird aus `kernelbase.dll` nach erfolgreichem `Find()`
+verwendet; fehlt die API, überspringt die Sonde mit Begründung.
+`TestWindowsBedienfeldFehlenderProc` prüft echte fehlende DLLs/Procs ohne GUI;
+`TestBedienfeldProcAufloesung` bewacht Panic-Freiheit und die Verbindungssperre.
+Sie läuft bereits durch `go test ./...` im bestehenden Windows-Job;
+keine Workflowänderung. Die Startsonde prüft keinen sichtbaren Tray;
+ein Tray-Rauchtest ist nicht enthalten. Lokal native Tests/Mutanten nur kompilieren.
+Fokusverhalten, Tray und signierte Verbindung bleiben Nachweise durch CI/GATE
+auf dem Testgerät, niemals lokale GUI-Proben auf dem Arbeitsrechner.
+
+## Lokale Pipe (0.4.0 in Arbeit, L3)
+
+Der Windows-Läufer bietet genau einen benannten Listener unter
+`\\.\pipe\JanuaPort.Bedienfeld.<SHA-256(SID)[:16]>` an; der Suffix sind die ersten
+16 kleinen Hex-Zeichen des Hashes der Benutzer-SID als UTF-8. Linux-Server und
+Vertrag 2 bleiben unverändert. L4 ergänzt Bedienfeld-Exe und Tray;
+L5 ergänzt `bootstrap.py`; Installation und Release bleiben L6.
+
+**B1 / L3-1 / H1:** geschützte DACL nur für Benutzer- und Logon-SID mit
+`FILE_GENERIC_READ | FILE_WRITE_DATA` (`0x12008b`). Kein `GENERIC_WRITE`, weil
+dessen `FILE_APPEND_DATA` bei Pipes weitere Serverinstanzen erlauben würde.
+Die native Rechteprobe versucht eine echte zweite Serverinstanz mit freiem
+Instanzplatz und der am Listener ausgelesenen DACL. Sie verwendet auch unter
+erhöhter CI ein geprüftes nicht erhöhtes Medium-Token ohne aktive Admin-SID
+oder Privilegien und prüft zusätzlich den Benutzer als Besitzer. Eine Gegenprobe
+mit erweitertem Instanzrecht muss gelingen. `CreateFile(FILE_APPEND_DATA)`
+öffnet nur einen Client-Endpunkt und belegt allein keine weitere Serverinstanz.
+Die Gegenprobe verwendet eine ausdrückliche Benutzer-ACE und das Medium-Label
+`S:(ML;;NWNR;;;ME)`. Sie läuft vollständig in einem per `CreateProcessAsUserW`
+gestarteten nicht erhöhten Hilfsprozess, der beide Instanzen anlegt. Er prüft
+sein primäres Token vor der ersten Pipe-Anlage; bloße Thread-Impersonation im
+erhöhten CI-Prozess reicht nicht. Quelle, gefiltertes Token und Kind müssen
+null Restricting-SIDs haben, damit keine zusätzliche Zugriffsprüfung einen
+falsch grünen Negativtest erzeugt. Ein echtes Token mit einer Restricting-SID
+wird in einer eigenen Gegenprobe abgewiesen. Schmale und breite DACL werden
+im selben Kind geprüft; die Negativprobe gegen die Produktions-DACL im
+Elternprozess bleibt zusätzlich erhalten. Beide Instanzen behalten ausdrückliche
+Deskriptoren; Besitzer, Label und Kontroll-ACE werden am Handle nachgeprüft.
+Kein Rückfall auf einen erhöhten Helfer. Die Hilfsprozess-Proben sind Opt-in
+über `JNPT_NATIVE_TOKEN_PROBES=1`: `workflow_dispatch` mit gesetzter Variable
+in einer interaktiven Sitzung oder GATE auf dem Testgerät. Betroffen sind nur
+`TestWindowsPipeClientDarfKeineInstanzAnlegen/standard_process` und
+`TestWindowsPipeRestrictingSIDsVerweigert`. Ohne Variable melden sie:
+„opt-in: Hilfsprozess mit gefiltertem Token braucht interaktive Sitzung (JNPT_NATIVE_TOKEN_PROBES=1)“.
+Mit gesetzter Variable bleibt ein Startfehler ein Fehler, niemals ein Skip.
+Gehostete Dienst-Sitzungen können den Helfer mit `STATUS_DLL_INIT_FAILED`
+abweisen; Window-Station- und Desktop-ACLs werden dafür nicht verändert.
+Die Negativprobe `production_server` gegen die Produktions-DACL läuft weiterhin
+ohne Hilfsprozess und ohne Opt-in. Low-IL READ/WRITE, Fremdkonto, Remote,
+Squatting und die strukturellen DACL-Tests unter Linux bleiben unabhängig davon.
+Ausdrückliches Label `S:(ML;;NWNR;;;ME)` sperrt Low-IL beim Lesen und Schreiben;
+keine AppContainer-/Capability-ACE. `PIPE_REJECT_REMOTE_CLIENTS` sperrt Remote-
+Clients. **B2:** `FILE_FLAG_FIRST_PIPE_INSTANCE`, erste Instanz bleibt auch beim
+Wiederverbinden offen. Ist der Name besetzt oder die Pipe nicht anlegbar, läuft
+der Läufer ohne Pipe weiter: fester Logcode `9 1`, ein Versuch, kein Ausweichname.
+
+Der Server prüft den Client-Bildpfad auf `jnpt-bedienfeld.exe` im eigenen Ordner.
+Die L4-Clientbibliothek `internal/pipe.Dial` prüft vor dem ersten Schreiben
+`GetNamedPipeServerProcessId`, `desktop-runner.exe` im eigenen Ordner, die
+Benutzer-SID im Server-Prozesstoken (H2) und Authenticode mit demselben
+Herausgeber wie die eigene Exe. Der komplette Subject-DER stammt aus der von
+WinVerifyTrust geprüften Unterzeichnerkette. Dateien bleiben während dieser
+Prüfung gegen Schreiben/Löschen geöffnet. Fehler ergeben ausschließlich
+„Störung“. Keine UI und kein Netzabruf für die Signaturprüfung; fehlt lokal
+der erforderliche Vertrauens-/Sperrlistenstand, wird ebenfalls verweigert.
+
+**A1 / SEC K6b (c): ACL schützt nicht gegen den WebView2-Hauptprozess.**
+Er hat die Rechte derselben Person auf Medium-IL. Der Bildpfad ist
+Tiefenverteidigung, keine Grenze gegen gleichberechtigte Prozesse oder
+UI-Automation. Die Integritätsmarke schützt gegen Low-IL-Clients. Belegung
+oder Blockieren durch gleichberechtigte Prozesse bleibt möglich. Störung ist
+lokal; die dauerhafte Tray-Anzeige nennt den Ausweichweg wörtlich:
+„Störung. Anhalten: abmelden oder über den Admin halten lassen.“
+
+Das Protokoll besteht aus vier Byte Big-Endian-Länge und 1–4096 Byte UTF-8-JSON.
+`DisallowUnknownFields`, genaue Feldmengen und Prüfung auf doppelte Schlüssel,
+Nulls und angehängte Dokumente gelten auf beiden Seiten. Das neue Golden liegt
+unter `internal/pipe/testdata/messages.json`; bestehende Vertrags-Goldens bleiben
+bytegleich. Zulässige Nachrichten:
+
+| Richtung | Nachrichten |
+|---|---|
+| Client → Läufer | `status`, `pause{minuten:15\|60\|0}`, `weiter`, `anhalten`, `fortsetzen`, `setup_start{pin,setup}`, `antwort{id,wahl}` |
+| Läufer → Client | `zustand{zustand,bis?,test,netz,beschaeftigt,frist_abgelaufen?,setups:[{pin,setup,label,startbar,braucht_eingabe}]}`, `frage{id,titel,text,optionen,frist_s}`, `frage_weg{id}`, `fehler{code}` |
+
+Alle Nachrichten tragen `type`. `zustand` ist `arbeitet`, `pausiert`,
+`angehalten` oder `stoerung`; `bis` ist UTC. Fehlercodes sind ausschließlich
+`protokoll`, `abgewiesen`, `stoerung`. Niemals Credential, Token-, Eingabe-,
+Pfad- oder Modusfelder: der Status wird ausdrücklich aus erlaubten Feldern
+zusammengesetzt. Passt die vollständige Setup-Liste nicht in 4 KiB, folgt
+`fehler{code:stoerung}`; sie wird nicht still abgeschnitten. `netz` beschreibt
+die letzte Sync-/Heartbeat-Beobachtung, keine garantierte künftige Erreichbarkeit.
+
+**L3-2:** Der Läufer prüft rohe Rahmen selbst in Go. `setup_start` wird vor der
+Kernanfrage abgewiesen bei Halt/Pause, Belegung/Reservierung, fehlender Online-
+Beobachtung, unpassendem Konto/Sitzung, unbekanntem oder unverifiziertem Setup
+und Setups mit `frei`. Diese sind nicht startbar. Das Pflicht-Bool
+`braucht_eingabe` stammt ausschließlich aus `len(frei)>0` im verifizierten Manifest;
+L4 zeigt genau bei true „braucht Eingabe“, sonst keinen Zusatztext. Zulässige Starts verwenden unverändert den L1-Adapter mit Manifest-
+Sequenz und Zufallsnonce. Eine gemeinsame Windows-Reservierung deckt HTTP,
+Prozessvorbereitung und Lauf ab und schließt Zeitplan, Ad-hoc und direktes
+Execute aus. Halt/Freigabewechsel während HTTP verhindert den Start; die L2-
+Sperre unmittelbar vor Spawn bleibt erhalten; dort wird auch die Setup-Freigabe
+erneut geprüft. Offene Claims werden beim Setup-Start abgebrochen, ihre Antworten
+verworfen und neue Claims während des Setup-Laufs gesperrt. Ein gescheiterter Setup-Befehl
+wird nicht offline vorgemerkt oder erneut gesendet (`9 2`); ausgeführte Läufe
+benutzen das bestehende Ergebnisjournal mit `run_key=setup/…`, `ran_offline:false`.
+
+`Engine.Questions` ist die interne lokale Weiterleitung: Text höchstens
+500 Unicode-Zeichen, 2–4 Optionen zu höchstens 40 Zeichen, Frist 5–3600 Sekunden,
+höchstens eine offene Frage je Lauf. `wahl` ist nullbasiert; fremde/abgelaufene
+Antworten werden abgewiesen. H4: Pflichtfeld `titel`, höchstens 40 Zeichen,
+aus dem Manifest-Pin, nie aus Skripttext. Vertrag 4 hat kein Pin-Label;
+Rückfall ist der Pin-Name (auf 40 Zeichen begrenzt).
+L4 bindet hierfür rohe `frage`-Rahmen an den Go-Laufkontext und prüft Grenzen,
+skriptseitige Titel und parallele Fragen am echten Execute-Adapter. Ungültige
+oder zweite offene Rahmen werden mit `abgewiesen` zurückgewiesen, Laufende
+`internal`. Ohne Panel oder nach Frist ist die Skriptantwort `wahl:null`;
+Abbruch/Anhalten schließt ohne Wahl. Panel-Antwort nur `antwort{id,wahl}`.
+L5 ergänzt den Python-Helfer und die strikt geprüften Skript-Rahmen
+`ergebnis`/`screenshot` (siehe Helfer-API oben). Diese sind keine Pipe-Befehle.
+Die L1-Adapter erlauben Ergebnis/Screenshot weiterhin nur bei verifiziertem
+Testauftrag (signiertes `test_device` und Testpin samt Jobbindung).
+
+**H3:** Serverhandles sind nicht vererbbar; der Python-Prozess erhält über
+`PROC_THREAD_ATTRIBUTE_HANDLE_LIST` ausschließlich stdin, stdout und NUL.
+Der Pipe-Name wird nicht über Env oder Kommandozeile an das Kind weitergegeben.
+Die Sonden prüfen die tatsächliche Handle-Tabelle und zusätzlich das echte
+Python-Kind (kuratierte ZIP wie bei den vorhandenen Windows-Integrationstests).
+Unbenannte oder nicht abfragbare Endpunkte dürfen die Namenssonde nicht abbrechen.
+Die Eltern-Pipe muss sichtbar bleiben; ein absichtlich vererbtes Bedienfeld-Handle
+muss den Kindtest rot machen. Die Python-Sonde muss zudem ihre eigene Kontrollpipe
+finden. Ihr Laufzeitpfad bleibt kurz wie bei der vorhandenen Python-Adapterprobe.
+
+Prüfung: `python probe/l3_mutations.py` im exklusiven Container `l3-test`
+(`golang:1.26.10`). Linux prüft Schema, rohe Rahmen am Engine-/HTTP-Adapter,
+Rückfragen, Kanarien-Credential und Hygiene mit genau einem Pipe-Listener.
+Native Tests lokal nur kompilieren; Ausführung durch LEAD in Windows-CI:
+`TestWindowsPipeDACLUndLabel`, `TestWindowsPipeLowILReadWrite`,
+`TestWindowsPipeFremdesKonto` (temporäres fremdes Standardkonto, Anlage/Löschung
+braucht erhöhte CI-Testrechte), `TestWindowsPipeFremdesToken` (anonymes Token),
+`TestWindowsPipeClientDarfKeineInstanzAnlegen`, `TestWindowsPipeRestrictingSIDsVerweigert`,
+`TestWindowsPipeRemoteAbgewiesen`,
+`TestWindowsPipeBesetzt`, `TestWindowsClientPrueftEchtenServer`,
+`TestWindowsServerPrueftClientbildUndReconnect`,
+`TestWindowsKindOhneBedienfeldPipe`, `TestWindowsPythonKindOhneBedienfeldPipe`,
+`TestWindowsPipeKindsondeErkenntVererbtesHandle`.
+`probe/l3_mutations.py --native` führt die nativen Mutationen dort aus.
+H1: `native-create-instance` und `native-create-instance-bit` erweitern die
+Produktions-ACL. `native-create-instance-child` prüft die Mutation isoliert im
+Hilfsprozess; `native-helper-token` entfernt dessen gefiltertes Prozesstoken,
+`native-restricting-token` entfernt die Restricting-SID-Prüfung.
+`native-helper-start` und `native-restricting-helper-start` erzwingen einen
+Startfehler; beide Opt-in-Proben müssen dann rot werden.
+Diese Hilfsprozess-Mutationen benötigen bei `--native` ebenfalls
+`JNPT_NATIVE_TOKEN_PROBES=1`; ohne Opt-in werden sie ausdrücklich als übersprungen
+gemeldet, nicht als erkannte Mutationen. Cross-Kompilierung bleibt ohne Opt-in möglich.
+H3: `native-h3` und `native-h3-python` vererben das echte
+Serverhandle; beide Kindtests müssen jeweils einzeln rot werden.
+Fehlende Kontoanlage-Rechte, ein fehlender lokaler SMB-Transport oder eine fehlende Python-ZIP
+wird als Skip ausgewiesen; die Struktur- und native Kindsonde bleiben aktiv.
+Authenticode mit den beiden gemeinsam signierten Release-Exes bleibt zusätzlich
+GATE-Aufgabe für L4/L6; ein unsignierter Testprozess muss bereits abgewiesen werden.
 
 ## Einrichten unter Windows
 
@@ -77,8 +422,15 @@ fälligen Slots werden Manifest und geänderte Pakete synchronisiert.
 Slot und Laufmarker werden gemeinsam dauerhaft gespeichert. Verpasste Minuten
 bilden keinen Rückstau. Ad-hoc-Aufträge kommen über jobs/claim; beide Laufarten
 teilen einen Platz. Offline laufen nur werkzeuglose Pins, wenn
-<code>jetzt - letzter erfolgreicher Sync &lt; grace_hours</code>.
-Gleichheit, fehlender Sync und rückwärts verstellte Uhr verweigern den Start.
+<code>max(Uhr, persistente Uhrmarke) - letzter erfolgreicher Sync &lt; grace_hours</code>.
+Die Pinfrist hat Vorrang vor der Gerätefrist (1–72 Stunden, auch längere Fristen).
+Gleichheit und fehlender Sync verweigern den Start. Die DPAPI-Datei <code>clock</code>
+übersteht Neustarts; die Marke läuft während des Prozesses monoton weiter.
+Ein Uhr-Rücksprung setzt die Frist nicht zurück. Eine defekte Uhrmarke sperrt.
+Nach Ablauf steht der feste Logcode <code>7 1</code> im lokalen Log. Offline-Versuche
+werden mit <code>ran_offline:true</code> nachgemeldet, auch bei Verweigerung.
+Das Kernarchiv berücksichtigt die längste wirksame Pinfrist plus 24 Stunden
+Nachmeldepuffer; das Journal verfällt nicht.
 Ungültige Signaturen zählen nicht als Netzausfall. Verweigerungen werden journalisiert.
 
 Der Pin enthält jnpt-desktop.yaml, Python-Dateien, eine exakt erlaubte
@@ -154,7 +506,9 @@ dieselbe Benutzersitzung, auch nicht vor Veränderungen während eines Skripts.
 Dienstlogs enthalten nur feste numerische Codes/Zähler, fünf Dateien zu je
 1 MiB; keine Eingaben, Skriptlogs, Token, Konten oder Leerlaufzeiten. Codes:
 1 gestartet, 2 Sync fehlgeschlagen, 3 verweigert, 4 abgeschlossen, 5 Ergebnis
-verworfen (Zähler), 6 Rest eines Lauf-Verzeichnisses blieb liegen.
+verworfen (Zähler), 6 Rest eines Lauf-Verzeichnisses blieb liegen,
+7 Offline-Start verweigert (K8: Frist oder Werkzeugbindung),
+8 lokale Halt-Störung (Datei unlesbar/ungültig oder Speicherung fehlgeschlagen).
 
 **Unter Windows ist ein Gerät eine Vertrauensdomäne (SEC D4 A1).** Ein Skript läuft als
 derselbe Nutzer wie der Läufer. Es kann deshalb den DPAPI-geschützten

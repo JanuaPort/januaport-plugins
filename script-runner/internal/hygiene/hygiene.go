@@ -6,6 +6,7 @@ package hygiene
 import (
 	"bytes"
 	"fmt"
+	"path"
 	"slices"
 	"strings"
 
@@ -26,6 +27,7 @@ const (
 	sandbox     = "script-runner-sandbox"
 	fetcher     = "script-runner-fetcher"
 	initializer = "script-runner-init"
+	apphost     = "script-runner-apphost"
 	socketMount = "sockets:/run/script-runner"
 	// libsMount ist der Volume mit den entpackten Python-Bibliotheken (#1041):
 	// beim vermittler beschreibbar, in der Sandbox read-only — der EINE
@@ -57,6 +59,7 @@ type compose struct {
 // dazu die gefährlichen, die checkCommon ausdrücklich verbietet. Alles andere
 // weist KnownFields ab (deny by default).
 type service struct {
+	Profiles    []string          `yaml:"profiles"`
 	Image       string            `yaml:"image"`
 	Environment map[string]string `yaml:"environment"`
 	DependsOn   dependencies      `yaml:"depends_on"`
@@ -213,21 +216,50 @@ func CheckCompose(src []byte) []string {
 	if _, ok := c.Volumes["libs"]; !ok {
 		add("Volume libs fehlt")
 	}
-	for _, want := range []string{mediator, sandbox, fetcher, initializer} {
+	for _, want := range []string{mediator, sandbox, fetcher, initializer, apphost} {
 		if _, ok := c.Services[want]; !ok {
 			add("Dienst %s fehlt", want)
 		}
 	}
 	for name, s := range c.Services {
 		v = append(v, checkCommon(name, s)...)
-		if name != fetcher {
+		if name != fetcher && name != apphost {
 			v = append(v, checkNoEgress(name, s, c.Networks)...)
+		}
+		if name != apphost {
+			for _, net := range s.Networks {
+				if net == "jnpt_apps" || c.Networks[net].Name == "jnpt_apps" {
+					add("%s: Läufer am Apps-Netz", name)
+				}
+			}
 		}
 	}
 	v = append(v, checkMediator(c.Services[mediator], c.Networks)...)
 	v = append(v, checkSandbox(c.Services[sandbox])...)
 	v = append(v, checkFetcher(c.Services[fetcher], c.Networks)...)
 	v = append(v, checkInit(c.Services[initializer])...)
+	v = append(v, checkApphost(c.Services[apphost], c.Networks)...)
+	return v
+}
+
+func checkApphost(s service, nets map[string]network) []string {
+	var v []string
+	add := func(s string) { v = append(v, "apphost: "+s) }
+	if !slices.Equal(s.Networks, []string{"jnpt_apps"}) || s.NetworkMode != "" || nets["jnpt_apps"].Name != "jnpt_apps" || !nets["jnpt_apps"].External {
+		add("Netze müssen genau {jnpt_apps} sein")
+	}
+	if !slices.Equal(s.Command, []string{"apphost"}) || !slices.Equal(s.Profiles, []string{"apps"}) {
+		add("Unterbefehl/Profil")
+	}
+	if s.User != "65532:65532" {
+		add("UID")
+	}
+	if s.Environment["GODEBUG"] != "multipathtcp=0" {
+		add("MPTCP muss abgeschaltet sein")
+	}
+	if !slices.Equal([]string(s.Volumes), []string{"/run/jnpt/plugins/apphost:/run/secrets/jnpt:ro"}) || len(s.Tmpfs) != 0 {
+		add("einziger Mount muss der Schlüsselordner read-only sein")
+	}
 	return v
 }
 
@@ -309,16 +341,19 @@ func checkCommon(name string, s service) []string {
 		add("Image nicht aus JNPT_SCRIPT_RUNNER_IMAGE")
 	}
 	for _, m := range s.Volumes {
+		if name != apphost && exposesKey(m, "/run/jnpt/plugins/apphost") {
+			add("Apphost-Schlüsselordner eingehängt")
+		}
 		if strings.Contains(m, "docker.sock") {
 			add("docker.sock eingehängt")
 		}
-		if name != mediator && strings.HasPrefix(m, keyDir+":") {
+		if name != mediator && exposesKey(m, keyDir) {
 			add("Schlüsselordner des vermittlers eingehängt")
 		}
 		if name != mediator && name != sandbox && name != initializer && (strings.HasPrefix(m, "libs:") || strings.Contains(m, ":/libs")) {
 			add("libs eingehängt (nur vermittler, Sandbox und Init)")
 		}
-		if name != fetcher && strings.HasPrefix(m, gitKeyDir) {
+		if name != fetcher && exposesKey(m, gitKeyDir) {
 			add("Deploy-Key eingehängt")
 		}
 	}
@@ -329,6 +364,46 @@ func checkCommon(name string, s service) []string {
 		add("Host-Port %q (keine Host-Ports erlaubt)", p)
 	}
 	return v
+}
+
+// exposesKey compares Linux host path components. Parent mounts expose the
+// key directory too; child mounts may expose an individual key (SEC B3/H6).
+// Unknown bind sources fail closed; checkCommon exempts each key's owner.
+func exposesKey(mount, protected string) bool {
+	source, _, ok := strings.Cut(mount, ":")
+	// Do not interpolate using the test process's environment. In particular,
+	// ${VAR:-default} contains a colon before the actual mount separator.
+	if strings.Contains(source, "$") {
+		return true
+	}
+	if !ok {
+		return false
+	}
+	if !path.IsAbs(source) {
+		if strings.HasPrefix(source, "./") && !strings.Contains(source, "\\") && !slices.Contains(strings.Split(source, "/"), "..") {
+			// A project-local path cannot leave the documented installation
+			// directory. Preserve such mounts (e.g. ./seccomp) without using cwd.
+			source = path.Join("/opt/jnpt/plugins/script-runner", source)
+		} else {
+			// Plain names are named volumes, not host paths. Everything that
+			// denotes a relative/home path remains unresolved and is a finding.
+			return strings.ContainsAny(source, "/\\") || strings.HasPrefix(source, ".") || strings.HasPrefix(source, "~")
+		}
+	}
+	source = path.Clean(source)
+	return pathContains(source, protected) || pathContains(protected, source)
+}
+
+func pathContains(parent, child string) bool {
+	for {
+		if parent == child {
+			return true
+		}
+		if child == "/" {
+			return false
+		}
+		child = path.Dir(child)
+	}
 }
 
 func checkMediator(s service, nets map[string]network) []string {

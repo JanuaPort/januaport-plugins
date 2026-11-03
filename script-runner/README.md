@@ -1,7 +1,8 @@
 # script-runner — Skript-Läufer für JanuaPort
 
 Der Skript-Läufer führt **gepinnte Python-Skripte** aus dem Git-Repository des
-Betreibers aus. Eine KI ruft ein Skript über JanuaPort wie ein Werkzeug auf;
+Betreibers oder aus freigegebenen Speicherpaketen aus. Eine KI ruft ein Skript
+über JanuaPort wie ein Werkzeug auf;
 das Skript darf dabei selbst JanuaPort-Werkzeuge benutzen — mit genau den
 Rechten des Aufrufers, begrenzt auf die Werkzeuge, die das Skript deklariert.
 So wird aus einer Folge von Werkzeugaufrufen ein wiederholbarer Baustein
@@ -18,14 +19,15 @@ braucht ein Gateway ab **0.77.0**. Ein älteres Gateway sperrt den Läufer ganz
 
 ## Wie es arbeitet
 
-Drei dauerhafte Dienste und ein kurzer Init-Dienst aus einem Image, neben dem Gateway:
+Vier dauerhafte Dienste (Apphost optional) und ein kurzer Init-Dienst aus einem Image, neben dem Gateway:
 
 | Dienst | Aufgabe | Netz |
 |---|---|---|
-| `script-runner` | nimmt Aufrufe vom Gateway an, hält die Pins, übergibt den Code an die Sandbox, leitet Werkzeugaufrufe des Skripts an JanuaPort weiter | nur das interne Netz `jnpt_plugins` (kein Ausgang, nur das Gateway daneben), kein Host-Port |
+| `script-runner` | nimmt Aufrufe vom Gateway an, holt Speicherlisten und -pakete als Bote, hält die Pins, übergibt den Code an die Sandbox, leitet Werkzeugaufrufe des Skripts an JanuaPort weiter | nur das interne Netz `jnpt_plugins` (kein Ausgang, nur das Gateway daneben), kein Host-Port |
 | `script-runner-sandbox` | führt **einen** Lauf aus und wird danach mit leerem Arbeitsspeicher neu gestartet | **kein Netz** |
-| `script-runner-fetcher` | prüft Pins gegen den Standard-Zweig und holt Objekte per ssh mit einem Nur-Lese-Deploy-Key | eigenes Netz mit Ausgang, kein Weg zum Gateway |
+| `script-runner-fetcher` | prüft Git-Pins gegen den Standard-Zweig und holt Objekte per ssh mit einem Nur-Lese-Deploy-Key; prüft Speicherlisten und Pakete unabhängig davon (#1277 S4b) | eigenes Netz mit Ausgang, kein Weg zum Gateway |
 | `script-runner-init` | legt die Bibliotheksordner an und beendet sich erfolgreich, bevor die Sandbox startet | **kein Netz**, nur das Volume `libs` |
+| `script-runner-apphost` | liefert geprüfte Browser-Apps, bindet die Anmeldung an den Browser und reicht MCP sowie TLS-Freigaben an den privaten Gateway-Listener weiter | ausschließlich `jnpt_apps`, Profil `apps`, kein Host-Port |
 
 Für den **Desktop-Läufer** (#1165 D2b) stellt der Beisteller zusätzlich
 geprüfte Pakete bereit. JanuaPort schreibt `desktop-pins.json` atomar neben
@@ -86,7 +88,7 @@ Protokollfehler abgewiesen. Details und Golden-Dateien: [Vertrag](contract/READM
 | Läufe in Folge | etwa 6 je Minute; dazwischen antwortet der Läufer „belegt, in etwa 10 Sekunden erneut versuchen“ |
 | Gepinnter Ordner | ≤ 4 MiB, ≤ 1000 Dateien (der Code, ohne `wheels/`) |
 | Bibliotheken | nur mit `requirements`: Wheels für Python 3.12 auf manylinux x86_64; ≤ 300 MiB und ≤ 30 000 Dateien je Lock installiert, ≤ 2 GiB für alle Locks; ein Thread für BLAS/OpenMP |
-| Sprache | Python 3.12 mit Standardbibliothek; reines Python unter `vendor/` im Skriptordner; Bibliotheken nur als geprüfte Wheels (siehe unten); **kein pip**, kein Download |
+| Sprache | Python 3.12 mit Standardbibliothek; reines Python unter `vendor/` im Skriptordner; Bibliotheken nur als geprüfte Wheels (siehe unten); **kein pip**, kein Paketindex-Download |
 | Git | nur ssh; ein Repository je Anlage |
 
 **Schritt L (0.3.0):** Die eigene 25-s-Kappe entfällt (SEC L6).
@@ -244,7 +246,7 @@ fertige Verzeichnis einmal gegen sein Manifest und verwirft Abweichungen.
 
 ## Betrieb
 
-- **Standard-Zweig:** Nur dessen Kopf und Vorfahren sind pinbar. Der Abholer
+- **Standard-Zweig (Git-Quelle):** Nur dessen Kopf und Vorfahren sind pinbar. Der Abholer
   prüft auch schon gespeicherte Pins im nächsten Durchlauf erneut (normal
   alle 5 s). Entfernt ein Force-Push einen gepinnten Commit aus der Abstammung,
   wird der Pin ungültig; neue Läufe werden verweigert. Laufende Skripte enden
@@ -253,8 +255,29 @@ fertige Verzeichnis einmal gegen sein Manifest und verwirft Abweichungen.
   werden mit `fetch_failed` abgewiesen; der Läufer loggt eine Warnung.
   Auch andere Prüffehler entziehen keine bestehende Zweigfreigabe: Nur ein
   negativer Vorfahren-Befund (Exit 1) widerruft. Ein Wechsel der Repository-URL
-  leert weiterhin alle Freigaben. Alte Stores brauchen
+  leert weiterhin alle Git-Freigaben. Alte Stores brauchen
   nach dem Update zunächst eine erfolgreiche Zweigprüfung.
+- **Speicherquelle (#1277 S4b):** Der Abholer prüft die signierte Liste
+  und Pakete unter `speicher/inbox/` alle 5 s unabhängig von Git und schreibt
+  Freigaben nach `speicher/state.json`. Der Vermittler holt Liste und fehlende
+  Pakete alle 60 s mit dem Plugin-Runtime-Key, ohne Umleitung und begrenzt;
+  `Retry-After` gilt, nach 404 mindestens 5 Minuten Pause. Vor jeder
+  Codeübergabe prüft die Senke Freigabe, Frist aus `accepted.manifest.issued_at`
+  und Pakethash erneut — auch nach dem Warten auf die Sandbox. Entzug wirkt
+  spätestens nach 12 Minuten, auch bei angehaltenem Abholer. Speicherpins
+  erscheinen im bestehenden `tools/list`-Vertrag 2, ohne zusätzliche Felder.
+  `runner-pins.pub` liegt neben dem Deploy-Key und wird je Durchlauf neu gelesen.
+  Fehlender/gewechselter Schlüssel entfernt Speicherfreigaben sofort. Bei
+  fehlender `inbox/list.json` gilt „keine Speicherpins“: einmal INFO beim ersten
+  Fehlen und je Wechsel vorhanden/fehlend, kein wiederholtes WARN. Freigaben
+  entfallen weiterhin sofort; Signatur-, Hash- und Lesefehler warnen je Takt. Bei
+  Höchststand 0 (auch Erstinstallation, Rücksetzung und Neustart in der Sperre)
+  gilt ab eigener Prozessuhr eine Sperre bis streng nach 12 Minuten; danach
+  verlangt die Liste einen höchstens 10 Minuten alten Signierzeitpunkt.
+  Die Prüfung schützt gegen Transport und Fehler im Vermittler, nicht gegen
+  seine Kompromittierung. Zugesagt ist nur, dass der Vermittler über den
+  Abholer weder an den Deploy-Key noch an den Ausgang kommt. Technischer
+  Vertrag und Belege: [CLAUDE.md](CLAUDE.md#speicherpins-1277-s4b).
 - **Image:** `ghcr.io/januaport/script-runner`, gebaut von der
   Release-Strecke dieses Repos (Tag `script-runner-vX.Y.Z`, nur `linux/amd64`,
   mit SBOM und Provenance). Die Anlage bezieht es nur per Digest aus dem
@@ -285,7 +308,7 @@ fertige Verzeichnis einmal gegen sein Manifest und verwirft Abweichungen.
   die Sandbox eingehängt sind, kein Anlegen; eingehängt sind nur der
   Socket-Ordner des Läufers und `/libs` (die Bibliotheken), beide read-only —
   die Grenze ist die Mount-Liste.
-- **Netz:** Der Läufer hängt nur am Netz `jnpt_plugins`, das die Kern-Compose
+- **Netz:** Der Vermittler hängt nur am Netz `jnpt_plugins`, das die Kern-Compose
   von JanuaPort mit `internal: true` anlegt; dort hängt sonst nur das Gateway.
   Er erreicht `jnpt:8484`, das Gateway ihn unter `script-runner:8090`, ins
   Internet und ins LAN kommt er nicht. Fehlt das Netz auf der Anlage, startet
@@ -331,3 +354,123 @@ sh script-runner/probe/measure-libs.sh  # Messung: Bibliotheken im Sandbox-Image
 ```
 
 Einzelheiten für Entwickler: `CLAUDE.md`. Änderungen: `CHANGELOG.md`.
+
+## Browser-Apps mit `apphost`
+
+Das optionale Compose-Profil `apps` startet `script-runner-apphost` aus demselben
+Image. Der Dienst liefert ausschließlich statische Browser-Dateien aus dem
+Live-Paket `apps/<app>/` des Gateways. Python und Git werden dabei nicht gestartet.
+Server-Code, PNG und ICO gehören nicht zum Browser-App-Format v1; SVG ist möglich.
+Der HTML-Tokenizer stammt aus `golang.org/x/net/html` (BSD-3-Clause).
+
+Für den Betrieb sind drei Werte erforderlich:
+
+| Variable | Inhalt |
+|---|---|
+| `JNPT_APPS_DOMAIN` | Basissuffix ohne `apps.`, beispielsweise `example.test` |
+| `JNPT_APPS_GATEWAY_URL` | URL des **privaten** App-Listeners im Netz `jnpt_apps`, ohne Pfad; niemals der öffentliche Gateway-Listener |
+| `JNPT_GATEWAY_PUBLIC_URL` | öffentliche HTTPS-Origin für `/app-login/start`, ohne Pfad |
+
+Die Vault-Stelle `plugin-apphost` wird vom Kern als
+`/run/jnpt/plugins/apphost/runtime-key` materialisiert. Der einzige Mount ist
+`/run/jnpt/plugins/apphost:/run/secrets/jnpt:ro`; das Verzeichnis und der Schlüssel
+müssen für UID 65532 lesbar sein. Kein Schlüssel in Compose, Umgebungsvariablen
+oder Aufrufargumenten. Jeder HTTP-Aufruf liest die Schlüsseldatei erneut.
+Ein fehlender oder ungültiger Schlüssel verhindert den Start bzw. die Auslieferung.
+
+Der Kern legt das interne Netz `jnpt_apps` an; Apphost hängt ausschließlich daran.
+Vermittler, Abholer, Sandbox und Init hängen nie daran. `read_only`, `cap_drop: ALL`,
+`no-new-privileges` und UID 65532 sind Pflicht; weder Host-Port noch Store,
+Deploy-Key, Socket oder zusätzlicher Mount sind vorgesehen. Die Box-Kopie
+`box/docker-compose.script-runner.yml` ist bytegleich und wird zusammen mit dem
+Läufer-Paket einschließlich `seccomp/` in dessen Installationsordner verwendet.
+Die Box-Gateway-Compose und deren Listener-/Subnetzprüfung werden im Kern gepflegt.
+
+Die beiden Caddy-Dateien werden gemeinsam aktiviert: `apps.caddy` liegt unter
+`apps.d/`, `apps-global.caddy` unter `apps-global.d/`. Die Haupt-Caddyfile importiert
+`apps-global.d/*.caddy` innerhalb des globalen Optionsblocks und `apps.d/*.caddy`
+auf Site-Ebene. Ohne Apps bleiben beide Verzeichnisse leer. Die Box-Kopien liegen
+unter `box/`; nur der Site-Block unterscheidet sich durch `tls internal`.
+Der benannte Access-Logger `app_login_log` entfernt `code`, `verifier`, `token`
+und `c` aus der URI und verwirft Request-/Response-Header im Log, einschließlich
+des Session-Set-Cookie am Callback. Ein expliziter Fehlerhandler verhindert,
+dass bei ausgefallenem Upstream die Callback-URI im Standard-Fehlerlog landet.
+
+Öffentlich ausgestellte On-Demand-Zertifikate veröffentlichen App-Namen in
+öffentlichen Certificate-Transparency-Logs (CT-Logs). App-Namen dürfen deshalb
+keine Kunden-, Personen- oder Projektnamen enthalten; neutrale technische Namen
+verwenden. Die Box mit `tls internal` veröffentlicht keine Namen in CT-Logs.
+
+Caddy erreicht ausschließlich den Browser-Port `:8080`. Das interne Relay
+`:8081/tls-ask` ergänzt den Bearer für `/internal/apps/tls-ask` und bestätigt nur
+HTTP 200 des privaten Gateways. Ungültige Domain-Syntax ergibt 403 ohne Gateway-Aufruf;
+weitergereicht wird ausschließlich der geprüfte Parameter `domain`. Browser-Pfade unter `/internal/` und `/tls-ask`
+liefern 404. DNS benötigt gewöhnlich `*.apps.<domain>`; einzelne A-Records je App
+sind ebenfalls möglich. Auf der Box: Wildcard im LAN-DNS und `tls internal`.
+
+Der Paketabruf nutzt `GET /internal/apps/package?app=<name>` mit dem Apphost-Bearer.
+ETag und `If-None-Match` tragen den Commit in Anführungszeichen. Jede Fassung wird
+über `gitobjects.Objects` einschließlich `Verify` vollständig an Commit und Pfad
+gebunden; es gibt kein Dateisystem-Checkout. Pro App bleibt eine Fassung im RAM,
+frühestens fünf Sekunden nach Abschluss des Abrufs wird nachgefragt. Je App läuft
+höchstens ein Abruf gleichzeitig; wartende Anfragen teilen sein Ergebnis und können
+einzeln abbrechen, auch der erste Anfrager. Der gemeinsame Flight verwendet
+`context.WithoutCancel` und eine eigene feste Frist von 30 Sekunden; ein
+Anfrageabbruch erzeugt kein Fehlerergebnis im Cache.
+Andere Apps und Sitzungsprüfungen warten nicht auf diesen Abruf.
+304 erhält die Fassung, 404 verwirft sie,
+Transport-/Prüffehler sperren die Auslieferung. Ein Neustart leert alle Caches.
+
+Das komplette Paket muss die Ladeprüfung bestehen: höchstens 4 MiB Inhalt und
+1000 Dateien, nur Modus `100644`, verpflichtende `index.html`, feste MIME-Liste
+(HTML, CSS, JavaScript/MJS, SVG, JSON/Map/Webmanifest und Text). Inline-Scripts,
+Event-Attribute, `javascript:` und die eigene kleine Secret-Musterliste sperren
+alle Dateien der Fassung. `jnpt.app.json` wird mitgeprüft, aber niemals ausgeliefert.
+
+Nur `<dns-label>.apps.<domain>` wird bedient. Dateien verlangen eine vom Apphost
+registrierte, noch gültige Sitzung; bloßes Erfinden eines Session-Cookies genügt
+nicht. Navigation ohne Sitzung startet die Anmeldung, Assets antworten mit 401.
+Die Anmeldung ist zustandslos: Der Verifier steht ausschließlich im sicheren
+HttpOnly-Login-Cookie mit fünf Minuten Laufzeit (`SameSite=Lax`), ohne Login-Tabelle
+im Apphost. Ein Callback ohne Cookie oder mit ungültiger Verifier-Form löst keinen
+Exchange aus; die App stammt ausschließlich aus dem Host. Der Kern prüft die
+Bindung des Codes an App und S256(Verifier), seine 60 Sekunden Laufzeit und die
+einmalige Verwendung. Das Login-Cookie wird bei jedem Callback gelöscht. Das Sitzungscookie ist
+HttpOnly, Secure, `SameSite=Strict`, und lebt höchstens `max_age` bzw. bis
+`expires_at`. Die Antwort führt mit einer skriptfreien Meta-Refresh-Seite zurück.
+Ein Apphost-Neustart verwirft bestehende Sitzungen; ein bereits begonnener Login
+kann mit seinem Cookie abgeschlossen werden. Die Sitzungstabelle hält höchstens
+4096 Einträge. Nach dem Entfernen abgelaufener Einträge verdrängt eine neue Sitzung
+bei voller Tabelle die Sitzung mit dem frühesten Ablauf; sie sperrt keine Anmeldung.
+Beide Cookies tragen kein
+`Domain`-Attribut und gelten damit nur auf ihrem jeweiligen Host. Der Verifier
+besteht aus 32 Byte `crypto/rand`, base64url-kodiert. `SameSite=Strict` ist eine
+zweite Schicht: Apps und Gateway sind regelmäßig same-site, deshalb trennt es
+weder Apps untereinander noch Apps vom Admin. Die Grenze bilden eigener Origin,
+`X-Jnpt-App: 1`, CSP und das vollständige Fehlen von `Access-Control-*`-Antwortheadern,
+auch bei Gateway-Antworten. Apps-Hosts gehören nie in eine Admin-Trusted-Origin-Liste.
+
+`POST /mcp` und `POST /_jnpt/logout` verlangen den eigenen HTTPS-Origin und
+`X-Jnpt-App: 1`. Der Proxy akzeptiert höchstens 8 MiB, setzt den App-Bearer selbst
+und übernimmt nur MIME-/MCP-Protokollheader. Browser-Cookies, Authorization,
+Forwarded- und X-Jnpt-Header gehen nicht weiter; Gateway-Cookies kommen nicht
+zurück. 401 löscht die lokale Sitzung und das Cookie. Logout widerruft über
+`exchange {revoke}`. Es gibt keine Gateway-Redirects und keinen Umgebungsproxy.
+Logs enthalten keine Cookies, Tokens, Codes, Verifier oder Query-Werte.
+
+Alle Antworten tragen `no-store`, `nosniff`, `no-referrer` und die feste CSP:
+
+```text
+default-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'
+```
+
+Beide Listener und der ausgehende Dialer setzen `SetMultipathTCP(false)`; der
+Dienst setzt zusätzlich `GODEBUG=multipathtcp=0`. Der Start erfolgt in exec-Form
+direkt auf das Go-Binary. Python und Shell bleiben als Restrisiko des gemeinsamen
+Images vorhanden, bekommen aber keine zusätzlichen Netze oder Mounts.
+Die CI prüft das aus dem gebauten Image entnommene Binary mit
+`govulncheck -mode binary`; Basis-Digests und `apt-get upgrade` bleiben Pflicht.
+
+Die vollständige Caddy-/Netzprobe läuft unter Windows über
+`pwsh -File script-runner/probe/apphost.ps1` (zuvor Image `k4-apphost:1048` bauen).
+Sie startet ausschließlich eigene benannte Docker-Container und räumt sie ab.

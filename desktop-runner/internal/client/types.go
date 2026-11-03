@@ -92,6 +92,8 @@ func required(b []byte, t reflect.Type) error {
 }
 
 type Pin struct {
+	Setups        []Setup    `json:"setups,omitempty"`
+	GraceHours    *int       `json:"grace_hours,omitempty"`
 	Container     *Container `json:"container,omitempty"`
 	Pin           string     `json:"pin"`
 	Commit        string     `json:"commit"`
@@ -100,6 +102,18 @@ type Pin struct {
 	DeclaredTools []string   `json:"declared_tools"`
 	Schedules     []Schedule `json:"schedules"`
 }
+type FreeField struct {
+	Name      string   `json:"name"`
+	Typ       string   `json:"typ"`
+	Optionen  []string `json:"optionen,omitempty"`
+	MaxLaenge int      `json:"max_laenge,omitempty"`
+}
+type Setup struct {
+	Name  string          `json:"name"`
+	Label string          `json:"label"`
+	Input json.RawMessage `json:"input"`
+	Frei  []FreeField     `json:"frei"`
+}
 type Schedule struct {
 	Name  string          `json:"name"`
 	Cron  string          `json:"cron"`
@@ -107,6 +121,7 @@ type Schedule struct {
 	Input json.RawMessage `json:"input"`
 }
 type Manifest struct {
+	TestDevice bool   `json:"test_device,omitempty"`
 	Contract   int    `json:"contract"`
 	DeviceID   string `json:"device_id"`
 	Seq        uint64 `json:"seq"`
@@ -163,16 +178,17 @@ type Job struct {
 	StartBy string `json:"start_by"`
 }
 type Result struct {
-	MountedSecretNames *[]string `json:"mounted_secret_names,omitempty"`
-	RunKey             string    `json:"run_key,omitempty"`
-	JobID              string    `json:"job_id,omitempty"`
-	ManifestSeq        uint64    `json:"manifest_seq"`
-	Commit             string    `json:"commit"`
-	End                string    `json:"end"`
-	Detail             string    `json:"detail,omitempty"`
-	Log                string    `json:"log"`
-	RanOffline         bool      `json:"ran_offline"`
-	FinishedAt         string    `json:"finished_at"`
+	Result             json.RawMessage `json:"result,omitempty"`
+	MountedSecretNames *[]string       `json:"mounted_secret_names,omitempty"`
+	RunKey             string          `json:"run_key,omitempty"`
+	JobID              string          `json:"job_id,omitempty"`
+	ManifestSeq        uint64          `json:"manifest_seq"`
+	Commit             string          `json:"commit"`
+	End                string          `json:"end"`
+	Detail             string          `json:"detail,omitempty"`
+	Log                string          `json:"log"`
+	RanOffline         bool            `json:"ran_offline"`
+	FinishedAt         string          `json:"finished_at"`
 }
 
 func (r Result) Key() string {

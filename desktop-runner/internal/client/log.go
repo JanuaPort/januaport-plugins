@@ -15,8 +15,11 @@ const (
 	LogSyncFailed
 	LogRefused
 	LogCompleted
-	LogResultDropped // n = bisher verworfene Ergebnisse (Verdrängung und abgelehnte)
-	LogTempLeft      // Rest eines Laufverzeichnisses blieb liegen, der Besen räumt beim Start
+	LogResultDropped  // n = bisher verworfene Ergebnisse (Verdrängung und abgelehnte)
+	LogTempLeft       // Rest eines Laufverzeichnisses blieb liegen, der Besen räumt beim Start
+	LogOfflineExpired // K8: Offline-Start verweigert (Frist oder Werkzeugbindung)
+	LogHaltFault      // L2-2: Halt-Datei unlesbar/ungültig oder Speicherung fehlgeschlagen
+	LogPipeFault      // L3 B2: Pipe fehlt/besetzt; Läufer läuft weiter ohne Ausweichnamen
 )
 
 type Logger struct {
@@ -25,7 +28,7 @@ type Logger struct {
 }
 
 func (l *Logger) Write(code LogCode, n uint64) error {
-	if code < LogStarted || code > LogTempLeft {
+	if code < LogStarted || code > LogPipeFault {
 		return ErrProtocol
 	}
 	l.mu.Lock()

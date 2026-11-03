@@ -6,7 +6,8 @@ in `README.md` — hier steht, warum das Ding so aussieht, wie es aussieht.
 ## Verantwortung
 
 Der Skript-Läufer führt **gepinnte Python-Skripte** aus einem Git-Repository
-des Kunden aus, ausgelöst von einer KI über JanuaPort. Er läuft als Beisteller
+des Kunden oder freigegebenen Speicherpaketen aus, ausgelöst von einer KI
+über JanuaPort. Er läuft als Beisteller
 neben dem Gateway; das Gateway selbst führt nie Code aus (R1). Entstanden in
 JanuaPort/januaport#928 (Paket P2). Verbindlich sind der **Draht-Vertrag**
 (Fassung 5, `contract: 2`, JanuaPort/januaport#1040; Grundlage Fassung 1 + 2
@@ -14,13 +15,14 @@ sowie Nachtrag 2a in JanuaPort/januaport#928; lokal `contract/README.md`) und da
 Bedrohungsmodell von SEC (T1–T12, R1–R13, M1–M7, V1–V3); die Nummern in
 Kommentaren und Tests verweisen darauf.
 
-**Ein statisches Go-Binary, ein Image, drei dauerhafte Dienste und ein Init-Dienst** (Unterbefehle):
+**Ein statisches Go-Binary, ein Image, vier dauerhafte Dienste (apphost optional) und ein Init-Dienst** (Unterbefehle):
 
 | Unterbefehl | Dienst | Verantwortung |
 |---|---|---|
-| `mediator` | `script-runner` | vermittler: MCP-Server für das Gateway (Weg A, `:8090` im internen Netz `jnpt_plugins`), prüft `runtime-key` (R13), liest `pins.json` und `desktop-pins.json`, einzige Senke für Code (R6, M5), hält den einen Slot, misst Wandzeit und Größen selbst (M2, M4), ruft innere Werkzeuge mit dem Lauf-Token (Weg B), `/healthz` auf `:8091`; Taktgeber für Zeitpläne (#1039 S1, liest `schedules.json`, löst über das Gateway aus) |
+| `mediator` | `script-runner` | vermittler: MCP-Server für das Gateway (Weg A, `:8090` im internen Netz `jnpt_plugins`), prüft `runtime-key` (R13), liest `pins.json` und `desktop-pins.json`, Speicherbote und Leser von `speicher/state.json` (#1277 S4b), einzige Senke für Code (R6, M5), hält den einen Slot, misst Wandzeit und Größen selbst (M2, M4), ruft innere Werkzeuge mit dem Lauf-Token (Weg B), `/healthz` auf `:8091`; Taktgeber für Zeitpläne (#1039 S1, liest `schedules.json`, löst über das Gateway aus) |
 | `guard` | `script-runner-sandbox` | Wächter: PID 1 der Sandbox, `PR_SET_DUMPABLE 0`, meldet `hello`, nimmt **genau einen** job, startet `python -I`, räumt den Prozessbaum ab (V1/V3), hält die Instanz 10,5 s (B1) |
-| `fetcher` | `script-runner-fetcher` | abholer: prüft Pins gegen den Standard-Zweig und holt Objekte per ssh in den Bare-Store, prüft `wanted/` und `repo_url` selbst (V2, M7) |
+| `fetcher` | `script-runner-fetcher` | abholer: prüft Git-Pins gegen den Standard-Zweig und holt Objekte per ssh in den Bare-Store, prüft `wanted/` und `repo_url` selbst (V2, M7); unabhängige Speicherprüfung alle 5 s (#1277 S4b) |
+| `apphost` | `script-runner-apphost` | optionales Profil `apps`, Browser `:8080`, internes tls-ask-Relay `:8081`, ausschließlich `jnpt_apps`, nur RAM und eigener Schlüsselordner |
 | `init-libs` | `script-runner-init` | kurzlebiger Volume-Init als 65532, ohne Netz; legt `ready` (0755) und `staging` (0700) an und beendet sich vor dem Sandbox-Start |
 
 **Nicht hier, mit Absicht:** Katalogeintrag und Signatur (die liegt auf dem
@@ -29,7 +31,7 @@ Katalog), Host-Units/tmpfiles (P4b, Gateway-Repo — hier nur Beispiele unter
 Pin-Speicher, Lauf-Token, Relay, Audit, `scan` (P1/P3, Gateway), Rezept (P5).
 Zeitplan-Verwaltung, Fälligkeit, Eingabe und Identity eines Zeitplans
 (#1039, Kern); hier nur der Taktgeber.
-Kein pip und kein Download (Bibliotheken liegen als Wheels im Repo des Betreibers,
+Kein pip und kein Paketindex-Download (Bibliotheken liegen als Wheels im Paket des Betreibers,
 siehe „Python-Bibliotheken“), keine zweite Sprache, keine Netzfreigabe je Skript, kein
 Webhook, keine GUI. Der Git-Anbieter wird ausschließlich mit `ls-remote`
 und `fetch` gelesen.
@@ -51,6 +53,9 @@ und `fetch` gelesen.
 | `internal/mediator` | vermittler: MCP, Auth, Pins, Slot/V1, Lauf, Weg B |
 | `internal/guard` | Wächter (`guard_linux.go`; anderswo nur ein Platzhalter) |
 | `internal/fetcher` | abholer |
+| `internal/apphost` | Browser-Listener, tls-ask-Relay, verifizierte statische Apps und Browser-Anmeldung; eigener Gatewayadapter ohne Proxy-Umgebung oder Redirects |
+| `internal/gitobjects` | geprüfte Kopie des Paketvertrags: SHA-256, sortierte Objekte, vollständiger Baum ohne Git-Aufruf |
+| `internal/storagepins` | signierte Speicherliste, gehärteter Dateiadapter, atomarer Höchststand und Speicherfreigaben |
 | `internal/hygiene` | Wächter-Tests für Compose (Vertrag §6, SEC-Zeile 3), Seccomp-Profil, Dockerfile |
 | `sandbox/bootstrap.py` | Python-Seite: Modul `januaport`, Fehlermeldung ohne Text, `sys.path.append` der Bibliotheken (#1041) |
 | `seccomp/` | Profil, Quelle (moby) und Herleitung `derive.py` |
@@ -192,6 +197,155 @@ Ausgabe auf stdout, Werkzeuge per `januaport.call(name, arguments)` → dict
 und `vendor/` darin (reines Python, R12), dazu — mit `requirements` — hinten
 angehängt `/libs/<lockhash>` (Wheels, auch native; nur lesend).
 
+## Speicherpins (#1277 S4b)
+
+Bote, Abholer und Senke binden die Speicherquelle an `tools/list` und die
+Ausführung an. Der Git-Weg samt
+`pins.json`, `desktop-pins.json`, `wanted/`, `approved/`, `failed/`, `repo_url`
+und `store.git` bleibt unverändert; `initStore` lässt `speicher/` unberührt.
+Desktop-/Geräte-/Testpins und Vertragskennung 2 ändern sich nicht.
+
+Unter `/var/lib/script-runner/speicher/` liest der Abholer `inbox/list.json`
+(höchstens 1 MiB) und `inbox/pkg/<name>-<commit>.pkg` (128 MiB je Paket,
+1 GiB Lesebudget je Durchlauf). Er schreibt nie in die Inbox. Seine eigene
+Goroutine läuft alle 5 s, unabhängig von Git-`Once`. Kein Runtime-Key, kein
+Gateway- oder sonstiger Netzaufruf ist Teil dieses Pfads. `runner-pins.pub`
+kommt ausschließlich aus dem vorhandenen nur lesend eingehängten
+`/run/jnpt/plugins/script-runner-git/`, wird je Durchlauf neu gelesen und
+verlangt Standard-Base64 für genau 32 Byte plus ein LF. RFC-8032-Testschlüssel,
+Kern-Golden-Testschlüssel und Punkte kleiner Ordnung werden abgewiesen.
+
+Fehlt `inbox/list.json` (auch bei fehlendem Inbox-Ordner), gilt für das Log
+„keine Speicherpins“: einmal INFO `storage_list_missing` beim ersten Fehlen,
+danach genau einmal INFO je Wechsel (`storage_list_present` bei Rückkehr).
+Unverändert fehlend erzeugt kein WARN; Freigaben werden weiterhin sofort
+fail-closed entzogen. Signatur-, Hash- und Lesefehler einschließlich defekter
+Symlinks warnen in jedem Durchlauf mit `storage_fetch_failed`. Die zusätzliche
+Lstat-Abfrage wählt ausschließlich das Log-Level, niemals eine Freigabe.
+
+Freigabe verlangt Schlüssel, frische signierte Liste und passenden Pakethash.
+Die Liste prüft Zweck `skriptlaeufer-pins.v1`, exakte Feldschreibweise und
+Pflichtfelder, Signatur, sortierte eindeutige Pins mit SHA-256-Commit und
+`seq >= highest_seq`. Gleiche Sequenz darf nur mit gleichem oder neuerem
+`issued_at` verlängern. Die Frist ist konstant 10 Minuten, die Zukunftstoleranz
+2 Minuten. Eine unveränderte Pinmenge kann durch frisches `issued_at` weiterleben;
+ein Replay derselben Liste verlängert nichts. Transportfehler werden nicht
+zu Freigaben. Paketstruktur und Hashfehler sind `invalid/hash_mismatch`,
+Liste/Schlüssel/Transport `invalid/fetch_failed`; bis zur Senkenprüfung gilt
+für freigegebene neue Pins `pending`, niemals allein deshalb `ready`.
+
+`state.json` enthält `{version:1,key_fpr,highest_seq,accepted:{manifest,sig},
+approved:[{name,commit,path,package_sha256}],failed:[{index,state,reason}]}`.
+`accepted` ist bei Rücksetzung `null`, beide Listen sind dann leer (bei Fehlern
+mit festem Fehlercode). Fehlerindex -1 gilt für den gesamten Abgleich, sonst
+für den Index in `accepted.manifest.pins`. Sequenz, Liste und Freigaben werden
+zusammen per zufälliger Temp-Datei mit `O_CREATE|O_EXCL`, Datei-fsync, Rename
+und Ordner-fsync veröffentlicht. `package_sha256` ist der selbst berechnete
+Hash der geprüften Paketbytes; die Senke prüft ihn vor jeder Codeübergabe nach.
+Die Frist kommt ausschließlich aus `accepted.manifest.issued_at` im selben
+Zustand (`State.Fresh`), nie aus einem separaten Fristfeld.
+
+**B2/H3:** Ist `highest_seq` beim Laden oder Rücksetzen 0, beginnt die Sperre
+mit der eigenen Uhr (`time.Now`) ab Prozessstart bzw. Rücksetzung. Erst
+`now > Start + 10 min + 2 min` öffnet sie; Gleichheit bleibt gesperrt.
+Dies gilt bei fehlender/kaputter Datei, Schlüsselwechsel und jedem Neustart
+während der Sperre. Zeitwerte aus dem Volume setzen die Sperruhr nie.
+Bei kaputtem Zustand wird `storage_state_reset` geloggt, bei Schlüsselwechsel
+`storage_key_changed`; alle Freigaben entfallen und der Höchststand wird 0.
+Fehlender Schlüssel (`storage_key_missing`) und Schlüsselwechsel schreiben
+`approved:[]` sofort im selben Durchlauf, auch bei A → B → A.
+
+**B1:** Inbox und Zustand sind feindliche Eingaben. Der Dateiadapter öffnet
+jede Datei und alle Verzeichniskomponenten ohne Linkverfolgung (`O_NOFOLLOW`),
+verlangt per fstat reguläre Dateien und liest mit `LimitReader(N+1)`.
+Überlauf wird verworfen; ein vorhandener Temp-Name wird nie beschrieben.
+Ungeprüfte Inbox-Bytes, Bodies, URLs und Schlüssel gelangen weder in Zustand
+noch Log. Nur verifizierte kanonische Listenmetadaten, selbst berechnete
+Pakethashes und feste Fehlercodes werden gespeichert. Logs tragen feste Codes.
+Die Prüfung schützt gegen Transport und Fehler im Vermittler, nicht gegen
+seine Kompromittierung. Zugesagt ist nur, dass der Vermittler über den Abholer
+weder an den Deploy-Key noch an den Ausgang kommt.
+
+**B3:** Host-Mounts auf die Schlüsselordner, deren Eltern oder einzelne
+Schlüsseldateien werden anhand von Pfadkomponenten gesperrt: Deploy-Key und
+`runner-pins.pub` ausschließlich beim Abholer, Runtime-Key ausschließlich
+beim Vermittler. Auch `/run/jnpt/plugins:/p:ro` im Vermittler und `/run/jnpt:/p`
+in der Sandbox sind Befunde. Ähnlich benannte Nachbarpfade sind keine Eltern.
+**H6:** Nicht sicher auflösbare Bind-Quellen gelten für jeden nicht berechtigten
+Dienst als möglicher Zugriff auf den jeweiligen Schlüsselordner. Dazu zählen
+Elternkomponenten (`..`), unklare relative Pfade und Variablen (`$VAR`, `${VAR}`,
+auch mit Default). Der Wächter interpoliert keine Prozessumgebung. Projektlokale
+`./…`-Pfade ohne Elternkomponenten werden gegen den dokumentierten Ablageort
+`/opt/jnpt/plugins/script-runner/` aufgelöst; `./seccomp:/x` bleibt beim
+Vermittler und Abholer erlaubt. Benannte Volumes und `security_opt`-Profilpfade
+sind keine Bind-Quellen. Die echte Compose bleibt unverändert und sauber.
+
+| Invariante | Test am Adapter |
+|---|---|
+| Inbox allein erteilt keine Freigabe | `TestStorageInboxAloneNeverApproves` |
+| Schlüssel, Frist, Hash und sofortiger Entzug bei Schlüsselverlust/-wechsel | `TestStorageApprovalRequiresKeyFreshnessAndHash` |
+| Symlinks auf Schlüssel, signierte Liste, Paket und Inbox-Elternteil gesperrt; kein Echo | `TestStorageInboxSymlinksAtAdapter`, `TestHostileFileAdapter` |
+| Vorhandene Temp-Namen werden nie beschrieben | `TestAtomicStateTempLinkNeverWritten`, `TestAtomicStateExistingRegularTempNeverWritten` |
+| Fehlend, kaputt, Wechsel und Neustart sperren auch exakt bei 12 min | `TestZeroSequenceQuarantineAllResetPaths`, `TestKeyBackAndForthRestartsQuarantine` |
+| Gleiche Sequenz niemals mit älterem issued_at; Entzug und Neustart öffnen keinen Replay | `TestVerifySameSequenceNeverMovesIssuedAtBackwards`, `TestStorageRefreshRevocationAndRestartReplay` |
+| Frist ausschließlich aus accepted | `TestExpiryDerivedOnlyFromAcceptedManifest` |
+| Inbox und Git-Dateien bleiben bytegleich; Git-Reset erhält Speicher | `TestStorageNeverWritesInboxOrGitPaths`, `TestGitInitLeavesStorageUntouched` |
+| Git kann die Speicherverlängerung nicht blockieren | `TestStorageLoopIndependentOfBlockedGitOnce` |
+| Fehlende Liste: INFO nur bei Wechsel, weiter fail-closed; sonst WARN je Takt | `TestStorageMissingListLogsOnlyTransitionsAtAdapter`, `TestStorageErrorsWarnEveryTickAtAdapter` |
+| Eltern-Mounts und Einzelschlüssel gesperrt | `TestKeyMountParentsAtComposeAdapter`, `TestKeyMountComparisonUsesComponents` |
+| Unaufgelöste relative/variable Bind-Quellen gesperrt; projektlokale sichere Quelle bleibt erlaubt | `TestUnresolvedKeyMountSourcesAtComposeAdapter`, `TestSafeProjectRelativeMountAtAuthorizedServices`, `TestShippedComposeIsClean` |
+
+Der Vermittler holt als Bote in einer eigenen Goroutine alle 60 s die Liste
+mit seinem vorhandenen Plugin-Runtime-Key über
+`GET /api/plugin/script-runner/storage/pins` (ohne Query), fehlende Pakete über
+`GET /api/plugin/script-runner/storage/packages/{name}/{commit}?path=<path>`.
+Er folgt keiner Umleitung, liest mit `LimitReader(N+1)` (1 MiB/128 MiB/1 GiB),
+beachtet `Retry-After` und wartet nach 404 mindestens 5 Minuten. Die Rohbytes
+werden atomar mit Temp-Datei, fsync, Rename und Ordner-fsync veröffentlicht;
+der Bote prüft weder Signatur noch Inhalt. Sichere Routennamen sind keine
+Freigabe. Er entfernt Pakete, die nicht mehr in der Liste stehen. Nur feste
+Log-Codes, keine Bodies, Query-URLs oder Schlüssel. Der Netzweg ist neben
+MCP und Taktgeber die einzige ausdrücklich erlaubte HTTP-Client-Stelle.
+
+Die consumer-seitige `objectSource` in `internal/store` verbindet den bisherigen
+Git-Batchleser und das Speicherpaket. `ReadState` liest einen zusammenhängenden
+Snapshot über denselben B1-Dateiadapter. Der Vermittler hat keinen Public-Key-
+Mount; Signatur und Schlüsselbindung bleiben Aufgabe des Abholers. Die Senke
+verlangt eine passende Freigabe, `State.Fresh` mit eigener `time.Now` und den
+exakten `package_sha256`, bevor sie Objekte öffnet; nach dem Lesen wird die
+Freigabe nochmals geprüft. `run` prüft zusätzlich unmittelbar vor `frame.Job`,
+auch nach dem Warten auf einen Sandbox-Platz. Das gilt ebenso für Wheels über
+`ListWheels`/`CopyBlob`. Bei angehaltenem Abholer wirkt ein zurückgehaltener
+Entzug damit spätestens nach 12 Minuten. Kein getrenntes Ablaufdatum (H5).
+`pruneLibs` berücksichtigt Speicherpins; ehemals freigegebene, jetzt entzogene
+oder abgelaufene Speicherpakete werden entfernt. Noch ungeprüfte neue Pakete
+bleiben für den Abholer verfügbar. Fehler gehen vor Freigaben.
+Git- und Speicherpins teilen einen Namensraum: Ein Git-Pin in `pins.json` und
+Speicher-Pin mit gleichem Namen werden beide `invalid/manifest_invalid`;
+`tools/call` wird ohne Sandbox-Job verweigert (SEC F1). Nur Namen aus dem
+Abholer-Snapshot `state.json/accepted` lösen die Kollision aus. Ungeprüfte
+Inbox-Kandidaten reservieren keinen Namen und sperren keinen Git-Pin (H4).
+Das interne Merkmal `storageAccepted` verändert den Draht-Vertrag nicht.
+
+| Invariante Lauf 2 | Test am Adapter |
+|---|---|
+| Keine Umleitung, kein Body/Key/Query im Log | `TestCourierRedirectNeverReachesSecondServer`, `TestCourierHTTPFailuresBackoffAndNoEcho` |
+| Grenzen auch beim tatsächlichen HTTP-Lesen; 404/Retry-After | `TestCourierLimitReaderBoundsActualHTTPRead`, `TestCourierPackageLimitsAndRetry`, `TestCourierHTTPFailuresBackoffAndNoEcho` |
+| Inbox oder HTTP-Fehler allein erzeugen kein ready | `TestStorageInboxAndHTTPFailuresNeverReady`, `TestStorageSourceAtRealFetcherAdapter` |
+| Frist, Freigabe und Hash vor Codeübergabe, auch nach Warten | `TestStorageRechecksAtCodeHandoffWithStoppedFetcher`, `TestStorageExpiryWhileWaitingForSandbox` |
+| Entzogene Pakete werden abgeräumt | `TestStoragePruneRevokedPackages` |
+| Echter Speicherlauf und R8 ohne Schlüsselmount im Vermittler | Docker: `TestStorageReadyRunAndRevocationWithStoppedFetcher` |
+| Gleichnamige Git-/Speicherpins beide ungültig, kein Job; ungeprüfte Inbox sperrt Git nicht | `TestGitStorageNameCollisionAtMCP`, `TestUnsignedStorageNameDoesNotCollideAtMCP` |
+| Fristablauf oder andere Freigabe zwischen den beiden Snapshots sperrt | `TestStorageExpiryBetweenApprovalReadsRefusesRun`, `TestStorageSourceAtRealFetcherAdapter/expires_during_read`, `…/approval_changes_during_read` |
+| Globale/eigene Fehlermarke schlägt Freigabe; neuer Commit entzieht alten gecachten Pin | `TestStorageFailureOverridesApprovalAtMCP`, `TestStorageRenewalRejectsCachedOldCommit` |
+
+Die Docker-Sonde erzeugt einen eigenen Wegwerf-Schlüssel und startet aus einem
+signierten leeren Journal einer bereits initialisierten Installation. Sie
+schwächt die B2-Sperre nicht ab (deren vier Fälle prüft der echte Dateiadapter).
+Eine rückdatierte, noch frische Liste verkürzt nur die Wartezeit bis zum echten
+Ablauf. Danach bleibt die Senke trotz gestopptem Abholer gesperrt. Kein echter
+Kern, keine Änderung an Compose, Netzen oder UIDs.
+
 ## Desktop-Pins (#1165 D2b, Epic #1163)
 
 Der vermittler liefert die Beisteller-Seite für den **Desktop-Läufer**.
@@ -241,7 +395,7 @@ expandiert. Die Paketreihenfolge ist deterministisch (siehe Vertrag).
 | Ungültiges Manifest/fehlende Pflichtdatei öffnet keinen Paketweg; Fehler ohne Echo | `TestDesktopInvalidManifestAtHTTP`, `TestDesktopMissingRequiredFilesAtHTTP` |
 | Desktop-Pins sind keine MCP-Werkzeuge und senden keinen Sandbox-Job; auch ein gleichnamiger lokaler Pin öffnet keinen Weg | `TestDesktopMetadataAndNoSandboxOrWheelExtraction` (zählender Unix-Adapter: 0 Jobs) |
 | Kein Aufruf des Bibliotheksadapters und kein Entpacken, auch nicht für Windows-Wheels | `TestDesktopWheelPreparationSeamZero` (Windows und `any`, 0 Vorbereitungen, leere Ready-/Staging-Ordner) |
-| Kein Download-Client in neuem Quellcode | unverändertes `TestNoDownloadClientInSource` |
+| HTTP-Clients nur für MCP, Taktgeber, Speicherboten und den privaten Apphost-Gatewayadapter; kein Paketindex | `TestNoDownloadClientInSource` |
 | Desktop-Pins zählen als bekannt; Zeitpläne werden lokal nur gemeldet, das Gerät taktet aus dem Manifest | `TestDesktopTickerNeverFiresAtHTTP` (keine HTTP-Auslösung und keine lokalen Lauf-/Missed-/Busy-Werte) |
 | SHA-1 und SHA-256; unveränderte Goldens sind byte-gleich | `TestDesktopSHA256AtHTTP`, `TestDesktopPackageGolden` (direkter Import beider Golden-Pakete in echte Git-Objektdatenbanken) |
 
@@ -342,7 +496,7 @@ nicht von `isolation` ab; `/healthz` behält seine lokale Sandbox-Bedeutung.
    nur irgendeinen Filter.
 7. **V2 / M7 / L3 — der abholer vertraut niemandem.** Jede `wanted/`-Zeile
    und die `repo_url` prüft er selbst (Allowlist), bevor Git läuft. Jeder
-   gewünschte Commit muss Vorfahr (oder gleich) dem Kopf des
+   gewünschte Git-Commit muss Vorfahr (oder gleich) dem Kopf des
    Remote-Standard-Zweigs sein, für Pins von Menschen und KI gleichermaßen,
    einschließlich aller Desktop-Pins aus der zweiten Materialisierungsdatei.
    Bei jedem Durchlauf mit gewünschten Commits:
@@ -371,6 +525,9 @@ nicht von `isolation` ab; `/healthz` behält seine lokale Sandbox-Bedeutung.
    `merge-base` über den Runner, für SHA-1 und SHA-256.
 8. **R8 — kein Weg zurück.** Kein `push`, kein `receive-pack` im Code
    (Wächter `TestNoPushPathInSource`). Der Deploy-Key hängt nur im abholer.
+   B3/H6 sperrt auch Eltern-Mounts, Einzelschlüssel und nicht sicher auflösbare
+   relative/variable Bind-Quellen (Details oben); `runner-pins.pub` teilt
+   diesen Ordner. Für Speicher gilt die unabhängige B1-Prüfung oben.
 9. **Compose ist Vertrag §6, der Wächter prüft deny by default.**
    `internal/hygiene` dekodiert mit `KnownFields(true)`: Jeder Schlüssel, den
    das Struct nicht kennt, ist ein Verstoß — das Struct kennt genau die
@@ -406,7 +563,7 @@ nicht von `isolation` ab; `/healthz` behält seine lokale Sandbox-Bedeutung.
     **Ausgang hat nur der abholer** (eigenes Netz `egress`, git über ssh); er
     hängt nie an `jnpt_plugins` oder `jnpt_default`. Die Sandbox hat
     `network_mode: none`. Jeder andere Dienst hat kein Netz oder nur
-    `jnpt_plugins`; ohne Netzliste hinge er am Projekt-Default mit Ausgang.
+    `jnpt_plugins`; der optionale Apphost hängt ausschließlich an `jnpt_apps`. Ohne Netzliste hinge er am Projekt-Default mit Ausgang.
     Mechanik: `internal/hygiene` (`checkNoEgress`, `checkMediator`,
     `checkFetcher`, Proben in `TestComposeMutationsAreCaught`,
     `TestNoServiceButFetcherHasEgress`), im Kern-Repo der Vorlagen-Wächter
@@ -419,9 +576,9 @@ nicht von `isolation` ab; `/healthz` behält seine lokale Sandbox-Bedeutung.
 
 11. **Bibliotheken (#1041), Invarianten 1–5 und 7 des Plans.** Details im
     Abschnitt „Python-Bibliotheken“; je Invariante die Tests:
-    - **Kein pip, kein Netz:** `TestNoDownloadClientInSource` (weder vermittler
-      noch abholer noch `libs`/`store` enthalten einen HTTP-Client für Downloads,
-      kein pip, keine Index-Adresse; `http.*`-Client nur in Weg B und
+    - **Kein pip, kein Paketindex:** `TestNoDownloadClientInSource` (HTTP-Clients
+      ausschließlich in MCP, Taktgeber, Speicherboten und Apphost; `libs`/`store` und Abholer ohne HTTP-Client,
+      kein pip, keine Index-Adresse; `http.*`-Client nur in Weg B, Apphost und
       Taktgeber), Sonden `TestLibsNoPip` und `TestR12ImageHasNoPipAndSha1dcGit`,
       `net_probe` unverändert.
     - **Hash-Abweichung ist fail-closed:** `TestEnsureTamperedWheelFailsClosed`,
@@ -1024,3 +1181,86 @@ P2_IMAGE=ghcr.io/januaport/script-runner@sha256:… sh script-runner/probe/run.s
 # Workflows
 docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:latest
 ```
+
+## Apphost: eigener Dienst und eigene Vertrauensgrenze
+
+`internal/apphost` ist ein zusätzlicher HTTP-Adapter. Er verwendet die geprüfte
+S4b-Bibliothek `gitobjects.Objects` (ruft `Verify` auf), verändert aber weder
+Speicher-Abholer noch Vermittler oder Senke. Konfiguration, Paket-/Login-Vertrag
+und Betriebsgrenzen stehen im README-Abschnitt „Browser-Apps mit apphost“.
+
+Die Kernzusage wird am realen HTTP-Adapter mit unabhängig erzeugten
+`gitobjects.v1`-Paketen geprüft: ein verändertes Blob oder ein fremder App-Pfad
+liefert keine Datei. RAM-Sitzungen verhindern, dass beliebige Browser-Cookies
+als Anmeldung gelten. Die Anmeldung ist zustandslos: Der Verifier liegt nur im
+hostgebundenen Login-Cookie mit fünf Minuten Laufzeit, ohne serverseitige Login-Tabelle.
+Vor Exchange werden Cookie-Pflicht und Verifier-Form geprüft. Der Kern prüft
+App, S256(Verifier), Einmaligkeit und die 60 Sekunden Laufzeit des Codes.
+Paketdaten und Sitzungen liegen ausschließlich im RAM; ein Neustart löscht die
+Sitzungen, verhindert aber keinen Callback mit noch gültigem Code und Cookie.
+Die ETag-Abfrage erfolgt je App frühestens fünf Sekunden nach Abrufabschluss;
+404 und Fehler geben keine alte Fassung frei. Pro App läuft höchstens ein Abruf,
+wartende Anfragen teilen das Ergebnis und können unabhängig abbrechen, auch der
+erste Anfrager. Der Flight verwendet `context.WithoutCancel` plus eigene feste
+30-Sekunden-Frist; Anfrageabbrüche schreiben kein Fehlerergebnis in den Cache. Während
+Netzabruf und Paketprüfung bleibt der globale Mutex frei, andere Apps werden nicht
+blockiert. Laufende Abrufe zählen zur Cache-Grenze und werden nicht verdrängt.
+Die Sitzungstabelle bleibt auf 4096 Einträge begrenzt: zuerst abgelaufene entfernen,
+bei weiter voller Tabelle den frühesten Ablauf verdrängen, statt Anmeldungen mit
+503 zu sperren. Das Erneuern eines vorhandenen Tokens verdrängt keine andere Sitzung.
+
+| Invariante | Adaptertest |
+|---|---|
+| Hash und Pfad | `TestInvariant1VerifiedPackageAtHTTP` |
+| Lade-Regeln einschließlich Grenzen und Geheimnis-Mustern | `TestInvariant2LoadRulesAtHTTP` |
+| Exakter App-Host | `TestInvariant3HostAtHTTP` |
+| Login-Cookie und Verifier-Form vor Exchange | `TestInvariant4BrowserBindingAtHTTP` |
+| Zustandsloser Callback, Code-Bindung und Einmaligkeit im Kern-Stub | `TestF2StatelessCallbackCoreBindingAtHTTP` |
+| 5000 anonyme Navigationen sperren keine Anmeldung; frühesten Sitzungsablauf verdrängen | `TestF2AnonymousNavigationsCannotExhaustLoginAtHTTP`, `TestF2SessionCapacityEvictsEarliestAtHTTP` |
+| Paketabrufe je App zusammenfassen, andere Apps nicht blockieren | `TestH2PackageFetchIsolationAndCoalescingAtHTTP` |
+| Erster Anfrager bricht unabhängig ab, Cache bleibt nutzbar; eigene Flight-Frist 30 s | `TestFlightFirstCallerCancellationAtHTTP`, `TestFlightOwnDeadlineAtHTTP` |
+| App ausschließlich aus dem Host | `TestInvariant5AppFromHostAtHTTP` |
+| Cookie- und CSP-Literale, begrenzte Sitzungsdauer | `TestInvariant6CookiesAndCSPAtHTTP` |
+| Origin, Headerfilter, Bodygrenze, 401 und Geheimnisfreiheit | `TestInvariant7ProxyAtHTTP`, `TestLogsNeverContainCredentialsOrQuery` |
+| Getrennte Listener und Abmeldung | `TestStaticLogoutAndRelaySeparationAtHTTP` |
+| ETag, Widerruf und Schlüsselrotation | `TestCacheETagRevocationAndKeyRotationAtHTTP` |
+| Genau Apps-Netz, genau ein Schlüsselmount, Box-Gleichheit | `TestInvariant10ApphostNetworkAndMounts` |
+| Wirkliche Netztrennung und Caddy | `TestInvariant10RealNetworkIsolation`, `TestInvariant11RealCaddy` (Docker-Probe) |
+
+`probe/mutate_apphost.py --docker` führt für jede Mutation die **volle**
+Apphost-Paketsuite aus und stellt die Originaldatei im `finally` wieder her.
+Jede Probe muss durch einen ausgeführten Test scheitern; reine Buildfehler
+zählen nicht. Die Caddy-Probe benötigt den echten Container `caddy:2.11.7`.
+
+### SEC-Bedingungen für Apphost
+
+C-1: SameSite ist nur zweite Schicht; App- und Gateway-Hosts können same-site
+sein. Origin plus X-Jnpt-App plus CSP bilden die Grenze. Apphost erzeugt und
+übernimmt nie Access-Control-Antwortheader (`TestC1NoCORSOnAnyResponse`).
+C-2: Callback-Ziel ist das Literal `/`, der vollständige Kopfsatz einschließlich
+no-referrer gilt auch dort (`TestC2CallbackHasLiteralRefreshAndSecurityHeaders`).
+C-3: 32 Byte crypto/rand für den Cookie-Verifier, beide __Host-Cookies ohne Domain,
+Path=/ und Secure (`TestC3VerifierEntropyAndHostCookies`).
+
+I-1: exec-Form direkt auf das Binary. I-2: explizites TCP an beiden Listenern und
+am Dialer, unabhängig von einem entgegenstehenden GODEBUG; Compose setzt
+multipathtcp=0 (`TestI1ApphostExecAndI2Environment`,
+`TestI2ExplicitTCPUnderMultipathEnvironment`). I-3: CI prüft mit gepinntem
+Govulncheck das aus dem gebauten Image entnommene Binary (`TestI3BinaryVulnerabilityCheck`).
+Die korrigierten Abhängigkeiten x/net und edwards25519 werden durch die vollständige
+Suite einschließlich S4b-Vertragsprüfung abgesichert; S4b-Laufzeitcode bleibt unverändert.
+
+H-1: Syntaxprüfung vor Relay-Aufruf; ungültig ergibt 403 ohne Body oder Gateway-Aufruf,
+zulässig wird nur domain weitergereicht (`TestH1RelaySyntaxAndOnlyDomainAtHTTP`).
+Öffentliche Zertifikate veröffentlichen App-Namen in CT-Logs: keine Kunden-,
+Personen- oder Projektnamen; interne Box-Zertifikate sind ausgenommen.
+
+Caddy wird über zwei optionale Imports aktiviert: apps-global.d im globalen Block,
+apps.d auf Site-Ebene. Der benannte app_login_log filtert code auch am Callback;
+Cookie-/Authorization-/Set-Cookie-Header werden nicht geloggt. Der explizite
+Caddy-Fehlerhandler verhindert auch den Code-Abfluss bei unerreichbarem Apphost;
+Entfernen dieses Handlers wird an der echten Caddy-Instanz rot geprüft. Die Box-Kopien sind
+bis auf tls internal gleich. `probe/apphost.ps1` prüft die wirklichen Imports,
+leere Verzeichnisse, Zertifikatsfreigabe über das Relay, Logfilter, Upstream und
+Netztrennung mit Caddy 2.11.7. Die Mutation ohne delete code muss dabei die volle
+Apphost-Suite rot machen; ein Syntaxfehler allein zählt nicht.

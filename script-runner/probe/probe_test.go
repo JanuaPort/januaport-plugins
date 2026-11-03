@@ -106,6 +106,9 @@ func startStubGateway() *stubGateway {
 	h := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 	go func() {
 		_ = http.ListenAndServe(":8484", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if serveStorageProbe(w, r) {
+				return
+			}
 			g.mu.Lock()
 			g.auth = append(g.auth, r.Header.Get("Authorization"))
 			g.mu.Unlock()

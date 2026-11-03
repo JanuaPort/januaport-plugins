@@ -143,6 +143,25 @@ services:
       - libs:/libs
     restart: "no"
 
+  script-runner-apphost:
+    image: ${JNPT_SCRIPT_RUNNER_IMAGE:?JNPT_SCRIPT_RUNNER_IMAGE fehlt in /opt/jnpt/plugins/script-runner/.env}
+    command: ["apphost"]
+    profiles: [apps]
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    networks: [jnpt_apps]
+    environment:
+      GODEBUG: multipathtcp=0
+      JNPT_APPS_DOMAIN: ${JNPT_APPS_DOMAIN:-}
+      JNPT_APPS_GATEWAY_URL: ${JNPT_APPS_GATEWAY_URL:-}
+      JNPT_GATEWAY_PUBLIC_URL: ${JNPT_GATEWAY_PUBLIC_URL:-}
+    volumes:
+      - /run/jnpt/plugins/apphost:/run/secrets/jnpt:ro
+    restart: unless-stopped
+
 volumes:
   sockets: {}
   store: {}
@@ -152,6 +171,9 @@ volumes:
   libs: {}
 
 networks:
+  jnpt_apps:
+    external: true
+    name: jnpt_apps
   plugins:
     external: true
     name: jnpt_plugins

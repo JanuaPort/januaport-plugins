@@ -63,9 +63,10 @@ type Mediator struct {
 	cache        map[cacheKey]verdict
 	libsURL      string // zuletzt gelesene Repository-URL einer gültigen pins.json (#1041)
 
-	ticker     *ticker.Ticker
-	trigger    *gatewayTrigger
-	schedState string // zuletzt geloggter Zustand von schedules.json
+	ticker         *ticker.Ticker
+	trigger        *gatewayTrigger
+	storageCourier *storageCourier
+	schedState     string // zuletzt geloggter Zustand von schedules.json
 }
 
 // New prüft die Konfiguration.
@@ -108,6 +109,7 @@ func New(cfg Config) (*Mediator, error) {
 		trigger:      newGatewayTrigger(cfg.GatewayURL, filepath.Join(cfg.KeyDir, "runtime-key"), cfg.TriggerTimeout),
 	}
 	m.sb = newSandboxes(m.onHello, m.log)
+	m.storageCourier = newStorageCourier(cfg.GatewayURL, filepath.Join(cfg.KeyDir, "runtime-key"), cfg.StoreDir, cfg.Now, cfg.Logger)
 	m.libs = openLibs(cfg)
 	// Erster Abgleich vor dem ersten Request: kein Fenster, in dem ein
 	// vorhandener Schlüssel noch nicht gilt.
@@ -134,6 +136,10 @@ func (m *Mediator) Serve(ctx context.Context) error {
 		defer m.libs.Close()
 	}
 	go m.pollLoop(ctx)
+	storageCtx, cancelStorage := context.WithCancel(ctx)
+	storageDone := make(chan struct{})
+	go func() { defer close(storageDone); m.storageCourier.Run(storageCtx) }()
+	defer func() { cancelStorage(); <-storageDone }()
 	return m.sb.accept(ln)
 }
 

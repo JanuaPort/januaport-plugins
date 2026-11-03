@@ -7,7 +7,9 @@ Kopplung, signiertes Manifest, lokaler Takt, Paket-/Runtimeprüfung,
 COM-Autostart und DPAPI-Journal sind implementiert. Fake-Kern, Linux-Race-Tests
 und native Windows-Sonden; signiertes Windows-Release `desktop-runner-v0.1.0`
 vorhanden, Live-Anlage steht aus. Manueller Installationstest: README „Installationstest“.
-Maßgeblich: [Draht-Vertrag v1/v2](contract/README.md).
+Windows spricht Vertrag 4, Linux-Server unverändert Vertrag 2.
+Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
+[contract/](contract/README.md) bleibt der eingefrorene historische D0-Vertrag 1.
 
 ## Aufbau
 
@@ -17,10 +19,12 @@ Maßgeblich: [Draht-Vertrag v1/v2](contract/README.md).
 | internal/client/http.go | Einziger HTTP-Adapter, E3, Tokenrollen, Widerruf |
 | manifest.go, copied_contract.go | Manifest/Kanonisierung/Ed25519, Gitobjekte/SHA-1DC, Cron/IANA |
 | environment.go, copied_lock.go, copied_zip.go | Allowlist, Wheels, Entpacken und Umgebungsseal |
-| engine.go, bootstrap.py | Gemeinsamer Laufplatz, Takt, Claim/Start, Rahmenkanal/MCP |
+| engine.go, halt.go, bootstrap.py | Gemeinsamer Laufplatz, Takt, Claim/Start, lokaler Halt, Rahmenkanal/MCP |
 | state.go, replace_* | Atomare OS-geschützte Dateien, Journal/Marker/Slot-Transaktion, Löschung |
 | runtemp.go | Lauf-TEMP: RunID/RunTemps, Anlegen nur neu, Aufräumen/Besen ohne Reparse-Punkte, Kind-Umgebung |
-| log.go | Geschlossene numerische Codes (1–6), 5 × 1 MiB |
+| log.go | Geschlossene numerische Codes (1–9), 5 × 1 MiB |
+| cmd/bedienfeld, internal/panel, internal/panelio | Nativer Tray-Prozess, reines Modell und getrennter Pipe-I/O-Adapter |
+| internal/pipe, internal/client/pipe.go | Lokales Schema, Windows-Pipe, Serverprüfung, Setup-Zulassung und interne Rückfragen |
 | internal/platform/*_windows.go | DPAPI/ACL (SecureRoot, MkdirPrivate), WTS/LastInput, suspendierter Prozess/Job Object, COM/HKCU |
 | internal/platform/install.go, other.go | Windows-Nähte und Fail-closed-Stubs für andere Systeme |
 | internal/platform/security_linux.go, server_linux.go | Linux-HMAC/Dateirechte, Sperre und Server-Konfiguration |
@@ -56,18 +60,28 @@ Maßgeblich: [Draht-Vertrag v1/v2](contract/README.md).
    alte/gleiche seq oder falsche Signatur → Klasse `manifest`; alter Stand
    und letzter erfolgreicher Sync bleiben erhalten. seq uint64, dauerhaft,
    ab 1, je erfolgreichem Sync erhöht, auch bei gleichen Pins.
-4. JSON streng mit `DisallowUnknownFields`. Vertrag-1-Heartbeat ausschließlich
+4. JSON streng mit `DisallowUnknownFields`. Windows-Vertrag-4-Heartbeat ausschließlich
    `contract`, `ready`, `runner_version`, `manifest_seq`; kein Sitzungsstatus,
    keine Leerlaufzeit, kein Konto. Antwort ergänzt `manifest_seq_current`;
-   bei höherem Wert Manifest holen. Ergebnis hat kein Ausgabefeld.
+   bei höherem Wert Manifest holen. Nur Testaufträge dürfen `result` (JSON bis 64 KiB) senden;
+   der normale Report-Weg weist es ab. `apps` wird unter v4 abgewiesen,
+   Setup-Beschriftungen über 40 Unicode-Zeichen ebenfalls.
 5. Takt auf dem Gerät: 1 min vor jedem geplanten Lauf Manifest und bei
    neuem Commit unter Windows das Paket voll prüfen; Server prüfen vor Start
    Pull und Image-Digest. Offline nur ohne declared_tools und
-   `jetzt − letzter erfolgreicher Sync < grace_hours` (1–72 h), sonst
+   `max(Uhr, persistente Uhrmarke) − letzter erfolgreicher Sync < grace_hours`
+   (1–72 h), sonst
    `refused/offline`. Werkzeuge brauchen Box/Lauf-Token. Deterministischer
    `run_key = pin/schedule/UTC-Slot`; Online-Start mit Werkzeugen über
    `runs/start`, Standbindung per `X-Jnpt-Manifest-Seq`, veraltet 409 manifest.
    Ad-hoc bleibt claim → jobs/start; Job liefert seine Freigabe-manifest_seq.
+   Windows K8: Pinfrist vor Gerätefrist, auch längere Pinfristen. Atomare
+   DPAPI-Datei `clock`, fortgeschrieben bei Sync, Takt und Offline-Start. Während
+   des Prozesses läuft die Marke monoton weiter; nach Neustart gilt mindestens
+   die gespeicherte Marke. Defekte Uhrmarke sperrt. Ablauf verweigert mit
+   Logcode `7 1`. Auch offline verweigerte Windows-Versuche tragen
+   `ran_offline:true`. Das Kernarchiv hält die längste wirksame Pinfrist + 24 h
+   Puffer (`Manifest.RetainUntil` als Abgleich); das Journal verfällt nicht.
 6. Ein Platz je Gerät für beide Laufarten. Zweiter Claim sofort 204,
    geplanter Start bei anderem Lauf 409 busy; zweiter Start desselben Laufs
    409 already_started ohne Token. MCP verlangt beide Token, zustandslos.
@@ -97,7 +111,7 @@ Maßgeblich: [Draht-Vertrag v1/v2](contract/README.md).
    Alle anderen Fehler (409, 429, 503, Netz) verwerfen nie. Kein Tokenablauf-Cutoff.
 10. Box hält Ad-hoc-Aufträge persistent, löscht Eingabe bei Ende; Claim nach
     Box-Neustart funktioniert. Auch Start-/Ergebnis-/Manifesthistorie bleibt;
-    kein pauschales Neustart-404 mit Verwerfen. Windows: Contract 1 und Paketversion 1; Linux-Server: Contract 2,
+    kein pauschales Neustart-404 mit Verwerfen. Windows: Contract 4 und unverändert Paketversion 1; Linux-Server: Contract 2,
     Updates zuerst Kern, dann Läufer; geschlossene Klassen inkl. offline und idle.
 11. `refused/idle` (#1245 L): Die Startregel ist nicht erfüllt, weil nur der
     Leerlauf fehlt (Sitzung aktiv, Konto passt, Modus `idle`, Leerlauf kürzer als
@@ -121,12 +135,190 @@ Maßgeblich: [Draht-Vertrag v1/v2](contract/README.md).
     `LOCALAPPDATA`/`USERPROFILE`/`APPDATA`/`HOME*`/`TMPDIR`; ein Wert aus diesen
     Variablen wird gefiltert, `TEMP`/`TMP` zeigen nur auf das Laufverzeichnis.
 
+13. Testauftrag: signiertes `test_device:true` UND Pinname
+    `test_<erste 8 Zeichen der Geräte-ID>`, zusätzlich geprüfte Geräte-,
+    Signatur- und Jobbindung (Pin, Commit, Pfad, Algo, Freigabe-seq).
+    Claims enthalten kein Testmerkmal. `test_device` wird in v1/v2/v3/v4
+    angenommen (#1298). `Screenshot` und `ReportTest` prüfen vor HTTP;
+    `Report` weist `result` ab. Historische Freigaben liegen separat in
+    DPAPI-Dateien `test-<job_id>`, nur Bindungsfelder und signiertes Manifest,
+    keine Claim-Eingabe; Journaländerung nur Feld `result`. Replay
+    prüft erneut. Testresultate weder offline noch über Setup-run_key.
+    `StartSetup` prüft das signierte Manifest, erzeugt 128 Zufallsbits über
+    `crypto/rand` (22 Zeichen base64url) und bindet `X-Jnpt-Manifest-Seq`.
+    `API.Halt` meldet nur; `Engine.Halt` steuert seit L2 lokal (Invariante 14).
+    L3 ergänzt Pipe und Setup-Zulassung, L4 das native Bedienfeld. L5 ergänzt
+    `jnpt.frage/ergebnis/screenshot` ausschließlich über den Rahmenkanal.
+    L3-2: Go prüft rohe Skript-Rahmen strikt, nie auf Python-Prüfung vertrauen.
+    `ergebnis`: höchstens 64 KiB JSON einschließlich Report-Escapes, letzter
+    Aufruf gilt; `None` entfernt das Feld, normale Aufträge verwerfen still.
+    `screenshot`: vor GDI signierte Testfreigabe und Job-/Umgebungsbindung
+    prüfen, sonst `fehler`/Python `None` und null Aufnahmen. Go-GDI ohne CGO,
+    ganzer primärer Bildschirm, PNG bis 4 MiB, höchstens fünf Versuche pro Lauf
+    einschließlich Fehlern; ein Versuch ist für die automatische Endaufnahme
+    reserviert, somit höchstens vier explizite Aufnahmen.
+    SEC-R4 F1: Endaufnahme nur ohne aktiven L2-Halt; `haltedLocked()` direkt
+    davor unter `e.mu` prüfen, GDI/Upload außerhalb der Sperre. Der äußere
+    Kontext erhält die Endaufnahme nach Wandzeitablauf. H2: `verified` prüft
+    die Freigabe; der Pin der Laufumgebung muss zusätzlich `order.Pin` gleichen.
+    Upload über `API.Screenshot`, keine Bildnachlieferung. Linux-Stub mit Fehler.
+    Bei gesperrter Sitzung zeigt die Aufnahme den Sperrbildschirm; je nach
+    Sitzung kann GDI nicht verfügbar sein. Das ist eine dokumentierte Grenze.
+
+14. Lokaler Halt (#1240 L2, nur Windows): atomare DPAPI-Datei `halt`
+    (`{state, until}`), vor jedem ersten Takt gelesen. B6: offline und über
+    Neustart wirksam. L2-2: fehlt → `arbeitet`; unlesbar/ungültig →
+    `angehalten` + dauerhaftes lokales Störungsflag, fester Logcode `8 1`.
+    Speicherfehler sperren ebenfalls; erst erfolgreicher expliziter Wechsel
+    löscht die Störung. Ohne Schreibzugriff ist ein neuer Zustand nicht dauerhaft.
+    L2-1: Halt-Prüfung direkt vor `Spawn` innerhalb desselben `e.mu`-Abschnitts;
+    Anhalten setzt den Zustand und ruft activeCancel/Kill unter genau dieser
+    Sperre auf. Ergebnis `cancelled`, kein Start nach Halt zwischen Claim und Spawn.
+    Pause (15/60/0 Minuten, `until` UTC) lässt den laufenden Lauf regulär enden,
+    sperrt neue Slots/Claims/Testaufträge und endet automatisch. Offene Claims
+    werden abgebrochen, Übergangsantworten verworfen; Heartbeat `ready` bleibt.
+    Slotprüfung und atomare Slot-/Markerreservierung teilen ebenfalls `e.mu`.
+    B3: Halt schränkt nur ein, Befehle starten nie. Fortsetzen umgeht keine
+    bestehenden Startprüfungen. Kein Nachholen, auch nicht innerhalb der
+    Fortsetzungsminute; übersprungene Slots ohne Marker/Ergebnis. Pause schwächt
+    Anhalten nicht ab. `Engine.Halt`, `Pause`, `HaltStatus` bleiben die maßgeblichen
+    Go-Schnittstellen; L3 leitet die geschlossenen Pipe-Befehle darauf weiter.
+    Letzten Wechsel via L1-Adapter `POST /halt` nachliefern und koaleszieren,
+    maximal ein Versuch je zehn Sekunden (auch Fehler). DPAPI-Datei `halt-attempt`
+    erhält die Bremse bei Neustart; defekte/nicht schreibbare Bremse sperrt Meldungen.
+    HTTP außerhalb von `e.mu`, damit Widerruf zurückrufen kann; alte Bestätigung
+    löscht keinen neueren Wechsel. Eigener Sender läuft auch während Execute.
+
+15. Lokale Pipe (#1240 L3, nur Windows), B1/B2: genau ein benannter Listener
+    `\\.\pipe\JanuaPort.Bedienfeld.<erste 16 Hex-Zeichen SHA-256 der Benutzer-SID>`.
+    Geschützte DACL nur Benutzer- und Logon-SID, keine AppContainer-/Capability-ACE.
+    H1: `FILE_GENERIC_READ | FILE_WRITE_DATA` (`0x12008b`), kein `GENERIC_WRITE`
+    und kein `FILE_CREATE_PIPE_INSTANCE`. Native H1-Probe: echte zweite
+    Serverinstanz mit freiem Instanzplatz und installierter DACL, auch mit
+    Benutzer als Besitzer; geprüftes nicht erhöhtes Medium-Token ohne aktive
+    Admin-SID/Privilegien, Gegenprobe mit zusätzlichem Instanzrecht.
+    Die Gegenprobe setzt eine direkte Benutzer-ACE und Medium-NWNR ausdrücklich;
+    beide Instanzanlagen bekommen einen vollständigen Deskriptor statt Token-
+    Standardwerten. Besitzer, Label und Kontroll-ACE werden am Handle nachgeprüft.
+    Die gesamte Gegenprobe läuft in einem per `CreateProcessAsUserW` gestarteten
+    nicht erhöhten Hilfsprozess, einschließlich erster Instanz; reine Thread-
+    Impersonation im erhöhten CI-Prozess genügt nicht. Das primäre Kind-Token
+    wird vor jeder Pipe-Anlage geprüft. Quelle, gefiltertes Token und Kind haben
+    null Restricting-SIDs, damit keine zweite Zugriffsprüfung die Abweisung
+    verursacht. Im Kind laufen schmale und breite DACL; die Negativprobe gegen
+    die Produktions-DACL des Elternprozesses bleibt ohne Opt-in verpflichtend.
+    Nur die Hilfsprozess-Proben (`standard_process` und
+    `TestWindowsPipeRestrictingSIDsVerweigert`) sind Opt-in über
+    `JNPT_NATIVE_TOKEN_PROBES=1`: `workflow_dispatch` mit gesetzter Variable
+    in einer interaktiven Sitzung oder GATE auf dem Testgerät. Ohne Variable
+    fester Skip-Text; mit Variable ist jeder Startfehler ein Testfehler.
+    Die Dienst-Sitzung gehosteter Runner kann den gefilterten Helfer mit
+    `STATUS_DLL_INIT_FAILED` abweisen. Keine Änderung von Window-Station-/Desktop-ACLs.
+    Low-IL READ/WRITE, Fremdkonto, Remote, Squatting und Linux-DACL-Strukturtests
+    bleiben vom Opt-in unabhängig.
+    `CreateFile(FILE_APPEND_DATA)` allein belegt keine Instanzanlage. L3-1: ausdrücklich
+    `S:(ML;;NWNR;;;ME)`; Low-IL READ und WRITE werden abgewiesen.
+    `PIPE_REJECT_REMOTE_CLIENTS` und `FILE_FLAG_FIRST_PIPE_INSTANCE`; die erste
+    Instanz bleibt bis zum Ende offen, auch zwischen Clients. Name besetzt oder
+    Anlagefehler: genau ein Versuch, fester Logcode `9 1`, Läufer ohne Pipe,
+    kein Ausweichname. Server prüft den Client-Bildpfad auf `jnpt-bedienfeld.exe`
+    im eigenen Ordner. Clientbibliothek prüft `GetNamedPipeServerProcessId`,
+    `desktop-runner.exe` im eigenen Ordner, vertrauenswürdiges Authenticode mit
+    gleichem Herausgeber (vollständiger Subject-DER des geprüften Unterzeichners)
+    und H2: gleiche Benutzer-SID aus dem Token des Server-Prozesses. Fehler →
+    `Störung`, vor jeder gesendeten Nachricht. Signaturprüfung ohne UI und ohne
+    Netzabruf; unzureichender lokaler Vertrauens-/Sperrlistenstand sperrt ebenfalls.
+    Vier Byte Big-Endian-Länge plus 1–4096 Byte UTF-8-JSON; geschlossenes Schema,
+    `DisallowUnknownFields`, keine Zusatz-/Doppelfelder, Nulls oder Folgedokumente.
+    Golden: `internal/pipe/testdata/messages.json`. Keine Token-, Eingabe-, Pfad-
+    oder Modusfelder; Status wird ausdrücklich projiziert, kein Bundle serialisiert.
+    L3-2: jeder rohe Rahmen wird am Läufer in Go geprüft. Setup nur aus erneut
+    verifiziertem v4-Manifest, ohne `frei`, bei passendem Konto/Sitzung, online,
+    ohne Halt/Pause und ohne belegten/reservierten Platz. Reservierung umfasst
+    HTTP und Prozessvorbereitung; Zeitplan, Ad-hoc und direktes Execute bleiben
+    ausgeschlossen. Offene Claims werden abgebrochen und ihre Übergangsantworten
+    verworfen; während des Setup-Laufs wird kein neuer Claim geholt.
+    L1-Adapter bindet Sequenz und erzeugt die Nonce; keine
+    Offline-Warteschlange für Setup-Befehle. Halt/Freigabewechsel während HTTP
+    sperrt den Spawn. Unmittelbar vor Spawn wird die Setup-Freigabe unter derselben
+    Engine-Sperre erneut gebunden; die L2-Haltprüfung bleibt unverändert.
+    Rückfragen lokal: `frage{id,titel,text,optionen,frist_s}`, Titel höchstens
+    40 Zeichen, Text 500 Zeichen, 2–4 Optionen zu je 40 Zeichen, 5–3600 Sekunden.
+    H4: Titel aus dem Manifest-Pin, nie Skripttext. Vertrag 4 hat kein Pin-Label;
+    Rückfall Pin-Name, auf 40 Zeichen begrenzt. Höchstens eine offene Frage je
+    Lauf, in Go am echten stdout-Adapter geprüft. L4 ergänzt diesen H4-Rahmenweg
+    samt Laufkontext; skriptseitiger Titel, ungültiger Rahmen oder zweite offene
+    Frage → `abgewiesen`, Lauf `internal`. Ohne Panel/bei Frist `wahl:null`;
+    Abbruch/Anhalten schließt ohne Wahl. `antwort.wahl` ist nullbasiert.
+    L5 ergänzt den Python-Helfer in `bootstrap.py`. Rohe `ergebnis`/`screenshot`
+    sind ausschließlich Skript-Rahmen mit Go-Prüfung gemäß Invariante 13;
+    im Bedienfeld-Pipe-Schema bleiben sie abgewiesen.
+    Setup-Projektion: Pflicht-Bool `braucht_eingabe` ausschließlich aus
+    `len(frei)>0` des verifizierten Manifests; `startbar` fasst alle Sperren
+    zusammen. Die zweite Schemaänderung ermöglicht den genauen Eingabehinweis.
+    Ergebnis und Screenshot bleiben zusätzlich durch die L1-Testauftragsprüfung
+    geschützt (Invariante 13). H3: Pipe-Serverhandles sind nicht vererbbar und
+    stehen nie in der expliziten Python-Handleliste (nur stdin/stdout/NUL).
+    Native Kind- und echte Python-Sonde prüfen Handle-Tabelle, Env und Kommandozeile:
+    kein Pipe-Name und kein `jnpt*`. Kein neuer Linux-/TCP-/HTTP-Listener.
+    Unbenannte/unlesbare Pipe-Endpunkte werden bei der Namensabfrage übersprungen;
+    Erkennung der Eltern-Pipe, absichtlich vererbtes Handle und eine eigene
+    Python-Kontrollpipe sichern die Sonden gegen falsch grüne Ergebnisse.
+
+16. Bedienfeld (#1240 L4; Plan-Invarianten 14/15/18): `jnpt-bedienfeld.exe`,
+    separater Windows-Prozess ohne CGO, gebaut mit `-H=windowsgui`.
+    `internal/panel`: reines Linux-testbares Modell. `internal/panelio`: I/O.
+    `cmd/bedienfeld`: UI-Thread mit LockOSThread und Message-Loop; Pipe-Lesen
+    in Goroutines, Übergabe per PostMessage. Kein Credential/eigener Netzweg.
+    Transitive Importe: kein `net/http`/`internal/client`, `net` nur über Pipe.
+    Benannte Ausnahmeliste `importExceptions` in `TestPanelImportWaechter`
+    leer (K6b später). Win32 via syscall/System32; x/sys/windows nur hinter Pipe.
+    Ausschließlich `pipe.Dial()` prüft Bildpfad, Authenticode und Benutzer-SID.
+    Nichts vor erfolgreicher Prüfung schreiben; kein Ausweichname, Wiederholung
+    mit 5–60 Sekunden Abstand. Fünf Sekunden ohne Status oder bei blockiertem
+    Schreiben beenden die Verbindung.
+    §6.6: Störung aus Zustand, Fehler, Nichterreichbarkeit oder Serverprüfung
+    bleibt dauerhaft violett mit exakt
+    „Störung. Anhalten: abmelden oder über den Admin halten lassen.“
+    Erst gültiger `zustand` nach erneuter erfolgreicher Prüfung löscht sie.
+    Fehlende Win32-DLLs/Procs lösen keinen Panic aus: geprüfte Auflösung,
+    Modell bleibt in Störung, keine Pipe-Verbindung. Fehlen grundlegende
+    Tray-APIs, endet der Prozess ohne Anzeige; sonst fester Störungstext.
+    Wächter: `TestBedienfeldProcAufloesung`, native Negativprobe
+    `TestWindowsBedienfeldFehlenderProc`. Prozesssonde löst
+    `kernelbase.dll!CompareObjectHandles` mit `Find()` auf, sonst Skip mit Grund.
+    Menü: Zustand, Pause 15/60/bis Weiter, Weiter, Anhalten/Fortsetzen, Setups,
+    „Test“ nur auf Testgeräten, Beenden nur des Bedienfelds. `bis` lokal;
+    offline + Fristablauf → „offline, Frist abgelaufen“. Graue Setups nur bei
+    `braucht_eingabe:true` mit „braucht Eingabe“ ergänzen.
+    Fenster erst nach Klick, kein Hotkey/Toast/Sprechblase/Autostart-Code.
+    Dialog „JanuaPort – <titel>“, statischer Text, 2–4 gewöhnliche Knöpfe,
+    `WS_EX_NOACTIVATE`, `SW_SHOWNOACTIVATE`, kein `BS_DEFPUSHBUTTON`, kein
+    Anfangsfokus/SetForegroundWindow/SetFocus/SetActiveWindow. Höchstens einer
+    offen; zweite Frage nicht anzeigen. `frage_weg`, Anhalten, Trennung und
+    Frist schließen ohne Antwort; Antwort nur `antwort{id,wahl}`.
+    Native Prozesssonde: echte Exe ohne Argumente, PEB/Umgebung ohne `jnpt*`
+    (Exe-Name ausgenommen), Handle-Vererbung samt Gegenprobe. Läuft über den
+    bestehenden Windows-Job. Kein Tray-Rauchtest/lokaler GUI-Start.
+    Installation/zweite Aufgabe/Release bleiben L6, HTML/WebView erst K6b.
+
 ## Benannte Grenzen
 
 Widerruf wird offline erst beim Kontakt sichtbar, bis zur Gnadenfrist kann
 das Gerät weiterlaufen. Ed25519-Rotation v1 nur neue Kopplung. Workstation-
 Skripte handeln mit den Rechten der Person. DPAPI CurrentUser schützt nicht
 gegen jemanden mit Zugriff auf diese Sitzung (C4).
+
+A1 / SEC K6b (c): **ACL schützt nicht gegen den WebView2-Hauptprozess**.
+Er läuft mit den Rechten derselben Person auf Medium-IL. Client-Bildprüfung
+ist Tiefenverteidigung, keine Grenze gegen gleichberechtigte Prozesse,
+UI-Automation oder Austausch von Dateien im eigenen Ordner. Die Medium-
+Integritätsmarke schützt gegen lesende und schreibende Low-IL-Clients.
+Störung bleibt lokal; eine Pipe kann durch einen gleichberechtigten Prozess
+belegt oder blockiert werden. L4 zeigt dauerhaft eigene Farbe und exakt
+„Störung. Anhalten: abmelden oder über den Admin halten lassen.“
+UIA-Skripte desselben Benutzers können das Bedienfeld bedienen; eine Pause kann
+das laufende Skript selbst aufheben, endgültig für den Baum ist nur Anhalten.
 
 ## Tragende Adaptertests
 
@@ -140,13 +332,20 @@ gegen jemanden mit Zugriff auf diese Sitzung (C4).
 | Konto/Sitzung/idle vor Spawn | TestKontoUndManipulationVorSpawn, TestReadyVerboteneZustaende, TestIdleVorSpawnUndMount, TestIdleWirdNieAlsAccountGemeldet |
 | Rückstau-Grenze abgelehnter Ergebnisse (L2) | TestAbgelehntesErgebnisStautDenRueckstauNicht, TestAltKernLehntIdleAbJournalStautNicht, TestVerwurfWirdLokalGeloggt |
 | Lauf-TEMP (L3–L6) | TestRunIDFormat, TestRunTempsCreateVerlaesstDieBasisNie, TestRunTempsAnlegenNeuUndExklusiv, TestRunTempsRemoveFolgtKeinemVerweis, TestRunTempsSweepRaeumtRestePlusVerweiseOhneEinzusteigen, TestLaufBekommtPrivatesTempAlsArbeitsverzeichnis, TestLaufTempWirdBeiJedemEndeAufgeraeumt, TestKindUmgebungOhneProfil; Windows: TestMkdirPrivateExklusivUndGeprueft, TestRunTempJunctionKanarienvogel, TestWindowsEnvOhneProfilUndTemp, TestWindowsPythonTempProLauf |
-| B2/B3 Windows: keine Listener/Downloads, keine privaten Bodys/Kind-Token | TestKeineListenerDownloaderOderPip, TestNurAnlageUndKeinePrivatenBodys, TestWindowsPythonEchterStartUndManipulation, TestWindowsJobObjectEnkelUndToken |
+| B2/B3 Windows: genau ein lokaler Pipe-Listener, keine Netzlistener/Downloads, keine privaten Bodys/Kind-Token | TestKeineListenerDownloaderOderPip, TestNurAnlageUndKeinePrivatenBodys, TestWindowsPythonEchterStartUndManipulation, TestWindowsJobObjectEnkelUndToken |
 | Cron/DST, Offline-Grenze und Journal | TestCronZeitzoneUndSlots, TestOfflineRegel, TestOfflineVerweigertWirdJournalisiert |
 | E4: Ciphertext-Deckel, Bestätigung, Neustart | TestJournalDeckelBestaetigungNeustart, TestJournalMisstVerschluesselteBytes, TestWindowsNeustartInterrupted, TestErgebnisrueckstauUndAtomarerSlot |
 | Widerruf an allen Wegen, keine Wiederbelebung | TestWiderrufAnAllenHTTPWegen, TestWiderrufAllesWeg, TestRevokeFolgtKeinemVerweisInTmp, TestRevokeFolgtKeinerJunctionInTmp (Windows) |
 | Native DPAPI/ACL/Entropie/Prozessbaum | TestWindowsFehlerBehaltenUrsache, TestPrivateACLAliasUndVerbote, TestPrivateACLAmDateisystem, TestSecureRootVerweigertJunction, TestDPAPIUndACL, TestWindowsDPAPIBrauchtEntropie, TestWindowsSuspendBisJobZuordnung, TestWindowsJobCloseBeendetEnkel |
 | Task ohne Admin und begrenzter Rückfall | TestWindowsAufgabeOhneAdmin, TestAutostartRueckfallNurBeiRichtlinie |
+| Vertrag 4 / Testweg / K8 (#1240 L1) | TestVertragJeGeraeteart, TestGoldenV3AusKern, TestManifestV4StriktAmAdapter, TestTestgeraeteSynchronisieren1298, TestScreenshotNurTestgeraet, TestErgebnisNurTestauftrag, TestTestadapterVerweigernFalscheBindung, TestSetupUndHaltAmHTTPAdapter, TestSetupSchemaAmAdapter, TestSetupStartVerweigertFremdeFreigaben, TestL1WiderrufAmHTTPAdapter, TestOfflineFristJePinUndUhrMarke, TestOfflineNachmeldungAmAdapter, TestK8ArchivLaengsteWirksameFrist, TestErgebnisNachNeustartMitSignierterFreigabe, TestVertrag4ClaimUndErgebnisOhneServerfelder; Windows-CI: TestWindowsK8UhrmarkeDPAPINeustart |
+| Lokaler Halt B3/B6, L2-1/L2-2 (#1240 L2) | TestHaltUeberstehtNeustart, TestHaltDateiFehltOderDefekt, TestHaltZwischenClaimUndSpawn, TestHaltBeiWriteFrameFehler, TestAnhaltenBeendetLaufOhneNetz, TestPauseLaesstLaufendenZuEnde, TestFortsetzenHoltNichtsNach, TestHaltBefehleStartenNie, TestPauseEndetAutomatisch, TestHaltMeldungKoalesziert, TestHaltRunSperrtClaimsUndHaeltHeartbeat, TestHaltSpeicherfehlerSperrt, TestHaltMeldungNeustartUndBestaetigung, TestHaltMeldungOhneDauerhafteBremseGesperrt, TestHaltBrichtOffenenClaimAb, TestHaltDirekteStartwegeGesperrt, TestPauseNeustartUndAblaufOhneNachholen, TestHaltMeldungWiederholtFehler, TestHaltLaesstServerUnveraendert, TestHaltSperrtSlotreservierung; Windows-CI: TestWindowsAnhaltenBeendetEnkel |
 | Hygiene | TestLoggerDeckelUndFesteCodes, TestStriktesJSONAmAdapter, TestFrameGrenzen, TestReleaseUndWindowsCI |
+| Pipe B1/B2, L3-1/L3-2, H1–H3 (#1240 L3) | TestPipeDACLStruktur, TestPipeBesetztStartetOhnePipe, TestClientPrueftServerbild, TestPipeBefehleGeschlossen, TestPipeGolden, TestPipeRoheRahmenAmLaeufer, TestPipeOhneTraeger, TestSetupStartNurAusManifest, TestSetupStartAmPipeHTTPAdapter, TestSetupHaltWaerendHTTP, TestSetupVeralteteFreigabeStartetNicht, TestSetupFreigabeDirektVorSpawn, TestSetupSperrtUndBrichtClaimAb, TestSetupSperrtAndereStartwege, TestSetupDirektesExecuteBleibtGesperrt, TestSetupFehlerNieOfflineNachmelden, TestPipeHaltBefehle, TestSkriptRoheTestfunktionenBleibenGesperrt, TestPipeKindHandleListe; native Windows-Sonden siehe README „Lokale Pipe“ |
+| Bedienfeld, Plan 14/15/18, §6.6, H4 | TestPanelZustaende, TestPanelMenueBefehleUndSetupEingabe, TestPanelFrageNurLokal, TestPanelStoerungBleibtBisNeuGeprueftemZustand, TestPanelServerpruefungSperrtBefehle, TestServerpruefungSendetNichtsAmAdapter, TestVerbindungVerwirftAlteBefehleUndBrichtSchreibenAb, TestBlockiertesSchreibenTrotzHeartbeatWirdGetrennt, TestFokusWaechter, TestBedienfeldNurGepruefterDial, TestPanelImportWaechter, TestL4SchemaPflichtfelder, TestH4RoheFragenAmLaeufer, TestH4SkriptTitelAbgewiesen, TestH4RoheFrageGrenzen, TestPanelEingabeAusVerifiziertemManifest; Windows: TestWindowsBedienfeldProzesssonde |
+| Rückfragen intern, L3-Anteil | TestFrageNurLokal, TestFrageFristUndDisconnect, TestPipeFrageAntwortWeiterleitung, TestPipeHaltSchliesstFrage |
+| L5 SEC-R4 F1/H2 | TestL5EndaufnahmeNachHaltUndWandzeit (Anhalten: 0 Aufnahmen/Uploads; Wandzeit: 1, ohne Engine-Sperre), TestL5LaufpinSeparatGebunden (verified gültig, nur Laufpin abweichend); Mutationen completion-halt, completion-wall-context, run-pin-binding |
+| Helfer L5, Plan 3/15/16/18, L3-2/H3 | TestScreenshotNurTestgeraet/roheRahmen, TestErgebnisNurTestauftrag/roheRahmen, client.TestFrageNurLokal (echter Python-Bootstrap), TestL5ErgebnisNullUndGrenzen, TestL5ScreenshotGrenzen, TestL5RahmenStrikt, TestL5BootstrapModule, TestL5TestauftragAmHTTPAdapter, TestKeineListenerDownloaderOderPip, TestScreenshotPNGBufferGrenze, TestScreenshotLinuxStub; Windows nur kompiliert: TestWindowsScreenshotGDI, TestWindowsScreenshotGDIChild, TestWindowsPythonKindOhneBedienfeldPipe |
 
 Übernommene Funktionen sind im Dateikopf markiert. Wächter vergleichen die
 vollständige Funktionsmenge und formatierten Funktionszeilen mit D0 bzw.
@@ -166,7 +365,8 @@ einmalig neu, bevor ein zweiter Startversuch erfolgt. Ungültige Syncs ändern
 weder Manifest noch LastSync. Verifizierte Umgebungen erhalten eigene
 DPAPI-Metadaten für Wiederaufnahme eines abgebrochenen Mehr-Pin-Syncs.
 State.Use serialisiert Cache-Schreiber gegen Widerruf. Prozessanlage und
-Widerrufsabbruch verwenden dieselbe Engine-Sperre.
+Widerrufsabbruch verwenden dieselbe Engine-Sperre. Der lokale Halt prüft und
+beendet unter dieser Sperre (L2-1), bevor ein weiterer Prozess entstehen kann.
 
 Die Journalgrenze gilt für die veröffentlichte Ciphertext-Datei einschließlich
 Marker, Slot-Merker und Verlustzähler. Atomare Ersatzdateien sind unter Windows verschlüsselt, unter Linux authentisiert;
@@ -174,14 +374,19 @@ verwaiste Ersatzdateien werden beim exklusiven Start entfernt. Unter Windows lie
 Config/Manifest und Umgebungsseals in DPAPI-Dateien. Nur Paket- und
 Laufzeitcode liegt im Klartext. Status prüft Dateiexistenz und Autostart,
 ohne den Journalbestand zu öffnen oder zu bereinigen.
+`TestWindowsStatusBleibtVorStateLockUndNetz` schützt diesen frühen Lesepfad
+auch unter Linux; `TestWindowsStatusLiestKeineDPAPIDateien` führt ihn unter
+Windows mit absichtlich ungültigem Credential, Journal, Manifest und Uhrmarke
+aus und prüft, dass alle Dateien unverändert bleiben.
 
-DACLs werden strukturell geprüft: geschützt, genau eine explizite Allow-ACE,
+DACLs der Zustandsdateien werden strukturell geprüft: geschützt, genau eine explizite Allow-ACE,
 eigene binäre SID, volle Dateirechte und ausschließlich OI/CI-Vererbung.
 SDDL-Aliase (etwa SY/BA) sind keine andere Identität; ein Textvergleich
 von SID-Darstellungen ist unzulässig. Reparse-Punkte bleiben
 auf allen bestehenden Pfadkomponenten gesperrt. Windows-Diagnosen enthalten
 nur feste Operationsnamen und OS-Fehlernummer/-text, keine Pfade oder Konten.
-Die CLI-Dienstausgabe bleibt unverändert beim festen Fehlercode.
+Die Pipe hat stattdessen genau zwei explizite ACEs und das Medium-Label
+(Invariante 15). Die CLI-Dienstausgabe bleibt unverändert beim festen Fehlercode.
 TestWindowsCIContext protokolliert nur erhöhte Rechte und Volumen-Gleichheit;
 kein Test benötigt einen interaktiven Desktop. Die Standardkonto-Taskprobe
 bleibt separat und verweigert weiterhin erhöhte Ausführung.
@@ -223,6 +428,39 @@ Compilerfehler zählen nicht. finally stellt Quelldateien byte-genau wieder her.
 Nach externer Zwangsbeendigung den betroffenen Guard ausdrücklich prüfen.
 Abschlussbericht ausschließlich im Chat, keine Berichtsdatei im Repository.
 
+L5-Mutationen: `python probe/l5_mutations.py`, exklusiv in `l5-test` mit
+Go 1.26.10. Jede Mutation kompiliert und muss den benannten Test rot machen;
+Quelldateien werden bytegenau wiederhergestellt. Python: `python3 -B -m unittest
+discover -s internal/client -p test_bootstrap.py`. Native GDI-Proben nur durch
+LEAD CI/GATE mit `JNPT_GDI_PROBE=1`; separater Hilfsprozess mit 15 Sekunden
+Frist, sichtbarer Skip ohne Opt-in/interaktive Sitzung. Lokal nur cross-kompilieren,
+niemals GUI oder Bildschirmaufnahme. H3-Handleliste/Env/argv bleiben unverändert.
+
+L4-Mutationen: `python probe/l4_mutations.py`, exklusiv in `l4-test`, Go 1.26.10.
+Kompilierende rote Mutanten, bytegenaue Wiederherstellung. Native Mutanten
+lokal nur cross-kompilieren; Ausführung durch LEAD in CI, Fokus/Tray am GATE.
+
+L3-Mutationen: `python probe/l3_mutations.py`, exklusiv im Container `l3-test`
+mit `golang:1.26.10` und Repo-Mount `/workspace`. Jeder Linux-Mutant muss
+kompilieren und seinen Zieltest tatsächlich rot machen; alle Bytes werden in
+`finally` wiederhergestellt. Native Mutanten werden standardmäßig ausschließlich
+cross-kompiliert; `--native` ist für die durch LEAD gestartete Windows-CI.
+Native Kompilierung ist kein Laufzeitbeweis für ACL, IL, Authenticode oder H3.
+Keine lokalen GUI-/Desktop-Proben, kein automatischer CI-Dispatch.
+
+L2-Mutationen: `python probe/l2_mutations.py`, Container `l2-test` mit Go 1.26.10
+und Repo-Mount `/workspace`, keine parallelen Tests/Mutationen. Der Test für
+L2-1 erzwingt tabellarisch `angehalten` und `pausiert` während der Vorbereitung
+nach einem echten HTTP-Claim und bewacht zusätzlich die gemeinsame Spawn-Sperre.
+Die Mutation „Spawn-Gate nur für angehalten“ muss im Fall `pausiert` rot werden.
+`TestHaltBeiWriteFrameFehler` prüft einen echten WriteFrame-Schreibfehler:
+nach Anhalten `cancelled`, ohne Anhalten weiterhin `internal`; beide Zuordnungen
+sind durch Mutationen abgesichert. Native Sonde
+`TestWindowsAnhaltenBeendetEnkel` lokal nur kompilieren; LEAD startet Windows-CI.
+Störung bleibt lokal; L2 liefert Logcode/Statusflag, L4 zeigt dauerhaft Farbe
+und festen Ausweichtext (Invariante 16). Außerhalb des Job-Baums gestartete Prozesse bleiben
+eine Grenze; Bedienung durch Prozesse derselben Person ebenfalls (README).
+
 Native Windows-Mutationen zusätzlich: probe/mutations-windows.ps1 (ohne Admin).
 Mutationsfälle für #1245 L: idle-before-spawn, idle-remap-account, result-reject-jam,
 runid-format, runtemp-reuse, runtemp-follow-link, revoke-follow-link, child-env-profile,
@@ -233,7 +471,7 @@ dort belegt TestRunTempJunctionKanarienvogel das Aufräumen an einer echten Junc
 
 ## Linux-Server: zusätzliche Invarianten (JanuaPort/januaport#1195)
 
-- Server ausschließlich Vertrag 2, Windows ausschließlich Vertrag 1. Header,
+- Server ausschließlich Vertrag 2, Windows ausschließlich Vertrag 4. Header,
   Config-Geräteart und signiertes Manifest müssen zusammenpassen. Container-Pins:
   SHA256-Commit = Image-Digest, leerer Pfad, keine declared_tools, kein Paketweg.
   Kanonisierung unverändert; neues K1-Golden in contract/golden-v2 neben den
@@ -288,7 +526,7 @@ dort belegt TestRunTempJunctionKanarienvogel das Aufräumen an einer echten Junc
 | Cleanup, kein Wiederstart | TestVerwaisteContainerNachNeustart, TestAbbruchUndWandzeitKillRm, TestContainerFehlgeschlageneBereinigungSperrtNeustart, TestContainerCleanupWartetAufEntfernung, TestContainerHeartbeatAbbruchAmHTTPAdapter, TestContainerWiderrufStopptVorLoeschen, TestDockerAbbruchWandzeitUndNeustart (auch echter Docker) |
 | Geheimnis-Schnittmenge, Symlink, kein Env | TestGeheimnisseNurDeklariertUndOhneSymlink, TestGeheimnisseNieAlsEnv, TestKeinGeheimnisMountBeiFehlgeschlagenemStart, TestDockerGeheimnisMountReadOnlyUndInspect (echter Docker) |
 | Rootless und Mindestversion | TestRootlessErkennung, TestRuntimeFehltOderZuAlt |
-| E1/Vertrag, beide Startwege, alte Bytes | TestVertrag2ManifestGolden, TestVertrag1WindowsUnveraendert, TestVertrag2AmHTTPAdapterUndBeideStartwege, TestVertrag2VerweigertFremdeArtUndGeheimnisfelder |
+| E1/Vertrag, beide Startwege, alte Bytes | TestVertrag2ManifestGolden, TestVertrag1GoldensUnveraendert, TestVertragJeGeraeteart, TestVertrag2AmHTTPAdapterUndBeideStartwege, TestVertrag2VerweigertFremdeArtUndGeheimnisfelder |
 | Linux-Speicher, Rechte und Dienst | TestLinuxDateirechteJournalUndIntegritaet, TestLinuxPrivatePfadeVerweigernSymlinkUndFremdeRechte, TestLinuxDateiUndSperreAmAdapter, TestLinuxKonfigurationUndDienst |
 
 Linux-CI setzt JNPT_DOCKER_REQUIRED=1: kein Skip ohne Docker. Lokale Prüfung
@@ -296,3 +534,15 @@ auch im Linux-Prüfcontainer mit Docker-Socket möglich, /tmp für Bind-Proben a
 gleichen Hostpfad einbinden und Go-TMPDIR auf ein ausführbares Verzeichnis setzen.
 probe/container_mutations.py mutiert neue Sperren mit kompilierenden roten Tests
 und stellt jede Datei bytegenau wieder her. Nur exklusiv, keine parallelen Tests.
+
+L1-Mutationen: `python probe/l1_mutations.py` nutzt den laufenden Container
+`l1-test` mit Go 1.26.10, ohne parallele Tests. Jeder Mutant muss kompilieren
+und am benannten Adaptertest rot werden; `finally` stellt die Bytes wieder her.
+Windows-CI ergänzt `TestWindowsK8UhrmarkeDPAPINeustart` (DPAPI, ACL,
+Neustart, Manipulation). Keine GUI-Probe für L1.
+Upgrade-Regression: `TestTestgeraetUpgradeSynchronisiertVertrag4` und
+`TestAlterCacheSperrtClaims` prüfen alten Cache, neuen Sync und die Claim-Sperre.
+Kern-Restgrenzen: unbekannte abgelaufene Offline-Slots/Werkzeugläufe werden
+vor dem Zählen abgewiesen, `result:null` ebenfalls (README). L5 lässt bei
+`jnpt.ergebnis(None)` das Feld weg; Kern-Fix #1300 bleibt separat. Nicht durch
+Klassenumdeutung umgehen; Kern bleibt außerhalb von L1/L5.

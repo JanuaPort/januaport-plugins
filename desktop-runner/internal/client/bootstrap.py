@@ -1,4 +1,4 @@
-# Desktop-Läufer: private inherited pipes, length-prefixed JSON, no sockets.
+# Desktop-Läufer: private inherited pipes and length-prefixed JSON only.
 # Independently implemented Windows counterpart to script-runner/sandbox/bootstrap.py.
 import io
 import json
@@ -33,7 +33,7 @@ def _read():
 
 
 def _write(value):
-    body = json.dumps(value).encode("utf-8")
+    body = json.dumps(value, allow_nan=False).encode("utf-8")
     if len(body) > 8 * 1024 * 1024:
         raise ValueError()
     _writer.write(struct.pack(">I", len(body)) + body)
@@ -64,6 +64,40 @@ def log(*parts):
     pass
 
 
+def frage(text, optionen, frist_s):
+    global _seq
+    with _lock:
+        _seq += 1
+        ident = str(_seq)
+        _write({"type": "frage", "id": ident, "text": text,
+                "optionen": optionen, "frist_s": frist_s})
+        response = _read()
+        if response.get("type") == "fehler":
+            return None
+        if response.get("type") != "antwort" or response.get("id") != ident:
+            raise ValueError("Ungueltige Antwort")
+        return response.get("wahl")
+
+
+def ergebnis(wert):
+    with _lock:
+        _write({"type": "ergebnis", "wert": wert})
+        response = _read()
+        if response.get("type") != "ergebnis" or response.get("ok") is not True:
+            raise ValueError("Ergebnis abgewiesen")
+
+
+def screenshot():
+    with _lock:
+        _write({"type": "screenshot"})
+        response = _read()
+        if response.get("type") == "fehler":
+            return None
+        if response.get("type") != "screenshot" or response.get("ok") is not True:
+            raise ValueError("Ungueltige Antwort")
+        return True
+
+
 def main():
     request = _read()
     pin = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "pin"))
@@ -74,6 +108,9 @@ def main():
     mod.input = request["input"]
     mod.call, mod.log, mod.ToolError = call, log, ToolError
     sys.modules["januaport"] = mod
+    helper = types.ModuleType("jnpt")
+    helper.frage, helper.ergebnis, helper.screenshot = frage, ergebnis, screenshot
+    sys.modules["jnpt"] = helper
     sys.path[:0] = [pin, os.path.join(pin, "vendor")]
     code = 0
     try:

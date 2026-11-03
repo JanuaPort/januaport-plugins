@@ -25,12 +25,48 @@ type Journal struct {
 	Slots   map[string]string `json:"slots"`
 }
 type State struct {
-	Root    string
-	cipher  Cipher
-	mu      sync.Mutex
-	dead    bool
-	journal Journal
-	reject  rejectCount
+	Root      string
+	cipher    Cipher
+	mu        sync.Mutex
+	clockMu   sync.Mutex
+	clockSeen time.Time
+	clockHigh time.Time
+	dead      bool
+	journal   Journal
+	reject    rejectCount
+}
+
+// ObserveTime persists the maximum observed UTC time using the same OS cipher
+// and atomic replacement as the rest of state. Corruption fails closed.
+// clockMu serializes read/compare/write; Load/Save serialize against revocation.
+func (s *State) ObserveTime(now time.Time) (time.Time, error) {
+	s.clockMu.Lock()
+	defer s.clockMu.Unlock()
+	var high time.Time
+	if err := s.Load("clock", &high); err != nil && !os.IsNotExist(err) {
+		return time.Time{}, err
+	}
+	now = now.UTC()
+	if now.IsZero() {
+		return time.Time{}, ErrProtocol
+	}
+	// Keep advancing while the process is alive even if wall time rolls back.
+	// Across a shutdown only the durable watermark is available.
+	observed := time.Now()
+	if !s.clockSeen.IsZero() {
+		floor := s.clockHigh.Add(observed.Sub(s.clockSeen))
+		if now.Before(floor) {
+			now = floor
+		}
+	}
+	if high.Before(now) {
+		if err := s.Save("clock", now); err != nil {
+			return time.Time{}, err
+		}
+		high = now
+	}
+	s.clockSeen, s.clockHigh = observed, high
+	return high, nil
 }
 
 // rejectCount zählt aufeinanderfolgende 400-Ablehnungen des ältesten Ergebnisses.

@@ -1,11 +1,12 @@
 // Command script-runner ist der Beisteller „Skript-Läufer“ für JanuaPort
-// (JanuaPort/januaport#928): ein Binary, drei dauerhafte Dienste und Volume-Init.
+// Ein Binary für vier dauerhafte Dienste (apphost optional) und Volume-Init.
 //
 //	script-runner mediator   vermittler: MCP-Server für das Gateway, Senke, Slot
 //	script-runner guard      Wächter: PID 1 der Sandbox, genau ein Lauf je Instanz
 //	script-runner fetcher    abholer: prüft Pins gegen den Standard-Zweig und holt Objekte per ssh in den Store
 //
 //	script-runner init-libs  bereitet das Bibliotheks-Volume vor dem Sandbox-Start vor
+//	script-runner apphost    geprüfte Browser-Apps und privates tls-ask-Relay
 package main
 
 import (
@@ -21,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/januaport/januaport-plugins/script-runner/internal/apphost"
 	"github.com/januaport/januaport-plugins/script-runner/internal/contract"
 	"github.com/januaport/januaport-plugins/script-runner/internal/fetcher"
 	"github.com/januaport/januaport-plugins/script-runner/internal/guard"
@@ -39,8 +41,19 @@ const (
 )
 
 func main() {
+	if len(os.Args) >= 2 && os.Args[1] == "apphost" {
+		if len(os.Args) == 3 && os.Args[2] == "--help" {
+			fmt.Println("apphost: Browser :8080, tls-ask-Relay :8081; Schlüssel /run/secrets/jnpt/runtime-key; JNPT_APPS_DOMAIN, JNPT_APPS_GATEWAY_URL (privater Listener), JNPT_GATEWAY_PUBLIC_URL (HTTPS-Anmeldung)")
+			return
+		}
+		if len(os.Args) != 2 {
+			fmt.Fprintln(os.Stderr, "Aufruf: script-runner apphost [--help]")
+			os.Exit(2)
+		}
+		os.Exit(runApphost())
+	}
 	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "Aufruf: script-runner mediator|guard|fetcher|init-libs")
+		fmt.Fprintln(os.Stderr, "Aufruf: script-runner mediator|guard|fetcher|init-libs|apphost")
 		os.Exit(2)
 	}
 	switch os.Args[1] {
@@ -59,6 +72,46 @@ func main() {
 	}
 	fmt.Fprintln(os.Stderr, "unbekannter Unterbefehl")
 	os.Exit(2)
+}
+
+func runApphost() int {
+	// Check the materialized key before opening either listener.
+	h, err := apphost.New(apphost.Config{Domain: os.Getenv("JNPT_APPS_DOMAIN"), GatewayURL: os.Getenv("JNPT_APPS_GATEWAY_URL"), LoginURL: os.Getenv("JNPT_GATEWAY_PUBLIC_URL"), Logger: logger()})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
+	browser := &http.Server{Addr: ":8080", Handler: h.Handler(), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
+	relay := &http.Server{Addr: ":8081", Handler: h.RelayHandler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 35 * time.Second}
+	browserListener, err := apphost.Listen(ctx, browser.Addr)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "apphost: Browser-Listener nicht verfügbar")
+		return 1
+	}
+	defer func() { _ = browserListener.Close() }()
+	relayListener, err := apphost.Listen(ctx, relay.Addr)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "apphost: Relay-Listener nicht verfügbar")
+		return 1
+	}
+	defer func() { _ = relayListener.Close() }()
+	errs := make(chan error, 2)
+	go func() { errs <- browser.Serve(browserListener) }()
+	go func() { errs <- relay.Serve(relayListener) }()
+	code := 0
+	select {
+	case <-ctx.Done():
+	case <-errs:
+		fmt.Fprintln(os.Stderr, "apphost: Listener beendet")
+		code = 1
+	}
+	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = browser.Shutdown(shutdown)
+	_ = relay.Shutdown(shutdown)
+	return code
 }
 
 // initLibs runs as 65532 on the full libs mount, before a subpath mount can

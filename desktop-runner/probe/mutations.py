@@ -52,7 +52,7 @@ CASES = [
     ("interrupted", "client/state.go", 'r.End = "interrupted"', 'r.End = "ok"', "client", "TestJournalDeckelBestaetigungNeustart"),
     ("revoke", "client/state.go", "return removeTree(s.Root)", "return nil", "client", "TestWiderrufAllesWeg"),
     ("revoke-follow-link", "client/runtemp.go", "if info.Mode().Type() == fs.ModeDir {", "if info, _ = os.Stat(path); info != nil && info.IsDir() {", "platform", "TestRevokeFolgtKeinerJunctionInTmp"),
-    ("log-code", "client/log.go", "if code < LogStarted || code > LogTempLeft {", "if (code < LogStarted || code > LogTempLeft) && false {", "client", "TestLoggerDeckelUndFesteCodes"),
+    ("log-code", "client/log.go", "if code < LogStarted || code > LogOfflineExpired {", "if (code < LogStarted || code > LogOfflineExpired) && false {", "client", "TestLoggerDeckelUndFesteCodes"),
     ("idle-before-spawn", "client/engine.go", "if why := startRefusal(s, config); why != nil {", "if why := startRefusal(s, config); why != nil && false {", "client", "TestIdleVorSpawnUndMount"),
     ("idle-remap-account", "client/engine.go", 'detail = "idle"', 'detail = "account"', "client", "TestIdleWirdNieAlsAccountGemeldet"),
     ("result-reject-jam", "client/state.go", "return s.reject.n >= resultRejectLimit", "return false", "client", "TestAbgelehntesErgebnisStautDenRueckstauNicht"),

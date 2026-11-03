@@ -101,3 +101,39 @@ func TestPairVorbedingungNenntUrsache(t *testing.T) {
 		t.Fatalf("Vorbedingung ohne sichere Operation/Errno: %v", err)
 	}
 }
+
+func TestWindowsStatusLiestKeineDPAPIDateien(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	root, err := platform.Root()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// Even malformed journal/clock files must not enter OpenState/ObserveTime.
+	files := []string{"credential", "journal", "clock", "manifest"}
+	canary := []byte("synthetic-invalid-dpapi")
+	for _, name := range files {
+		if err = os.WriteFile(filepath.Join(root, name), canary, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var out bytes.Buffer
+	if err = run([]string{"status"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); got != "Desktop-Läufer: gekoppelt=true installiert=true\n" && got != "Desktop-Läufer: gekoppelt=true installiert=false\n" {
+		t.Fatal("ungültige Statusausgabe", got)
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil || len(entries) != len(files) {
+		t.Fatal("Status hat State angelegt", err)
+	}
+	for _, name := range files {
+		got, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil || !bytes.Equal(got, canary) {
+			t.Fatal("Status hat State verändert", name, err)
+		}
+	}
+}
