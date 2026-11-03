@@ -102,7 +102,7 @@ func TestKeineListenerDownloaderOderPip(t *testing.T) {
 				t.Error("zweiter benannter Pipe-Listener", p)
 			}
 		}
-		for _, bad := range []string{"net.Listen", "http.ListenAndServe", "exec.Command(\"pip", "python -m pip", "import pip", "pip.main", "http.Get(", "http.Post("} {
+		for _, bad := range []string{"net.Listen", "http.ListenAndServe", "NewProc(\"CreateNamedPipe", "syscall.CreateNamedPipe", "exec.Command(\"pip", "python -m pip", "import pip", "pip.main", "http.Get(", "http.Post("} {
 			if strings.Contains(s, bad) {
 				t.Errorf("verbotener Weg in %s: %s", p, bad)
 			}

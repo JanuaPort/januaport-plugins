@@ -22,7 +22,8 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 | engine.go, halt.go, bootstrap.py | Gemeinsamer Laufplatz, Takt, Claim/Start, lokaler Halt, Rahmenkanal/MCP |
 | state.go, replace_* | Atomare OS-geschützte Dateien, Journal/Marker/Slot-Transaktion, Löschung |
 | runtemp.go | Lauf-TEMP: RunID/RunTemps, Anlegen nur neu, Aufräumen/Besen ohne Reparse-Punkte, Kind-Umgebung |
-| log.go | Geschlossene numerische Codes (1–8), 5 × 1 MiB |
+| log.go | Geschlossene numerische Codes (1–9), 5 × 1 MiB |
+| internal/pipe, internal/client/pipe.go | Lokales Schema, Windows-Pipe, Serverprüfung, Setup-Zulassung und interne Rückfragen |
 | internal/platform/*_windows.go | DPAPI/ACL (SecureRoot, MkdirPrivate), WTS/LastInput, suspendierter Prozess/Job Object, COM/HKCU |
 | internal/platform/install.go, other.go | Windows-Nähte und Fail-closed-Stubs für andere Systeme |
 | internal/platform/security_linux.go, server_linux.go | Linux-HMAC/Dateirechte, Sperre und Server-Konfiguration |
@@ -145,7 +146,8 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     `StartSetup` prüft das signierte Manifest, erzeugt 128 Zufallsbits über
     `crypto/rand` (22 Zeichen base64url) und bindet `X-Jnpt-Manifest-Seq`.
     `API.Halt` meldet nur; `Engine.Halt` steuert seit L2 lokal (Invariante 14).
-    Pipe, Bedienfeld, Helfer und Aufnahme folgen in L3–L5. L1/L2 erfassen keinen Bildschirm.
+    L3 ergänzt die Pipe und die Go-seitige Setup-Zulassung. Bedienfeld, Helfer
+    und Aufnahme folgen in L4/L5. L1–L3 erfassen keinen Bildschirm.
 
 14. Lokaler Halt (#1240 L2, nur Windows): atomare DPAPI-Datei `halt`
     (`{state, until}`), vor jedem ersten Takt gelesen. B6: offline und über
@@ -163,12 +165,54 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     B3: Halt schränkt nur ein, Befehle starten nie. Fortsetzen umgeht keine
     bestehenden Startprüfungen. Kein Nachholen, auch nicht innerhalb der
     Fortsetzungsminute; übersprungene Slots ohne Marker/Ergebnis. Pause schwächt
-    Anhalten nicht ab. `Engine.Halt`, `Pause`, `HaltStatus` sind nur Go-Schnittstellen.
+    Anhalten nicht ab. `Engine.Halt`, `Pause`, `HaltStatus` bleiben die maßgeblichen
+    Go-Schnittstellen; L3 leitet die geschlossenen Pipe-Befehle darauf weiter.
     Letzten Wechsel via L1-Adapter `POST /halt` nachliefern und koaleszieren,
     maximal ein Versuch je zehn Sekunden (auch Fehler). DPAPI-Datei `halt-attempt`
     erhält die Bremse bei Neustart; defekte/nicht schreibbare Bremse sperrt Meldungen.
     HTTP außerhalb von `e.mu`, damit Widerruf zurückrufen kann; alte Bestätigung
     löscht keinen neueren Wechsel. Eigener Sender läuft auch während Execute.
+
+15. Lokale Pipe (#1240 L3, nur Windows), B1/B2: genau ein benannter Listener
+    `\\.\pipe\JanuaPort.Bedienfeld.<erste 16 Hex-Zeichen SHA-256 der Benutzer-SID>`.
+    Geschützte DACL nur Benutzer- und Logon-SID, keine AppContainer-/Capability-ACE.
+    H1: `FILE_GENERIC_READ | FILE_WRITE_DATA` (`0x12008b`), kein `GENERIC_WRITE`
+    und kein `FILE_CREATE_PIPE_INSTANCE`. L3-1: ausdrücklich
+    `S:(ML;;NWNR;;;ME)`; Low-IL READ und WRITE werden abgewiesen.
+    `PIPE_REJECT_REMOTE_CLIENTS` und `FILE_FLAG_FIRST_PIPE_INSTANCE`; die erste
+    Instanz bleibt bis zum Ende offen, auch zwischen Clients. Name besetzt oder
+    Anlagefehler: genau ein Versuch, fester Logcode `9 1`, Läufer ohne Pipe,
+    kein Ausweichname. Server prüft den Client-Bildpfad auf `jnpt-bedienfeld.exe`
+    im eigenen Ordner. Clientbibliothek prüft `GetNamedPipeServerProcessId`,
+    `desktop-runner.exe` im eigenen Ordner, vertrauenswürdiges Authenticode mit
+    gleichem Herausgeber (vollständiger Subject-DER des geprüften Unterzeichners)
+    und H2: gleiche Benutzer-SID aus dem Token des Server-Prozesses. Fehler →
+    `Störung`, vor jeder gesendeten Nachricht. Signaturprüfung ohne UI und ohne
+    Netzabruf; unzureichender lokaler Vertrauens-/Sperrlistenstand sperrt ebenfalls.
+    Vier Byte Big-Endian-Länge plus 1–4096 Byte UTF-8-JSON; geschlossenes Schema,
+    `DisallowUnknownFields`, keine Zusatz-/Doppelfelder, Nulls oder Folgedokumente.
+    Golden: `internal/pipe/testdata/messages.json`. Keine Token-, Eingabe-, Pfad-
+    oder Modusfelder; Status wird ausdrücklich projiziert, kein Bundle serialisiert.
+    L3-2: jeder rohe Rahmen wird am Läufer in Go geprüft. Setup nur aus erneut
+    verifiziertem v4-Manifest, ohne `frei`, bei passendem Konto/Sitzung, online,
+    ohne Halt/Pause und ohne belegten/reservierten Platz. Reservierung umfasst
+    HTTP und Prozessvorbereitung; Zeitplan, Ad-hoc und direktes Execute bleiben
+    ausgeschlossen. Offene Claims werden abgebrochen und ihre Übergangsantworten
+    verworfen; während des Setup-Laufs wird kein neuer Claim geholt.
+    L1-Adapter bindet Sequenz und erzeugt die Nonce; keine
+    Offline-Warteschlange für Setup-Befehle. Halt/Freigabewechsel während HTTP
+    sperrt den Spawn. Unmittelbar vor Spawn wird die Setup-Freigabe unter derselben
+    Engine-Sperre erneut gebunden; die L2-Haltprüfung bleibt unverändert.
+    Rückfragen intern lokal: 500 Zeichen, 2–4 Optionen zu je 40 Zeichen,
+    5–3600 Sekunden, höchstens eine offen; ohne Panel/bei Frist/Abbruch `nil`,
+    `antwort.wahl` ist nullbasiert. Anhalten schließt die Frage. L5 bindet den
+    Python-Kanal an diese Prüfung und den Laufkontext. Rohe Skript-Rahmen für
+    `frage`/`ergebnis`/`screenshot` bleiben bis L5 abgewiesen; kein Aufnahmeweg.
+    Ergebnis und Screenshot bleiben zusätzlich durch die L1-Testauftragsprüfung
+    geschützt (Invariante 13). H3: Pipe-Serverhandles sind nicht vererbbar und
+    stehen nie in der expliziten Python-Handleliste (nur stdin/stdout/NUL).
+    Native Kind- und echte Python-Sonde prüfen Handle-Tabelle, Env und Kommandozeile:
+    kein Pipe-Name und kein `jnpt*`. Kein neuer Linux-/TCP-/HTTP-Listener.
 
 ## Benannte Grenzen
 
@@ -176,6 +220,15 @@ Widerruf wird offline erst beim Kontakt sichtbar, bis zur Gnadenfrist kann
 das Gerät weiterlaufen. Ed25519-Rotation v1 nur neue Kopplung. Workstation-
 Skripte handeln mit den Rechten der Person. DPAPI CurrentUser schützt nicht
 gegen jemanden mit Zugriff auf diese Sitzung (C4).
+
+A1 / SEC K6b (c): **ACL schützt nicht gegen den WebView2-Hauptprozess**.
+Er läuft mit den Rechten derselben Person auf Medium-IL. Client-Bildprüfung
+ist Tiefenverteidigung, keine Grenze gegen gleichberechtigte Prozesse,
+UI-Automation oder Austausch von Dateien im eigenen Ordner. Die Medium-
+Integritätsmarke schützt gegen lesende und schreibende Low-IL-Clients.
+Störung bleibt lokal; eine Pipe kann durch einen gleichberechtigten Prozess
+belegt oder blockiert werden. Dauerhafte Tray-Anzeige und Ausweichtext
+„anhalten: abmelden oder über den Admin halten lassen“ gehören zu L4.
 
 ## Tragende Adaptertests
 
@@ -189,7 +242,7 @@ gegen jemanden mit Zugriff auf diese Sitzung (C4).
 | Konto/Sitzung/idle vor Spawn | TestKontoUndManipulationVorSpawn, TestReadyVerboteneZustaende, TestIdleVorSpawnUndMount, TestIdleWirdNieAlsAccountGemeldet |
 | Rückstau-Grenze abgelehnter Ergebnisse (L2) | TestAbgelehntesErgebnisStautDenRueckstauNicht, TestAltKernLehntIdleAbJournalStautNicht, TestVerwurfWirdLokalGeloggt |
 | Lauf-TEMP (L3–L6) | TestRunIDFormat, TestRunTempsCreateVerlaesstDieBasisNie, TestRunTempsAnlegenNeuUndExklusiv, TestRunTempsRemoveFolgtKeinemVerweis, TestRunTempsSweepRaeumtRestePlusVerweiseOhneEinzusteigen, TestLaufBekommtPrivatesTempAlsArbeitsverzeichnis, TestLaufTempWirdBeiJedemEndeAufgeraeumt, TestKindUmgebungOhneProfil; Windows: TestMkdirPrivateExklusivUndGeprueft, TestRunTempJunctionKanarienvogel, TestWindowsEnvOhneProfilUndTemp, TestWindowsPythonTempProLauf |
-| B2/B3 Windows: keine Listener/Downloads, keine privaten Bodys/Kind-Token | TestKeineListenerDownloaderOderPip, TestNurAnlageUndKeinePrivatenBodys, TestWindowsPythonEchterStartUndManipulation, TestWindowsJobObjectEnkelUndToken |
+| B2/B3 Windows: genau ein lokaler Pipe-Listener, keine Netzlistener/Downloads, keine privaten Bodys/Kind-Token | TestKeineListenerDownloaderOderPip, TestNurAnlageUndKeinePrivatenBodys, TestWindowsPythonEchterStartUndManipulation, TestWindowsJobObjectEnkelUndToken |
 | Cron/DST, Offline-Grenze und Journal | TestCronZeitzoneUndSlots, TestOfflineRegel, TestOfflineVerweigertWirdJournalisiert |
 | E4: Ciphertext-Deckel, Bestätigung, Neustart | TestJournalDeckelBestaetigungNeustart, TestJournalMisstVerschluesselteBytes, TestWindowsNeustartInterrupted, TestErgebnisrueckstauUndAtomarerSlot |
 | Widerruf an allen Wegen, keine Wiederbelebung | TestWiderrufAnAllenHTTPWegen, TestWiderrufAllesWeg, TestRevokeFolgtKeinemVerweisInTmp, TestRevokeFolgtKeinerJunctionInTmp (Windows) |
@@ -198,6 +251,8 @@ gegen jemanden mit Zugriff auf diese Sitzung (C4).
 | Vertrag 4 / Testweg / K8 (#1240 L1) | TestVertragJeGeraeteart, TestGoldenV3AusKern, TestManifestV4StriktAmAdapter, TestTestgeraeteSynchronisieren1298, TestScreenshotNurTestgeraet, TestErgebnisNurTestauftrag, TestTestadapterVerweigernFalscheBindung, TestSetupUndHaltAmHTTPAdapter, TestSetupSchemaAmAdapter, TestSetupStartVerweigertFremdeFreigaben, TestL1WiderrufAmHTTPAdapter, TestOfflineFristJePinUndUhrMarke, TestOfflineNachmeldungAmAdapter, TestK8ArchivLaengsteWirksameFrist, TestErgebnisNachNeustartMitSignierterFreigabe, TestVertrag4ClaimUndErgebnisOhneServerfelder; Windows-CI: TestWindowsK8UhrmarkeDPAPINeustart |
 | Lokaler Halt B3/B6, L2-1/L2-2 (#1240 L2) | TestHaltUeberstehtNeustart, TestHaltDateiFehltOderDefekt, TestHaltZwischenClaimUndSpawn, TestHaltBeiWriteFrameFehler, TestAnhaltenBeendetLaufOhneNetz, TestPauseLaesstLaufendenZuEnde, TestFortsetzenHoltNichtsNach, TestHaltBefehleStartenNie, TestPauseEndetAutomatisch, TestHaltMeldungKoalesziert, TestHaltRunSperrtClaimsUndHaeltHeartbeat, TestHaltSpeicherfehlerSperrt, TestHaltMeldungNeustartUndBestaetigung, TestHaltMeldungOhneDauerhafteBremseGesperrt, TestHaltBrichtOffenenClaimAb, TestHaltDirekteStartwegeGesperrt, TestPauseNeustartUndAblaufOhneNachholen, TestHaltMeldungWiederholtFehler, TestHaltLaesstServerUnveraendert, TestHaltSperrtSlotreservierung; Windows-CI: TestWindowsAnhaltenBeendetEnkel |
 | Hygiene | TestLoggerDeckelUndFesteCodes, TestStriktesJSONAmAdapter, TestFrameGrenzen, TestReleaseUndWindowsCI |
+| Pipe B1/B2, L3-1/L3-2, H1–H3 (#1240 L3) | TestPipeDACLStruktur, TestPipeBesetztStartetOhnePipe, TestClientPrueftServerbild, TestPipeBefehleGeschlossen, TestPipeGolden, TestPipeRoheRahmenAmLaeufer, TestPipeOhneTraeger, TestSetupStartNurAusManifest, TestSetupStartAmPipeHTTPAdapter, TestSetupHaltWaerendHTTP, TestSetupVeralteteFreigabeStartetNicht, TestSetupFreigabeDirektVorSpawn, TestSetupSperrtUndBrichtClaimAb, TestSetupSperrtAndereStartwege, TestSetupDirektesExecuteBleibtGesperrt, TestSetupFehlerNieOfflineNachmelden, TestPipeHaltBefehle, TestSkriptRoheTestfunktionenBleibenGesperrt, TestPipeKindHandleListe; native Windows-Sonden siehe README „Lokale Pipe“ |
+| Rückfragen intern, L3-Anteil | TestFrageNurLokal, TestFrageFristUndDisconnect, TestPipeFrageAntwortWeiterleitung, TestPipeHaltSchliesstFrage |
 
 Übernommene Funktionen sind im Dateikopf markiert. Wächter vergleichen die
 vollständige Funktionsmenge und formatierten Funktionszeilen mit D0 bzw.
@@ -231,13 +286,14 @@ auch unter Linux; `TestWindowsStatusLiestKeineDPAPIDateien` führt ihn unter
 Windows mit absichtlich ungültigem Credential, Journal, Manifest und Uhrmarke
 aus und prüft, dass alle Dateien unverändert bleiben.
 
-DACLs werden strukturell geprüft: geschützt, genau eine explizite Allow-ACE,
+DACLs der Zustandsdateien werden strukturell geprüft: geschützt, genau eine explizite Allow-ACE,
 eigene binäre SID, volle Dateirechte und ausschließlich OI/CI-Vererbung.
 SDDL-Aliase (etwa SY/BA) sind keine andere Identität; ein Textvergleich
 von SID-Darstellungen ist unzulässig. Reparse-Punkte bleiben
 auf allen bestehenden Pfadkomponenten gesperrt. Windows-Diagnosen enthalten
 nur feste Operationsnamen und OS-Fehlernummer/-text, keine Pfade oder Konten.
-Die CLI-Dienstausgabe bleibt unverändert beim festen Fehlercode.
+Die Pipe hat stattdessen genau zwei explizite ACEs und das Medium-Label
+(Invariante 15). Die CLI-Dienstausgabe bleibt unverändert beim festen Fehlercode.
 TestWindowsCIContext protokolliert nur erhöhte Rechte und Volumen-Gleichheit;
 kein Test benötigt einen interaktiven Desktop. Die Standardkonto-Taskprobe
 bleibt separat und verweigert weiterhin erhöhte Ausführung.
@@ -278,6 +334,14 @@ Ein Mutant muss kompilieren und sein Zieltest tatsächlich fehlschlagen;
 Compilerfehler zählen nicht. finally stellt Quelldateien byte-genau wieder her.
 Nach externer Zwangsbeendigung den betroffenen Guard ausdrücklich prüfen.
 Abschlussbericht ausschließlich im Chat, keine Berichtsdatei im Repository.
+
+L3-Mutationen: `python probe/l3_mutations.py`, exklusiv im Container `l3-test`
+mit `golang:1.26.10` und Repo-Mount `/workspace`. Jeder Linux-Mutant muss
+kompilieren und seinen Zieltest tatsächlich rot machen; alle Bytes werden in
+`finally` wiederhergestellt. Native Mutanten werden standardmäßig ausschließlich
+cross-kompiliert; `--native` ist für die durch LEAD gestartete Windows-CI.
+Native Kompilierung ist kein Laufzeitbeweis für ACL, IL, Authenticode oder H3.
+Keine lokalen GUI-/Desktop-Proben, kein automatischer CI-Dispatch.
 
 L2-Mutationen: `python probe/l2_mutations.py`, Container `l2-test` mit Go 1.26.10
 und Repo-Mount `/workspace`, keine parallelen Tests/Mutationen. Der Test für

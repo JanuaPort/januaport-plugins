@@ -184,15 +184,21 @@ func (e *Engine) claim(ctx context.Context) (*Job, error) {
 		e.mu.Unlock()
 		return nil, nil
 	}
+	// L3: asynchronous setup runs own the same slot as the serial loop.
+	if e.panelPending {
+		e.mu.Unlock()
+		return nil, nil
+	}
 	pollCtx, cancel := context.WithCancel(ctx)
 	e.claimCancel = cancel
 	version := e.haltVersion
+	panelVersion := e.panelGeneration
 	e.mu.Unlock()
 	j, err := e.API.Claim(pollCtx)
 	cancel()
 	e.mu.Lock()
 	e.claimCancel = nil
-	blocked := e.haltedLocked(time.Now()) || version != e.haltVersion
+	blocked := e.haltedLocked(time.Now()) || version != e.haltVersion || panelVersion != e.panelGeneration
 	e.mu.Unlock()
 	if blocked {
 		return nil, nil

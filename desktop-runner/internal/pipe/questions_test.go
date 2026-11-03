@@ -85,3 +85,51 @@ func TestFrageFristUndDisconnect(t *testing.T) {
 		detach()
 	}
 }
+
+func TestFrageAntwortNachFristUndDoppelt(t *testing.T) {
+	var h Questions
+	events, detach, _ := h.Attach()
+	defer detach()
+	q := Message{Type: "frage", ID: "q1", Text: "Frage", Optionen: []string{"a", "b"}, FristS: 5}
+	done := make(chan struct{})
+	go func() { h.Ask(context.Background(), q); close(done) }()
+	<-events
+	// Force expiration while Ask still owns the pending question; do not rely
+	// on scheduling the timer goroutine to reject a late response.
+	h.mu.Lock()
+	h.pending.deadline = time.Now().Add(-time.Second)
+	h.mu.Unlock()
+	if h.Answer("q1", 0) == nil {
+		t.Fatal("abgelaufene Antwort")
+	}
+	h.mu.Lock()
+	h.pending.deadline = time.Now().Add(time.Hour)
+	h.mu.Unlock()
+	if h.Answer("q1", 0) != nil {
+		t.Fatal("gültige Antwort")
+	}
+	if h.Answer("q1", 1) == nil {
+		t.Fatal("zweite Antwort")
+	}
+	<-done
+}
+
+func TestFrageQueueReserviertEntfernung(t *testing.T) {
+	var h Questions
+	events, detach, _ := h.Attach()
+	defer detach()
+	h.mu.Lock()
+	for i := 0; i < cap(h.events)-1; i++ {
+		h.events <- Message{Type: "frage_weg", ID: "old"}
+	}
+	h.mu.Unlock()
+	q := Message{Type: "frage", ID: "q1", Text: "Frage", Optionen: []string{"a", "b"}, FristS: 5}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if answer, err := h.Ask(ctx, q); err != nil || answer != nil {
+		t.Fatal(answer, err)
+	}
+	if len(events) != 7 {
+		t.Fatal("Frage ohne Platz für Entfernung publiziert")
+	}
+}

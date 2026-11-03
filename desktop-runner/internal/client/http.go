@@ -434,8 +434,9 @@ type SetupStartReply struct {
 	MCPPath   string          `json:"mcp_path"`
 }
 
-// StartSetup only accepts an entry of the verified manifest. Local readiness,
-// the single run slot and the UI's free-input restriction belong to L3/L4.
+// StartSetup only accepts an entry of the verified manifest. L3's runner-side
+// pipe adapter additionally checks readiness, reserves the shared run slot and
+// rejects free-input setups in Go; authorization never depends on the UI.
 func (a *API) StartSetup(ctx context.Context, signed SignedManifest, c Credential, pin, setup string, frei json.RawMessage) (SetupStartReply, error) {
 	var out SetupStartReply
 	m, err := VerifyManifest(signed, c.Pubkey, c.DeviceID, 0)

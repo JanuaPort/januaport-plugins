@@ -4,9 +4,11 @@ package platform
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/client"
 	panel "github.com/januaport/januaport-plugins/desktop-runner/internal/pipe"
+	"github.com/januaport/januaport-plugins/desktop-runner/internal/testfixture"
 	"golang.org/x/sys/windows"
 )
 
@@ -73,7 +76,7 @@ func namedPipeHandles(t *testing.T) []string {
 	return names
 }
 
-func TestWindowsPythonKindOhneBedienfeldPipe(t *testing.T) {
+func TestWindowsKindOhneBedienfeldPipe(t *testing.T) {
 	l, err := panel.Listen()
 	if err != nil {
 		t.Fatal(err)
@@ -99,6 +102,88 @@ func TestWindowsPythonKindOhneBedienfeldPipe(t *testing.T) {
 	out, err := io.ReadAll(p.Output())
 	if err != nil || p.Wait() != nil || !strings.Contains(string(out), "PIPE_CHILD_OK") {
 		t.Fatal("Kindsonde", string(out), err)
+	}
+}
+
+func TestWindowsPythonKindOhneBedienfeldPipe(t *testing.T) {
+	py, err := os.ReadFile("../../.probe/python-3.12.10-embed-amd64.zip")
+	if os.IsNotExist(err) {
+		t.Skip("kuratierte ZIP in .probe erforderlich (Windows-CI)")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, err := panel.Listen()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	found := false
+	for _, n := range namedPipeHandles(t) {
+		found = found || strings.Contains(n, "JanuaPort.Bedienfeld.")
+	}
+	if !found {
+		t.Fatal("Eltern-Pipe fehlt")
+	}
+	root := filepath.Join(t.TempDir(), "state")
+	if err = SecureRoot(root); err != nil {
+		t.Fatal(err)
+	}
+	st, err := client.OpenState(root, DPAPI{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := []byte(`import ctypes as c, os, sys
+from ctypes import wintypes as w
+k = c.WinDLL("kernel32", use_last_error=True)
+nt = c.WinDLL("ntdll")
+k.GetCommandLineW.restype = w.LPWSTR
+assert "jnpt" not in (str(dict(os.environ)) + k.GetCommandLineW()).lower()
+assert "JanuaPort.Bedienfeld." not in str(dict(os.environ)) + k.GetCommandLineW()
+class Entry(c.Structure):
+    _fields_ = [("object", c.c_size_t), ("pid", c.c_size_t), ("handle", c.c_size_t), ("access", w.DWORD), ("backtrace", w.WORD), ("kind", w.WORD), ("attributes", w.DWORD), ("reserved", w.DWORD)]
+class Unicode(c.Structure):
+    _fields_ = [("length", w.WORD), ("maximum", w.WORD), ("buffer", c.c_void_p)]
+nt.NtQuerySystemInformation.argtypes = [w.ULONG, c.c_void_p, w.ULONG, c.POINTER(w.ULONG)]
+nt.NtQueryObject.argtypes = [w.HANDLE, w.ULONG, c.c_void_p, w.ULONG, c.POINTER(w.ULONG)]
+k.GetFileType.argtypes = [w.HANDLE]
+size = 65536
+while True:
+    data, needed = c.create_string_buffer(size), w.ULONG()
+    status = nt.NtQuerySystemInformation(64, data, size, c.byref(needed)) & 0xffffffff
+    if status == 0: break
+    assert status == 0xc0000004, hex(status)
+    size = max(size * 2, needed.value)
+    assert size <= 64 * 1024 * 1024
+count = c.c_size_t.from_buffer(data).value
+for i in range(count):
+    entry = Entry.from_buffer(data, 2*c.sizeof(c.c_size_t) + i*c.sizeof(Entry))
+    if entry.pid != os.getpid() or k.GetFileType(entry.handle) != 3: continue
+    name = c.create_string_buffer(65536)
+    assert nt.NtQueryObject(entry.handle, 1, name, len(name), c.byref(needed)) == 0
+    u = Unicode.from_buffer(name)
+    text = c.wstring_at(u.buffer, u.length//2) if u.length else ""
+    assert "JanuaPort.Bedienfeld." not in text
+`)
+	manifest := []byte("name: demo\ndescription: test\nentry: main.py\ninput_schema: {type: object}\ntools: []\ntimeout_s: 20\npython: python-3.12.10-embed-amd64.zip\n")
+	commit, raw := testfixture.Package(map[string][]byte{"main.py": script, "jnpt-desktop.yaml": manifest, "python-3.12.10-embed-amd64.zip": py}, "")
+	pin := client.Pin{Pin: "demo", Commit: commit, Path: "demo", Algo: "sha256", DeclaredTools: []string{}, Schedules: []client.Schedule{}}
+	env, err := client.Prepare(filepath.Join(root, "envs"), raw, pin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Mkdir(filepath.Join(root, "packages"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(root, "packages", env.Dir), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := client.Config{ExpectedAccount: "test"}
+	cfg.StartPolicy.Mode = "always"
+	e := client.Engine{State: st, Config: cfg, Session: func() (client.Session, error) { return client.Session{Active: true, Account: "test"}, nil }, Spawn: Spawn, ChildEnv: WindowsEnv(), Temps: &client.RunTemps{Base: filepath.Join(root, "tmp"), Mkdir: MkdirPrivate}}
+	r := e.Execute(context.Background(), client.Result{RunKey: "demo/daily/2026-11-03T10:00:00Z", ManifestSeq: 1, Commit: commit}, env, json.RawMessage(`{}`), "", 20, 0)
+	if r.End != "ok" {
+		t.Fatal("echtes Python-Kind verletzt H3", r)
 	}
 }
 

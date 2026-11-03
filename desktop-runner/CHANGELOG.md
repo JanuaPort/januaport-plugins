@@ -4,13 +4,30 @@
 
 ### 0.4.0 in Arbeit
 
+- Lokale Windows-Pipe zwischen Läufer und künftigem Bedienfeld (#1240 L3):
+  geschlossenes JSON-Schema mit 4-KiB-Rahmen und eigenem Golden, genau ein
+  benannter Listener. B1/B2, ausdrückliches Medium-Label mit No-Read-Up und
+  No-Write-Up (L3-1), schmale Client-Rechte ohne Instanzrecht (H1), Remote-
+  Abweisung und kein Ausweichen bei belegtem Namen (`9 1`).
+- Clientbibliothek prüft Server-PID, Bildpfad, Benutzer-SID (H2) und gleiches
+  Authenticode-Herausgebermerkmal; Server prüft Client-Bildpfad. A1 bleibt:
+  ACL schützt nicht gegen den WebView2-Hauptprozess derselben Person.
+- Setup-Zulassung am Läufer in Go (L3-2): nur verifizierte Manifest-Setups
+  ohne freie Eingabe, bei Online-Beobachtung und freiem Platz; Halt/Pause
+  sperren. Reservierung über HTTP und Spawn, keine Offline-Setup-Warteschlange.
+  Pipe-Haltbefehle verwenden L2; interne Rückfragen samt Frist/Antwort für L5.
+- Rohe Rahmen, Kanarien-Credential, Hygiene und Mutationsproben; native
+  Windows-Sonden für DACL/IL, Squatting, Prozessidentität und H3 (kein
+  Pipe-Handle/-Name im Kind, auch echtes Python). Native Ausführung durch
+  Windows-CI; kein Bedienfeld/Tray, Python-Helfer, Install- oder Release-Umbau.
 - Lokaler Halt im Windows-Engine (#1240 L2): atomare DPAPI-Datei vor dem
   ersten Takt; fehlend bedeutet arbeitet, unlesbar/ungültig angehalten plus
   lokale Störung (`8 1`). Anhalten beendet den Job-Baum auch offline mit
   `cancelled`; Halt und Spawn verwenden dieselbe Sperre (L2-1/L2-2, B6).
 - Pause für 15/60 Minuten oder bis Weiter lässt laufende Arbeit enden und
   sperrt Slots/Claims/Testaufträge. Fortsetzen ohne Nachholen und ohne Umgehen
-  der Startprüfungen (B3); Heartbeat bleibt bereit. Nur interne Go-Steuerung.
+  der Startprüfungen (B3); Heartbeat bleibt bereit. Interne Go-Steuerung,
+  seit L3 zusätzlich über die lokale Pipe erreichbar.
 - Letzte Halt-Meldung koalesziert nachliefern, höchstens sechs Versuche pro
   Minute, auch über Neustarts. Race-/Adaptertests und Mutationsproben;
   native Windows-Sonde für Anhalten samt Enkelprozess (Windows-CI).

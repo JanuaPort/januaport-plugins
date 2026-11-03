@@ -32,6 +32,7 @@ func TestPipeBefehleGeschlossen(t *testing.T) {
 		`{"type":"antwort","id":"x","wahl":-1}`, `{"type":"antwort","id":"x"}`,
 		`{"type":"zustand","zustand":"arbeitet","test":false,"netz":true,"beschaeftigt":false,"setups":[]}`,
 		"null", "[]", strings.Repeat(" ", 4097),
+		`{"type":"status"}` + strings.Repeat(" ", 4080),
 	} {
 		if _, err := DecodeClient([]byte(s)); err == nil {
 			t.Errorf("Befehl angenommen: %s", s)
@@ -43,6 +44,9 @@ func TestPipeBefehleGeschlossen(t *testing.T) {
 		if _, err := ReadFrame(bytes.NewReader(h[:])); err == nil {
 			t.Fatalf("Rahmen %d", n)
 		}
+	}
+	if _, err := ReadFrame(bytes.NewReader(rawFrame(strings.Repeat("x", 4097)))); err == nil {
+		t.Fatal("vollständiger übergroßer Rahmen")
 	}
 	// A valid 4096-byte payload is accepted; no off-by-one or read-ahead.
 	s := `{"type":"status"}`

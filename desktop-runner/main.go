@@ -13,6 +13,7 @@ import (
 	"runtime"
 
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/client"
+	"github.com/januaport/januaport-plugins/desktop-runner/internal/pipe"
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/platform"
 )
 
@@ -137,6 +138,8 @@ func run(args []string, out io.Writer) error {
 		}
 		defer api.Close()
 		engine.API = api
+		closePanel := engine.StartPanel(ctx, func() (pipe.Acceptor, error) { return pipe.Listen() })
+		defer closePanel()
 		_ = log.Write(client.LogStarted, 1)
 		err = engine.Run(ctx)
 		if err == context.Canceled {
