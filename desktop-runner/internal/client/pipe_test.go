@@ -220,9 +220,9 @@ func TestPipeBesetztStartetOhnePipe(t *testing.T) {
 }
 
 func TestSkriptRoheTestfunktionenBleibenGesperrt(t *testing.T) {
-	// L3 adds no Python helper/capture. Forged script frames still reach Go's
-	// closed dispatch and fail before result forwarding or any capture exists.
-	for _, raw := range []string{`{"type":"screenshot"}`, `{"type":"ergebnis","wert":42}`, `{"type":"frage","text":"x","optionen":["a"],"frist_s":0}`} {
+	// L5 accepts well-formed helper frames; malformed or unknown frames still
+	// fail in Go before forwarding. Authorization is tested with raw L5 frames.
+	for _, raw := range []string{`{"type":"screenshot","token":"x"}`, `{"type":"ergebnis","wert":42,"test":true}`, `{"type":"frage","text":"x","optionen":["a"],"frist_s":0}`} {
 		b := pipeBed(t)
 		var hits atomic.Int32
 		b.engine.API = l1API(t, func(w http.ResponseWriter, r *http.Request) { hits.Add(1) })
