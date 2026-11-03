@@ -4,6 +4,19 @@
 
 ### 0.4.0 in Arbeit
 
+- L5 SEC-R4 F1: keine Endaufnahme nach lokalem Anhalten. L2-Haltzustand
+  unmittelbar davor unter `e.mu` geprüft, Aufnahme/Upload außerhalb der Sperre;
+  nach Wandzeitablauf bleibt die Endaufnahme erhalten. Regression und Mutationen
+  für Halt/Wandzeit sowie H2: isolierte Bindung des Laufpins an die Testfreigabe.
+
+- `jnpt`-Helfer (#1240 L5) neben `januaport`: lokale Rückfragen, letztes
+  JSON-Ergebnis bis 64 KiB nur für Testaufträge, `None` ohne `result`-Feld.
+  Sämtliche Grenzen und Testfreigaben am Go-Läufer, auch für rohe Rahmen (L3-2).
+- Go-GDI-Aufnahme des primären Bildschirms nur mit signiertem `test_device`
+  und Geräte-Testpin samt Jobbindung; PNG bis 4 MiB, fünf Versuche einschließlich
+  automatischer Endaufnahme. Linux-Stub, Sperrbildschirm-Grenze dokumentiert.
+  Tests mit gezähltem Fake-Aufnehmer und echtem HTTP-Adapter, Python-Proben und
+  Mutationen. Native GDI/H3 lokal nur kompiliert, keine Aufnahme/GUI gestartet.
 - Bedienfeld-Prozesssonde: `CompareObjectHandles` aus `kernelbase.dll`,
   explizite Verfügbarkeitsprüfung und begründeter Skip statt Panic.
   Produktive DLL-/Proc-Auflösung ebenfalls ohne Panic; fehlende API hält
@@ -18,7 +31,7 @@
   ohne Antwort. H4: Pflicht-Titel aus Manifest-Pin (v4: Rückfall Pin-Name),
   Go-Prüfung roher Skript-Rahmen und höchstens eine offene Frage je Lauf.
   Pflicht-Bool `braucht_eingabe` aus verifiziertem Setup-Manifest ermöglicht den
-  genauen Hinweis; Schema-Golden ergänzt. Kein Python-Helfer-Umbau.
+  genauen Hinweis; Schema-Golden ergänzt. L4 selbst änderte den Python-Helfer nicht.
 - Fokus- und transitive Import-Wächter (benannte Ausnahmeliste leer), Modell-,
   Adapter- und Mutationstests, native Prozesssonde im bestehenden Windows-Job.
   Kein Install-/Release-Umbau/lokaler GUI-Start; native Nachweise durch CI/GATE.

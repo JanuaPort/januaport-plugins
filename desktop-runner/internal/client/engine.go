@@ -28,6 +28,7 @@ type Engine struct {
 	Version         string
 	Session         func() (Session, error)
 	Spawn           Spawn
+	Capture         func(context.Context) ([]byte, error) // platform GDI, only after Go authorization
 	ChildEnv        []string
 	Temps           *RunTemps // nil: State.Root/tmp ohne OS-Schutz (Tests); main verdrahtet MkdirPrivate
 	Log             *Logger   // optional, nur feste Codes
@@ -275,7 +276,7 @@ func (e *Engine) Execute(ctx context.Context, r Result, env Environment, input j
 
 // The caller owns runMu. Setup admission holds it before runs/start, so no
 // direct Execute can slip between HTTP authorization and process preparation.
-func (e *Engine) executeReserved(ctx context.Context, r Result, env Environment, input json.RawMessage, runToken string, wall, calls int) Result {
+func (e *Engine) executeReserved(ctx context.Context, r Result, env Environment, input json.RawMessage, runToken string, wall, calls int) (out Result) {
 	s, err := e.Session()
 	e.mu.Lock()
 	config := e.Config
@@ -348,6 +349,7 @@ func (e *Engine) executeReserved(ctx context.Context, r Result, env Environment,
 	e.activeCancel = cancel
 	e.mu.Unlock()
 	questions := newRunQuestions(&e.Questions, env.Origin)
+	helpers := e.newRunHelpers(r, env.Origin)
 	var readerDone chan struct{}
 	defer func() {
 		cancel()
@@ -356,6 +358,19 @@ func (e *Engine) executeReserved(ctx context.Context, r Result, env Environment,
 			<-readerDone
 		}
 		questions.wait()
+		out.Result = helpers.result // reader has stopped; last value, including null
+		// Completion capture shares the five-attempt budget. Its own bounded
+		// context permits an end capture after the script's wall deadline.
+		captureCtx, captureCancel := context.WithTimeout(ctx, 10*time.Second)
+		// F1: local Halt cancels runCtx, not ctx. Check L2 state at the
+		// capture boundary under its mutex; GDI and HTTP must run unlocked.
+		e.mu.Lock()
+		captureBlocked := e.haltedLocked(time.Now())
+		e.mu.Unlock()
+		if !captureBlocked {
+			_ = helpers.screenshot(captureCtx, true)
+		}
+		captureCancel()
 		e.mu.Lock()
 		e.active = nil
 		e.activeKey = ""
@@ -403,6 +418,12 @@ func (e *Engine) executeReserved(ctx context.Context, r Result, env Environment,
 				return
 			}
 			switch kind.Type {
+			case "ergebnis", "screenshot":
+				if helpers.handle(runCtx, kind.Type, b, writeScript) != nil {
+					writeScript(panel.Message{Type: "fehler", Code: "abgewiesen"})
+					exitResult(finish(r, "internal", ""))
+					return
+				}
 			case "frage":
 				if questions.start(runCtx, b, func(v any) error {
 					err := writeScript(v)

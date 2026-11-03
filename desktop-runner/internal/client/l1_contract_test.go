@@ -246,6 +246,7 @@ func l1Order(t *testing.T, test bool, pin string) (Credential, TestOrder) {
 }
 
 func TestScreenshotNurTestgeraet(t *testing.T) {
+	t.Run("roheRahmen", testScreenshotRaw)
 	png := []byte{137, 80, 78, 71, 13, 10, 26, 10, 0}
 	for _, tc := range []struct {
 		name  string
@@ -278,6 +279,7 @@ func TestScreenshotNurTestgeraet(t *testing.T) {
 }
 
 func TestErgebnisNurTestauftrag(t *testing.T) {
+	t.Run("roheRahmen", testResultRaw)
 	for _, tc := range []struct {
 		name  string
 		test  bool

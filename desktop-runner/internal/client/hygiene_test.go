@@ -95,6 +95,13 @@ func TestKeineListenerDownloaderOderPip(t *testing.T) {
 			return e
 		}
 		s := string(b)
+		if filepath.Base(p) == "bootstrap.py" {
+			for _, forbidden := range []string{"socket", "urllib", "http"} {
+				if strings.Contains(s, forbidden) {
+					t.Error("Python-Netzweg", forbidden)
+				}
+			}
+		}
 		for _, listener := range []string{"windows.CreateNamedPipe("} {
 			count := strings.Count(s, listener)
 			pipeListeners += count

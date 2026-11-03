@@ -131,7 +131,7 @@ func run(args []string, out io.Writer) error {
 		}
 		log := client.Logger{Root: root}
 		engine := &client.Engine{State: state, Credential: credential, Version: version, Session: platform.Session, Spawn: platform.Spawn, ChildEnv: platform.WindowsEnv(),
-			Temps: &client.RunTemps{Base: filepath.Join(root, "tmp"), Mkdir: platform.MkdirPrivate}, Log: &log}
+			Capture: platform.CaptureScreenshot, Temps: &client.RunTemps{Base: filepath.Join(root, "tmp"), Mkdir: platform.MkdirPrivate}, Log: &log}
 		api, err := client.NewAPI(credential.Trust, credential.Token, engine.Revoke)
 		if err != nil {
 			return err

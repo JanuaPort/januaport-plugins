@@ -1,5 +1,15 @@
 # Komponenten
 
+Desktop-Läufer L5 (0.4.0 in Arbeit): `jnpt.frage/ergebnis/screenshot` neben
+`januaport`, ausschließlich im vorhandenen Rahmenkanal. L3-2 prüft in Go vor
+jeder Aufnahme signiertes `test_device:true`, Geräte-Testpin und Jobbindung.
+Letztes Ergebnis bis 64 KiB nur für Testaufträge; `None` lässt `result` weg.
+GDI: primärer Bildschirm, PNG bis 4 MiB, fünf Versuche einschließlich
+automatischer Endaufnahme; gesperrte Sitzung kann den Sperrbildschirm zeigen.
+SEC-R4 F1: keine Endaufnahme nach lokalem Anhalten; Haltprüfung direkt davor
+unter der Engine-Sperre, Aufnahme außerhalb. Wandzeitablauf erlaubt sie weiterhin.
+H3-Handleliste, Kind-Umgebung und Kommandozeile bleiben unverändert.
+
 | Modul | Verantwortung |
 |---|---|
 | [desktop-runner](desktop-runner/CLAUDE.md) | #1167 / #1163 D4: Desktop-Läufer für Windows/amd64 ohne CGO; CLI, COM-Benutzeraufgabe/HKCU-Rückfall, DPAPI/ACL und suspendierter Start im Job Object, je Lauf privates TEMP/Arbeitsverzeichnis (nach dem Prozessbaum abgeräumt) und Ablehnungsklasse `refused/idle`. Native Windows-Sonden und Linux-Race-Tests; Live-Anlage/Azure-Signierung offen. Nur `geraet:<id>`-Pins, Weg B: Gerät holt alles ab. `/api/device/v1/`: Kopplung ohne Bearer über E3, sonst Läufer-Token; signiertes Manifest mit TOFU/seq, lokaler Zeitplantakt, Windows 0.3.0 spricht Vertrag 4, Linux-Server bleibt 2; strikte Setups/Frei und `test_device` (#1298). K8: werkzeuglos innerhalb der Pinfrist (sonst Gerätefrist), DPAPI-Uhrmarke gegen Rücksprung, Logcode 7 und markierte Offline-Nachmeldung; Kernarchiv nach längster wirksamer Frist. L2 (0.4.0 in Arbeit): lokaler Halt mit atomarer DPAPI-Datei, bei Dateifehler angehalten + Störung (Logcode 8); Halt/Spawn/Kill unter derselben Sperre, Pause ohne Laufabbruch, Fortsetzen ohne Nachholen, Heartbeat bleibt bereit (B3/B6). Koaleszierte Halt-Meldung höchstens sechs Versuche pro Minute. L4: natives Bedienfeld ohne Credential/eigenen Netzweg, reines Modell, Fokus-/Import-Wächter, dauerhafte Störung mit Ausweichtext; Rückfragen-Titel aus Manifest-Pin und höchstens eine offene Frage am Go-Läufer, Setup-Eingabehinweis aus verifiziertem Manifest. UIA desselben Benutzers bleibt möglich; endgültig für den Job-Baum ist nur Anhalten. Adapter für Setup-Start, Halt-Meldung, `result` und PNG-Upload; beide Testwege nur mit signiertem `test_device:true` und Geräte-Testpin. Werkzeuglauf erst mit Lauf-Token. DPAPI-Journal und historisch gebundene späte Ergebnisse; persistente Ad-hoc-Schlange. C1/C3 und E1–E4/C4 im Modulvertrag. |
