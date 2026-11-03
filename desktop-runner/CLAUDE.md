@@ -177,7 +177,11 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     `\\.\pipe\JanuaPort.Bedienfeld.<erste 16 Hex-Zeichen SHA-256 der Benutzer-SID>`.
     Geschützte DACL nur Benutzer- und Logon-SID, keine AppContainer-/Capability-ACE.
     H1: `FILE_GENERIC_READ | FILE_WRITE_DATA` (`0x12008b`), kein `GENERIC_WRITE`
-    und kein `FILE_CREATE_PIPE_INSTANCE`. L3-1: ausdrücklich
+    und kein `FILE_CREATE_PIPE_INSTANCE`. Native H1-Probe: echte zweite
+    Serverinstanz mit freiem Instanzplatz und installierter DACL, auch mit
+    Benutzer als Besitzer; geprüftes nicht erhöhtes Medium-Token ohne aktive
+    Admin-SID/Privilegien, Gegenprobe mit zusätzlichem Instanzrecht.
+    `CreateFile(FILE_APPEND_DATA)` allein belegt keine Instanzanlage. L3-1: ausdrücklich
     `S:(ML;;NWNR;;;ME)`; Low-IL READ und WRITE werden abgewiesen.
     `PIPE_REJECT_REMOTE_CLIENTS` und `FILE_FLAG_FIRST_PIPE_INSTANCE`; die erste
     Instanz bleibt bis zum Ende offen, auch zwischen Clients. Name besetzt oder
@@ -213,6 +217,9 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     stehen nie in der expliziten Python-Handleliste (nur stdin/stdout/NUL).
     Native Kind- und echte Python-Sonde prüfen Handle-Tabelle, Env und Kommandozeile:
     kein Pipe-Name und kein `jnpt*`. Kein neuer Linux-/TCP-/HTTP-Listener.
+    Unbenannte/unlesbare Pipe-Endpunkte werden bei der Namensabfrage übersprungen;
+    Erkennung der Eltern-Pipe, absichtlich vererbtes Handle und eine eigene
+    Python-Kontrollpipe sichern die Sonden gegen falsch grüne Ergebnisse.
 
 ## Benannte Grenzen
 

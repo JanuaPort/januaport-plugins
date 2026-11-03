@@ -101,6 +101,12 @@ keinen Python-Helfer; `bootstrap.py`, Installation und Release bleiben unveränd
 **B1 / L3-1 / H1:** geschützte DACL nur für Benutzer- und Logon-SID mit
 `FILE_GENERIC_READ | FILE_WRITE_DATA` (`0x12008b`). Kein `GENERIC_WRITE`, weil
 dessen `FILE_APPEND_DATA` bei Pipes weitere Serverinstanzen erlauben würde.
+Die native Rechteprobe versucht eine echte zweite Serverinstanz mit freiem
+Instanzplatz und der am Listener ausgelesenen DACL. Sie verwendet auch unter
+erhöhter CI ein geprüftes nicht erhöhtes Medium-Token ohne aktive Admin-SID
+oder Privilegien und prüft zusätzlich den Benutzer als Besitzer. Eine Gegenprobe
+mit erweitertem Instanzrecht muss gelingen. `CreateFile(FILE_APPEND_DATA)`
+öffnet nur einen Client-Endpunkt und belegt allein keine weitere Serverinstanz.
 Ausdrückliches Label `S:(ML;;NWNR;;;ME)` sperrt Low-IL beim Lesen und Schreiben;
 keine AppContainer-/Capability-ACE. `PIPE_REJECT_REMOTE_CLIENTS` sperrt Remote-
 Clients. **B2:** `FILE_FLAG_FIRST_PIPE_INSTANCE`, erste Instanz bleibt auch beim
@@ -174,6 +180,10 @@ erlauben Ergebnis/Screenshot weiterhin nur bei verifiziertem Testauftrag
 Der Pipe-Name wird nicht über Env oder Kommandozeile an das Kind weitergegeben.
 Die Sonden prüfen die tatsächliche Handle-Tabelle und zusätzlich das echte
 Python-Kind (kuratierte ZIP wie bei den vorhandenen Windows-Integrationstests).
+Unbenannte oder nicht abfragbare Endpunkte dürfen die Namenssonde nicht abbrechen.
+Die Eltern-Pipe muss sichtbar bleiben; ein absichtlich vererbtes Bedienfeld-Handle
+muss den Kindtest rot machen. Die Python-Sonde muss zudem ihre eigene Kontrollpipe
+finden. Ihr Laufzeitpfad bleibt kurz wie bei der vorhandenen Python-Adapterprobe.
 
 Prüfung: `python probe/l3_mutations.py` im exklusiven Container `l3-test`
 (`golang:1.26.10`). Linux prüft Schema, rohe Rahmen am Engine-/HTTP-Adapter,
@@ -185,8 +195,12 @@ braucht erhöhte CI-Testrechte), `TestWindowsPipeFremdesToken` (anonymes Token),
 `TestWindowsPipeClientDarfKeineInstanzAnlegen`, `TestWindowsPipeRemoteAbgewiesen`,
 `TestWindowsPipeBesetzt`, `TestWindowsClientPrueftEchtenServer`,
 `TestWindowsServerPrueftClientbildUndReconnect`,
-`TestWindowsKindOhneBedienfeldPipe`, `TestWindowsPythonKindOhneBedienfeldPipe`.
+`TestWindowsKindOhneBedienfeldPipe`, `TestWindowsPythonKindOhneBedienfeldPipe`,
+`TestWindowsPipeKindsondeErkenntVererbtesHandle`.
 `probe/l3_mutations.py --native` führt die nativen Mutationen dort aus.
+H1: `native-create-instance` und `native-create-instance-bit` erweitern die
+Produktions-ACL. H3: `native-h3` und `native-h3-python` vererben das echte
+Serverhandle; beide Kindtests müssen jeweils einzeln rot werden.
 Fehlende Kontoanlage-Rechte, ein fehlender lokaler SMB-Transport oder eine fehlende Python-ZIP
 wird als Skip ausgewiesen; die Struktur- und native Kindsonde bleiben aktiv.
 Authenticode mit den beiden gemeinsam signierten Release-Exes bleibt zusätzlich

@@ -81,9 +81,11 @@ NATIVE = [
     ("native-foreign-account", "pipe", "TestWindowsPipeFremdesKonto", [p("security.go", 'D:P(A;;0x12008b;;;', 'D:P(A;;GR;;;WD)(A;;0x12008b;;;')]),
     ("native-low-label", "pipe", "TestWindowsPipeLowILReadWrite", [p("security.go", 'S:(ML;;NWNR;;;ME)', '')]),
     ("native-create-instance", "pipe", "TestWindowsPipeClientDarfKeineInstanzAnlegen", [p("security.go", '0x12008b', '0x12019f', 2)]),
+    ("native-create-instance-bit", "pipe", "TestWindowsPipeClientDarfKeineInstanzAnlegen", [p("security.go", '0x12008b', '0x12008f', 2)]),
     ("native-client-path", "pipe", "TestWindowsServerPrueftClientbildUndReconnect", [p("transport_windows.go", '!sameFolder(own, p.Image, "jnpt-bedienfeld.exe")', '!sameFolder(own, p.Image, "jnpt-bedienfeld.exe") && false')]),
     ("native-server-check", "pipe", "TestWindowsClientPrueftEchtenServer", [p("transport_windows.go", 'return verifyServer(own, server)', '_ = own; _ = server; return nil'), p("transport_windows.go", 'processPeer(pid, true)', 'processPeer(pid, false)'), p("transport_windows.go", 'processPeer(windows.GetCurrentProcessId(), true)', 'processPeer(windows.GetCurrentProcessId(), false)')]),
-    ("native-h3", "platform", "TestWindowsKindOhneBedienfeldPipe|TestWindowsPythonKindOhneBedienfeldPipe", [p("transport_windows.go", 'InheritHandle: 0', 'InheritHandle: 1'), edit("internal/platform/process_windows.go", 'attrs.Update(windows.PROC_THREAD_ATTRIBUTE_HANDLE_LIST, unsafe.Pointer(&handles[0]), uintptr(len(handles))*unsafe.Sizeof(handles[0]))', 'error(nil)')]),
+    ("native-h3", "platform", "TestWindowsKindOhneBedienfeldPipe", [p("transport_windows.go", 'InheritHandle: 0', 'InheritHandle: 1'), edit("internal/platform/process_windows.go", 'attrs.Update(windows.PROC_THREAD_ATTRIBUTE_HANDLE_LIST, unsafe.Pointer(&handles[0]), uintptr(len(handles))*unsafe.Sizeof(handles[0]))', 'error(nil)')]),
+    ("native-h3-python", "platform", "TestWindowsPythonKindOhneBedienfeldPipe", [p("transport_windows.go", 'InheritHandle: 0', 'InheritHandle: 1'), edit("internal/platform/process_windows.go", 'attrs.Update(windows.PROC_THREAD_ATTRIBUTE_HANDLE_LIST, unsafe.Pointer(&handles[0]), uintptr(len(handles))*unsafe.Sizeof(handles[0]))', 'error(nil)')]),
 ]
 
 

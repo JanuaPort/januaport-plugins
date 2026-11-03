@@ -4,6 +4,12 @@
 
 ### 0.4.0 in Arbeit
 
+- Windows-Pipe-Sonden (#1240 L3): Instanzanlage mit geprüftem Standardtoken
+  und echter zweiter Serverinstanz statt bloßem Client-Open; Besitzer- und
+  Rechte-Gegenproben. Kindsonden überspringen unbenannte/unlesbare Endpunkte,
+  behalten verpflichtende Erkennungskontrollen und getrennte Mutationen für
+  Go- und Python-Kind. Kurzer Pfad für die eingebettete Python-Testlaufzeit.
+  Produktions-DACL und Handle-Vererbung unverändert.
 - Lokale Windows-Pipe zwischen Läufer und künftigem Bedienfeld (#1240 L3):
   geschlossenes JSON-Schema mit 4-KiB-Rahmen und eigenem Golden, genau ein
   benannter Listener. B1/B2, ausdrückliches Medium-Label mit No-Read-Up und
