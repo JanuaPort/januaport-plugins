@@ -139,12 +139,15 @@ function Assert-InstalltestStandardUser {
 function Assert-InstalltestDigest {
     param([string]$Directory)
     $sums = @(Get-Content -LiteralPath (Join-Path $Directory 'SHA256SUMS'))
-    if ($sums.Count -ne 1 -or $sums[0] -cnotmatch '^([0-9a-f]{64}) [ *]desktop-runner\.exe$') {
-        throw 'checksum_format'
-    }
-    $expected = $Matches[1]
-    if ((Get-FileHash -LiteralPath (Join-Path $Directory 'desktop-runner.exe') -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) {
-        throw 'checksum_mismatch'
+    if ($sums.Count -ne 2) { throw 'checksum_format' }
+    $names = @('desktop-runner.exe', 'jnpt-bedienfeld.exe')
+    for ($i = 0; $i -lt $names.Count; $i++) {
+        $name = $names[$i]
+        if ($sums[$i] -cnotmatch ('^([0-9a-f]{64}) [ *]' + [regex]::Escape($name) + '$')) { throw 'checksum_format' }
+        $expected = $Matches[1]
+        if ((Get-FileHash -LiteralPath (Join-Path $Directory $name) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) {
+            throw 'checksum_mismatch'
+        }
     }
 }
 
@@ -198,6 +201,49 @@ function Get-InstalltestAutostart {
     return $taskPresent -or $runPresent
 }
 
+# Read the actual COM action and HKCU command; both must obey the launch contract.
+function Assert-InstalltestEntry {
+    param([string]$TaskName, [string]$RunValue, [string]$Executable, [switch]$Panel)
+    $present = $false
+    $service = New-Object -ComObject 'Schedule.Service'
+    $service.Connect()
+    $folder = $service.GetFolder('\')
+    $tasks = $folder.GetTasks(1)
+    try {
+        foreach ($taskEntry in $tasks) {
+            if ($taskEntry.Name -ne $TaskName) { continue }
+            $present = $true
+            [xml]$xml = $taskEntry.Xml
+            $ns = [Xml.XmlNamespaceManager]::new($xml.NameTable)
+            $ns.AddNamespace('t', 'http://schemas.microsoft.com/windows/2004/02/mit/task')
+            $argsText = $xml.SelectSingleNode('//t:Exec/t:Arguments', $ns)
+            $arguments = if ($argsText) { $argsText.InnerText } else { '' }
+            if ($Panel -and $arguments -ne '') { throw 'panel_arguments' }
+            if (-not $Panel -and $arguments -cne 'run') { throw 'runner_arguments' }
+            $commands = $xml.SelectNodes('//t:Exec/t:Command', $ns)
+            if ($commands.Count -ne 1 -or $commands[0].InnerText -ne $Executable) { throw 'task_command_invalid' }
+            if ($xml.SelectSingleNode('//t:LogonType', $ns).InnerText -cne 'InteractiveToken' -or
+                $xml.SelectSingleNode('//t:RunLevel', $ns).InnerText -cne 'LeastPrivilege' -or
+                -not $xml.SelectSingleNode('//t:LogonTrigger', $ns)) { throw 'task_principal_invalid' }
+        }
+    } finally {
+        foreach ($com in @($tasks, $folder, $service)) { [Runtime.InteropServices.Marshal]::FinalReleaseComObject($com) | Out-Null }
+    }
+    $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Run')
+    try {
+        $run = if ($key) { $key.GetValue($RunValue) } else { $null }
+        if ($null -ne $run) {
+            $present = $true
+            $expected = if ($Executable -match '[\s"]') { '"' + $Executable + '"' } else { $Executable }
+            if (-not $Panel) { $expected += ' run' }
+            # Accept Windows' optional quoting when there are no spaces as well.
+            $quoted = '"' + $Executable + '"' + $(if ($Panel) { '' } else { ' run' })
+            if ($run -cne $expected -and $run -cne $quoted) { throw 'run_command_invalid' }
+        }
+    } finally { if ($key) { $key.Dispose() } }
+    if (-not $present) { throw 'autostart_missing' }
+}
+
 function Assert-InstalltestClean {
     param([string]$TaskName, [string]$RunValue = 'JanuaPortDesktopLaeufer')
     if (Get-InstalltestAutostart $TaskName $RunValue) { throw 'autostart_remaining' }
@@ -245,6 +291,8 @@ function Invoke-InstalltestWorker {
     Assert-InstalltestStandardUser
     $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     $task = 'JanuaPort-Desktop-' + $sid
+    $panelTask = 'JanuaPort-Bedienfeld-' + $sid
+    $panelValue = 'JanuaPortBedienfeld'
     # Environment.SpecialFolder reads the loaded user's profile, not the CI
     # parent's inherited LOCALAPPDATA. Go's os.UserCacheDir uses LOCALAPPDATA.
     $env:LOCALAPPDATA = [Environment]::GetFolderPath('LocalApplicationData')
@@ -254,27 +302,35 @@ function Invoke-InstalltestWorker {
     $stateRoot = Join-Path $env:LOCALAPPDATA 'JanuaPort/desktop-runner'
     $destination = Join-Path $env:LOCALAPPDATA "JanuaPort/installtest/$ReleaseVersion"
     $executable = Join-Path $destination 'desktop-runner.exe'
+    $panelExecutable = Join-Path $destination 'jnpt-bedienfeld.exe'
     if ($OnlyCleanup) {
         if (Test-Path -LiteralPath $executable) { Invoke-InstalltestCommand $executable @('uninstall') -Step 'uninstall' | Out-Null }
         Assert-InstalltestClean $task
+        Assert-InstalltestClean $panelTask $panelValue
         return
     }
+    Assert-InstalltestClean $panelTask $panelValue
     Assert-InstalltestFresh $stateRoot $task
     Assert-InstalltestDigest $Directory
     try { New-Item -ItemType Directory -Force $destination | Out-Null }
     catch { throw ('mkdir_failed_' + (Get-InstalltestErrorClass $_)) }
     try { Copy-Item -LiteralPath (Join-Path $Directory 'desktop-runner.exe') -Destination $executable }
     catch { throw ('copy_exe_failed_' + (Get-InstalltestErrorClass $_)) }
+    try { Copy-Item -LiteralPath (Join-Path $Directory 'jnpt-bedienfeld.exe') -Destination $panelExecutable }
+    catch { throw ('copy_panel_failed_' + (Get-InstalltestErrorClass $_)) }
     try { Copy-Item -LiteralPath (Join-Path $Directory 'SHA256SUMS') -Destination $destination }
     catch { throw ('copy_sums_failed_' + (Get-InstalltestErrorClass $_)) }
     Write-Host 'Installtest: Laeufer im Profil abgelegt.'
     Assert-InstalltestDigest $destination
     Assert-InstalltestSignature $executable
+    Assert-InstalltestSignature $panelExecutable
     $runner = $null
     try {
         Invoke-InstalltestCommand $executable @('pair', '--url', $Url) $PairCode -Step 'pair' | Out-Null
         Write-Host 'Installtest: gekoppelt.'
         Invoke-InstalltestCommand $executable @('install') -Step 'install' | Out-Null
+        Assert-InstalltestEntry $task 'JanuaPortDesktopLaeufer' $executable
+        Assert-InstalltestEntry $panelTask $panelValue $panelExecutable -Panel
         Write-Host 'Installtest: installiert.'
         try { $runner = Start-InstalltestProcess $executable @('run') } catch { throw 'run_start_failed' }
         # Drain silently; never let a full stdout/stderr pipe block the runner.
@@ -290,6 +346,7 @@ function Invoke-InstalltestWorker {
             } finally {
                 if ($runner) { $runner.Dispose() }
                 Assert-InstalltestClean $task
+                Assert-InstalltestClean $panelTask $panelValue
             }
         }
     }
@@ -456,16 +513,20 @@ function Invoke-Installtest {
         $repo = 'JanuaPort/januaport-plugins'
         $tag = "desktop-runner-v$Version"
         try {
-            foreach ($asset in @('desktop-runner.exe', 'SHA256SUMS', 'provenance.jsonl')) {
+            foreach ($asset in @('desktop-runner.exe', 'jnpt-bedienfeld.exe', 'SHA256SUMS', 'provenance.jsonl')) {
                 Invoke-WebRequest "https://github.com/$repo/releases/download/$tag/$asset" -OutFile (Join-Path $directory $asset)
             }
         } catch { throw 'download_failed' }
         Assert-InstalltestDigest $directory
         Write-Host 'Installtest: SHA256 ok.'
-        Assert-InstalltestSignature (Join-Path $directory 'desktop-runner.exe')
+        foreach ($exeName in @('desktop-runner.exe', 'jnpt-bedienfeld.exe')) {
+            Assert-InstalltestSignature (Join-Path $directory $exeName)
+        }
         Write-Host 'Installtest: Herausgeber ok.'
         try {
-            Invoke-InstalltestAttestation (Join-Path $directory 'desktop-runner.exe') (Join-Path $directory 'provenance.jsonl') $Version
+            foreach ($exeName in @('desktop-runner.exe', 'jnpt-bedienfeld.exe')) {
+                Invoke-InstalltestAttestation (Join-Path $directory $exeName) (Join-Path $directory 'provenance.jsonl') $Version
+            }
         } catch { throw ('provenance_' + (Get-InstalltestErrorClass $_)) }
         Write-Host 'Installtest: Provenance ok.'
         Assert-InstalltestTailnetLimits $Url

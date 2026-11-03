@@ -4,6 +4,16 @@
 
 ### 0.4.0 in Arbeit
 
+- L6: gemeinsame Installation von Läufer und Bedienfeld aus demselben Ordner;
+  zweite Anmelde-Aufgabe mit HKCU-Run-Rückfall, Bedienfeld ohne Argumente.
+  Fehlende Bedienfeld-Exe: E1 ohne Registrierung; Fehler nehmen Autostartänderungen
+  zurück. Uninstall entfernt beide Einträge und beendet das eigene Bedienfeld;
+  Halt und übrige DPAPI-Dateien bleiben erhalten.
+- Release baut und signiert beide Exe, prüft beide mit signtool und bindet beide
+  in SHA256SUMS/Provenance. Installtest prüft beide Autostartwege und Argumentfreiheit;
+  Invariante 19, Negativtests und L6-Mutationen ergänzt. G-L3 vor Geräte-Rollout:
+  native Opt-in-Proben und Bedienfeld-Prozesssonde auf dem Testgerät PASS ohne SKIP.
+
 - `jnpt`-Helfer (#1240 L5) neben `januaport`: lokale Rückfragen, letztes
   JSON-Ergebnis bis 64 KiB nur für Testaufträge, `None` ohne `result`-Feld.
   Sämtliche Grenzen und Testfreigaben am Go-Läufer, auch für rohe Rahmen (L3-2).

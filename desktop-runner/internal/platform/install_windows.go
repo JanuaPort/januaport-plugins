@@ -1,19 +1,19 @@
 package platform
 
 import (
-	"bytes"
-	"encoding/xml"
 	"errors"
 	"github.com/go-ole/go-ole"
 	"github.com/go-ole/go-ole/oleutil"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
 const runKey = `Software\Microsoft\Windows\CurrentVersion\Run`
 const runValue = "JanuaPortDesktopLaeufer"
+const panelRunValue = "JanuaPortBedienfeld"
 
 func taskName() (string, error) {
 	sid, e := userSID()
@@ -21,16 +21,6 @@ func taskName() (string, error) {
 		return "", e
 	}
 	return "JanuaPort-Desktop-" + sid.String(), nil
-}
-func escape(s string) string { var b bytes.Buffer; xml.EscapeText(&b, []byte(s)); return b.String() }
-func taskDefinition(exe, account string) string {
-	return `<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-<RegistrationInfo><Description>JanuaPort Desktop-Läufer</Description></RegistrationInfo>
-<Triggers><LogonTrigger><Enabled>true</Enabled><UserId>` + escape(account) + `</UserId></LogonTrigger></Triggers>
-<Principals><Principal id="User"><UserId>` + escape(account) + `</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
-<Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><AllowHardTerminate>true</AllowHardTerminate><StartWhenAvailable>true</StartWhenAvailable><RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable><IdleSettings><StopOnIdleEnd>false</StopOnIdleEnd><RestartOnIdle>false</RestartOnIdle></IdleSettings><AllowStartOnDemand>true</AllowStartOnDemand><Enabled>true</Enabled><Hidden>false</Hidden><RunOnlyIfIdle>false</RunOnlyIfIdle><WakeToRun>false</WakeToRun><ExecutionTimeLimit>PT0S</ExecutionTimeLimit><Priority>7</Priority><RestartOnFailure><Interval>PT1M</Interval><Count>3</Count></RestartOnFailure></Settings>
-<Actions Context="User"><Exec><Command>` + escape(exe) + `</Command><Arguments>run</Arguments></Exec></Actions></Task>`
 }
 
 // Schedule.Service is the COM ITaskService coclass, not schtasks or a shell.
@@ -66,12 +56,18 @@ func withTaskFolder(fn func(*ole.IDispatch) error) error {
 	return fn(folder.ToIDispatch())
 }
 func registerTask(name, exe string) error {
+	return registerAutostartTask(name, exe, false)
+}
+func registerAutostartTask(name, exe string, panel bool) error {
 	sid, e := userSID()
 	if e != nil {
 		return e
 	}
+	return registerTaskXML(name, taskDefinition(exe, sid.String(), panel), sid.String())
+}
+func registerTaskXML(name, definition, sid string) error {
 	return withTaskFolder(func(folder *ole.IDispatch) error {
-		v, e := oleutil.CallMethod(folder, "RegisterTask", name, taskDefinition(exe, sid.String()), 6, nil, nil, 3, "D:P(A;;FA;;;"+sid.String()+")")
+		v, e := oleutil.CallMethod(folder, "RegisterTask", name, definition, 6, nil, nil, 3, "D:P(A;;FA;;;"+sid+")")
 		if v != nil {
 			v.Clear()
 		}
@@ -120,9 +116,14 @@ func comCode(e error) uintptr {
 }
 func policyError(e error) bool { c := comCode(e); return c == 0x80070005 || c == 0x800704ec }
 
-type nativeAutostart struct{ name string }
+type nativeAutostart struct {
+	name, value string
+	panel       bool
+}
 
-func (n nativeAutostart) Register(exe string) error { return registerTask(n.name, exe) }
+func (n nativeAutostart) Register(exe string) error {
+	return registerAutostartTask(n.name, exe, n.panel)
+}
 func (n nativeAutostart) RemoveTask() error         { return removeTask(n.name) }
 func (n nativeAutostart) PolicyDenied(e error) bool { return policyError(e) }
 func (n nativeAutostart) SetRun(exe string) error {
@@ -131,7 +132,13 @@ func (n nativeAutostart) SetRun(exe string) error {
 		return e
 	}
 	defer k.Close()
-	return k.SetStringValue(runValue, windows.EscapeArg(exe)+" run")
+	return k.SetStringValue(n.value, commandLine(exe, n.panel))
+}
+func commandLine(exe string, panel bool) string {
+	if panel {
+		return windows.EscapeArg(exe)
+	}
+	return windows.EscapeArg(exe) + " run"
 }
 func (n nativeAutostart) RemoveRun() error {
 	k, e := registry.OpenKey(registry.CURRENT_USER, runKey, registry.SET_VALUE)
@@ -142,11 +149,55 @@ func (n nativeAutostart) RemoveRun() error {
 		return e
 	}
 	defer k.Close()
-	e = k.DeleteValue(runValue)
+	e = k.DeleteValue(n.value)
 	if e == registry.ErrNotExist {
 		return nil
 	}
 	return e
+}
+func (n nativeAutostart) Snapshot() (func() error, error) {
+	x, err := taskXML(n.name)
+	if err != nil && comCode(err) != 0x80070002 {
+		return nil, err
+	}
+	sid, err := userSID()
+	if err != nil {
+		return nil, err
+	}
+	var run string
+	var present bool
+	k, err := registry.OpenKey(registry.CURRENT_USER, runKey, registry.QUERY_VALUE)
+	if err != nil && err != registry.ErrNotExist {
+		return nil, err
+	}
+	if err == nil {
+		run, _, err = k.GetStringValue(n.value)
+		k.Close()
+		if err != nil && err != registry.ErrNotExist {
+			return nil, err
+		}
+		present = err == nil
+	}
+	return func() error {
+		var taskErr error
+		if x == "" {
+			taskErr = n.RemoveTask()
+		} else {
+			taskErr = registerTaskXML(n.name, x, sid.String())
+		}
+		var runErr error
+		if present {
+			key, _, e := registry.CreateKey(registry.CURRENT_USER, runKey, registry.SET_VALUE)
+			if e == nil {
+				e = key.SetStringValue(n.value, run)
+				key.Close()
+			}
+			runErr = e
+		} else {
+			runErr = n.RemoveRun()
+		}
+		return errors.Join(taskErr, runErr)
+	}, nil
 }
 func Install() (bool, error) {
 	name, e := taskName()
@@ -157,29 +208,38 @@ func Install() (bool, error) {
 	if e != nil {
 		return false, e
 	}
-	return InstallWith(nativeAutostart{name}, exe)
+	return installPair(nativeAutostart{name: name, value: runValue}, nativeAutostart{name: panelTaskName(name), value: panelRunValue, panel: true}, exe)
+}
+func panelTaskName(runnerTask string) string {
+	return strings.Replace(runnerTask, "JanuaPort-Desktop-", "JanuaPort-Bedienfeld-", 1)
 }
 func Uninstall() error {
 	name, e := taskName()
 	if e != nil {
 		return e
 	}
-	return UninstallWith(nativeAutostart{name})
+	removeErr := uninstallPair(nativeAutostart{name: name, value: runValue}, nativeAutostart{name: panelTaskName(name), value: panelRunValue, panel: true})
+	exe, e := os.Executable()
+	if e != nil {
+		return errors.Join(removeErr, e)
+	}
+	return errors.Join(removeErr, stopPanel(filepath.Join(filepath.Dir(exe), "jnpt-bedienfeld.exe")))
 }
 func Installed() bool {
 	name, e := taskName()
-	if e == nil {
-		if _, e = taskXML(name); e == nil {
-			return true
-		}
+	return e == nil && installedEntry(name, runValue) && installedEntry(panelTaskName(name), panelRunValue)
+}
+func installedEntry(name, value string) bool {
+	if _, e := taskXML(name); e == nil {
+		return true
 	}
 	k, e := registry.OpenKey(registry.CURRENT_USER, runKey, registry.QUERY_VALUE)
 	if e != nil {
 		return false
 	}
 	defer k.Close()
-	v, _, e := k.GetStringValue(runValue)
-	return e == nil && strings.HasSuffix(v, " run")
+	v, _, e := k.GetStringValue(value)
+	return e == nil && v != "" && (value != runValue || strings.HasSuffix(v, " run"))
 }
 
 func taskRunLevel(name string) (int64, error) {

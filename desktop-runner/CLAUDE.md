@@ -296,7 +296,29 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Native Prozesssonde: echte Exe ohne Argumente, PEB/Umgebung ohne `jnpt*`
     (Exe-Name ausgenommen), Handle-Vererbung samt Gegenprobe. Läuft über den
     bestehenden Windows-Job. Kein Tray-Rauchtest/lokaler GUI-Start.
-    Installation/zweite Aufgabe/Release bleiben L6, HTML/WebView erst K6b.
+    L6 bindet Installation/zweite Aufgabe/Release gemeinsam (Invariante 17); HTML/WebView erst K6b.
+
+17. Installation und Release (#1240 L6; Plan-Invariante 19):
+    `desktop-runner.exe` und `jnpt-bedienfeld.exe` aus demselben Release im selben
+    Ordner. `install` prüft die reguläre Bedienfeld-Datei vor jeder Registrierung;
+    fehlt sie, fester CLI-Code E1 ohne Änderung der Einträge. Zwei Anmelde-Aufgaben:
+    `JanuaPort-Desktop-<SID>` und `JanuaPort-Bedienfeld-<SID>`, beide LogonTrigger,
+    InteractiveToken, LeastPrivilege, gleiche Wiederanlauf-/Akku-Eigenschaften.
+    Läufer mit `run`, Bedienfeld ohne Argumente, Credential oder gesetzte Umgebung.
+    Rückfall je Exe nur bei Zugriffsschutz/Richtlinie auf HKCU Run:
+    `JanuaPortDesktopLaeufer` bzw. `JanuaPortBedienfeld`. Bei Installationsfehlern
+    werden vorherige Aufgaben/Run-Werte wiederhergestellt; Rücknahmefehler werden
+    ebenfalls gemeldet. `status` zählt beide Exe. `uninstall` versucht beide
+    Autostartwege beider Exe auch bei Teilfehlern und beendet das Bedienfeld mit
+    passendem Bildpfad und Benutzer-SID. Der Läufer läuft gegebenenfalls weiter.
+    Install/Update/Uninstall öffnen keinen DPAPI-Zustand: Halt, Credential und
+    unbestätigte Ergebnisse bleiben erhalten. Kein Start der Exe bei Installation.
+    Release baut beide ohne CGO, Bedienfeld mit `-H=windowsgui`; vorhandene Azure-
+    Signatur für beide, je Exe Existenz und `signtool verify /pa` als Pflicht.
+    SHA256SUMS und Provenance binden beide finalen signierten Dateien.
+    `TestReleaseUndWindowsCI`, Install-Paartests und `probe/l6_mutations.py`;
+    echte COM/HKCU-Proben über die bestehende Standardkonto-Sonde, PS-Adaptertests
+    mit Argument-/Summen-Negativfällen. Fristen des Installtests unverändert.
 
 ## Benannte Grenzen
 
@@ -310,11 +332,19 @@ Er läuft mit den Rechten derselben Person auf Medium-IL. Client-Bildprüfung
 ist Tiefenverteidigung, keine Grenze gegen gleichberechtigte Prozesse,
 UI-Automation oder Austausch von Dateien im eigenen Ordner. Die Medium-
 Integritätsmarke schützt gegen lesende und schreibende Low-IL-Clients.
-Störung bleibt lokal; eine Pipe kann durch einen gleichberechtigten Prozess
+Störung wird in L nur lokal angezeigt und nicht an den Kern gemeldet (§6.6); eine Pipe kann durch einen gleichberechtigten Prozess
 belegt oder blockiert werden. L4 zeigt dauerhaft eigene Farbe und exakt
 „Störung. Anhalten: abmelden oder über den Admin halten lassen.“
 UIA-Skripte desselben Benutzers können das Bedienfeld bedienen; eine Pause kann
 das laufende Skript selbst aufheben, endgültig für den Baum ist nur Anhalten.
+
+Anhalten beendet den Job-Baum. Prozesse, die ein Skript außerhalb über WMI,
+Aufgabenplanung oder COM gestartet hat, überleben. Bei gesperrter Sitzung zeigt
+auch ein Screenshot den Sperrbildschirm.
+
+G-L3: Vor dem ersten Geräte-Rollout müssen die nativen Opt-in-Proben mit
+`JNPT_NATIVE_TOKEN_PROBES=1` und die Bedienfeld-Prozesssonde auf dem Testgerät
+mit PASS ohne SKIP laufen. CI/Kompilierung ersetzen diesen Gate-Beleg nicht.
 
 ## Tragende Adaptertests
 
@@ -336,6 +366,7 @@ das laufende Skript selbst aufheben, endgültig für den Baum ist nur Anhalten.
 | Task ohne Admin und begrenzter Rückfall | TestWindowsAufgabeOhneAdmin, TestAutostartRueckfallNurBeiRichtlinie |
 | Vertrag 4 / Testweg / K8 (#1240 L1) | TestVertragJeGeraeteart, TestGoldenV3AusKern, TestManifestV4StriktAmAdapter, TestTestgeraeteSynchronisieren1298, TestScreenshotNurTestgeraet, TestErgebnisNurTestauftrag, TestTestadapterVerweigernFalscheBindung, TestSetupUndHaltAmHTTPAdapter, TestSetupSchemaAmAdapter, TestSetupStartVerweigertFremdeFreigaben, TestL1WiderrufAmHTTPAdapter, TestOfflineFristJePinUndUhrMarke, TestOfflineNachmeldungAmAdapter, TestK8ArchivLaengsteWirksameFrist, TestErgebnisNachNeustartMitSignierterFreigabe, TestVertrag4ClaimUndErgebnisOhneServerfelder; Windows-CI: TestWindowsK8UhrmarkeDPAPINeustart |
 | Lokaler Halt B3/B6, L2-1/L2-2 (#1240 L2) | TestHaltUeberstehtNeustart, TestHaltDateiFehltOderDefekt, TestHaltZwischenClaimUndSpawn, TestHaltBeiWriteFrameFehler, TestAnhaltenBeendetLaufOhneNetz, TestPauseLaesstLaufendenZuEnde, TestFortsetzenHoltNichtsNach, TestHaltBefehleStartenNie, TestPauseEndetAutomatisch, TestHaltMeldungKoalesziert, TestHaltRunSperrtClaimsUndHaeltHeartbeat, TestHaltSpeicherfehlerSperrt, TestHaltMeldungNeustartUndBestaetigung, TestHaltMeldungOhneDauerhafteBremseGesperrt, TestHaltBrichtOffenenClaimAb, TestHaltDirekteStartwegeGesperrt, TestPauseNeustartUndAblaufOhneNachholen, TestHaltMeldungWiederholtFehler, TestHaltLaesstServerUnveraendert, TestHaltSperrtSlotreservierung; Windows-CI: TestWindowsAnhaltenBeendetEnkel |
+| Installation/Release, Plan 19 | TestInstallBeideOderVorherigerStand, TestInstallOhneBedienfeldAendertNichts, TestInstallBeideMitRichtlinienRueckfall, TestUninstallBeideAuchBeiFehler, TestBedienfeldAufgabeOhneArgumente, TestReleaseUndWindowsCI; Windows: TestWindowsAufgabeOhneAdmin/L6, TestWindowsUninstallBeendetNurEigenesBedienfeld |
 | Hygiene | TestLoggerDeckelUndFesteCodes, TestStriktesJSONAmAdapter, TestFrameGrenzen, TestReleaseUndWindowsCI |
 | Pipe B1/B2, L3-1/L3-2, H1–H3 (#1240 L3) | TestPipeDACLStruktur, TestPipeBesetztStartetOhnePipe, TestClientPrueftServerbild, TestPipeBefehleGeschlossen, TestPipeGolden, TestPipeRoheRahmenAmLaeufer, TestPipeOhneTraeger, TestSetupStartNurAusManifest, TestSetupStartAmPipeHTTPAdapter, TestSetupHaltWaerendHTTP, TestSetupVeralteteFreigabeStartetNicht, TestSetupFreigabeDirektVorSpawn, TestSetupSperrtUndBrichtClaimAb, TestSetupSperrtAndereStartwege, TestSetupDirektesExecuteBleibtGesperrt, TestSetupFehlerNieOfflineNachmelden, TestPipeHaltBefehle, TestSkriptRoheTestfunktionenBleibenGesperrt, TestPipeKindHandleListe; native Windows-Sonden siehe README „Lokale Pipe“ |
 | Bedienfeld, Plan 14/15/18, §6.6, H4 | TestPanelZustaende, TestPanelMenueBefehleUndSetupEingabe, TestPanelFrageNurLokal, TestPanelStoerungBleibtBisNeuGeprueftemZustand, TestPanelServerpruefungSperrtBefehle, TestServerpruefungSendetNichtsAmAdapter, TestVerbindungVerwirftAlteBefehleUndBrichtSchreibenAb, TestBlockiertesSchreibenTrotzHeartbeatWirdGetrennt, TestFokusWaechter, TestBedienfeldNurGepruefterDial, TestPanelImportWaechter, TestL4SchemaPflichtfelder, TestH4RoheFragenAmLaeufer, TestH4SkriptTitelAbgewiesen, TestH4RoheFrageGrenzen, TestPanelEingabeAusVerifiziertemManifest; Windows: TestWindowsBedienfeldProzesssonde |
@@ -422,6 +453,12 @@ Ein Mutant muss kompilieren und sein Zieltest tatsächlich fehlschlagen;
 Compilerfehler zählen nicht. finally stellt Quelldateien byte-genau wieder her.
 Nach externer Zwangsbeendigung den betroffenen Guard ausdrücklich prüfen.
 Abschlussbericht ausschließlich im Chat, keine Berichtsdatei im Repository.
+
+L6-Mutationen: `python probe/l6_mutations.py`, exklusiv in `l6-test`, Go 1.26.10.
+Git-Archiv statt Windows-Bind-Mount; ausschließlich Container-Kopien mutieren,
+kompilierende rote Zieltests und geprüfte Wiederherstellung. Installtest lokal
+nicht ausführen, nur PowerShell-Syntax prüfen. Windows-Tests nur cross-kompilieren;
+CI startet der LEAD. Kein Tag, Push oder Signieren durch den Implementierer.
 
 L5-Mutationen: `python probe/l5_mutations.py`, exklusiv in `l5-test` mit
 Go 1.26.10. Jede Mutation kompiliert und muss den benannten Test rot machen;

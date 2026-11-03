@@ -118,7 +118,8 @@ höchstens ein Versuch je zehn Sekunden, einschließlich Fehlern. Die ebenfalls
 atomar geschützte Datei `halt-attempt` erhält die Bremse über Neustarts. Ist sie
 unlesbar oder nicht schreibbar, bleibt die Meldung ausstehend. Eine rückwärts
 gestellte Uhr verzögert die Nachlieferung. Ein Neustart meldet den letzten
-gespeicherten Halt erneut. Störung bleibt lokal; auf dem Draht steht `angehalten`.
+gespeicherten Halt erneut. Störung wird in L nur lokal angezeigt und nicht an den Kern gemeldet (§6.6);
+auf dem Draht steht der Halt-Zustand `angehalten`.
 
 Das Bedienfeld zeigt Störungen dauerhaft mit eigener Farbe und dem festen Text
 „Störung. Anhalten: abmelden oder über den Admin halten lassen.“ Der Job-Abbruch erfasst den
@@ -137,8 +138,8 @@ DPAPI-Neustart. Lokal wird diese native Sonde nur kompiliert.
 
 `cmd/bedienfeld` baut `jnpt-bedienfeld.exe`, Windows-only, ohne CGO:
 `CGO_ENABLED=0 GOOS=windows go build -ldflags=-H=windowsgui -o jnpt-bedienfeld.exe ./cmd/bedienfeld`.
-Eigener Benutzerprozess; Installation, zweite Anmelde-Aufgabe und Signierung
-beider Exe folgen in L6. Ein unsignierter Branch-Build besteht absichtlich
+Eigener Benutzerprozess; L6 installiert beide Exe aus demselben signierten
+Release im selben Ordner mit jeweils einer Anmelde-Aufgabe. Ein unsignierter Branch-Build besteht absichtlich
 die Serverprüfung nicht.
 
 Tray: grün „Arbeitet“, gelb „Pausiert“, rot „Angehalten“, violett „Störung“.
@@ -199,7 +200,7 @@ Der Windows-Läufer bietet genau einen benannten Listener unter
 `\\.\pipe\JanuaPort.Bedienfeld.<SHA-256(SID)[:16]>` an; der Suffix sind die ersten
 16 kleinen Hex-Zeichen des Hashes der Benutzer-SID als UTF-8. Linux-Server und
 Vertrag 2 bleiben unverändert. L4 ergänzt Bedienfeld-Exe und Tray;
-L5 ergänzt `bootstrap.py`; Installation und Release bleiben L6.
+L5 ergänzt `bootstrap.py`; L6 ergänzt die gemeinsame Installation und Release-Bindung.
 
 **B1 / L3-1 / H1:** geschützte DACL nur für Benutzer- und Logon-SID mit
 `FILE_GENERIC_READ | FILE_WRITE_DATA` (`0x12008b`). Kein `GENERIC_WRITE`, weil
@@ -347,10 +348,19 @@ wird als Skip ausgewiesen; die Struktur- und native Kindsonde bleiben aktiv.
 Authenticode mit den beiden gemeinsam signierten Release-Exes bleibt zusätzlich
 GATE-Aufgabe für L4/L6; ein unsignierter Testprozess muss bereits abgewiesen werden.
 
+G-L3 vor dem ersten Geräte-Rollout: Auf dem Testgerät laufen die nativen
+Opt-in-Proben mit `JNPT_NATIVE_TOKEN_PROBES=1` und die Bedienfeld-Prozesssonde
+mit PASS ohne SKIP. Ein Windows-Build oder ein Hosted-CI-Skip ersetzt das nicht.
+
 ## Einrichten unter Windows
 
-Die EXE an einen dauerhaften Ort im Benutzerprofil legen. Die Installation
-registriert genau diese Datei; Verschieben erfordert erneutes Installieren.
+`desktop-runner.exe` und `jnpt-bedienfeld.exe` aus demselben Release an einen
+dauerhaften Ort im Benutzerprofil in denselben Ordner legen. Die Installation
+registriert beide Dateien; Verschieben erfordert erneutes Installieren. Fehlt
+die reguläre Bedienfeld-Exe, scheitert `install` vor jeder Änderung mit dem festen
+Fehlercode E1. Bei weiteren Fehlern stellt es die vorherigen Autostarteinträge
+wieder her und meldet auch Fehler einer Rücknahme. Install/Update erhalten den
+lokalen Halt-Zustand.
 Eine administrative Konsole ist nicht erforderlich.
 
 ~~~powershell
@@ -358,7 +368,7 @@ Eine administrative Konsole ist nicht erforderlich.
 .\desktop-runner.exe install
 .\desktop-runner.exe status
 .\desktop-runner.exe run        # Vordergrund, Strg+C beendet den Betrieb
-.\desktop-runner.exe uninstall  # entfernt beide Autostartwege
+.\desktop-runner.exe uninstall  # entfernt Autostart beider Exe, beendet das Bedienfeld
 ~~~
 
 Den einmaligen, 15 Minuten gültigen Kopplungscode erzeugt die Anlage.
@@ -387,14 +397,19 @@ Erneutes erfolgreiches Koppeln
 ersetzt den alten Vertrauensbereich einschließlich aller lokalen Ergebnisse.
 Einen laufenden Läufer vorher beenden.
 
-Die COM-Benutzeraufgabe startet bei Anmeldung des eigenen Kontos:
+Zwei COM-Benutzeraufgaben starten bei Anmeldung des eigenen Kontos:
+`JanuaPort-Desktop-<SID>` den Läufer mit `run`, `JanuaPort-Bedienfeld-<SID>`
+das Bedienfeld ohne Argumente, Credential oder gesetzte Umgebung. Beide nutzen
 InteractiveToken, LeastPrivilege, unbegrenzte Laufzeit, drei Neustarts mit
 einer Minute Abstand, IgnoreNew, ohne Akku-Bedingungen. Bei verweigerter
 Registrierung durch Zugriffsschutz/Richtlinie meldet die Installation deutlich
 den Rückfall auf HKCU Run. Dort fehlt die automatische Wiederaufnahme nach
-Absturz. Deinstallation entfernt beide Autostartwege, behält unbestätigte
-Ergebnisse und beendet keinen bereits laufenden Prozess. Diesen nötigenfalls
-über die Aufgabenplanung beenden. Status zeigt nur Kopplungs-/Installations-Bools;
+Absturz. Die HKCU-Run-Werte heißen `JanuaPortDesktopLaeufer` und
+`JanuaPortBedienfeld`. Deinstallation entfernt COM und HKCU Run für beide Exe,
+beendet ein laufendes Bedienfeld aus diesem Ordner für den eigenen Benutzer und
+lässt die DPAPI-Dateien einschließlich Halt, Kopplung und unbestätigten Ergebnissen
+liegen. Einen laufenden Läufer nötigenfalls über die Aufgabenplanung beenden.
+Status zeigt nur Kopplungs-/Installations-Bools; installiert verlangt beide Exe;
 Fehlerausgaben enthalten feste Codes.
 
 ## Betrieb und Python-Pakete unter Windows
@@ -519,6 +534,7 @@ $env:CGO_ENABLED='0'
 $env:GOOS='windows'
 $env:GOARCH='amd64'
 go build -trimpath -o desktop-runner.exe .
+go build -trimpath -ldflags=-H=windowsgui -o jnpt-bedienfeld.exe ./cmd/bedienfeld
 go vet ./...
 go test ./...
 Push-Location contract
@@ -528,7 +544,8 @@ Pop-Location
 
 Native Taskprobe ausdrücklich mit
 <code>go test ./internal/platform -run TestWindowsAufgabeOhneAdmin</code>
-aktivieren, ohne erhöhte Rechte; sie erstellt und entfernt eine Testaufgabe.
+aktivieren, ohne erhöhte Rechte; sie erstellt und entfernt isolierte Testaufgaben
+und Run-Werte für beide Exe, ohne sie auszuführen.
 Die Python-Startproben (auch TEMP je Lauf samt Junction im Kind) erwarten die
 unveränderte Allowlist-ZIP in .probe/.
 Windows-CI beschafft und prüft sie. probe/mutations.py entfernt Sperren
@@ -536,11 +553,18 @@ einzeln, verlangt echte rote Tests und stellt Quellen byte-genau wieder her;
 nur bei exklusivem Zugriff ausführen. task-standard-user.ps1 erzeugt nur auf
 GitHub-Runnern ein temporäres Standardkonto.
 
-Tag desktop-runner-vX.Y.Z: ein Build ohne CGO, dann Pflicht-Signatur über Azure
+Tag desktop-runner-vX.Y.Z: beide Exe ohne CGO bauen, Bedienfeld mit
+`-H=windowsgui`, dann Pflicht-Signatur beider Dateien über Azure
 OIDC/Microsoft Artifact Signing im Environment release-signing (nur für Tags
-desktop-runner-v* freigegeben), danach signtool verify /pa, SHA256SUMS und
-Provenance der finalen EXE. Fehlt SIGNING_PROFILE oder scheitert ein Schritt,
+desktop-runner-v* freigegeben), danach je Exe Existenzprüfung und
+`signtool verify /pa`. SHA256SUMS und Provenance binden beide finalen signierten
+Dateien. Fehlt eine Exe oder SIGNING_PROFILE, ist eine Signatur ungültig oder scheitert ein Schritt,
 bricht das Release ab; ein unsigniertes Release gibt es nicht.
+
+L6: `python probe/l6_mutations.py` im exklusiven Container `l6-test` mit Go 1.26.10.
+Elf kompilierende Mutanten für Installation, Rücknahme, Argumente und Release;
+Containerquellen werden wiederhergestellt. Lokal kein Installtest/GUI-Start,
+nur Windows-Cross-Build und PowerShell-Syntax. Windows-CI startet der LEAD.
 
 Native Windows-Mutationen zusätzlich: probe/mutations-windows.ps1 (ohne Admin).
 
@@ -564,17 +588,22 @@ Unmittelbar vor dem Lauf erzeugt GATE den einmaligen, kurz gültigen Kopplungsco
 per Showcase-CLI und setzt ihn als Environment-Secret `SHOWCASE_PAIR_CODE`.
 Danach löscht GATE das Secret auch bei fehlgeschlagenem/abgebrochenem Lauf.
 
-Die Probe lädt EXE, `SHA256SUMS` und `provenance.jsonl` aus dem öffentlichen Release
+Ab 0.4.0 prüft die Probe beide Exe zusammen; ältere Releases mit nur einer Exe
+werden abgewiesen. Im unveränderten manuellen Workflow die Version ausdrücklich
+auf das neue Release setzen (der historische Standard bleibt 0.1.0).
+Die Probe lädt beide Exe, `SHA256SUMS` und `provenance.jsonl` aus dem öffentlichen Release
 in `JanuaPort/januaport-plugins`. Vor jeder Ausführung verlangt sie SHA-256,
 Authenticode-Status `Valid`, den Herausgeber `JanuaPort GmbH` und
 `gh attestation verify` mit Repository, Release-Workflow und Tag als Herkunft.
 GitHub-Tokenrechte: nur `contents: read` und `attestations: read`.
 Anschließend erstellt sie wie die Taskprobe ein temporäres Standardkonto,
-lädt dessen Profil und legt die geprüfte EXE dauerhaft unter
-`%LOCALAPPDATA%\JanuaPort\installtest\<version>\desktop-runner.exe` ab.
+lädt dessen Profil und legt beide geprüften Exe dauerhaft unter
+`%LOCALAPPDATA%\JanuaPort\installtest\<version>\` ab.
 Koppeln und Installieren laufen ohne Adminrechte; `status` muss
 `gekoppelt=true installiert=true` ausgeben. Beide Installationswege zählen:
-COM-Benutzeraufgabe und der vom Läufer gemeldete Richtlinien-Rückfall auf HKCU Run.
+COM-Benutzeraufgabe und der vom Läufer gemeldete Richtlinien-Rückfall auf HKCU Run
+werden für jede Exe geprüft; die Bedienfeld-Aufgabe und ihr Run-Wert müssen ohne
+Argumente auf die richtige Datei zeigen.
 
 Der Code liegt im Skript als `SecureString` vor und wird dem Standardkonto über
 eine Named Pipe übergeben, deren DACL nur dieses Konto und den CI-Hauptnutzer
@@ -622,7 +651,7 @@ mit PowerShell 7 und aktueller GitHub CLI (`gh attestation verify` einschließli
 `--source-ref` verfügbar):
 
 ~~~powershell
-./probe/installtest.ps1 -Version 0.1.0 -Code (Read-Host 'Showcase-Code' -AsSecureString)
+./probe/installtest.ps1 -Version 0.4.0 -Code (Read-Host 'Showcase-Code' -AsSecureString)
 ~~~
 
 Ein bereits benutztes Läuferprofil oder vorhandener Autostart wird abgewiesen,

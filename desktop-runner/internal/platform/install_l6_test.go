@@ -37,7 +37,7 @@ type pairAutostart struct {
 
 func (a *pairAutostart) Register(exe string) error {
 	a.registered++
-	if a.fail == "register" {
+	if a.fail == "register" || a.fail == "policy" {
 		return errors.New("register")
 	}
 	a.task = exe
@@ -107,5 +107,19 @@ func TestUninstallBeideAuchBeiFehler(t *testing.T) {
 	}
 	if a.task != "" || a.run != "" || b.task != "" || b.run != "" {
 		t.Fatal("Autostart übrig", a, b)
+	}
+}
+
+func TestInstallBeideMitRichtlinienRueckfall(t *testing.T) {
+	dir := t.TempDir()
+	panel := filepath.Join(dir, "jnpt-bedienfeld.exe")
+	if err := os.WriteFile(panel, []byte("fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	a, b := &pairAutostart{fail: "policy"}, &pairAutostart{fail: "policy"}
+	exe := filepath.Join(dir, "desktop-runner.exe")
+	fallback, err := installPair(a, b, exe)
+	if err != nil || !fallback || a.run != exe || b.run != panel {
+		t.Fatal("beide Run-Einträge", a, b, fallback, err)
 	}
 }

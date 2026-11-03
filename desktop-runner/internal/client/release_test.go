@@ -24,7 +24,10 @@ func TestReleaseUndWindowsCI(t *testing.T) {
 			s := raw.(map[string]any)
 			name, _ := s["name"].(string)
 			if strings.Contains(name, marker) {
-				return s["run"].(string)
+				if run, ok := s["run"].(string); ok {
+					return run
+				}
+				return s["with"].(map[string]any)["script"].(string)
 			}
 		}
 		t.Fatal("Release-Schritt fehlt", job, marker)
@@ -40,6 +43,9 @@ func TestReleaseUndWindowsCI(t *testing.T) {
 			if !strings.Contains(verifyText, required) {
 				t.Fatal("Existenz/Signatur/Summen", exe, required)
 			}
+		}
+		if !regexp.MustCompile(`verify /pa release/` + regexp.QuoteMeta(exe) + `\s+if \(\$LASTEXITCODE -ne 0\) \{ throw '[a-z_]+invalid' \}`).MatchString(verifyText) {
+			t.Fatal("Signaturfehler wird nicht abgewiesen", exe)
 		}
 	}
 	if !strings.Contains(buildText, "-H=windowsgui") || !strings.Contains(buildText, "./cmd/bedienfeld") {
@@ -72,6 +78,21 @@ func TestReleaseUndWindowsCI(t *testing.T) {
 		t.Fatal("Bedienfeld nicht veröffentlicht")
 	}
 	sign := jobs["sign"].(map[string]any)
+	signActions := 0
+	for _, raw := range sign["steps"].([]any) {
+		step := raw.(map[string]any)
+		uses, _ := step["uses"].(string)
+		if strings.HasPrefix(uses, "azure/artifact-signing-action@") {
+			signActions++
+			with := step["with"].(map[string]any)
+			if with["files-folder"] != `${{ github.workspace }}\release` || with["files-folder-filter"] != "exe" || step["if"] != nil {
+				t.Fatal("Azure muss beide Exe verpflichtend signieren")
+			}
+		}
+	}
+	if signActions != 1 {
+		t.Fatal("Vorhandene Azure-Signatur fehlt")
+	}
 	if sign["environment"] != "release-signing" || sign["permissions"].(map[string]any)["id-token"] != "write" {
 		t.Fatal("Signierberechtigung")
 	}

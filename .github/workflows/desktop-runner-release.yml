@@ -1,4 +1,4 @@
-# One unsigned build; mandatory Azure signature; sums/provenance bind final bytes.
+# Two unsigned executables; mandatory Azure signature; sums/provenance bind final bytes.
 name: desktop-runner-release
 on:
   push:
@@ -29,10 +29,14 @@ jobs:
           $releaseVersion = $env:GITHUB_REF_NAME.Substring('desktop-runner-v'.Length)
           go build -trimpath -ldflags "-s -w -X main.version=$releaseVersion" -o out/desktop-runner.exe .
           if ($LASTEXITCODE -ne 0) { throw 'build_failed' }
+          go build -trimpath -ldflags "-s -w -H=windowsgui" -o out/jnpt-bedienfeld.exe ./cmd/bedienfeld
+          if ($LASTEXITCODE -ne 0) { throw 'panel_build_failed' }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: unsigned-windows-amd64
-          path: desktop-runner/out/desktop-runner.exe
+          path: |
+            desktop-runner/out/desktop-runner.exe
+            desktop-runner/out/jnpt-bedienfeld.exe
           if-no-files-found: error
   sign:
     needs: build
@@ -79,12 +83,17 @@ jobs:
         run: |
           $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' | Sort-Object FullName -Descending | Select-Object -First 1
           if (-not $signtool) { throw 'signtool_missing' }
+          if (-not (Test-Path -LiteralPath release/desktop-runner.exe -PathType Leaf)) { throw 'runner_missing' }
+          if (-not (Test-Path -LiteralPath release/jnpt-bedienfeld.exe -PathType Leaf)) { throw 'panel_missing' }
           & $signtool.FullName verify /pa release/desktop-runner.exe
           if ($LASTEXITCODE -ne 0) { throw 'signature_invalid' }
+          & $signtool.FullName verify /pa release/jnpt-bedienfeld.exe
+          if ($LASTEXITCODE -ne 0) { throw 'panel_signature_invalid' }
           $note = 'Authenticode-signiert mit Microsoft Artifact Signing; signtool verify /pa bestanden.'
           $hash = (Get-FileHash release/desktop-runner.exe -Algorithm SHA256).Hash.ToLowerInvariant()
-          [IO.File]::WriteAllText("$pwd/release/SHA256SUMS", "$hash *desktop-runner.exe`n", [Text.UTF8Encoding]::new($false))
-          [IO.File]::WriteAllText("$pwd/release/RELEASE-NOTES.txt", "Desktop-Läufer für Windows/amd64.`n`n$note`n", [Text.UTF8Encoding]::new($false))
+          $panelHash = (Get-FileHash release/jnpt-bedienfeld.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          [IO.File]::WriteAllText("$pwd/release/SHA256SUMS", "$hash *desktop-runner.exe`n$panelHash *jnpt-bedienfeld.exe`n", [Text.UTF8Encoding]::new($false))
+          [IO.File]::WriteAllText("$pwd/release/RELEASE-NOTES.txt", "Desktop-Läufer und Bedienfeld für Windows/amd64. Beide Exe aus diesem Release im selben Ordner installieren.`n`n$note`n", [Text.UTF8Encoding]::new($false))
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: release-windows-amd64
@@ -108,7 +117,9 @@ jobs:
       - uses: actions/attest-build-provenance@9d57eef8c06cd9d6b433effeeb7a6a77b3ff94ad
         id: provenance
         with:
-          subject-path: release/desktop-runner.exe
+          subject-path: |
+            release/desktop-runner.exe
+            release/jnpt-bedienfeld.exe
       - name: Release mit Provenance
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         env:
@@ -121,7 +132,7 @@ jobs:
               ...context.repo, tag_name: tag, name: tag,
               body: fs.readFileSync('release/RELEASE-NOTES.txt', 'utf8'), draft: true
             });
-            for (const name of ['desktop-runner.exe', 'SHA256SUMS']) {
+            for (const name of ['desktop-runner.exe', 'jnpt-bedienfeld.exe', 'SHA256SUMS']) {
               await github.rest.repos.uploadReleaseAsset({...context.repo, release_id: release.data.id, name, data: fs.readFileSync('release/' + name)});
             }
             await github.rest.repos.uploadReleaseAsset({...context.repo, release_id: release.data.id, name: 'provenance.jsonl', data: fs.readFileSync(process.env.PROVENANCE)});
