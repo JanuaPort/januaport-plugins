@@ -2,9 +2,9 @@
 
 ## 0.4.0 — 2026-11-03 (JanuaPort/januaport#1277 S4b, #1048 K4b)
 
-- **Image:** folgt nach dem Release-Lauf (Index, nur `linux/amd64`; arm64-Ausnahme siehe 0.3.1, JanuaPort/januaport#928)
-- **Geprüft mit JanuaPort:** Kern 0.91.0 (Speicherpins brauchen `runner-pins.pub` aus dem Kern); Live-Lauf auf der Showcase folgt
-- **Scan:** folgt nach dem Release-Lauf (Trivy-Bericht des Laufs)
+- **Image:** `sha256:a1c7105bcf9979e1466bbe4c0ba5b91d2f50935f541fb402267538106c744365` (Index, nur `linux/amd64`; arm64-Ausnahme siehe 0.3.1, JanuaPort/januaport#928; Release-Lauf 41558177704)
+- **Geprüft mit JanuaPort:** Kern 0.91.0 auf der Showcase seit 03.11. (Git-Pins 4/4 geholt, gVisor-Sandbox registriert); Speicherpins und App-Host noch ohne Live-Lauf
+- **Scan:** Trivy 0.74.0 vom 03.11.2026, 0 Funde mit Fix; 1 CRITICAL und 57 HIGH ohne Fix fallen unter die Ausnahme JanuaPort/januaport#1059 bis 2027-01-08
 
 Speicherquelle für Server-Skripte (S4b) und App-Host `apphost` für Browser-Apps (K4b). Vertragskennung bleibt 2.
 
