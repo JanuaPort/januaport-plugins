@@ -201,6 +201,10 @@ verwaiste Ersatzdateien werden beim exklusiven Start entfernt. Unter Windows lie
 Config/Manifest und Umgebungsseals in DPAPI-Dateien. Nur Paket- und
 Laufzeitcode liegt im Klartext. Status prüft Dateiexistenz und Autostart,
 ohne den Journalbestand zu öffnen oder zu bereinigen.
+`TestWindowsStatusBleibtVorStateLockUndNetz` schützt diesen frühen Lesepfad
+auch unter Linux; `TestWindowsStatusLiestKeineDPAPIDateien` führt ihn unter
+Windows mit absichtlich ungültigem Credential, Journal, Manifest und Uhrmarke
+aus und prüft, dass alle Dateien unverändert bleiben.
 
 DACLs werden strukturell geprüft: geschützt, genau eine explizite Allow-ACE,
 eigene binäre SID, volle Dateirechte und ausschließlich OI/CI-Vererbung.
