@@ -1,6 +1,14 @@
 # Changelog — script-runner
 
-## Unveröffentlicht — #1277 SEC F1 (2026-11-02)
+## 0.4.0 — 2026-11-03 (JanuaPort/januaport#1277 S4b, #1048 K4b)
+
+- **Image:** folgt nach dem Release-Lauf (Index, nur `linux/amd64`; arm64-Ausnahme siehe 0.3.1, JanuaPort/januaport#928)
+- **Geprüft mit JanuaPort:** Kern 0.91.0 (Speicherpins brauchen `runner-pins.pub` aus dem Kern); Live-Lauf auf der Showcase folgt
+- **Scan:** folgt nach dem Release-Lauf (Trivy-Bericht des Laufs)
+
+Speicherquelle für Server-Skripte (S4b) und App-Host `apphost` für Browser-Apps (K4b). Vertragskennung bleibt 2.
+
+### #1277 SEC F1 (2026-11-02)
 
 - Apphost: zustandslose Anmeldung ohne füllbare Login-Tabelle; Code-Bindung und
   Einmaligkeit prüft der Kern. Eine volle Sitzungstabelle verdrängt den frühesten
@@ -25,7 +33,7 @@
 - Tests für Ablauf/Änderung zwischen Freigabe-Snapshots, Freigabe plus
   globaler/eigener Fehlermarke und alten gecachten Pin nach Commit-Erneuerung.
 
-## Unveröffentlicht — #1277 SEC H6 (2026-11-02)
+### #1277 SEC H6 (2026-11-02)
 
 - Hygiene-Wächter meldet nicht sicher auflösbare relative und variable
   Bind-Quellen für jeden nicht berechtigten Dienst als möglichen Schlüsselzugriff.
@@ -34,7 +42,7 @@
 - Adaptertests für beide Schlüsselordner, alle Dienste und den erlaubten
   `./seccomp`-Fall; Mutation „relative Quelle ignorieren“ wird rot.
 
-## Unveröffentlicht — #1277 S4b Lauf 2 (2026-11-02)
+### #1277 S4b Lauf 2 (2026-11-02)
 
 - Speicherbote im Vermittler: eigener 60-s-Takt, Runtime-Key, rohe atomare
   Inbox-Veröffentlichung, keine Redirects, begrenzte Antworten, Retry-After
@@ -47,7 +55,7 @@
   gestopptem Abholer und R8 ohne Deploy-/Public-Key-Mount im Vermittler.
   Git-/Desktop-Goldens, Compose, Netze und UIDs unverändert.
 
-## Unveröffentlicht — #1277 S4b Lauf 1 (2026-11-02)
+### #1277 S4b Lauf 1 (2026-11-02)
 
 - Abholer prüft Speicherpins unabhängig von Git alle 5 s: signierte exakte
   Pinliste, vertrauenswürdiger Public-Key, 10-Minuten-Frist, SHA-256-Paketgraph
