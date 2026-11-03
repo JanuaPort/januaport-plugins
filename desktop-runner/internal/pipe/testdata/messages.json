@@ -1,0 +1,19 @@
+[
+ {"direction":"client","message":{"type":"status"}},
+ {"direction":"client","message":{"type":"pause","minuten":15}},
+ {"direction":"client","message":{"type":"pause","minuten":60}},
+ {"direction":"client","message":{"type":"pause","minuten":0}},
+ {"direction":"client","message":{"type":"weiter"}},
+ {"direction":"client","message":{"type":"anhalten"}},
+ {"direction":"client","message":{"type":"fortsetzen"}},
+ {"direction":"client","message":{"type":"setup_start","pin":"demo","setup":"raum"}},
+ {"direction":"client","message":{"type":"antwort","id":"q1","wahl":0}},
+ {"direction":"server","message":{"type":"zustand","zustand":"arbeitet","test":false,"netz":true,"beschaeftigt":false,"setups":[{"pin":"demo","setup":"raum","label":"Raum","startbar":true}]}},
+ {"direction":"server","message":{"type":"zustand","zustand":"pausiert","bis":"2026-11-03T12:00:00Z","test":true,"netz":false,"beschaeftigt":true,"frist_abgelaufen":true,"setups":[]}},
+ {"direction":"server","message":{"type":"zustand","zustand":"angehalten","test":false,"netz":false,"beschaeftigt":false,"setups":[]}},
+ {"direction":"server","message":{"type":"zustand","zustand":"stoerung","test":false,"netz":false,"beschaeftigt":false,"setups":[]}},
+ {"direction":"server","message":{"type":"frage","id":"q1","text":"Fortfahren?","optionen":["Ja","Nein"],"frist_s":5}},
+ {"direction":"server","message":{"type":"frage_weg","id":"q1"}},
+ {"direction":"server","message":{"type":"fehler","code":"protokoll"}},
+ {"direction":"server","message":{"type":"fehler","code":"stoerung"}}
+]

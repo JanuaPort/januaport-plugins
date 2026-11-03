@@ -11,6 +11,8 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	panel "github.com/januaport/januaport-plugins/desktop-runner/internal/pipe"
 )
 
 type Bundle struct {
@@ -19,35 +21,41 @@ type Bundle struct {
 	Environments map[string]Environment `json:"environments"`
 }
 type Engine struct {
-	Container    ContainerExecutor
-	State        *State
-	API          *API
-	Credential   Credential
-	Version      string
-	Session      func() (Session, error)
-	Spawn        Spawn
-	ChildEnv     []string
-	Temps        *RunTemps // nil: State.Root/tmp ohne OS-Schutz (Tests); main verdrahtet MkdirPrivate
-	Log          *Logger   // optional, nur feste Codes
-	Config       Config
-	mu           sync.Mutex
-	runMu        sync.Mutex
-	bundle       Bundle
-	active       Process
-	activeKey    string
-	activeCancel context.CancelFunc
-	activeDone   chan struct{}
-	cancel       context.CancelFunc
-	syncErr      error
-	halt         haltState
-	haltLoaded   bool
-	haltFault    bool
-	haltPending  bool
-	haltVersion  uint64
-	haltThrough  time.Time
-	haltAttempt  time.Time
-	haltSendMu   sync.Mutex
-	claimCancel  context.CancelFunc
+	Container       ContainerExecutor
+	State           *State
+	API             *API
+	Credential      Credential
+	Version         string
+	Session         func() (Session, error)
+	Spawn           Spawn
+	ChildEnv        []string
+	Temps           *RunTemps // nil: State.Root/tmp ohne OS-Schutz (Tests); main verdrahtet MkdirPrivate
+	Log             *Logger   // optional, nur feste Codes
+	Config          Config
+	mu              sync.Mutex
+	runMu           sync.Mutex
+	bundle          Bundle
+	active          Process
+	activeKey       string
+	activeCancel    context.CancelFunc
+	activeDone      chan struct{}
+	cancel          context.CancelFunc
+	syncErr         error
+	halt            haltState
+	haltLoaded      bool
+	haltFault       bool
+	haltPending     bool
+	haltVersion     uint64
+	haltThrough     time.Time
+	haltAttempt     time.Time
+	haltSendMu      sync.Mutex
+	claimCancel     context.CancelFunc
+	admission       sync.Mutex // Windows admission from request through completion, including setups
+	panelRuns       sync.WaitGroup
+	panelOnline     bool // guarded by mu; last sync/heartbeat observation, never guessed from a UI flag
+	panelPending    bool
+	panelGeneration uint64 // claim replies crossing a setup admission are discarded
+	Questions       panel.Questions
 }
 
 func envKey(p Pin) string      { return p.Commit + "-" + sum([]byte(p.Path)) }
@@ -72,7 +80,8 @@ func (e *Engine) Revoke() error {
 	}
 	return e.State.Revoke()
 }
-func (e *Engine) Sync(ctx context.Context) error {
+func (e *Engine) Sync(ctx context.Context) (err error) {
+	defer func() { e.observePanelNetwork(err) }()
 	config, err := e.API.Config(ctx)
 	if err != nil {
 		return err
@@ -261,6 +270,12 @@ func (e *Engine) Execute(ctx context.Context, r Result, env Environment, input j
 		return finish(r, "internal", "")
 	}
 	defer e.runMu.Unlock()
+	return e.executeReserved(ctx, r, env, input, runToken, wall, calls)
+}
+
+// The caller owns runMu. Setup admission holds it before runs/start, so no
+// direct Execute can slip between HTTP authorization and process preparation.
+func (e *Engine) executeReserved(ctx context.Context, r Result, env Environment, input json.RawMessage, runToken string, wall, calls int) Result {
 	s, err := e.Session()
 	e.mu.Lock()
 	config := e.Config
@@ -316,6 +331,10 @@ func (e *Engine) Execute(ctx context.Context, r Result, env Environment, input j
 	e.mu.Lock()
 	// L2-1: this check and Spawn must remain in the same critical section.
 	if e.haltedLocked(time.Now()) {
+		e.mu.Unlock()
+		return finish(r, "cancelled", "")
+	}
+	if !e.panelPermitValidLocked(ctx) {
 		e.mu.Unlock()
 		return finish(r, "cancelled", "")
 	}
@@ -490,6 +509,12 @@ func (e *Engine) report(r Result) error {
 	return nil
 }
 func (e *Engine) scheduled(ctx context.Context, p Pin, s Schedule, slot time.Time) error {
+	if e.Container == nil {
+		if !e.admission.TryLock() {
+			return nil
+		}
+		defer e.admission.Unlock()
+	}
 	// B3/B6: skipped slots have no marker and no result; resume never catches up.
 	if e.scheduleHalted(slot) {
 		return nil
@@ -607,6 +632,12 @@ func resolveSlot(m Manifest, pin, name string, slot time.Time) (Pin, Schedule, e
 	return Pin{}, Schedule{}, ErrManifest
 }
 func (e *Engine) adhoc(ctx context.Context, j Job) error {
+	if e.Container == nil {
+		if !e.admission.TryLock() {
+			return nil
+		}
+		defer e.admission.Unlock()
+	}
 	if e.workHalted() {
 		return nil
 	}
@@ -707,6 +738,7 @@ func (e *Engine) Run(ctx context.Context) error {
 				seq = m.Seq
 			}
 			h, err := e.API.Heartbeat(ctx, Heartbeat{e.API.Contract(), e.isReady(), e.Version, seq})
+			e.observePanelNetwork(err)
 			if err == nil {
 				e.applyCancellations(h)
 				if h.ManifestSeqCurrent > seq {

@@ -79,6 +79,7 @@ func TestCopiedLibraryFunctions(t *testing.T) {
 	}
 }
 func TestKeineListenerDownloaderOderPip(t *testing.T) {
+	pipeListeners := 0
 	err := filepath.WalkDir("../..", func(p string, d os.DirEntry, e error) error {
 		if e != nil {
 			return e
@@ -94,7 +95,14 @@ func TestKeineListenerDownloaderOderPip(t *testing.T) {
 			return e
 		}
 		s := string(b)
-		for _, bad := range []string{"net.Listen", "http.ListenAndServe", "exec.Command(\"pip", "python -m pip", "import pip", "pip.main", "http.Get(", "http.Post("} {
+		for _, listener := range []string{"windows.CreateNamedPipe("} {
+			count := strings.Count(s, listener)
+			pipeListeners += count
+			if count != 0 && filepath.ToSlash(p) != "../../internal/pipe/transport_windows.go" {
+				t.Error("zweiter benannter Pipe-Listener", p)
+			}
+		}
+		for _, bad := range []string{"net.Listen", "http.ListenAndServe", "NewProc(\"CreateNamedPipe", "syscall.CreateNamedPipe", "exec.Command(\"pip", "python -m pip", "import pip", "pip.main", "http.Get(", "http.Post("} {
 			if strings.Contains(s, bad) {
 				t.Errorf("verbotener Weg in %s: %s", p, bad)
 			}
@@ -106,6 +114,9 @@ func TestKeineListenerDownloaderOderPip(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if pipeListeners != 1 {
+		t.Fatalf("genau ein benannter Pipe-Listener erforderlich: %d", pipeListeners)
 	}
 }
 func TestLoggerDeckelUndFesteCodes(t *testing.T) {

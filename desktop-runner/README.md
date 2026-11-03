@@ -29,7 +29,8 @@ gespeichert und vor dem Senden erneut geprüft. Der Kern begrenzt Bilder auf fü
 und auf laufende Tests beziehungsweise zwei Minuten nach deren Ende.
 
 L1 enthält Adapter und K8; L2 ergänzt den lokalen Halt im Engine.
-Pipe, Bedienfeld, Python-Helfer und Bildschirmaufnahme folgen in L3–L5.
+L3 ergänzt die lokale Pipe und die Setup-Zulassung im Läufer. Bedienfeld,
+Python-Helfer und Bildschirmaufnahme folgen in L4/L5.
 Unveränderte Kernreferenzen mit SHA-256:
 [golden-v3](internal/client/testdata/golden-v3/README.md).
 
@@ -44,6 +45,7 @@ Auch `result:null` wird vom Kern abgewiesen. L1 ändert diese Kernregeln nicht.
 Der Windows-Engine bietet intern `Halt(state, until)`, `Pause(15|60|0)` und
 `HaltStatus()`. Es gibt in L2 noch keinen CLI-Befehl und keine Bedienoberfläche.
 `until` wird als UTC gespeichert; 0 Minuten bedeutet bis zur Fortsetzung.
+Seit L3 führt der Läufer die entsprechenden Pipe-Befehle über diese Schnittstelle aus.
 
 - **Anhalten:** setzt `angehalten` und beendet den laufenden Job-Baum sofort
   über Cancel/Kill (`TerminateJobObject`), auch ohne Netz. Sein Ergebnis ist
@@ -87,6 +89,154 @@ Prüfung: `python probe/l2_mutations.py` im exklusiven Worktree mit Container
 `l2-test` (Go 1.26.10). Linux-Race-Tests prüfen die realen HTTP-/State-Adapter;
 `TestWindowsAnhaltenBeendetEnkel` prüft in Windows-CI den echten Job-Baum und
 DPAPI-Neustart. Lokal wird diese native Sonde nur kompiliert.
+
+## Lokale Pipe (0.4.0 in Arbeit, L3)
+
+Der Windows-Läufer bietet genau einen benannten Listener unter
+`\\.\pipe\JanuaPort.Bedienfeld.<SHA-256(SID)[:16]>` an; der Suffix sind die ersten
+16 kleinen Hex-Zeichen des Hashes der Benutzer-SID als UTF-8. Linux-Server und
+Vertrag 2 bleiben unverändert. L3 enthält keine Bedienfeld-Exe, keinen Tray und
+keinen Python-Helfer; `bootstrap.py`, Installation und Release bleiben unverändert.
+
+**B1 / L3-1 / H1:** geschützte DACL nur für Benutzer- und Logon-SID mit
+`FILE_GENERIC_READ | FILE_WRITE_DATA` (`0x12008b`). Kein `GENERIC_WRITE`, weil
+dessen `FILE_APPEND_DATA` bei Pipes weitere Serverinstanzen erlauben würde.
+Die native Rechteprobe versucht eine echte zweite Serverinstanz mit freiem
+Instanzplatz und der am Listener ausgelesenen DACL. Sie verwendet auch unter
+erhöhter CI ein geprüftes nicht erhöhtes Medium-Token ohne aktive Admin-SID
+oder Privilegien und prüft zusätzlich den Benutzer als Besitzer. Eine Gegenprobe
+mit erweitertem Instanzrecht muss gelingen. `CreateFile(FILE_APPEND_DATA)`
+öffnet nur einen Client-Endpunkt und belegt allein keine weitere Serverinstanz.
+Die Gegenprobe verwendet eine ausdrückliche Benutzer-ACE und das Medium-Label
+`S:(ML;;NWNR;;;ME)`. Sie läuft vollständig in einem per `CreateProcessAsUserW`
+gestarteten nicht erhöhten Hilfsprozess, der beide Instanzen anlegt. Er prüft
+sein primäres Token vor der ersten Pipe-Anlage; bloße Thread-Impersonation im
+erhöhten CI-Prozess reicht nicht. Quelle, gefiltertes Token und Kind müssen
+null Restricting-SIDs haben, damit keine zusätzliche Zugriffsprüfung einen
+falsch grünen Negativtest erzeugt. Ein echtes Token mit einer Restricting-SID
+wird in einer eigenen Gegenprobe abgewiesen. Schmale und breite DACL werden
+im selben Kind geprüft; die Negativprobe gegen die Produktions-DACL im
+Elternprozess bleibt zusätzlich erhalten. Beide Instanzen behalten ausdrückliche
+Deskriptoren; Besitzer, Label und Kontroll-ACE werden am Handle nachgeprüft.
+Kein Rückfall auf einen erhöhten Helfer. Die Hilfsprozess-Proben sind Opt-in
+über `JNPT_NATIVE_TOKEN_PROBES=1`: `workflow_dispatch` mit gesetzter Variable
+in einer interaktiven Sitzung oder GATE auf dem Testgerät. Betroffen sind nur
+`TestWindowsPipeClientDarfKeineInstanzAnlegen/standard_process` und
+`TestWindowsPipeRestrictingSIDsVerweigert`. Ohne Variable melden sie:
+„opt-in: Hilfsprozess mit gefiltertem Token braucht interaktive Sitzung (JNPT_NATIVE_TOKEN_PROBES=1)“.
+Mit gesetzter Variable bleibt ein Startfehler ein Fehler, niemals ein Skip.
+Gehostete Dienst-Sitzungen können den Helfer mit `STATUS_DLL_INIT_FAILED`
+abweisen; Window-Station- und Desktop-ACLs werden dafür nicht verändert.
+Die Negativprobe `production_server` gegen die Produktions-DACL läuft weiterhin
+ohne Hilfsprozess und ohne Opt-in. Low-IL READ/WRITE, Fremdkonto, Remote,
+Squatting und die strukturellen DACL-Tests unter Linux bleiben unabhängig davon.
+Ausdrückliches Label `S:(ML;;NWNR;;;ME)` sperrt Low-IL beim Lesen und Schreiben;
+keine AppContainer-/Capability-ACE. `PIPE_REJECT_REMOTE_CLIENTS` sperrt Remote-
+Clients. **B2:** `FILE_FLAG_FIRST_PIPE_INSTANCE`, erste Instanz bleibt auch beim
+Wiederverbinden offen. Ist der Name besetzt oder die Pipe nicht anlegbar, läuft
+der Läufer ohne Pipe weiter: fester Logcode `9 1`, ein Versuch, kein Ausweichname.
+
+Der Server prüft den Client-Bildpfad auf `jnpt-bedienfeld.exe` im eigenen Ordner.
+Die L4-Clientbibliothek `internal/pipe.Dial` prüft vor dem ersten Schreiben
+`GetNamedPipeServerProcessId`, `desktop-runner.exe` im eigenen Ordner, die
+Benutzer-SID im Server-Prozesstoken (H2) und Authenticode mit demselben
+Herausgeber wie die eigene Exe. Der komplette Subject-DER stammt aus der von
+WinVerifyTrust geprüften Unterzeichnerkette. Dateien bleiben während dieser
+Prüfung gegen Schreiben/Löschen geöffnet. Fehler ergeben ausschließlich
+„Störung“. Keine UI und kein Netzabruf für die Signaturprüfung; fehlt lokal
+der erforderliche Vertrauens-/Sperrlistenstand, wird ebenfalls verweigert.
+
+**A1 / SEC K6b (c): ACL schützt nicht gegen den WebView2-Hauptprozess.**
+Er hat die Rechte derselben Person auf Medium-IL. Der Bildpfad ist
+Tiefenverteidigung, keine Grenze gegen gleichberechtigte Prozesse oder
+UI-Automation. Die Integritätsmarke schützt gegen Low-IL-Clients. Belegung
+oder Blockieren durch gleichberechtigte Prozesse bleibt möglich. Störung ist
+lokal; die dauerhafte Tray-Anzeige mit „anhalten: abmelden oder über den Admin
+halten lassen“ folgt in L4.
+
+Das Protokoll besteht aus vier Byte Big-Endian-Länge und 1–4096 Byte UTF-8-JSON.
+`DisallowUnknownFields`, genaue Feldmengen und Prüfung auf doppelte Schlüssel,
+Nulls und angehängte Dokumente gelten auf beiden Seiten. Das neue Golden liegt
+unter `internal/pipe/testdata/messages.json`; bestehende Vertrags-Goldens bleiben
+bytegleich. Zulässige Nachrichten:
+
+| Richtung | Nachrichten |
+|---|---|
+| Client → Läufer | `status`, `pause{minuten:15\|60\|0}`, `weiter`, `anhalten`, `fortsetzen`, `setup_start{pin,setup}`, `antwort{id,wahl}` |
+| Läufer → Client | `zustand{zustand,bis?,test,netz,beschaeftigt,frist_abgelaufen?,setups:[{pin,setup,label,startbar}]}`, `frage{id,text,optionen,frist_s}`, `frage_weg{id}`, `fehler{code}` |
+
+Alle Nachrichten tragen `type`. `zustand` ist `arbeitet`, `pausiert`,
+`angehalten` oder `stoerung`; `bis` ist UTC. Fehlercodes sind ausschließlich
+`protokoll`, `abgewiesen`, `stoerung`. Niemals Credential, Token-, Eingabe-,
+Pfad- oder Modusfelder: der Status wird ausdrücklich aus erlaubten Feldern
+zusammengesetzt. Passt die vollständige Setup-Liste nicht in 4 KiB, folgt
+`fehler{code:stoerung}`; sie wird nicht still abgeschnitten. `netz` beschreibt
+die letzte Sync-/Heartbeat-Beobachtung, keine garantierte künftige Erreichbarkeit.
+
+**L3-2:** Der Läufer prüft rohe Rahmen selbst in Go. `setup_start` wird vor der
+Kernanfrage abgewiesen bei Halt/Pause, Belegung/Reservierung, fehlender Online-
+Beobachtung, unpassendem Konto/Sitzung, unbekanntem oder unverifiziertem Setup
+und Setups mit `frei`. Diese sind nicht startbar; L4 kann „braucht Eingabe“
+anzeigen. Zulässige Starts verwenden unverändert den L1-Adapter mit Manifest-
+Sequenz und Zufallsnonce. Eine gemeinsame Windows-Reservierung deckt HTTP,
+Prozessvorbereitung und Lauf ab und schließt Zeitplan, Ad-hoc und direktes
+Execute aus. Halt/Freigabewechsel während HTTP verhindert den Start; die L2-
+Sperre unmittelbar vor Spawn bleibt erhalten; dort wird auch die Setup-Freigabe
+erneut geprüft. Offene Claims werden beim Setup-Start abgebrochen, ihre Antworten
+verworfen und neue Claims während des Setup-Laufs gesperrt. Ein gescheiterter Setup-Befehl
+wird nicht offline vorgemerkt oder erneut gesendet (`9 2`); ausgeführte Läufe
+benutzen das bestehende Ergebnisjournal mit `run_key=setup/…`, `ran_offline:false`.
+
+`Engine.Questions` ist die interne lokale Weiterleitung für L5: Text höchstens
+500 Unicode-Zeichen, 2–4 Optionen zu höchstens 40 Zeichen, Frist 5–3600 Sekunden,
+höchstens eine offene Frage. `wahl` ist ein nullbasierter Index; fremde/abgelaufene
+Antworten werden abgewiesen. Ohne Panel, nach Frist oder Abbruch kommt `nil`
+zurück; L5 bildet das auf Python `None` ab und liefert den Laufkontext sowie
+eindeutige lokale IDs. Anhalten sendet `frage_weg` und beendet den Lauf.
+Rohe Skript-Rahmen für `frage`, `ergebnis` und `screenshot` werden bis L5
+weiterhin von Go abgewiesen. Es gibt in L3 keine GDI-Aufnahme. Die L1-Adapter
+erlauben Ergebnis/Screenshot weiterhin nur bei verifiziertem Testauftrag
+(signiertes `test_device` und Testpin samt Jobbindung).
+
+**H3:** Serverhandles sind nicht vererbbar; der Python-Prozess erhält über
+`PROC_THREAD_ATTRIBUTE_HANDLE_LIST` ausschließlich stdin, stdout und NUL.
+Der Pipe-Name wird nicht über Env oder Kommandozeile an das Kind weitergegeben.
+Die Sonden prüfen die tatsächliche Handle-Tabelle und zusätzlich das echte
+Python-Kind (kuratierte ZIP wie bei den vorhandenen Windows-Integrationstests).
+Unbenannte oder nicht abfragbare Endpunkte dürfen die Namenssonde nicht abbrechen.
+Die Eltern-Pipe muss sichtbar bleiben; ein absichtlich vererbtes Bedienfeld-Handle
+muss den Kindtest rot machen. Die Python-Sonde muss zudem ihre eigene Kontrollpipe
+finden. Ihr Laufzeitpfad bleibt kurz wie bei der vorhandenen Python-Adapterprobe.
+
+Prüfung: `python probe/l3_mutations.py` im exklusiven Container `l3-test`
+(`golang:1.26.10`). Linux prüft Schema, rohe Rahmen am Engine-/HTTP-Adapter,
+Rückfragen, Kanarien-Credential und Hygiene mit genau einem Pipe-Listener.
+Native Tests lokal nur kompilieren; Ausführung durch LEAD in Windows-CI:
+`TestWindowsPipeDACLUndLabel`, `TestWindowsPipeLowILReadWrite`,
+`TestWindowsPipeFremdesKonto` (temporäres fremdes Standardkonto, Anlage/Löschung
+braucht erhöhte CI-Testrechte), `TestWindowsPipeFremdesToken` (anonymes Token),
+`TestWindowsPipeClientDarfKeineInstanzAnlegen`, `TestWindowsPipeRestrictingSIDsVerweigert`,
+`TestWindowsPipeRemoteAbgewiesen`,
+`TestWindowsPipeBesetzt`, `TestWindowsClientPrueftEchtenServer`,
+`TestWindowsServerPrueftClientbildUndReconnect`,
+`TestWindowsKindOhneBedienfeldPipe`, `TestWindowsPythonKindOhneBedienfeldPipe`,
+`TestWindowsPipeKindsondeErkenntVererbtesHandle`.
+`probe/l3_mutations.py --native` führt die nativen Mutationen dort aus.
+H1: `native-create-instance` und `native-create-instance-bit` erweitern die
+Produktions-ACL. `native-create-instance-child` prüft die Mutation isoliert im
+Hilfsprozess; `native-helper-token` entfernt dessen gefiltertes Prozesstoken,
+`native-restricting-token` entfernt die Restricting-SID-Prüfung.
+`native-helper-start` und `native-restricting-helper-start` erzwingen einen
+Startfehler; beide Opt-in-Proben müssen dann rot werden.
+Diese Hilfsprozess-Mutationen benötigen bei `--native` ebenfalls
+`JNPT_NATIVE_TOKEN_PROBES=1`; ohne Opt-in werden sie ausdrücklich als übersprungen
+gemeldet, nicht als erkannte Mutationen. Cross-Kompilierung bleibt ohne Opt-in möglich.
+H3: `native-h3` und `native-h3-python` vererben das echte
+Serverhandle; beide Kindtests müssen jeweils einzeln rot werden.
+Fehlende Kontoanlage-Rechte, ein fehlender lokaler SMB-Transport oder eine fehlende Python-ZIP
+wird als Skip ausgewiesen; die Struktur- und native Kindsonde bleiben aktiv.
+Authenticode mit den beiden gemeinsam signierten Release-Exes bleibt zusätzlich
+GATE-Aufgabe für L4/L6; ein unsignierter Testprozess muss bereits abgewiesen werden.
 
 ## Einrichten unter Windows
 
