@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.3.0 — 2026-11-03
+
+- SEC c-6608136792 / LEAD Variante a: Nach gültiger Headerform und bewiesener Nichtausführung
+  HTTP 200 mit nicht_ausgefuehrt: true, damit der Kern den Indikator aus 2xx lesen kann.
+  Gate-Abweichungen bleiben 409 ohne Ergebnisfelder; Fehler nach erstem Schreibversuch
+  bleiben unklar ohne beide Felder. Schreibmarkierung erst nach lokalem HTTP-Permit.
+- Beide gemeinsamen JSON-Fixtures durch text eol=lf gesichert; Vorschau-Beispiel von CRLF
+  auf LF normalisiert. Datei-SHA-256 gegen Kern-Git-Fassung lokal und feste Pins in CI,
+  samt CRLF-/Dateidrift-Mutanten. Kern-Checkout bleibt unverändert.
+
+- LEAD-Nachtrag F2-Anschluss: Vorschau mit direkten ziel_urn/text und medien[].name,
+  zusätzliches Wirkungsobjekt entfernt. Exakte Schlüssel/Typen nach der unverändert kopierten
+  Kern-Beispieldatei, Hash separat aus direkten Wirkungsfeldern geprüft; H3 bleibt erhalten.
+  Wiederholung bestätigt ausgefuehrt UND wiederholt ohne zweiten Post. F2-Fristen dokumentiert.
+
+- JanuaPort/januaport#1306 F4, Plan v2/v2.1, SEC c-6602359446 A1/A3 und c-6604738594 H1–H3.
+- Freigabeprüfung über genau `X-Jnpt-Freigabe: hash=<freigabe:v2:sha256:…>` für alle vier
+  Schreibaktionen. 409 vor LinkedIn bei fehlendem/abweichendem Header. Kartei-Freigabeprüfung
+  und Herkunftslabels entfernt; Gateway-Token nur noch zwei Lesewerkzeuge, alter Config-Key entfällt.
+- Vollständige Wirkung aus demselben Eintragsstand wie die Vorschau; Kern-Hash v2 samt
+  unveränderten Golden-Vektoren, Bindung sichtbarer Medientitel und Umfrage.
+- Eindeutige Ergebnisfelder: ausgefuehrt bei bestätigtem Erfolg, nicht_ausgefuehrt nur bei
+  bewiesenem Abbruch vor erstem Schreibversuch, danach unklar ohne beide Felder.
+- Dauerhafter Sperrvermerk im Kern; report_hash bleibt RAM-Komfort. HTTP liefert das Endergebnis,
+  Zwischenzustand und Nachfrage-Fenster entfallen. Migration/Timeout in README und SETUP.
+- Echte Adapter-/HTTP-/Prozesstests und Pflichtmutanten. Synthetisch verifiziert; Live-Abnahme offen.
+
 ## 0.2.0 — 2026-11-02
 
 - Stufe B1, Posten nach Freigabe (JanuaPort/januaport#1237; PO-Zuruf 02.11., SEC-PASS c-6575359082

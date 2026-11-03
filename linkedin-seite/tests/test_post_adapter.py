@@ -9,7 +9,7 @@ from linkedin_seite import source_contract as s
 from linkedin_seite.domain import ReportError
 from linkedin_seite.gateway import GatewayClient
 from support_post import (FakeGateway, FakeLinkedIn, GATEWAY_TOKEN, LocalPostAdapter, Link, ORG, PNG, JPG, PDF, MiB,
-                          TOOL_FILE, config, encoded, freigabe, mp4, new_id, record, write_identity)
+                          TOOL_FILE, config, encoded, mp4, new_id, record, write_identity)
 
 TEXT = 'Neu: drei Stufen (Verbinden, Bauen) – mehr unter https://januaport.ai #KI'
 ESCAPED = 'Neu: drei Stufen \\(Verbinden, Bauen\\) – mehr unter https://januaport.ai #KI'
@@ -25,6 +25,7 @@ class Base(unittest.TestCase):
         self.data = write_identity(self.li.port)
         self.link = Link()
         self.copies = []
+        self.approvals = {}
 
     def adapter(self, link=None, cfg=None):
         adapter = LocalPostAdapter(cfg or self.cfg, self.data, GATEWAY_TOKEN, link or self.link)
@@ -47,11 +48,11 @@ class Base(unittest.TestCase):
 
     def approve(self, rid, aktion='posten'):
         digest = self.vorschau(rid, aktion)['hash']
-        self.gw.freigaben.append(freigabe(rid, aktion, digest))
+        self.approvals[(rid, aktion)] = digest
         return digest
 
     def act(self, rid, aktion='posten', **kwargs):
-        return self.adapter(**kwargs).run(r.WriteRequest(aktion, rid))
+        return self.adapter(**kwargs).run(r.WriteRequest(aktion, rid, freigabe=self.approvals.get((rid, aktion))))
 
     def fails(self, rid, aktion='posten', **kwargs):
         with self.assertRaises(ReportError) as cm:
@@ -85,7 +86,7 @@ class Formats(Base):
         digest = self.approve(rid)
         result = self.act(rid)
         self.assertEqual(result, {'aktion': 'posten', 'eintrag_id': rid, 'hash': digest, 'format': 'text',
-                                  'state': 'veroeffentlicht', 'post_urn': 'urn:li:share:7000000000000000001', 'bytes': 0})
+                                  'state': 'veroeffentlicht', 'post_urn': 'urn:li:share:7000000000000000001', 'bytes': 0, 'ausgefuehrt': True})
         calls = self.li.writes()
         self.assertEqual([(c['method'], c['path']) for c in calls], [('POST', '/rest/posts')])
         self.assertEqual(self.body(calls[0]), {**POST_SHELL, 'commentary': ESCAPED})
@@ -140,7 +141,7 @@ class Formats(Base):
         self.approve(rid)
         self.li.video_status = ['PROCESSING', 'WAITING_UPLOAD', 'AVAILABLE']
         adapter = self.adapter()
-        result = adapter.run(r.WriteRequest('posten', rid))
+        result = adapter.run(r.WriteRequest('posten', rid, freigabe=self.approvals.get((rid, 'posten'))))
         self.assertEqual((result['format'], result['video_urn']), ('video', 'urn:li:video:VID1'))
         calls = self.li.writes()
         init = calls[0]
@@ -180,7 +181,7 @@ class Formats(Base):
         digest = self.approve(rid, 'bearbeiten')
         result = self.act(rid, 'bearbeiten')
         self.assertEqual(result, {'aktion': 'bearbeiten', 'eintrag_id': rid, 'hash': digest, 'format': 'bearbeiten',
-                                  'state': 'bearbeitet', 'post_urn': 'urn:li:ugcPost:42', 'bytes': 0})
+                                  'state': 'bearbeitet', 'post_urn': 'urn:li:ugcPost:42', 'bytes': 0, 'ausgefuehrt': True})
         (call,) = self.li.writes()
         self.assertEqual((call['method'], call['path']), ('POST', '/rest/posts/' + encoded('urn:li:ugcPost:42')))
         self.assertEqual(call['headers']['x-restli-method'], 'PARTIAL_UPDATE')
@@ -261,12 +262,22 @@ class ClosedEndpoints(Base):
 
 
 class Approval(Base):
-    """SEC Bed. 2: approval from the second Kartei, bound to content and bytes, for all four actions."""
+    """SEC Bed. 2: exact core header approval, bound to content and bytes, for all four actions."""
+
+    def test_missing_header_rejected_at_the_actual_adapter(self):
+        for action in r.AKTION_WERTE:
+            rid = self.plan(post_text='x', kommentar_text='c',
+                            **({} if action == 'posten' else {'post_urn': 'urn:li:share:7'}))
+            with self.subTest(action=action), self.assertRaises(ReportError) as cm:
+                self.adapter().run(r.WriteRequest(action, rid))
+            self.assertEqual(cm.exception.status, 409)
+            self.assertTrue(cm.exception.nicht_ausgefuehrt)
+        self.assertEqual(self.li.calls, [])
 
     def test_hash_mismatch_nothing_reaches_linkedin(self):
         rid = self.plan(post_text='x', medien='["clip.mp4"]')
         self.gw.files['clip.mp4'] = mp4(8192)
-        self.gw.freigaben.append(freigabe(rid, 'posten', 'b' * 64))
+        self.approvals[(rid, 'posten')] = 'freigabe:v2:sha256:' + 'b'*64
         self.assertEqual(self.fails(rid), 'nicht_freigegeben')
         self.assertEqual((self.li.calls, self.link.actions), ([], 0))
 
@@ -296,21 +307,11 @@ class Approval(Base):
     def test_delete_without_approval_record_and_with_a_foreign_action(self):
         rid = self.plan(post_text='x', post_urn='urn:li:share:42')
         self.assertEqual(self.fails(rid, 'loeschen'), 'nicht_freigegeben')
-        self.gw.freigaben.append(freigabe(rid, 'posten', self.vorschau(rid, 'loeschen')['hash']))
+        self.approvals[(rid, 'loeschen')] = self.vorschau(rid, 'bearbeiten')['hash']
         self.assertEqual(self.fails(rid, 'loeschen'), 'nicht_freigegeben')
         self.approve(rid, 'bearbeiten')
         self.assertEqual(self.fails(rid, 'loeschen'), 'nicht_freigegeben')
         self.assertEqual(self.li.calls, [])
-
-    def test_only_sso_written_approvals_count(self):
-        rid = self.plan(post_text='x')
-        digest = self.vorschau(rid)['hash']
-        self.gw.freigaben.append(freigabe(rid, 'posten', digest, via='inb-team-token'))
-        self.gw.freigaben.append(freigabe(rid, 'posten', digest, updated_via='inb-team-token'))
-        self.assertEqual(self.fails(rid), 'nicht_freigegeben')
-        self.assertEqual(self.li.calls, [])
-        self.gw.freigaben.append(freigabe(rid, 'posten', digest))
-        self.assertEqual(self.act(rid)['state'], 'veroeffentlicht')
 
     def test_preview_reads_shows_and_hashes_but_never_writes(self):
         rid = self.plan(post_text='Hallo (x)', medien='["a.png","b.png"]')
@@ -318,13 +319,13 @@ class Approval(Base):
         preview = self.vorschau(rid)
         self.assertEqual(preview['post_text'], 'Hallo (x)')
         self.assertEqual(preview['format'], 'bilder')
-        self.assertEqual(preview['medien'], [{'datei': 'a.png', 'art': 'bild', 'bytes': len(PNG), 'sha256': r.sha256_hex(PNG)},
-                                             {'datei': 'b.png', 'art': 'bild', 'bytes': len(PNG) + 1,
+        self.assertEqual(preview['medien'], [{'name': 'a.png', 'datei': 'a.png', 'art': 'bild', 'bytes': len(PNG), 'sha256': r.sha256_hex(PNG)},
+                                             {'name': 'b.png', 'datei': 'b.png', 'art': 'bild', 'bytes': len(PNG) + 1,
                                               'sha256': r.sha256_hex(PNG + b'2')}])
-        self.assertFalse(preview['freigegeben'])
+        self.assertNotIn('freigegeben', preview)
         self.assertEqual(self.li.calls, [])
         self.approve(rid)
-        self.assertTrue(self.vorschau(rid)['freigegeben'])
+        self.assertEqual(self.vorschau(rid)['text'], 'Hallo (x)')
         self.assertEqual(self.li.calls, [])
 
 
@@ -479,13 +480,13 @@ class UploadBytes(Base):
         self.assertTrue(all(c.daten == bytearray() and c.geloescht for c in self.copies))
         self.copies.clear()
         self.li.override = lambda call: (500, {}, b'') if call['method'] == 'PUT' else None
-        self.gw.freigaben.clear()
+        self.approvals.clear()
         self.approve(rid)
         self.copies.clear()
         self.assertEqual(self.fails(rid), 'source_unavailable')
         self.assertTrue(self.copies and all(c.daten == bytearray() and c.geloescht for c in self.copies))
         self.copies.clear()
-        self.gw.freigaben.clear()
+        self.approvals.clear()
         self.assertEqual(self.fails(rid), 'nicht_freigegeben')
         self.assertTrue(self.copies and all(c.geloescht for c in self.copies))
 
@@ -504,7 +505,7 @@ class VideoStatus(Base):
         self.li.video_status = ['PROCESSING']
         adapter = self.adapter()
         with self.assertRaises(ReportError) as cm:
-            adapter.run(r.WriteRequest('posten', rid))
+            adapter.run(r.WriteRequest('posten', rid, freigabe=self.approvals.get((rid, 'posten'))))
         self.assertEqual(cm.exception.code, 'video_nicht_verfuegbar')
         sleeps = adapter.sleep.__self__.sleeps
         self.assertTrue(sleeps and set(sleeps) == {s.VIDEO_POLL_SECONDS})

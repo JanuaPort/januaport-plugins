@@ -1,4 +1,4 @@
-# linkedin-seite 0.2.0 — Modulvertrag (#1237)
+# linkedin-seite 0.3.0 — Modulvertrag (#1306 F4, #1237)
 
 Privater Python-REST-Beisteller, Apache 2.0. PO 29.10.2026 Option (a): Stufe A (Lesen); seit
 0.2.0 Stufe B1 (Posten nach Freigabe, SEC c-6575359082 und c-6575837332). Synthetisch geprüft,
@@ -72,7 +72,7 @@ Invarianten in README, SETUP, Code, Deploy, CI und Tests gemeinsam nachziehen.
 Secret-Hausmuster #887: `plugin-linkedin-seite` (Bridge-Key, zugleich Connector-Credential
 `linkedin-seite`) und `plugin-linkedin-seite-oauth` (OAuth-JSON); seit 0.2.0 optional
 `plugin-linkedin-seite-post-oauth` (Schreib-Grant) und `plugin-linkedin-seite-gateway` (eigener
-Gateway-Token, nur `redaktionsplan_get`, `redaktion_freigabe_search`, `<ablage>_get_file`). tmpfiles erzeugt alle vier
+Gateway-Token, nur `redaktionsplan_get`, `<ablage>_get_file`). tmpfiles erzeugt alle vier
 Ordner 0750/65532; Compose hängt sie read-only ein, eigenes Key-Unit-Paar beobachtet
 alle vier `runtime-key` und führt force-recreate aus; REQUIRE verlangt nur die zwei Stufe-A-Schlüssel. Nie Klartext unter /etc oder /opt.
 Konfiguration ist secretfrei. Kein Secret in Envs, Repo, Fehlerantwort oder Log.
@@ -91,59 +91,92 @@ Tag `linkedin-seite-vX.Y.Z` ausschließlich durch Auftraggeber; Aktionen SHA-gep
 keine neuen Aktionen. amd64-Build, SBOM/Provenance, Digest-/Config-Digest-Sonden,
 Trivy-Bericht, erst dann Tag. Workflow-Änderung zieht Release-Test/CHANGELOG nach.
 Version steht in diesem Kopf, README-Kopf und CHANGELOG; Compose/Deskriptor ohne Version.
-## Stufe B1 (0.2.0) — Invarianten
+## Schreibvertrag 0.3.0 (#1306 F4)
 
-- `redaktion.py` (rein, ohne IO): `WriteConfig` aus dem optionalen Config-Block `schreiben`
-  (`gateway_url` streng `http(s)://<host>:<port>/mcp`, nie `/admin/mcp`; Kartei-/Ablage-Namen; Größe
-  Vorgabe = Höchstwert 32 MiB). Schreibrouten nehmen nur `{"eintrag_id": <16 Hex>}`. Kartei-Felder
-  `post_text`, `medien` (JSON-Liste), `umfrage` (JSON-Objekt), `post_urn`, `kommentar_text` als
-  string, weil der Kern nur `string|integer|number|boolean` kennt; strikt geparst. Umfrage-Grenzen
-  vor dem Senden, nichts kürzen. `posten` verlangt leere `post_urn`. Kürzel `‹…›` in einem Feld und
-  URNs im Kommentartext werden abgewiesen. Hash = SHA-256 über `HASH_PREFIX` + kanonisches JSON
-  (sortiert, UTF-8, kompakt) der gepostet-relevanten Felder und `{datei, bytes, sha256}` je Medium;
-  eingefrorene Vektoren in `tests/test_post_domain.py` — eine Änderung entwertet jede Freigabe und
-  braucht ein neues `v`. `freigegeben` verlangt `eintrag_id`, `aktion`, `hash` exakt **und**
-  `via == updated_via == "SSO"`. `little` escaped alle reservierten Zeichen, `#Wort` bleibt Hashtag.
-  `upload_ziel`: https, `netloc == hostname` (kein Port, keine Zugangsdaten), Host exakt aus der
-  Liste, Pfadpräfix, kein Fragment. `video_teile`: lückenlos, ohne Überlappung, ≤ ceil(Größe/4 MiB).
-- `gateway.py`: MCP-Client (JSON-RPC über Streamable HTTP, Legacy-Kette wie `kartei-rpa`, JSON oder
-  SSE). Ruft **nur** die drei Werkzeuge aus `WriteConfig.tools`; jeder andere Name scheitert vor dem
-  HTTP-Aufruf. Kein Proxy, keine Umleitung, Antwortgröße begrenzt (beim Datei-Abruf 4/3 · Grenze +
-  1 MiB, Lesen bricht dort ab). Dateiname vor dem Aufruf geprüft. `Medium` ist die eine private
-  Kopie (`bytearray`), `loeschen()` überschreibt und verwirft sie. Feste Fehlercodes, kein
-  Gateway-Text.
-- `post_adapter.py`: Reihenfolge Eintrag → Medien einmal lesen → Hash → Freigabe → `report_hash`
-  (Idempotenz) → erst dann `begin_action` (zählt) und LinkedIn. Nur Operationen aus
-  `WRITE_ENDPOINTS` (`api`) und geprüfte Upload-Adressen (`upload`); Autor/owner/actor nur
-  `cfg.organization`; alle übrigen Post-Felder Konstanten (`POST_SHELL`). `Tokens` mit
-  `WRITE_SCOPES` (auch die Erneuerung). Kopien im `finally` gelöscht. Video: alle Teile geprüft vor
-  dem ersten PUT, ETag je Teil, `finalizeUpload`, Status in festem Takt bis Höchstzeit, Post nur bei
-  `AVAILABLE`.
-- `post_pool.py`: je Auftrag ein spawn-Prozess (`job_main`, Logging aus). Der Serverprozess hält
-  Tageszähler (5 Aktionen, 45 HTTP), Idempotenz-Map und den einen laufenden Auftrag; der Auftrag
-  fragt vor jedem LinkedIn-Aufruf über seine Leitung — ohne Serverprozess kein Aufruf. Warten 20 s,
-  danach `202 in_arbeit`, harte Grenze 25 min, Client-Abbruch beendet einen Schreibauftrag nicht
-  (Vorschau schon). Ein Ergebnis/Fehler nach 202 wird beim nächsten Aufruf genau einmal geliefert.
-  Vor dem nicht wiederholbaren Schlussaufruf (`post_create`, `comment_create`) meldet der Auftrag
-  `final`; scheitert er danach, sperrt `unbekannt` dieselbe `eintrag_id`+`hash` mit
-  `409 ergebnis_unbekannt` (kein Doppelpost durch Wiederholung).
-  Spur: eine Zeile je Schreibauftrag, nur Aktion, ID, Hash, Code, URN, Größe.
-- `server.py`: eigener Präfix `/v1/linkedin-post/`, gemeinsame Bridge-Prüfung `check_bridge`,
-  `load_write_side` lädt Schreib-Grant (`load_write_identity`, verlangt `scope`) und Gateway-Token;
-  fehlt/ungültig ⇒ Schreiben aus (`schreiben=<grund>` im Log), Stufe A läuft unverändert.
-- `oauth.py`: `token_result`/`Tokens` mit `scopes`-Parameter (Vorgabe Stufe-A-Scopes), Lese-JSON
-  ohne `scope`, Schreib-JSON mit `scope` = genau die zwei Schreib-Scopes; damit fällt ein Tausch in beiden
-  Richtungen beim Laden auf.
-- `tools/zustimmung.py --schreiben`: fordert genau `w_organization_social w_organization_social_feed` an, schreibt `scope` ins
-  JSON, nennt die Ziel-Stelle auf stderr; ohne Schalter byte-gleicher Aufruf wie 0.1.2.
+Verbindlich: Plan v2/v2.1, SEC c-6602359446 (A1, A3) und c-6604738594 (H1–H3).
+Freigabe, Start und dauerhafter Sperrvermerk liegen im Kern. Der Beisteller liest keine
+Freigabekartei. Sein Gateway-Token hat genau `redaktionsplan_get` und `<ablage>_get_file`.
+`schreiben` enthält gateway_url, redaktionsplan, medien_ablage, max_medium_bytes;
+der frühere Konfigurationsschlüssel freigabe ist entfernt und wird abgewiesen.
 
-Bewusste Entscheidungen und Grenzen: Medien als JSON-String statt Kartei-Liste (Kern-Typen);
-Dateiinhalt über seinen SHA-256 im Hash (gleichwertig, nicht wortgleich mit SEC Bed. 2);
-Dokumenttitel = Dateiname (bei LinkedIn Pflicht); Kommentartext unescaped (Little-Text für
-Kommentare nicht dokumentiert), deshalb ohne URN; kein `GET` des Ziel-Posts (nicht in der
-geschlossenen Liste) — die Freigabe des Menschen bindet die URN; kein DRAFT (Doku: nur `PUBLISHED`
-beim Anlegen); Zähler und Idempotenz nur im RAM, Neustart setzt zurück; `post_urn` schreibt die KI,
-sie ist Komfort und kein Schutz gegen die KI. Token-Label `SSO` ist im Kern nicht reserviert:
-Betreiberregel. Pflichtmutanten B1 stehen in `tests/mutations.py` (Präfixe `b1-`…`b5-`, `v1-`…`v3-`,
-`poll-`). B2-Rest (Untertitel, Vorschaubild, Video-Löschen) und B3 (fremde Kommentare) sind nicht
-gebaut.
+- `redaktion.py`: Schreiben nimmt ausschließlich `{"eintrag_id":"<16 Hex>"}` an.
+  create_post, edit_post, delete_post und create_comment verlangen genau einen Header
+  `X-Jnpt-Freigabe: hash=<freigabe:v2:sha256:…>`; ohne Auftrags-ID, keine zweite Form. Fehlender,
+  mehrfacher, falsch formatierter oder abweichender Wert ergibt 409 nicht_freigegeben.
+  Diese Gate-Antwort trägt weder nicht_ausgefuehrt noch ausgefuehrt.
+  Vor Hash-Gleichheit erfolgt kein LinkedIn-Schreibaufruf.
+- `post_adapter.py`: ein Gateway-Lesevorgang, ein unveränderliches Entry-Objekt für
+  Vorschau UND Wirkung (H3); Medien einmal in private RAM-Kopien lesen und prüfen.
+  Die Vorschau entspricht dem F2-Anschlussvertrag: exakt eintrag_id, aktion, format,
+  ziel_urn, text, medien[{name, sha256, datei, art, bytes}], umfrage, post_text, post_urn,
+  kommentar_text, dokument_titel, hash. Kein zusätzliches verschachteltes Wirkungsfeld.
+  Wirkung und Anzeige verwenden dasselbe Entry-Objekt; der Kern berechnet seinen Hash neu
+  aus den direkten Wirkungsfeldern. Unveränderte Formreferenz:
+  tests/data/linkedin_vorschau_beispiel.json. Optionale Ablaufhinweise erlaubt F2 ausdrücklich:
+  warnung, ablaufdatum, warnung_schreiben, ablaufdatum_schreiben. Freigabezustand gehört zum Kern.
+  Jede Aktion lädt den aktuellen Stand neu und vergleicht ihren selbst berechneten Hash.
+  Ablauf: Eintrag → Medien → Wirkung/Hash → Header-Gleichheit → report_hash → Zählen → LinkedIn.
+  Kopien werden im finally überschrieben und verworfen.
+- Hash exakt wie der Kern: Ausgabe `freigabe:v2:sha256:` + SHA-256 über UTF-8
+  `freigabe:v2`, ein LF, kanonisches JSON in Feldfolge aktion, medien, text, umfrage, ziel_urn.
+  Medien geordnet als {name, sha256}; name ist der sichtbare Name, bei PDF der Dokumenttitel
+  (= Dateiname). Umfrage null oder {antworten, dauer, frage}, dauer ganzzahlige Tage.
+  Nil/fehlende Listen = []; fehlende Umfrage = null, leeres Objekt bleibt vorhanden.
+  UTF-8 ohne Normalisierung, JSON-Kontrollzeichen, kein HTML-/JavaScript-Escaping, kein Leerraum.
+  Unveränderte Kern-Vektoren: tests/data/hash_golden.json; kein v1-Fallback.
+- Abbildung: aktion = posten/bearbeiten/loeschen/kommentar; ziel_urn beim Posten =
+  cfg.organization, sonst post_urn; text = exakter post_text für Post/Edit, kommentar_text
+  für Kommentar, leer für Löschen. Medien/Umfrage nur beim Posten, sonst []/null.
+  Little-Text-Escaping ist eine verlustfreie Transportdarstellung des freigegebenen Texts.
+  Autor/owner/actor ausschließlich cfg.organization; alle anderen Post-Felder feste Konstanten.
+- `gateway.py`: eigener lesender MCP-Client, JSON-RPC/Streamable HTTP (JSON oder SSE),
+  nur zwei Werkzeuge aus WriteConfig.tools. Unbekannte Namen scheitern vor HTTP;
+  Medienname vor Abruf prüfen, Antwort begrenzen, keine Proxies/Redirects.
+- `post_pool.py`: eigener spawn-Prozess je Auftrag, 5 Aktionen und 45 HTTP-Versuche je UTC-Tag
+  im Serverprozess. IPC-Permit vor jedem LinkedIn-Aufruf. Vor jedem möglichen Schreibversuch
+  meldet der Adapter write nach erfolgreichem HTTP-Permit unmittelbar vor dem Senden:
+  auch initializeUpload/Edit/Delete/PUT. Ablehnung der ersten HTTP-Quote bleibt so eindeutig vor Wirkung.
+  Bestätigter Erfolg liefert ausgefuehrt: true. Nach Bridge- und Headerform-Prüfung liefert
+  nur nachweislicher Abbruch vor dem ersten Schreibversuch HTTP 200 mit nicht_ausgefuehrt: true
+  und festem error-Code (SEC c-6608136792, LEAD Variante a). Das gilt für lokale Tages-/HTTP-Kappe,
+  belegten/geschlossenen/nicht eingerichteten Dienst, Validierung, Medienprüfung und Quellenfehler
+  vor dem Senden. Der Kern liest diesen Indikator nur aus 2xx-Antworten. Fehler ab dem ersten möglichen Schreibversuch tragen keines der Felder,
+  auch bei Timeout, Prozessende, fehlerhafter Erfolgsantwort oder Abbruch der Videoverarbeitung.
+  Konservative Unklarheit ist zulässig, falsche Nichtausführung nicht (A1).
+- Ein Schreibauftrag gleichzeitig; parallele Anfrage HTTP 200, schreiben_belegt und
+  nicht_ausgefuehrt: true vor eigenem Start.
+  HTTP wartet auf das Endergebnis, höchstens 25 Minuten; Vorschau 20 Sekunden, 10/Minute.
+  F2 begrenzt den Call aktuell auf 25 Sekunden (Runtime-Decke 120 Sekunden); lange Videojobs
+  können im Kern daher bereits vorher unklar werden. Client-Abbruch beendet einen Schreibprozess nicht. Keine Zwischenantwort und kein Nachfrage-Fenster.
+  report_hash und Ergebnis-Cache im RAM vermeiden Wiederholung bestätigter Erfolge; Neustart
+  leert sie. Wiederholung liefert wiederholt: true UND ausgefuehrt: true, ohne zweiten Post.
+  Dieser Komfort ist kein Sperrvermerk; dauerhafte Ausführungs-/Unklar-Sperren hält der Kern.
+- `server.py`: Bridge-Prüfung vor Facharbeit, Header über HTTP und WriteRequest bis zum Adapter.
+  Die strenge Headerform wird vor Body-/Fachvalidierung und Bereitschaft geprüft; danach
+  dürfen eindeutige Frühfehler als HTTP 200 mit nicht_ausgefuehrt: true zurückkommen,
+  nach Dispatch ausschließlich mit IPC-Nachweis. Hash-Gleichheit wird nach dem Laden geprüft:
+  nicht_freigegeben bleibt immer 409 ohne Ergebnisfeld. Ohne erfolgreiche Bridge-/Headerprüfung
+  sowie für Vorschauen bleiben Fehlerstatus und fehlende Ergebnisindikatoren erhalten.
+  Lese- und Schreib-Grant bleiben getrennt, WRITE_SCOPES exakt w_organization_social und
+  w_organization_social_feed, Gateway-Token in eigener Tresor-Stelle.
+
+Medien-/Umfrage-Grenzen und Upload-Host-/Teile-/Status-Prüfungen aus B1 gelten weiter.
+Kein GET des Ziel-Posts, kein DRAFT; Kommentartext ohne URN; little escaped reservierte
+Zeichen, Hashtags bleiben. post_urn wird durch die KI gepflegt und ist nur Komfort.
+B2/B3, Kern-Code, GUI, Kern-Specs und Live-Abnahme sind außerhalb F4.
+
+Verifikation mit Python 3.12, Abhängigkeiten aus requirements.lock:
+`python -m pip install --require-hashes -r requirements.lock`, dann im Modul
+`python -m unittest discover -s tests -v` und `python tests/mutations.py`.
+Pflichtmutanten: Hashvergleich/fehlender Header, jedes Hashfeld, geänderter Golden-Vektor,
+Ergebnisfelder vor/nach erstem Schreibversuch, zwei Gateway-Werkzeuge, bestehende SEC-Sperren.
+Isolierte Kopien müssen rot werden; Originale bleiben unverändert. Ausgang und Doku-Checkliste
+stehen im PRUEFBERICHT. Synthetische Tests ersetzen kein Live-Gate.
+
+Gemeinsame JSON-Fixtures sind LF-Dateien. Root-.gitattributes enthält
+`linkedin-seite/tests/data/*.json text eol=lf`; untergeordnete -text-Ausnahmen entfallen.
+`test_fixture_bytes` prüft LF, feste Datei-SHA-256 und lokal die Kern-Dateien aus
+../jpwt-1306f2. Bei Windows-CRLF im Kern-Checkout wird dessen exakte LF-Git-Fassung gelesen
+und die reine Checkout-Konvertierung geprüft; der Kern wird nicht geändert. CI ohne den
+Kern-Worktree verwendet dieselben fest eingetragenen SHA-256-Werte. Dies betrifft nur
+Dateizeilenenden der Fixtures, niemals Normalisierung der freizugebenden Texte.

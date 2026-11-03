@@ -109,4 +109,4 @@ class ExampleConfig(unittest.TestCase):
         self.assertEqual(raw["schreiben"]["gateway_url"], "http://jnpt:8484/mcp")
         cfg = Config.from_dict(raw)
         self.assertEqual(sorted(cfg.schreiben.tools.values()),
-                         ["redaktion_freigabe_search", "redaktion_medien_get_file", "redaktionsplan_get"])
+                         ["redaktion_medien_get_file", "redaktionsplan_get"])

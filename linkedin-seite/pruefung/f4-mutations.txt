@@ -1,0 +1,188 @@
+baseline: PASS
+----------------------------------------------------------------------
+Ran 221 tests in 241.998s
+
+OK
+bridge-key: DETECTED
+duplicate-auth: DETECTED
+get-only: DETECTED
+get-body: DETECTED
+private-bind: DETECTED
+unknown-org-input: DETECTED
+duplicate-input: DETECTED
+period-cap: DETECTED
+future-date: DETECTED
+post-input-cap: DETECTED
+scope-set: DETECTED
+expanded-grant: DETECTED
+daily-cap: DETECTED
+count-before-http: DETECTED
+minute-throttle: DETECTED
+bounded-queue: DETECTED
+kill-real-work: DETECTED
+minimize-before-projection: DETECTED
+nested-data-minimization: DETECTED
+org-config-wire: DETECTED
+response-org: DETECTED
+period-coverage: DETECTED
+no-partial-pagination: DETECTED
+numeric-no-null-fallback: DETECTED
+post-author: DETECTED
+member-urn-in-text: DETECTED
+text-length: DETECTED
+fixed-endpoints: DETECTED
+outbound-get-only: DETECTED
+source-redirect: DETECTED
+source-retry: DETECTED
+post-statistics-id: DETECTED
+post-created-order: DETECTED
+source-byte-cap: DETECTED
+response-byte-cap: DETECTED
+token-expired: DETECTED
+refresh-no-extension: DETECTED
+warning: DETECTED
+token-log-library: DETECTED
+token-log-http: DETECTED
+parser-redaction: DETECTED
+consent-state: DETECTED
+consent-loopback: DETECTED
+consent-hard-deadline: DETECTED
+consent-no-echo: DETECTED
+consent-secret-argument-redaction: DETECTED
+network-org-config: DETECTED
+network-org-encoding: DETECTED
+network-edge-type: DETECTED
+follower-two-day-lag: DETECTED
+missing-post-zero: DETECTED
+missing-post-flag: DETECTED
+negative-count-clamp: DETECTED
+negative-count-visible: DETECTED
+mention-attributes: DETECTED
+mention-marker: DETECTED
+attribute-shape: DETECTED
+negative-date: DETECTED
+consent-ipv6-loopback: DETECTED
+consent-ipv6-fallback: DETECTED
+consent-ipv6-notice: DETECTED
+consent-one-attempt-even-invalid: DETECTED
+consent-only-one: DETECTED
+post-no-top-level-next: DETECTED
+post-envelope-org: DETECTED
+post-envelope-id: DETECTED
+post-second-row: DETECTED
+post-other-id: DETECTED
+zero-only-single-post: DETECTED
+negative-only-likes: DETECTED
+negative-followers: DETECTED
+likes-sum-before-clamp: DETECTED
+person-reference-entire-object: DETECTED
+post-valid-paging: DETECTED
+paging-shape: DETECTED
+ipv6-occupied-port: DETECTED
+ipv6-only-unavailable-fallback: DETECTED
+scope-comma-separator: DETECTED
+scope-only-comma-and-whitespace: DETECTED
+scope-empty-parts: DETECTED
+scope-exact-set-wire: DETECTED
+lifetime-cap: DETECTED
+lifetime-no-overshoot-tolerance: DETECTED
+lifetime-unbounded-overshoot: DETECTED
+lifetime-positive: DETECTED
+lifetime-int-type: DETECTED
+access-lifetime-capped: DETECTED
+refresh-lifetime-capped: DETECTED
+restli-structure-raw: DETECTED
+b1-author-person: DETECTED
+b1-owner-person: DETECTED
+b1-actor-person: DETECTED
+b1-foreign-method: DETECTED
+b1-comment-get: DETECTED
+b1-closed-list-check: DETECTED
+b1-endpoint-table: DETECTED
+b1-partial-update-header: DETECTED
+f4-hash-equality: DETECTED
+f4-409-without-header: DETECTED
+f4-header-duplicate: DETECTED
+f4-hash-aktion: DETECTED
+f4-hash-medien: DETECTED
+f4-hash-name: DETECTED
+f4-hash-sha256: DETECTED
+f4-hash-text: DETECTED
+f4-hash-umfrage: DETECTED
+f4-hash-antworten: DETECTED
+f4-hash-dauer: DETECTED
+f4-hash-frage: DETECTED
+f4-hash-ziel-urn: DETECTED
+f4-hash-medien-order: DETECTED
+f4-hash-antworten-order: DETECTED
+f4-golden-changed: DETECTED
+f4-success-flag: DETECTED
+f4-false-nonexecution: DETECTED
+f4-missing-nonexecution: DETECTED
+f4-first-write-marker: DETECTED
+f4-unconfirmed-success: DETECTED
+f4-single-entry: DETECTED
+b3-closed-tools: DETECTED
+b3-path-before-call: DETECTED
+b3-mcp-only: DETECTED
+b3-plan-path-guard: DETECTED
+b3-pseudonym-guard: DETECTED
+b4-write-scope: DETECTED
+b4-write-scope-extra: DETECTED
+b4-write-scope-table: DETECTED
+b4-consent-scope-string: DETECTED
+b4-write-identity-marker: DETECTED
+b4-write-loader: DETECTED
+b4-write-place: DETECTED
+b4-write-refresh-scope: DETECTED
+b4-token-exchange: DETECTED
+b5-daily-cap: DETECTED
+b5-count-before-request: DETECTED
+b5-video-counts-once: DETECTED
+b5-idempotency: DETECTED
+b5-job-log-silence: DETECTED
+b5-trace-text: SURVIVED/INVALID
+F
+======================================================================
+FAIL: test_real_service_log_has_no_text_file_name_upload_url_or_secret (test_post_server.LogCanary.test_real_service_log_has_no_text_file_name_upload_url_or_secret)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\MartinKammerer\Projekte\jpp-1306f4\linkedin-seite\.mutation-gk33sbhv\tests\test_post_server.py", line 363, in test_real_service_log_has_no_text_file_name_upload_url_or_secret
+    self.assertNotIn(canary, output)
+AssertionError: 'UPLOADURLCANARY' unexpectedly found in 'route=linkedin-post/vorschau code=ok duration_ms=1000\nWARNING:root:transport-canary=https://api.linkedin.com/rest/images?action=initializeUpload Bearer WRITE-g7cDK4ntUQ3dphsfP9oPmk1D-HIhEYfbWSLsXqZwOFU\nWARNING:root:transport-canary=https://www.linkedin.com/dms-uploads/IMG1/uploaded-image/0?ut=UPLOADURLCANARY Bearer WRITE-g7cDK4ntUQ3dphsfP9oPmk1D-HIhEYfbWSLsXqZwOFU\nWARNING:root:transport-canary=https://api.linkedin.com/rest/posts Bearer WRITE-g7cDK4ntUQ3dphsfP9oPmk1D-HIhEYfbWSLsXqZwOFU\nspur aktion=posten eintrag_id=00038d7ea4c68000 hash=freigabe:v2:sha256:a6f406dcbb4564d0deffc9d9c2f69a2b28b5ae264bd2e832dae0f7461b0e1e3e code=ok urn=urn:li:share:7000000000000000001 bytes=21\nroute=linkedin-post/create_post code=ok duration_ms=1110\nroute=linkedin-post/vorschau code=ok duration_ms=1000\nWARNING:root:transport-canary=https://api.linkedin.com/rest/images?action=initializeUpload Bearer WRITE-g7cDK4ntUQ3dphsfP9oPmk1D-HIhEYfbWSLsXqZwOFU\nWARNING:root:transport-canary=https://www.linkedin.com/dms-uploads/IMG4/uploaded-image/0?ut=UPLOADURLCANARY Bearer WRITE-g7cDK4ntUQ3dphsfP9oPmk1D-HIhEYfbWSLsXqZwOFU\nspur aktion=posten eintrag_id=00038d7ea4c68001 hash=freigabe:v2:sha256:5a18fac92760e25129df6a6d0cdbabfbdc8868c244c80d6f5c9d8c6e49f03a13 code=source_unavailable urn=- bytes=0\nroute=linkedin-post/create_post code=source_unavailable duration_ms=1077\n'
+
+----------------------------------------------------------------------
+Ran 1 test in 5.469s
+
+FAILED (failures=1)
+
+b5-one-job: DETECTED
+b5-write-auth: DETECTED
+b5-only-the-id: DETECTED
+v1-host: DETECTED
+v1-https: DETECTED
+v1-userinfo-port: DETECTED
+v1-path-prefix: DETECTED
+v1-no-redirect: DETECTED
+v1-video-without-token: DETECTED
+v1-check-before-put: DETECTED
+v2-approval-before-upload: DETECTED
+v2-read-once: DETECTED
+v2-parts-gap-overlap: DETECTED
+v2-parts-count: DETECTED
+v2-parts-cover: DETECTED
+v2-size-limit: DETECTED
+v2-copy-wiped: DETECTED
+v2-magic: DETECTED
+v3-max-wait: DETECTED
+v3-available-only: DETECTED
+v3-failed-status: DETECTED
+poll-question-length: DETECTED
+poll-option-count: DETECTED
+poll-duration: DETECTED
+poll-no-media: DETECTED
+little-escape: DETECTED
+comment-urn-refused: DETECTED
+posted-entry-not-again: DETECTED
+secret-control-character: DETECTED
+failed probes: b5-trace-text

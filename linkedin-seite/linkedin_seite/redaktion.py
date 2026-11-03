@@ -1,9 +1,7 @@
 """Stufe B1 (#1237): pure contract of the write side. No IO, no LinkedIn, no gateway.
 
-What the Beisteller posts is bound to what a human approved: the write tools take only the
-Kartei-ID; text, poll and media come from the entry itself; the hash runs over the canonical
-form of the posted fields and the BYTES of every file (SEC c-6575359082 Bed. 2). The approval
-lives in a second Kartei the AI cannot write; only records written via SSO count.
+The core supplies a hash-bound approval header. Preview, effect and execution use one
+entry read and private media copies; the core owns durable approval and execution locks.
 """
 from dataclasses import dataclass
 import hashlib
@@ -23,11 +21,12 @@ MAX_MEDIUM_BYTES = 32 * 1024 * 1024      # = hard cap of the Ablage get_file (in
 MIN_MEDIUM_BYTES = 1024
 MAX_MEDIEN_GESAMT = 64 * 1024 * 1024    # all files of one entry together, RAM bound of one job
 MAX_BODY = 1024
-HASH_PREFIX = b'jnpt-linkedin-seite-freigabe/v1\n'
-SSO = 'SSO'                              # cmd/jnpt/principal_teams.go principalViaSSO
+HASH_PREFIX = b'freigabe:v2\n'
+HASH_LABEL = 'freigabe:v2:sha256:'
+FREIGABE_HEADER = 'X-Jnpt-Freigabe'
 
 KARTEI_ID = re.compile(r'[0-9a-f]{16}')  # internal/kartei/service.go newID: 16 hex
-HASH = re.compile(r'[0-9a-f]{64}')
+HASH = re.compile(r'freigabe:v2:sha256:[0-9a-f]{64}')
 NAME = re.compile(r'[a-z0-9][a-z0-9_-]{0,62}')
 DATEI = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,119}')
 HOST = r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*'
@@ -67,29 +66,28 @@ def tool_name(name, tool):
 class WriteConfig:
     gateway_url: str
     redaktionsplan: str
-    freigabe: str
     medien_ablage: str
     max_medium_bytes: int
 
     @classmethod
     def from_dict(cls, raw):
-        allowed = {'gateway_url', 'redaktionsplan', 'freigabe', 'medien_ablage', 'max_medium_bytes'}
+        allowed = {'gateway_url', 'redaktionsplan', 'medien_ablage', 'max_medium_bytes'}
         if not isinstance(raw, dict) or set(raw) - allowed or not {'gateway_url', 'medien_ablage'} <= set(raw):
             raise ValueError('configuration_invalid')
-        names = [raw.get('redaktionsplan', 'redaktionsplan'), raw.get('freigabe', 'redaktion_freigabe'), raw['medien_ablage']]
+        names = [raw.get('redaktionsplan', 'redaktionsplan'), raw['medien_ablage']]
         if any(not isinstance(n, str) or not NAME.fullmatch(n) for n in names):
             raise ValueError('configuration_invalid')
-        if len({n.replace('-', '_') for n in names}) != 3:
+        if len({n.replace('-', '_') for n in names}) != 2:
             raise ValueError('configuration_invalid')
         size = raw.get('max_medium_bytes', MAX_MEDIUM_BYTES)
         if type(size) is not int or not MIN_MEDIUM_BYTES <= size <= MAX_MEDIUM_BYTES:
             raise ValueError('configuration_invalid')
-        return cls(gateway_url(raw['gateway_url']), names[0], names[1], names[2], size)
+        return cls(gateway_url(raw['gateway_url']), names[0], names[1], size)
 
     @property
     def tools(self):
         """The closed list of the W2 back channel (SEC Bed. 3): nothing else is ever called."""
-        return {'eintrag': tool_name(self.redaktionsplan, 'get'), 'freigabe': tool_name(self.freigabe, 'search'),
+        return {'eintrag': tool_name(self.redaktionsplan, 'get'),
                 'datei': tool_name(self.medien_ablage, 'get_file')}
 
 
@@ -100,6 +98,7 @@ class WriteRequest:
     aktion: str
     eintrag_id: str
     vorschau: bool = False
+    freigabe: object = None
 
 
 def eintrag_id(value):
@@ -108,7 +107,7 @@ def eintrag_id(value):
     return value
 
 
-def parse_write(route, raw):
+def parse_write(route, raw, headers=()):
     """The write tools take ONLY the Kartei-ID: no text, no file, no URN as argument."""
     if route not in AKTIONEN:
         fail(404, 'route_not_found')
@@ -120,7 +119,17 @@ def parse_write(route, raw):
         fail(400, 'invalid_input')
     if not isinstance(body, dict) or set(body) != {'eintrag_id'}:
         fail(400, 'invalid_input')
-    return WriteRequest(AKTIONEN[route], eintrag_id(body['eintrag_id']))
+    return WriteRequest(AKTIONEN[route], eintrag_id(body['eintrag_id']), freigabe=parse_freigabe(headers))
+
+
+def parse_freigabe(headers):
+    """Exactly one header, exactly hash=<v2 hash>; no alternate spelling of the value."""
+    if len(headers) != 1 or not isinstance(headers[0], str) or not headers[0].startswith('hash='):
+        fail(409, 'nicht_freigegeben')
+    digest = headers[0][5:]
+    if not HASH.fullmatch(digest):
+        fail(409, 'nicht_freigegeben')
+    return digest
 
 
 def parse_vorschau(pairs):
@@ -275,37 +284,32 @@ def check_magic(art, data):
 
 # --- the approval hash (SEC Bed. 2) ---------------------------------------------------------
 
-def canonical(aktion, entry, media):
-    """Canonical JSON of exactly the posted-relevant fields; media as name, size and SHA-256 of the bytes."""
-    if aktion == 'posten':
-        umfrage = entry.umfrage
-        obj = {'aktion': aktion, 'post_text': entry.post_text,
-               'medien': [{'datei': name, 'bytes': size, 'sha256': digest} for name, size, digest in media],
-               'umfrage': None if umfrage is None else {'frage': umfrage.frage, 'antworten': list(umfrage.antworten),
-                                                        'dauer': umfrage.dauer}}
-    elif aktion == 'bearbeiten':
-        obj = {'aktion': aktion, 'post_urn': entry.post_urn, 'post_text': entry.post_text}
-    elif aktion == 'loeschen':
-        obj = {'aktion': aktion, 'post_urn': entry.post_urn}
-    else:
-        obj = {'aktion': aktion, 'post_urn': entry.post_urn, 'kommentar_text': entry.kommentar_text}
-    return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')
+def wirkung(aktion, entry, media, organization):
+    """One entry object supplies both preview and complete provider effect (H3)."""
+    poll = entry.umfrage if aktion == 'posten' else None
+    return {'aktion': aktion,
+            'medien': [{'name': m.name, 'sha256': m.sha256} for m in media] if aktion == 'posten' else [],
+            'text': entry.kommentar_text if aktion == 'kommentar' else '' if aktion == 'loeschen' else entry.post_text,
+            'umfrage': None if poll is None else {'antworten': list(poll.antworten), 'dauer': poll.dauer, 'frage': poll.frage},
+            'ziel_urn': organization if aktion == 'posten' else entry.post_urn}
 
 
-def freigabe_hash(aktion, entry, media):
-    return hashlib.sha256(HASH_PREFIX + canonical(aktion, entry, media)).hexdigest()
+def canonical(effect):
+    """Frozen core v2 encoding: UTF-8, no normalization/HTML/JS escaping, integer days."""
+    poll = effect.get('umfrage')
+    if poll is not None and type(poll.get('dauer', 0)) is not int:
+        raise ValueError('invalid_duration')
+    obj = {'aktion': effect['aktion'],
+           'medien': [{'name': m['name'], 'sha256': m['sha256']} for m in effect.get('medien') or []],
+           'text': effect['text'],
+           'umfrage': None if poll is None else {'antworten': poll.get('antworten') or [],
+                                               'dauer': poll.get('dauer', 0), 'frage': poll.get('frage', '')},
+           'ziel_urn': effect['ziel_urn']}
+    return json.dumps(obj, ensure_ascii=False, separators=(',', ':'), allow_nan=False).encode('utf-8')
 
 
-def freigegeben(records, rid, aktion, digest):
-    """Approved only by a record with the same id, action and hash, written AND last changed via SSO."""
-    for rec in records if isinstance(records, list) else ():
-        if not isinstance(rec, dict) or not isinstance(rec.get('fields'), dict):
-            continue
-        fields = rec['fields']
-        if (fields.get('eintrag_id') == rid and fields.get('aktion') == aktion and fields.get('hash') == digest
-                and rec.get('via') == SSO and rec.get('updated_via') == SSO):
-            return True
-    return False
+def wirkung_hash(effect):
+    return HASH_LABEL + hashlib.sha256(HASH_PREFIX + canonical(effect)).hexdigest()
 
 
 # --- wire helpers ---------------------------------------------------------------------------

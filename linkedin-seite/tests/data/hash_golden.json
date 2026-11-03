@@ -1,0 +1,104 @@
+[
+  {
+    "name": "ohne_beides",
+    "eingabe": {
+      "aktion": "veroeffentlichen",
+      "medien": [],
+      "text": "Inhalt",
+      "umfrage": null,
+      "ziel_urn": "urn:ziel:1"
+    },
+    "kanonisch": "{\"aktion\":\"veroeffentlichen\",\"medien\":[],\"text\":\"Inhalt\",\"umfrage\":null,\"ziel_urn\":\"urn:ziel:1\"}",
+    "hash": "freigabe:v2:sha256:d1de1b1a79e55d2211ce868c00423efa9fab6e2e0c18f96614eca7fe58a1d45b"
+  },
+  {
+    "name": "mit_medien",
+    "eingabe": {
+      "aktion": "veroeffentlichen",
+      "medien": [
+        {
+          "name": "Dokument.pdf",
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "name": "Bild.png",
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ],
+      "text": "Inhalt",
+      "umfrage": null,
+      "ziel_urn": "urn:ziel:1"
+    },
+    "kanonisch": "{\"aktion\":\"veroeffentlichen\",\"medien\":[{\"name\":\"Dokument.pdf\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},{\"name\":\"Bild.png\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}],\"text\":\"Inhalt\",\"umfrage\":null,\"ziel_urn\":\"urn:ziel:1\"}",
+    "hash": "freigabe:v2:sha256:6b0a6b7770235ba04702496cfc02972ba2c7efda4ca271d5690a7ad2121fa6fa"
+  },
+  {
+    "name": "mit_umfrage",
+    "eingabe": {
+      "aktion": "veroeffentlichen",
+      "medien": [],
+      "text": "Inhalt",
+      "umfrage": {
+        "frage": "Welche Variante?",
+        "antworten": [
+          "A",
+          "B"
+        ],
+        "dauer": 7
+      },
+      "ziel_urn": "urn:ziel:1"
+    },
+    "kanonisch": "{\"aktion\":\"veroeffentlichen\",\"medien\":[],\"text\":\"Inhalt\",\"umfrage\":{\"antworten\":[\"A\",\"B\"],\"dauer\":7,\"frage\":\"Welche Variante?\"},\"ziel_urn\":\"urn:ziel:1\"}",
+    "hash": "freigabe:v2:sha256:9c56e271116d3a04cf479f55bc1de9ee6173cf91ace875c15076e8965aae44d3"
+  },
+  {
+    "name": "leere_umfrage",
+    "eingabe": {
+      "aktion": "veroeffentlichen",
+      "medien": [],
+      "text": "Inhalt",
+      "umfrage": {
+        "frage": "",
+        "antworten": [],
+        "dauer": 0
+      },
+      "ziel_urn": "urn:ziel:1"
+    },
+    "kanonisch": "{\"aktion\":\"veroeffentlichen\",\"medien\":[],\"text\":\"Inhalt\",\"umfrage\":{\"antworten\":[],\"dauer\":0,\"frage\":\"\"},\"ziel_urn\":\"urn:ziel:1\"}",
+    "hash": "freigabe:v2:sha256:8c612056e223db458f400e9bb09fd3fbcc1c410f4a8618d997492aba90aaba26"
+  },
+  {
+    "name": "abwesende_optionen",
+    "eingabe": {
+      "aktion": "veroeffentlichen",
+      "text": "Inhalt",
+      "ziel_urn": "urn:ziel:1"
+    },
+    "kanonisch": "{\"aktion\":\"veroeffentlichen\",\"medien\":[],\"text\":\"Inhalt\",\"umfrage\":null,\"ziel_urn\":\"urn:ziel:1\"}",
+    "hash": "freigabe:v2:sha256:d1de1b1a79e55d2211ce868c00423efa9fab6e2e0c18f96614eca7fe58a1d45b"
+  },
+  {
+    "name": "unicode_json",
+    "eingabe": {
+      "aktion": "senden",
+      "medien": [],
+      "text": "Grüße <>&\n\"\\",
+      "umfrage": null,
+      "ziel_urn": "urn:ziel:2"
+    },
+    "kanonisch": "{\"aktion\":\"senden\",\"medien\":[],\"text\":\"Grüße <>&\\n\\\"\\\\\",\"umfrage\":null,\"ziel_urn\":\"urn:ziel:2\"}",
+    "hash": "freigabe:v2:sha256:4ada4671f8b98fcd31d3213decdcf1ddb8e5ee0c93c63e9d21346e1751a1c730"
+  },
+  {
+    "name": "unicode_trennzeichen",
+    "eingabe": {
+      "aktion": "senden",
+      "medien": [],
+      "text": "Zeile Absatz  Literal: \\u2028",
+      "umfrage": null,
+      "ziel_urn": "urn:ziel:3"
+    },
+    "kanonisch": "{\"aktion\":\"senden\",\"medien\":[],\"text\":\"Zeile Absatz  Literal: \\\\u2028\",\"umfrage\":null,\"ziel_urn\":\"urn:ziel:3\"}",
+    "hash": "freigabe:v2:sha256:c00cee2fe132273385bed96b99c090f1e12e065768a8b9c918b259c2239ba6c9"
+  }
+]

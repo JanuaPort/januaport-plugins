@@ -2,7 +2,7 @@
 
 Order of every action (SEC c-6575359082, c-6575837332):
   1. read the entry and each file ONCE from the gateway (private copy in RAM, size checked),
-  2. hash over the canonical form and the bytes, search the approval in the second Kartei,
+  2. hash the complete effect, compare with the exact core approval header,
   3. only then count the action and talk to LinkedIn, from the private copy,
   4. wipe the copies on every path.
 LinkedIn calls go only to the closed list in source_contract.WRITE_ENDPOINTS plus validated
@@ -21,8 +21,6 @@ from .oauth import MAX_SOURCE, Tokens, Transport
 
 API_TIMEOUT = 18
 UPLOAD_TIMEOUT = 120
-# Not idempotent at LinkedIn: once sent, a failure may still have created the post/comment.
-UNWIEDERHOLBAR = ('post_create', 'comment_create')
 
 
 class Erledigt(Exception):
@@ -32,9 +30,11 @@ class Erledigt(Exception):
 class WriteTransport(Transport):
     """Same fixed HTTPS transport (no proxy, no redirect, no retry); returns status and headers too."""
 
-    def exchange(self, request, expect_json=True, timeout=API_TIMEOUT):
+    def exchange(self, request, expect_json=True, timeout=API_TIMEOUT, *, before_send=None):
         self.permit()  # server-process grant before every LinkedIn attempt, failures included
         self.timeout = timeout
+        if before_send is not None:
+            before_send()  # after local quota checks, immediately before possible provider effect
         try:
             with self._open(request) as response:
                 raw = response.read(MAX_SOURCE + 1)
@@ -79,6 +79,7 @@ class PostAdapter:
         self.sleep, self.monotonic = sleep, monotonic
         self.begonnen = False
         self.kopien = []
+        self.schreibversuch = False
 
     # --- reading and approval ---------------------------------------------------------------
 
@@ -94,30 +95,29 @@ class PostAdapter:
                 raise ReportError(413, 'medium_zu_gross')
             r.check_magic(medium.art, medium.daten)
         media = list(self.kopien)
-        digest = r.freigabe_hash(req.aktion, entry, [(m.name, m.groesse, m.sha256) for m in media])
-        saetze = self.gateway.freigaben(req.eintrag_id)
-        ok = r.freigegeben(saetze, req.eintrag_id, req.aktion, digest)
-        return entry, media, fmt, digest, ok
+        effect = r.wirkung(req.aktion, entry, media, self.cfg.organization)
+        return entry, media, fmt, r.wirkung_hash(effect), effect
 
     def vorschau(self, req):
         try:
-            entry, media, fmt, digest, ok = self._laden(req)
-            umfrage = entry.umfrage
-            return {'eintrag_id': req.eintrag_id, 'aktion': req.aktion, 'format': fmt, 'hash': digest,
-                    'freigegeben': ok, 'post_text': entry.post_text if req.aktion in ('posten', 'bearbeiten') else None,
+            entry, media, fmt, digest, effect = self._laden(req)
+            return {'eintrag_id': req.eintrag_id, 'aktion': req.aktion, 'format': fmt,
+                    'ziel_urn': effect['ziel_urn'], 'text': effect['text'],
+                    'medien': [{'name': m.name, 'sha256': m.sha256, 'datei': m.name,
+                                'art': m.art, 'bytes': m.groesse} for m in media],
+                    'umfrage': effect['umfrage'],
+                    'post_text': entry.post_text if req.aktion in ('posten', 'bearbeiten') else None,
                     'post_urn': entry.post_urn, 'kommentar_text': entry.kommentar_text if req.aktion == 'kommentar' else None,
-                    'umfrage': None if umfrage is None else {'frage': umfrage.frage, 'antworten': list(umfrage.antworten),
-                                                             'dauer': umfrage.dauer},
                     'dokument_titel': media[0].name if fmt == 'dokument' else None,
-                    'medien': [{'datei': m.name, 'art': m.art, 'bytes': m.groesse, 'sha256': m.sha256} for m in media]}
+                    'hash': digest}
         finally:
             self._wipe()
 
     def run(self, req):
         try:
-            entry, media, fmt, digest, ok = self._laden(req)
-            if not ok:
-                raise ReportError(403, 'nicht_freigegeben')
+            entry, media, fmt, digest, effect = self._laden(req)
+            if req.freigabe != digest:
+                raise ReportError(409, 'nicht_freigegeben')
             if not self.link.report_hash(digest):
                 raise Erledigt()
             result = {'aktion': req.aktion, 'eintrag_id': req.eintrag_id, 'hash': digest, 'format': fmt}
@@ -137,7 +137,11 @@ class PostAdapter:
                 result.update({'state': 'kommentiert', 'post_urn': entry.post_urn,
                                'kommentar_id': value_of(headers, s.RESTLI_ID, r.COMMENT_ID)})
             result['bytes'] = sum(m.groesse for m in media)
+            result['ausgefuehrt'] = True
             return result
+        except ReportError as exc:
+            exc.nicht_ausgefuehrt = not self.schreibversuch
+            raise
         finally:
             self._wipe()
 
@@ -167,9 +171,12 @@ class PostAdapter:
             headers['Content-Type'] = 'application/json'
             data = json.dumps(body, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
         request = urllib.request.Request(s.API_ROOT + path, data=data, headers=headers, method=method)
-        if op in UNWIEDERHOLBAR:
-            self.link.final_request()  # from here on a failure has an unknown outcome
-        return self.transport.exchange(request, expect_json=expect_json)
+        status, response_headers, data = self.transport.exchange(
+            request, expect_json=expect_json, before_send=self._schreiben if method != 'GET' else None)
+        expected = 201 if op in ('post_create', 'comment_create') else 204 if op in ('post_update', 'post_delete') else 200
+        if status != expected:
+            shape()
+        return status, response_headers, data
 
     def upload(self, url, daten, art):
         ziel = r.upload_ziel(url)  # SEC V1: unknown host, http, port, userinfo: abort before the first byte
@@ -178,8 +185,14 @@ class PostAdapter:
         if s.UPLOAD_TOKEN[art]:
             headers['Authorization'] = 'Bearer ' + self.tokens.access()
         request = urllib.request.Request(ziel, data=daten, headers=headers, method=s.UPLOAD_METHOD)
-        _, response_headers, _ = self.transport.exchange(request, expect_json=False, timeout=UPLOAD_TIMEOUT)
+        _, response_headers, _ = self.transport.exchange(
+            request, expect_json=False, timeout=UPLOAD_TIMEOUT, before_send=self._schreiben)
         return response_headers
+
+    def _schreiben(self):
+        # After the HTTP permit, before sending: includes init, edit, delete and upload.
+        self.link.write_request()
+        self.schreibversuch = True
 
     def _asset(self, op, field, medium):
         _, _, data = self.api(op, body={s.INIT_REQUEST: {s.OWNER: self.cfg.organization}})

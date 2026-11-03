@@ -20,7 +20,7 @@ from linkedin_seite.post_pool import WritePool, WRITE_ACTIONS_PER_DAY
 from linkedin_seite.safe_http import SafeAppRunner
 from linkedin_seite.workers import WorkerPool
 from support import Fake, LocalAdapter, identity
-from support_post import (FakeGateway, FakeLinkedIn, GATEWAY_TOKEN, LocalPostAdapter, PNG, MiB, config, freigabe,
+from support_post import (FakeGateway, FakeLinkedIn, GATEWAY_TOKEN, LocalPostAdapter, PNG, MiB, config,
                           mp4, new_id, record, write_identity)
 
 KEY = 'SYNTHETIC-' + 'b' * 32
@@ -33,7 +33,6 @@ class SafeTestServer(TestServer):
 
 
 class Service(unittest.IsolatedAsyncioTestCase):
-    wait = 20
 
     async def asyncSetUp(self):
         self.read_fake = Fake()
@@ -43,6 +42,7 @@ class Service(unittest.IsolatedAsyncioTestCase):
         self.read = identity(self.read_fake.port)
         self.write = write_identity(self.li.port)
         self.day = ['2026-11-02']
+        self.approvals = {}
         self.pool = WorkerPool(self.cfg, self.read, adapter_factory=LocalAdapter, budget=10)
         self.writes = self.write_pool()
         self.client = TestClient(SafeTestServer(server.create_app(self.cfg, KEY.encode(), self.pool, self.writes)))
@@ -50,7 +50,7 @@ class Service(unittest.IsolatedAsyncioTestCase):
 
     def write_pool(self, **kwargs):
         return WritePool(self.cfg, self.write, GATEWAY_TOKEN, adapter_factory=LocalPostAdapter,
-                         today=lambda: self.day[0], wait=kwargs.pop('wait', self.wait), **kwargs)
+                         today=lambda: self.day[0], **kwargs)
 
     async def asyncTearDown(self):
         await self.client.close()
@@ -69,10 +69,15 @@ class Service(unittest.IsolatedAsyncioTestCase):
     async def approve(self, rid, aktion='posten'):
         status, body = await self.vorschau(rid, aktion)
         self.assertEqual(status, 200, body)
-        self.gw.freigaben.append(freigabe(rid, aktion, body['hash']))
+        self.approvals[(rid, aktion)] = body['hash']
         return body['hash']
 
-    async def write_call(self, route, rid, headers=AUTH):
+    async def write_call(self, route, rid, headers=None):
+        if headers is None:
+            headers = dict(AUTH)
+            digest = self.approvals.get((rid, r.AKTIONEN[route]))
+            if digest:
+                headers['X-Jnpt-Freigabe'] = 'hash=' + digest
         reply = await self.client.post('/v1/linkedin-post/' + route, data=json.dumps({'eintrag_id': rid}), headers=headers)
         return reply.status, await reply.json()
 
@@ -92,8 +97,9 @@ class Boundary(Service):
                 self.assertEqual(reply.status, status)
         for body in (b'', b'{}', json.dumps({'eintrag_id': rid, 'post_text': 'anderer Text'}).encode(),
                      json.dumps({'eintrag_id': rid, 'datei': 'x.png'}).encode(), b'x' * 2048):
-            reply = await self.client.post('/v1/linkedin-post/create_post', data=body, headers=AUTH)
-            self.assertIn(reply.status, (400,))
+            reply = await self.client.post('/v1/linkedin-post/create_post', data=body, headers={**AUTH, 'X-Jnpt-Freigabe': 'hash=freigabe:v2:sha256:' + 'a'*64})
+            self.assertEqual(reply.status, 200)
+            self.assertIs((await reply.json())['nicht_ausgefuehrt'], True)
         reply = await self.client.get('/v1/linkedin-post/vorschau', params={'eintrag_id': rid, 'aktion': 'posten'},
                                       headers=AUTH, data=b'{}')
         self.assertEqual(reply.status, 400)
@@ -115,9 +121,9 @@ class Boundary(Service):
         await client.start_server()
         try:
             for method, path in (('POST', 'create_post'), ('GET', 'vorschau?eintrag_id=00000000000000ab&aktion=posten')):
-                reply = await client.request(method, '/v1/linkedin-post/' + path, headers=AUTH,
+                reply = await client.request(method, '/v1/linkedin-post/' + path, headers={**AUTH, 'X-Jnpt-Freigabe': 'hash=freigabe:v2:sha256:' + 'a'*64},
                                              data=json.dumps({'eintrag_id': '00000000000000ab'}) if method == 'POST' else None)
-                self.assertEqual((reply.status, await reply.json()), (503, {'error': 'schreiben_nicht_eingerichtet'}))
+                self.assertEqual((reply.status, await reply.json()), (200 if method == 'POST' else 503, {'error': 'schreiben_nicht_eingerichtet', **({'nicht_ausgefuehrt': True} if method == 'POST' else {})}))
             reply = await client.post('/v1/linkedin-post/create_post', data=b'{}')
             self.assertEqual(reply.status, 401)
         finally:
@@ -132,8 +138,13 @@ class Flow(Service):
         with self.assertLogs('linkedin_seite', level='INFO') as logs:
             status, first = await self.write_call('create_post', rid)
         self.assertEqual(status, 200, first)
+        self.assertIs(first['ausgefuehrt'], True)
+        self.assertNotIn('nicht_ausgefuehrt', first)
         self.assertEqual((first['post_urn'], first['hash']), ('urn:li:share:7000000000000000001', digest))
         status, again = await self.write_call('create_post', rid)
+        self.assertIs(again['ausgefuehrt'], True)
+        self.assertNotIn('nicht_ausgefuehrt', again)
+        self.assertEqual(again['hash'], digest)
         self.assertEqual((status, again['post_urn'], again['wiederholt']), (200, first['post_urn'], True))
         self.assertEqual(len(self.li.api('POST', '/rest/posts')), 1)
         self.assertEqual(sum(self.writes.actions.values()), 1)
@@ -144,25 +155,14 @@ class Flow(Service):
         for canary in ('Hallo', 'a.png', 'UPLOADURLCANARY', 'dms-uploads', GATEWAY_TOKEN, self.write[s.ACCESS_TOKEN]):
             self.assertNotIn(canary, '\n'.join(logs.output))
 
-    async def test_unknown_outcome_after_the_final_request_is_never_sent_again(self):
-        # LinkedIn accepted the post, but the answer is unusable (here: no x-restli-id). A retry with the
-        # same approval could post a second time; it is refused until a human looks (Zweitmeinung A13).
-        def no_id(call):
-            if call['method'] == 'POST' and call['path'] == '/rest/posts':
-                self.li.posts += 1
-                return 201, {}, b''
-            return None
-        self.li.override = no_id
+    async def test_unknown_outcome_after_the_write_is_returned_to_the_core(self):
+        self.li.override = lambda call: (201, {}, b'') if call['path'] == '/rest/posts' else None
         rid = self.plan(post_text='x')
         await self.approve(rid)
         status, body = await self.write_call('create_post', rid)
         self.assertEqual((status, body), (502, {'error': 'unexpected_source_shape'}))
-        self.li.override = None
-        for _ in range(2):
-            status, body = await self.write_call('create_post', rid)
-            self.assertEqual((status, body), (409, {'error': 'ergebnis_unbekannt'}))
         self.assertEqual(len(self.li.api('POST', '/rest/posts')), 1)
-        self.assertEqual(sum(self.writes.actions.values()), 1)
+        # The durable unknown-result lock belongs to the core, not this RAM pool.
 
     async def test_failure_before_the_final_request_may_be_retried(self):
         self.li.override = lambda call: (500, {}, b'') if call['method'] == 'PUT' else None
@@ -176,10 +176,10 @@ class Flow(Service):
         self.assertEqual((status, body['state']), (200, 'veroeffentlicht'))
         self.assertEqual(len(self.li.api('POST', '/rest/posts')), 1)
 
-    async def test_not_approved_is_403_and_counts_nothing(self):
+    async def test_not_approved_is_409_and_counts_nothing(self):
         rid = self.plan(post_text='x')
         status, body = await self.write_call('create_post', rid)
-        self.assertEqual((status, body), (403, {'error': 'nicht_freigegeben'}))
+        self.assertEqual((status, body), (409, {'error': 'nicht_freigegeben'}))
         self.assertEqual((self.li.calls, sum(self.writes.actions.values())), ([], 0))
 
     async def test_five_write_actions_per_utc_day_over_all_actions(self):
@@ -202,7 +202,7 @@ class Flow(Service):
         await self.approve(rid, 'bearbeiten')
         before = len(self.li.calls)
         status, body = await self.write_call('edit_post', rid)
-        self.assertEqual((status, body), (429, {'error': 'schreib_tageslimit'}))
+        self.assertEqual((status, body), (200, {'error': 'schreib_tageslimit', 'nicht_ausgefuehrt': True}))
         self.assertEqual(len(self.li.calls), before)
         self.day[0] = '2026-11-03'
         status, body = await self.write_call('edit_post', rid)
@@ -229,73 +229,27 @@ class Flow(Service):
 
 
 class Background(Service):
-    """A write job outlives the HTTP request; repeat calls ask for its state, never start a second one."""
-    wait = 0.2
-
-    async def test_slow_job_answers_202_then_the_result(self):
+    async def test_slow_job_waits_for_result_and_rejects_concurrent_requests(self):
+        import time
         def slow(call):
             if call['method'] == 'PUT':
-                import time
-                time.sleep(1.5)
+                time.sleep(1)
             return None
         self.li.override = slow
         rid = self.plan(post_text='Clip', medien='["clip.mp4"]')
         self.gw.files['clip.mp4'] = mp4(8192)
         await self.approve(rid)
-        other = self.plan(post_text='anderer')
-        await self.approve(other)
-        status, body = await self.write_call('create_post', rid)
-        self.assertEqual((status, body['state']), (202, 'in_arbeit'))
-        status, body = await self.write_call('create_post', rid)
-        self.assertEqual((status, body['state']), (202, 'in_arbeit'))
-        status, body = await self.write_call('create_post', other)
-        self.assertEqual((status, body), (429, {'error': 'schreiben_belegt'}))
+        task = asyncio.create_task(self.write_call('create_post', rid))
         for _ in range(200):
-            await asyncio.sleep(0.05)
-            if self.writes.job is None or self.writes.job.future.done():
+            if self.li.uploads():
                 break
-        self.li.override = None
-        status, body = await self.write_call('create_post', rid)  # first delivery of the background result
-        self.assertEqual((status, body['state'], body.get('wiederholt')), (200, 'veroeffentlicht', None))
-        for _ in range(100):  # a later repeat is a short job (re-read and hash), it may answer 202 first
-            status, again = await self.write_call('create_post', rid)
-            if status != 202:
-                break
-            await asyncio.sleep(0.1)
-        self.assertEqual((status, again['post_urn'], again.get('wiederholt')), (200, body['post_urn'], True))
+            await asyncio.sleep(0.02)
+        self.assertFalse(task.done())
+        status, body = await self.write_call('create_post', rid)
+        self.assertEqual((status, body), (200, {'error': 'schreiben_belegt', 'nicht_ausgefuehrt': True}))
+        status, body = await task
+        self.assertEqual((status, body['ausgefuehrt']), (200, True))
         self.assertEqual(len(self.li.api('POST', '/rest/posts')), 1)
-        self.assertEqual(sum(self.writes.actions.values()), 1)
-
-    async def test_failure_after_202_is_reported_once_then_retried(self):
-        def slow_fail(call):
-            if call['method'] == 'PUT':
-                import time
-                time.sleep(1)
-                return 500, {}, b''
-            return None
-        self.li.override = slow_fail
-        rid = self.plan(post_text='x', medien='["a.png"]')
-        self.gw.files['a.png'] = PNG
-        await self.approve(rid)
-        status, body = await self.write_call('create_post', rid)
-        self.assertEqual(status, 202)
-        for _ in range(200):
-            await asyncio.sleep(0.05)
-            if self.writes.job.future.done():
-                break
-        before = len(self.li.calls)
-        status, body = await self.write_call('create_post', rid)
-        self.assertEqual((status, body), (502, {'error': 'source_unavailable'}))
-        self.assertEqual(len(self.li.calls), before)
-        self.li.override = None
-        status, body = await self.write_call('create_post', rid)
-        self.assertIn(status, (200, 202))  # a fresh attempt (fast runners finish it within the wait)
-        for _ in range(200):
-            if self.writes.job.future.done():
-                break
-            await asyncio.sleep(0.05)
-        self.assertEqual(len(self.li.api('POST', '/rest/posts')), 1)
-        self.assertEqual(sum(self.writes.actions.values()), 2)  # the failed attempt counted too
 
 
 class Tokens(unittest.TestCase):
@@ -390,7 +344,7 @@ class LogCanary(unittest.TestCase):
             auth = {'Authorization': 'Bearer ' + bridge}
             with opener.open(urllib.request.Request(base + 'vorschau?eintrag_id=%s&aktion=posten' % rid, headers=auth), timeout=20) as reply:
                 digest = json.loads(reply.read())['hash']
-            gw.freigaben.append(freigabe(rid, 'posten', digest))
+            auth['X-Jnpt-Freigabe'] = 'hash=' + digest
             request = urllib.request.Request(base + 'create_post', data=json.dumps({'eintrag_id': rid}).encode(),
                                              headers={**auth, 'Content-Type': 'application/json'}, method='POST')
             with opener.open(request, timeout=20) as reply:
@@ -399,7 +353,7 @@ class LogCanary(unittest.TestCase):
             rid2 = new_id()
             gw.plan[rid2] = record(rid2, {'post_text': 'TEXTCANARY zwei', 'medien': '["dateinamecanary.png"]'})
             with opener.open(urllib.request.Request(base + 'vorschau?eintrag_id=%s&aktion=posten' % rid2, headers=auth), timeout=20) as reply:
-                gw.freigaben.append(freigabe(rid2, 'posten', json.loads(reply.read())['hash']))
+                auth['X-Jnpt-Freigabe'] = 'hash=' + json.loads(reply.read())['hash']
             request = urllib.request.Request(base + 'create_post', data=json.dumps({'eintrag_id': rid2}).encode(),
                                              headers=auth, method='POST')
             with self.assertRaises(urllib.error.HTTPError):
@@ -414,7 +368,7 @@ class LogCanary(unittest.TestCase):
                        write[s.ACCESS_TOKEN], write[s.CLIENT_SECRET], read[s.ACCESS_TOKEN], bridge):
             self.assertNotIn(canary, output)
         for line in output.splitlines():
-            self.assertRegex(line, r'^(route=\S+ code=\S+ duration_ms=\d+|spur aktion=\S+ eintrag_id=[0-9a-f]{16} hash=(?:[0-9a-f]{64}|-) '
+            self.assertRegex(line, r'^(route=\S+ code=\S+ duration_ms=\d+|spur aktion=\S+ eintrag_id=[0-9a-f]{16} hash=(?:freigabe:v2:sha256:[0-9a-f]{64}|-) '
                                    r'code=\S+ urn=\S+ bytes=\d+|schreiben=\S+)$')
 
 

@@ -1,11 +1,15 @@
-"""Stufe B1 (#1237): pure contract of the write side — config, entry, poll, formats, hash, SSO."""
+"""Stufe B1 (#1237): pure contract of the write side — config, entry, poll, formats, hash v2."""
 import hashlib
 import json
 import unittest
 from linkedin_seite import redaktion as r
 from linkedin_seite import source_contract as s
 from linkedin_seite.domain import Config, ReportError
-from support_post import ORG, PNG, PDF, mp4, record, freigabe
+from support_post import ORG, PNG, PDF, mp4, record
+
+
+def parse_write(route, raw):
+    return r.parse_write(route, raw, ['hash=freigabe:v2:sha256:' + 'a'*64])
 
 
 def code(callable_, *args, **kwargs):
@@ -25,8 +29,8 @@ class WriteConfiguration(unittest.TestCase):
     def test_gateway_url_only_mcp_on_internal_host_with_port(self):
         cfg = r.WriteConfig.from_dict(GOOD)
         self.assertEqual(cfg.gateway_url, 'http://jnpt:8484/mcp')
-        self.assertEqual((cfg.redaktionsplan, cfg.freigabe, cfg.max_medium_bytes),
-                         ('redaktionsplan', 'redaktion_freigabe', 32*1024*1024))
+        self.assertEqual((cfg.redaktionsplan, cfg.max_medium_bytes),
+                         ('redaktionsplan', 32*1024*1024))
         for url in ('http://jnpt:8484/admin/mcp', 'http://jnpt:8484/mcp/', 'http://jnpt:8484/mcp/v/redaktion',
                     'http://jnpt:8484/MCP', 'http://jnpt:8484/mcp?x=1', 'http://jnpt:8484/mcp#x', 'http://jnpt/mcp',
                     'http://user:pw@jnpt:8484/mcp', 'http://jnpt@evil:8484/mcp', 'ftp://jnpt:8484/mcp',
@@ -40,7 +44,7 @@ class WriteConfiguration(unittest.TestCase):
 
     def test_closed_tool_names_follow_the_core_qualification(self):
         cfg = r.WriteConfig.from_dict(GOOD)
-        self.assertEqual(cfg.tools, {'eintrag': 'redaktionsplan_get', 'freigabe': 'redaktion_freigabe_search',
+        self.assertEqual(cfg.tools, {'eintrag': 'redaktionsplan_get',
                                      'datei': 'redaktion_medien_get_file'})
         for field, value in (('redaktionsplan', 'Redaktionsplan'), ('freigabe', '../x'), ('medien_ablage', ''),
                              ('medien_ablage', 'a'*64), ('freigabe', 'redaktionsplan'), ('medien_ablage', 'redaktionsplan')):
@@ -72,7 +76,7 @@ class WriteConfiguration(unittest.TestCase):
 
 class Requests(unittest.TestCase):
     def test_write_routes_take_only_the_kartei_id(self):
-        req = r.parse_write('create_post', b'{"eintrag_id":"00000000000000ab"}')
+        req = parse_write('create_post', b'{"eintrag_id":"00000000000000ab"}')
         self.assertEqual((req.aktion, req.eintrag_id, req.vorschau), ('posten', '00000000000000ab', False))
         self.assertEqual(r.AKTIONEN, {'create_post': 'posten', 'edit_post': 'bearbeiten',
                                       'delete_post': 'loeschen', 'create_comment': 'kommentar'})
@@ -208,82 +212,6 @@ class Formats(unittest.TestCase):
         for art, data in (('bild', PDF), ('dokument', PNG), ('video', PNG), ('bild', b''), ('video', b'\x00'*16)):
             with self.subTest(art=art):
                 self.assertEqual(code(r.check_magic, art, data), 'medium_format_ungueltig')
-
-
-class Hash(unittest.TestCase):
-    """SEC Bed. 2: SHA-256 over the canonical form. Frozen vectors: a change breaks the approvals."""
-
-    def media(self, *items):
-        return [(name, len(data), hashlib.sha256(data).hexdigest()) for name, data in items]
-
-    def test_canonical_form_is_fixed(self):
-        e = entry(post_text='Ein Post mit Link: https://januaport.ai', medien='["a.png"]')
-        self.assertEqual(r.canonical('posten', e, self.media(('a.png', PNG))),
-                         ('{"aktion":"posten","medien":[{"bytes":21,"datei":"a.png","sha256":"%s"}],'
-                          '"post_text":"Ein Post mit Link: https://januaport.ai","umfrage":null}'
-                          % hashlib.sha256(PNG).hexdigest()).encode())
-        self.assertEqual(r.HASH_PREFIX, b'jnpt-linkedin-seite-freigabe/v1\n')
-
-    def test_table_of_frozen_vectors(self):
-        poll = json.dumps({'dauer': 7, 'antworten': ['Ja', 'Nein'], 'frage': 'Gut?'})
-        table = [
-            ('posten', entry(post_text='Hallo'), [], '9c37da07fcf73161aaf1cd2243ee4a4a241d9fc6a792a203d6badb69927a8cf0'),
-            ('posten', entry(post_text='Hallo', medien='["a.png"]'), self.media(('a.png', PNG)), '8ee6658f4c73f177be8161ddff97bf6d6f531df6185364e41f3f63b8d5a8b60e'),
-            ('posten', entry(post_text='Hallo', umfrage=poll), [], 'e687a631525fce748578f6e91a08f65e2631f43952ca94c9bad89cdd7b6519f4'),
-            ('bearbeiten', entry('bearbeiten', post_text='Hallo', post_urn='urn:li:share:7'), [], '0bbf1403d94b00c641bc6f2c256272c5aee3b14470f2e8b5111f80f3547df746'),
-            ('loeschen', entry('loeschen', post_urn='urn:li:share:7'), [], 'd528f4f7520c367556b622a25efaf1427f8f90a9b4752f201914aebe48740cd1'),
-            ('kommentar', entry('kommentar', post_urn='urn:li:share:7', kommentar_text='Hallo'), [], '2af7aa349b4a6b0051ff60ce8e98d6e9af4fa1ce2e29fc28c6024b6c9662f908'),
-        ]
-        digests = []
-        for aktion, e, media, frozen in table:
-            digest = r.freigabe_hash(aktion, e, media)
-            self.assertRegex(digest, r'^[0-9a-f]{64}$')
-            self.assertEqual(digest, hashlib.sha256(r.HASH_PREFIX + r.canonical(aktion, e, media)).hexdigest())
-            if frozen:
-                self.assertEqual(digest, frozen)
-            digests.append(digest)
-        self.assertEqual(len(set(digests)), len(digests))  # action and fields always separate
-
-    def test_every_relevant_change_changes_the_hash_irrelevant_ones_do_not(self):
-        base = r.freigabe_hash('posten', entry(post_text='Hallo', medien='["a.png","b.png"]'),
-                               self.media(('a.png', PNG), ('b.png', PNG + b'2')))
-        changed = [
-            r.freigabe_hash('posten', entry(post_text='Hallo!', medien='["a.png","b.png"]'), self.media(('a.png', PNG), ('b.png', PNG + b'2'))),
-            r.freigabe_hash('posten', entry(post_text='Hallo', medien='["b.png","a.png"]'), self.media(('b.png', PNG + b'2'), ('a.png', PNG))),
-            r.freigabe_hash('posten', entry(post_text='Hallo', medien='["a.png","b.png"]'), self.media(('a.png', PNG), ('b.png', PNG + b'3'))),
-            r.freigabe_hash('posten', entry(post_text='Hallo', medien='["a.png","c.png"]'), self.media(('a.png', PNG), ('c.png', PNG + b'2'))),
-        ]
-        self.assertNotIn(base, changed)
-        same = r.freigabe_hash('posten', entry(post_text='Hallo', medien='["a.png", "b.png"]', status='bereit', kanal='x'),
-                               self.media(('a.png', PNG), ('b.png', PNG + b'2')))
-        self.assertEqual(base, same)
-        p1 = json.dumps({'frage': 'Gut?', 'antworten': ['Ja', 'Nein'], 'dauer': 7})
-        p2 = json.dumps({'dauer': 7, 'frage': 'Gut?', 'antworten': ['Ja', 'Nein']}, indent=2)
-        p3 = json.dumps({'frage': 'Gut?', 'antworten': ['Nein', 'Ja'], 'dauer': 7})
-        h = [r.freigabe_hash('posten', entry(post_text='x', umfrage=p), []) for p in (p1, p2, p3)]
-        self.assertEqual(h[0], h[1])  # canonical: key order and whitespace of the JSON field
-        self.assertNotEqual(h[0], h[2])  # order of the answers counts
-        self.assertNotEqual(r.freigabe_hash('loeschen', entry('loeschen', post_urn='urn:li:share:7'), []),
-                            r.freigabe_hash('loeschen', entry('loeschen', post_urn='urn:li:share:8'), []))
-        self.assertEqual(r.freigabe_hash('loeschen', entry('loeschen', post_urn='urn:li:share:7', post_text='egal'), []),
-                         r.freigabe_hash('loeschen', entry('loeschen', post_urn='urn:li:share:7'), []))
-
-
-class Approval(unittest.TestCase):
-    def test_only_an_exact_sso_written_record_approves(self):
-        digest = 'a'*64
-        ok = freigabe('00000000000000ab', 'posten', digest)
-        self.assertTrue(r.freigegeben([ok], '00000000000000ab', 'posten', digest))
-        for bad in (freigabe('00000000000000ac', 'posten', digest), freigabe('00000000000000ab', 'bearbeiten', digest),
-                    freigabe('00000000000000ab', 'posten', 'b'*64), freigabe('00000000000000ab', 'posten', digest.upper()),
-                    freigabe('00000000000000ab', 'posten', digest, via='inb-team-token'),
-                    freigabe('00000000000000ab', 'posten', digest, updated_via='inb-team-token'),
-                    freigabe('00000000000000ab', 'posten', digest, updated_via=''),
-                    {'fields': ok['fields']}, {'via': 'SSO', 'updated_via': 'SSO', 'fields': 'x'}, 'x', None):
-            with self.subTest(bad=bad):
-                self.assertFalse(r.freigegeben([bad], '00000000000000ab', 'posten', digest))
-        self.assertFalse(r.freigegeben([], '00000000000000ab', 'posten', digest))
-        self.assertTrue(r.freigegeben([freigabe('00000000000000ab', 'posten', 'b'*64), ok], '00000000000000ab', 'posten', digest))
 
 
 class LittleText(unittest.TestCase):

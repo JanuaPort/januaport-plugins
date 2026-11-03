@@ -1,0 +1,179 @@
+ALTWEGE (repo-weit, Historie und fachfremde SSO-Treffer mit erfasst)
+rg -n freigegeben\(|redaktion_freigabe_search|\bSSO\b|updated_via|\bvia\b|jnpt-linkedin-seite-freigabe/v1|in_arbeit|ergebnis_unbekannt|tool_freigabe|freigabe_hash|final_request . (ohne Prüfartefakte und diesen Bericht)
+.\README.md:34:| [`ebics-abholer/`](ebics-abholer/) | Fetches the daily bank statement (camt.053) from the bank via EBICS and places it as a file in a shared directory that JanuaPort reads from. It cannot submit payments. | **Built.** In productive use at JanuaPort GmbH for its own company account (EBICS H005, daily timer run since 7 September 2026). Verified against one bank so far. Image `ghcr.io/januaport/ebics` (amd64, arm64): **in progress** — release workflow with scan built, no version published yet. |
+.\SECURITY.md:42:Report vulnerabilities to **security@januaport.ai**, not via public issues.
+.\desktop-runner\systemd\jnpt-runner.service:31:# Rootful requires a socket group via SupplementaryGroups, never User=root.
+.\box\docker-compose.box.yml:92:      # ── Cloud-KI-Anbindung + SSO des Kunden-Tenants (RUNBOOK.md, Anbindung) ─
+.\box\docker-compose.box.yml:93:      # Durchreiche: leer = aus. Ohne diese Zeilen erreichte kein SSO-Wert das
+.\box\docker-compose.box.yml:102:      # SSO-Rolle = Basis-Gate: nur Träger dieser App-Rolle dürfen sich anmelden;
+.\bing-webmaster\README.md:109:**Audit-Betriebsbedingung: metadaten für SSO UND Token.** Alle deklarierten Parameter der
+.\box\Caddyfile:54:	#                   RFC-9728 Protected Resource Metadata (Anmeldung per SSO;
+.\box\Caddyfile:56:	#                   bedient — ohne SSO liefert JanuaPort hier 404). Gewollt.
+.\box\Caddyfile:77:	# View, beide mit Bearer/SSO wie /mcp) und liefert für alles andere selbst
+.\box\Caddyfile:84:	# liefert für alles andere selbst 404 (ohne aktives SSO ist der ganze
+.\box\RUNBOOK.md:444:| `JNPT_SSO_ENABLED` | `true` — **ohne ihn sind alle SSO-Werte wirkungslos** (kein Metadaten-Endpunkt, 401 bleibt blankes `Bearer`) |
+.\box\RUNBOOK.md:474:### 5.2 Zwei Gates beim SSO-Login
+.\box\RUNBOOK.md:479:| 2 | Freigabe | Admin-GUI: Zugang → SSO → Gruppen-Freigabe | hat die Person ein Konto **oder** eine freigegebene Rolle/Gruppe? |
+.\google-reporting\README.md:183:**Audit-Betriebsbedingung: metadaten für SSO UND Token.** Alle deklarierten
+.\google-reporting\README.md:321:7. Auditbedingung prüfen; Status, Negativproben, dann Berichte. „JanuaPort SSO Neu“
+.\google-reporting\README.md:366:GATE-Release. Live-DoD: je Quelle echter Bericht über **ChatGPT → JanuaPort SSO Neu
+.\desktop-runner\CLAUDE.md:186:    Letzten Wechsel via L1-Adapter `POST /halt` nachliefern und koaleszieren,
+.\desktop-runner\CLAUDE.md:275:    leer (K6b später). Win32 via syscall/System32; x/sys/windows nur hinter Pipe.
+.\linkedin-seite\tests\test_sec_tightening.py:61:        # with daily rows obtained via the real fixed GET transport, without a mock.
+.\google-reporting\CLAUDE.md:21:  (`/run/secrets/google/runtime-key`), beide beim Start via `load_runtime_files`;
+.\google-reporting\CLAUDE.md:65:GA-Kleingruppenschwelle aus Messvertrag,Auditmetadaten je SSO/Token.
+.\desktop-runner\cmd\bedienfeld\process_windows_test.go:18:// The existing Windows job runs this test via go test ./....
+.\linkedin-seite\tests\test_post_server.py:161:    async def test_failure_before_the_final_request_may_be_retried(self):
+.\linkedin-seite\tests\test_post_gateway.py:45:        for tool in ('redaktion_freigabe_search', 'redaktionsplan_add', 'redaktionsplan_update', 'redaktion_freigabe_add', 'redaktionsplan_search',
+.\desktop-runner\internal\platform\screenshot_windows_test.go:18:		t.Skip("GDI only via LEAD CI/GATE opt-in in an interactive session")
+.\linkedin-seite\tests\test_consent.py:175:            for via in ('stdin', 'getpass'):
+.\linkedin-seite\tests\test_consent.py:176:                with self.subTest(secret=repr(secret), via=via):
+.\linkedin-seite\tests\test_consent.py:177:                    args = ['z', '--client-id', 'synthetic-client'] + (['--secret-stdin'] if via == 'stdin' else [])
+.\linkedin-seite\tests\test_oauth_toleranz.py:192:    """Version 1 credentials (written via a wrapper: scope normalised, refresh capped at 365 d)."""
+.\linkedin-seite\README.md:165:   `http://linkedin-seite:8092`, Timeout 25 Sekunden. Audit für SSO **und** Token auf
+.\linkedin-seite\README.md:396:7. Connector-Vorlage um die fünf Werkzeuge ergänzen, Timeout für das Endergebnis bis 25 Minuten vorsehen. Audit für SSO und Token auf Metadaten; die Vorschau-Antwort enthält den Post-Text.
+.\linkedin-seite\CHANGELOG.md:25:  und `hash`, angelegt und zuletzt geändert per SSO (`via`/`updated_via`). Hash = SHA-256 über die
+.\linkedin-seite\CHANGELOG.md:29:  Werkzeugliste `redaktionsplan_get`, `redaktion_freigabe_search`, `<ablage>_get_file`; eigene Stelle
+.\linkedin-seite\CHANGELOG.md:42:  Idempotenz `eintrag_id` + `hash` im Serverprozess, ein Auftrag zugleich, `202 in_arbeit` für lange
+.\linkedin-seite\CHANGELOG.md:44:  `409 ergebnis_unbekannt` dieselbe Freigabe (kein Doppelpost). Spur je Auftrag nur IDs, URN, Hash, Größe.
+.\script-runner\internal\apphost\caddy_test.go:18:// Run via probe/apphost.ps1: real caddy:2.11.7, isolated Docker networks.
+.\script-runner\internal\libs\lock_test.go:31:		{"Kommentare und Leerzeilen", "# erzeugt mit pip hash\n\nsix==1.17.0 \\\n    --hash=sha256:" + h1 + "\n    # via python-dateutil\n\n",
+.\script-runner\internal\libs\lock_test.go:33:		{"Kommentar nach dem Hash", "six==1.17.0 --hash=sha256:" + h1 + " # via x\n",
+.\script-runner\internal\libs\lock_test.go:153:		"numpy==2.5.4 \\\n    --hash=sha256:" + h1 + " \\\n    --hash=sha256:" + h2 + "\n# via x\n",
+
+AKTUELLE INVARIANTEN UND KOMPOSITIONSSTELLEN (repo-weit)
+rg -n freigabe:v2|X-Jnpt-Freigabe|wirkung_hash|report_hash|write_request|schreibversuch|write_started|ausgefuehrt|tool_eintrag|tool_datei|parse_write|WRITE_ENDPOINTS|transport.exchange|self.gateway.eintrag|self.gateway.datei|WriteConfig|schreiben.freigabe . (ohne Prüfartefakte und diesen Bericht)
+.\ARCHITEKTUR.md:18:| [linkedin-seite](linkedin-seite/CLAUDE.md) | #1237, Stufe A: drei feste GET-Werkzeuge, fünf Hersteller-Endpunkte einschließlich networkSizes für Follower-Gesamtzahl; Organisation nur aus Betreiberkonfiguration. Follower-Zeitraum bis heute−2 UTC; maximal zehn Beiträge, Nullinteraktion nur bei gültiger leerer Einzelantwort mit gültigem Paging ohne next-Link; nur negative Like-Summe markiert gekappt, andere negative Zähler sind Fehler; Personenbezug im gesamten Objekt unterdrückt Text. Zwei gepinnte Scopes; OAuth aus Tresorstellen `plugin-linkedin-seite` / `plugin-linkedin-seite-oauth`, RAM-Refresh und 14-Tage-Warnung. **0.1.1:** Tokenantwort toleriert Komma-Scope und knappe Laufzeit-Überschreitung (gedeckelt auf 60/365 Tage), Scope-Menge bleibt exakt; Steuerzeichen im Client-Secret werden abgewiesen. Lokales Zustimmungsskript auf 127.0.0.1/::1, gemeinsam genau eine Anfrage einschließlich fehlerhafter, IPv4-Fallback nur bei fehlendem IPv6, belegter IPv6-Port bricht ab; stdout direkt in Tresor-Pipe. Zwei killbare Worker, 50 HTTP-Versuche/UTC-Tag im Serverprozess, 30 Berichte/Minute; keine Personenlisten oder Fach-Schreibwege. Safe-HTTP-/Deploy-/Release-Muster aus google-reporting, setup_guide und Mutationsproben. Herstellervertrag zentral als live zu belegen markiert; synthetische Abnahme, Live/Katalog offen. **0.3.0 Stufe B1 / #1306 F4:** Posten/Bearbeiten/Löschen/eigener Kommentar (Text, Bild, 2–20 Bilder, PDF, Umfrage, Video) unter `/v1/linkedin-post/`, Werkzeuge nehmen nur die Kartei-ID; Freigabe im Kern, alle vier Aktionen prüfen exakt X-Jnpt-Freigabe: hash=freigabe:v2:sha256:… gegen die gesamte Wirkung (identischer Eintragsstand wie Vorschau, geordnete sichtbare Mediennamen/Dateihashes und Umfrage); eigener MCP-Client an `http://jnpt:8484/mcp` mit zwei Lesewerkzeugen (redaktionsplan_get, redaktion_medien_get_file) (Stelle `plugin-linkedin-seite-gateway`); eigener Schreib-Grant `w_organization_social` + `w_organization_social_feed` (`plugin-linkedin-seite-post-oauth`); geschlossene Endpunkt-/Upload-Host-Liste, Video-Teile/Status begrenzt; je Aktion eigener Prozess mit RAM-Kopie; 5 Aktionen/UTC-Tag, RAM-Ergebniscache im Serverprozess (kein Sperrvermerk), dauerhafte Sperren im Kern; ausgefuehrt nur bei bestätigtem Erfolg, nicht_ausgefuehrt nur vor erstem Schreibversuch, spätere Fehler unklar; HTTP-Endergebnis bis 25 Minuten. Synthetisch geprüft, Live offen. |
+.\linkedin-seite\CLAUDE.md:16:  202610), geschlossene `WRITE_ENDPOINTS` (Methode, Pfad je
+.\linkedin-seite\CLAUDE.md:104:  `X-Jnpt-Freigabe: hash=<freigabe:v2:sha256:…>`; keine zweite Form. Fehlender,
+.\linkedin-seite\CLAUDE.md:111:  Ablauf: Eintrag → Medien → Wirkung/Hash → Header-Gleichheit → report_hash → Zählen → LinkedIn.
+.\linkedin-seite\CLAUDE.md:113:- Hash exakt wie der Kern: Ausgabe `freigabe:v2:sha256:` + SHA-256 über UTF-8
+.\linkedin-seite\CLAUDE.md:114:  `freigabe:v2`, ein LF, kanonisches JSON in Feldfolge aktion, medien, text, umfrage, ziel_urn.
+.\linkedin-seite\CLAUDE.md:126:  nur zwei Werkzeuge aus WriteConfig.tools. Unbekannte Namen scheitern vor HTTP;
+.\linkedin-seite\CLAUDE.md:131:  Bestätigter Erfolg liefert ausgefuehrt: true. Nur nachweislicher Abbruch vor dem ersten
+.\linkedin-seite\CLAUDE.md:132:  Schreibversuch liefert nicht_ausgefuehrt: true. Fehler danach tragen keines der Felder,
+.\linkedin-seite\CLAUDE.md:138:  report_hash und Ergebnis-Cache im RAM vermeiden Wiederholung bestätigter Erfolge; Neustart
+.\linkedin-seite\CHANGELOG.md:6:- Freigabeprüfung über genau `X-Jnpt-Freigabe: hash=<freigabe:v2:sha256:…>` für alle vier
+.\linkedin-seite\CHANGELOG.md:11:- Eindeutige Ergebnisfelder: ausgefuehrt bei bestätigtem Erfolg, nicht_ausgefuehrt nur bei
+.\linkedin-seite\CHANGELOG.md:13:- Dauerhafter Sperrvermerk im Kern; report_hash bleibt RAM-Komfort. HTTP liefert das Endergebnis,
+.\linkedin-seite\linkedin_seite\gateway.py:59:        self.tool_eintrag, self.tool_datei = names['eintrag'], names['datei']
+.\linkedin-seite\linkedin_seite\gateway.py:144:        record = self._structured(self.call(self.tool_eintrag, {'id': rid}, SMALL_ANSWER), 'record')
+.\linkedin-seite\linkedin_seite\gateway.py:153:        result = self.call(self.tool_datei, {'file': name}, limit, FILE_TIMEOUT)
+.\linkedin-seite\linkedin_seite\domain.py:42:            from .redaktion import WriteConfig
+.\linkedin-seite\linkedin_seite\domain.py:43:            schreiben = WriteConfig.from_dict(raw['schreiben'])
+.\linkedin-seite\linkedin_seite\source_contract.py:105:WRITE_ENDPOINTS = {
+.\linkedin-seite\linkedin_seite\server.py:13:from .redaktion import ROUTES as POST_ROUTES, VORSCHAU, FREIGABE_HEADER, parse_vorschau, parse_write
+.\linkedin-seite\linkedin_seite\server.py:139:                    req = parse_write(parts[3], await bounded_body(request), request.headers.getall(FREIGABE_HEADER, []))
+.\linkedin-seite\linkedin_seite\server.py:177:            if write_route and (not dispatched or getattr(exc, 'nicht_ausgefuehrt', False)):
+.\linkedin-seite\linkedin_seite\server.py:178:                payload['nicht_ausgefuehrt'] = True
+.\linkedin-seite\linkedin_seite\server.py:187:                payload['nicht_ausgefuehrt'] = True
+.\linkedin-seite\linkedin_seite\redaktion.py:24:HASH_PREFIX = b'freigabe:v2\n'
+.\linkedin-seite\linkedin_seite\redaktion.py:25:HASH_LABEL = 'freigabe:v2:sha256:'
+.\linkedin-seite\linkedin_seite\redaktion.py:26:FREIGABE_HEADER = 'X-Jnpt-Freigabe'
+.\linkedin-seite\linkedin_seite\redaktion.py:29:HASH = re.compile(r'freigabe:v2:sha256:[0-9a-f]{64}')
+.\linkedin-seite\linkedin_seite\redaktion.py:66:class WriteConfig:
+.\linkedin-seite\linkedin_seite\redaktion.py:110:def parse_write(route, raw, headers=()):
+.\linkedin-seite\linkedin_seite\redaktion.py:311:def wirkung_hash(effect):
+.\linkedin-seite\linkedin_seite\post_pool.py:46:    def report_hash(self, digest):
+.\linkedin-seite\linkedin_seite\post_pool.py:49:    def write_request(self):
+.\linkedin-seite\linkedin_seite\post_pool.py:88:        self.write_started = False  # IPC acknowledgement precedes every possible provider write
+.\linkedin-seite\linkedin_seite\post_pool.py:155:                job.write_started = True
+.\linkedin-seite\linkedin_seite\post_pool.py:202:        exc.nicht_ausgefuehrt = not job.write_started
+.\linkedin-seite\linkedin_seite\post_pool.py:233:            exc.nicht_ausgefuehrt = True
+.\linkedin-seite\linkedin_seite\post_pool.py:239:            exc.nicht_ausgefuehrt = True  # this request never started a job
+.\linkedin-seite\linkedin_seite\post_adapter.py:8:LinkedIn calls go only to the closed list in source_contract.WRITE_ENDPOINTS plus validated
+.\linkedin-seite\linkedin_seite\post_adapter.py:80:        self.schreibversuch = False
+.\linkedin-seite\linkedin_seite\post_adapter.py:85:        entry = r.entry_from_record(self.gateway.eintrag(req.eintrag_id), req.eintrag_id, req.aktion)
+.\linkedin-seite\linkedin_seite\post_adapter.py:89:            medium = self.gateway.datei(name, self.w.max_medium_bytes)
+.\linkedin-seite\linkedin_seite\post_adapter.py:97:        return entry, media, fmt, r.wirkung_hash(effect), effect
+.\linkedin-seite\linkedin_seite\post_adapter.py:118:            if not self.link.report_hash(digest):
+.\linkedin-seite\linkedin_seite\post_adapter.py:137:            result['ausgefuehrt'] = True
+.\linkedin-seite\linkedin_seite\post_adapter.py:140:            exc.nicht_ausgefuehrt = not self.schreibversuch
+.\linkedin-seite\linkedin_seite\post_adapter.py:157:        if op not in s.WRITE_ENDPOINTS:
+.\linkedin-seite\linkedin_seite\post_adapter.py:159:        method, template = s.WRITE_ENDPOINTS[op]
+.\linkedin-seite\linkedin_seite\post_adapter.py:173:        status, response_headers, data = self.transport.exchange(request, expect_json=expect_json)
+.\linkedin-seite\linkedin_seite\post_adapter.py:187:        _, response_headers, _ = self.transport.exchange(request, expect_json=False, timeout=UPLOAD_TIMEOUT)
+.\linkedin-seite\linkedin_seite\post_adapter.py:192:        self.link.write_request()
+.\linkedin-seite\linkedin_seite\post_adapter.py:193:        self.schreibversuch = True
+.\linkedin-seite\tests\mutations.py:39:DC = 'test_post_domain.WriteConfiguration.'
+.\linkedin-seite\tests\mutations.py:149:    ('b1-closed-list-check', 'post_adapter.py', 'if op not in s.WRITE_ENDPOINTS:', 'if False:', PC+'test_comment_get_reactions_and_foreign_operations_refused_before_http'),
+.\linkedin-seite\tests\mutations.py:169:    ('f4-success-flag', 'post_adapter.py', "result['ausgefuehrt'] = True", "pass", F4+'test_success_for_every_action_and_only_two_gateway_tools'),
+.\linkedin-seite\tests\mutations.py:170:    ('f4-false-nonexecution', 'post_pool.py', 'exc.nicht_ausgefuehrt = not job.write_started', 'exc.nicht_ausgefuehrt = True', F4+'test_errors_after_first_write_have_no_definitive_flags'),
+.\linkedin-seite\tests\mutations.py:171:    ('f4-missing-nonexecution', 'post_pool.py', 'exc.nicht_ausgefuehrt = not job.write_started', 'exc.nicht_ausgefuehrt = False', F4+'test_validation_and_media_errors_are_definitely_not_executed'),
+.\linkedin-seite\tests\mutations.py:172:    ('f4-first-write-marker', 'post_adapter.py', 'self.link.write_request()', 'pass', F4+'test_upload_initialization_already_makes_failure_unclear'),
+.\linkedin-seite\tests\mutations.py:174:    ('f4-single-entry', 'post_adapter.py', 'effect = r.wirkung(req.aktion, entry, media, self.cfg.organization)', 'effect = r.wirkung(req.aktion, r.entry_from_record(self.gateway.eintrag(req.eintrag_id), req.eintrag_id, req.aktion), media, self.cfg.organization)', F4+'test_preview_and_effect_use_one_entry_read'),
+.\linkedin-seite\tests\mutations.py:211:    ('v2-read-once', 'post_adapter.py', 'memoryview(medium.daten)[first:last + 1]', 'self.gateway.datei(medium.name, self.w.max_medium_bytes).daten[first:last + 1]', PB+'test_file_exchanged_between_hash_and_upload_is_not_read_again'),
+.\linkedin-seite\tests\support_post.py:354:    def report_hash(self, digest):
+.\linkedin-seite\tests\support_post.py:358:    def write_request(self):
+.\linkedin-seite\README.md:230:`X-Jnpt-Freigabe: hash=<freigabe:v2:sha256:…>` (keine zweite Form).
+.\linkedin-seite\README.md:234:Bestätigter Erfolg: `ausgefuehrt: true`, `aktion`, `eintrag_id`, `hash`, `format`,
+.\linkedin-seite\README.md:237:Nachweislicher Abbruch vor dem ersten LinkedIn-Schreibversuch: `nicht_ausgefuehrt: true`,
+.\linkedin-seite\README.md:275:`hash` = `freigabe:v2:sha256:` + SHA-256 über die UTF-8-Bytes `freigabe:v2`, ein LF,
+.\linkedin-seite\README.md:295:Header-Gleichheit → report_hash → Zählen/LinkedIn → Kopien überschreiben und verwerfen.
+.\linkedin-seite\README.md:345:  liefert dieselbe URN mit `wiederholt: true`. `report_hash` ist ein Komfort gegen doppelte
+.\linkedin-seite\README.md:363:### Endpunkte (geschlossen, `source_contract.WRITE_ENDPOINTS`)
+.\linkedin-seite\README.md:394:   den alten Konfigurationsschlüssel `schreiben.freigabe` entfernen.
+.\linkedin-seite\tests\test_post_domain.py:11:def parse_write(route, raw):
+.\linkedin-seite\tests\test_post_domain.py:12:    return r.parse_write(route, raw, ['hash=freigabe:v2:sha256:' + 'a'*64])
+.\linkedin-seite\tests\test_post_domain.py:28:class WriteConfiguration(unittest.TestCase):
+.\linkedin-seite\tests\test_post_domain.py:30:        cfg = r.WriteConfig.from_dict(GOOD)
+.\linkedin-seite\tests\test_post_domain.py:41:                r.WriteConfig.from_dict({**GOOD, 'gateway_url': url})
+.\linkedin-seite\tests\test_post_domain.py:42:        self.assertEqual(r.WriteConfig.from_dict({**GOOD, 'gateway_url': 'https://gateway.example.test:443/mcp'}).gateway_url,
+.\linkedin-seite\tests\test_post_domain.py:46:        cfg = r.WriteConfig.from_dict(GOOD)
+.\linkedin-seite\tests\test_post_domain.py:52:                r.WriteConfig.from_dict({**GOOD, field: value})
+.\linkedin-seite\tests\test_post_domain.py:56:        self.assertEqual(r.WriteConfig.from_dict({**GOOD, 'max_medium_bytes': 1024}).max_medium_bytes, 1024)
+.\linkedin-seite\tests\test_post_domain.py:59:                r.WriteConfig.from_dict({**GOOD, 'max_medium_bytes': value})
+.\linkedin-seite\tests\test_post_domain.py:62:                r.WriteConfig.from_dict({**GOOD, **extra})
+.\linkedin-seite\tests\test_post_domain.py:65:                r.WriteConfig.from_dict({k: v for k, v in GOOD.items() if k != missing})
+.\linkedin-seite\tests\test_post_domain.py:79:        req = parse_write('create_post', b'{"eintrag_id":"00000000000000ab"}')
+.\linkedin-seite\tests\test_post_domain.py:88:                self.assertEqual(code(r.parse_write, 'create_post', raw), 'invalid_input')
+.\linkedin-seite\tests\test_post_domain.py:89:        self.assertEqual(code(r.parse_write, 'publish', b'{"eintrag_id":"00000000000000ab"}'), 'route_not_found')
+.\linkedin-seite\tests\data\hash_golden.json:12:    "hash": "freigabe:v2:sha256:d1de1b1a79e55d2211ce868c00423efa9fab6e2e0c18f96614eca7fe58a1d45b"
+.\linkedin-seite\tests\data\hash_golden.json:33:    "hash": "freigabe:v2:sha256:6b0a6b7770235ba04702496cfc02972ba2c7efda4ca271d5690a7ad2121fa6fa"
+.\linkedin-seite\tests\data\hash_golden.json:52:    "hash": "freigabe:v2:sha256:9c56e271116d3a04cf479f55bc1de9ee6173cf91ace875c15076e8965aae44d3"
+.\linkedin-seite\tests\data\hash_golden.json:68:    "hash": "freigabe:v2:sha256:8c612056e223db458f400e9bb09fd3fbcc1c410f4a8618d997492aba90aaba26"
+.\linkedin-seite\tests\data\hash_golden.json:78:    "hash": "freigabe:v2:sha256:d1de1b1a79e55d2211ce868c00423efa9fab6e2e0c18f96614eca7fe58a1d45b"
+.\linkedin-seite\tests\data\hash_golden.json:90:    "hash": "freigabe:v2:sha256:4ada4671f8b98fcd31d3213decdcf1ddb8e5ee0c93c63e9d21346e1751a1c730"
+.\linkedin-seite\tests\data\hash_golden.json:102:    "hash": "freigabe:v2:sha256:c00cee2fe132273385bed96b99c090f1e12e065768a8b9c918b259c2239ba6c9"
+.\linkedin-seite\SETUP.md:166:Konfigurationsschlüssel `schreiben.freigabe` entfernen (wird beim Start abgewiesen).
+.\linkedin-seite\SETUP.md:180:   `X-Jnpt-Freigabe: hash=<freigabe:v2:sha256:…>`. Der Beisteller berechnet den aktuellen
+.\linkedin-seite\SETUP.md:183:4. Bestätigter Erfolg enthält `ausgefuehrt: true`; bewiesener Abbruch vor dem ersten
+.\linkedin-seite\SETUP.md:184:   LinkedIn-Schreibversuch `nicht_ausgefuehrt: true`. Fehler danach enthalten keines
+.\linkedin-seite\SETUP.md:186:   unklar und hält den Sperrvermerk. Der RAM-Ergebnis-Cache (`report_hash`) im Beisteller
+.\linkedin-seite\SETUP.md:189:Hash v2: Präfix `freigabe:v2:sha256:` + SHA-256 über UTF-8 `freigabe:v2`, LF und kompaktes
+.\linkedin-seite\tests\test_setup_guide.py:48:                       'X-Jnpt-Freigabe', 'linkedin_seite_vorschau', 'Kern', 'hash', '5 schreibende Aktionen',
+.\linkedin-seite\tests\test_setup_guide.py:60:                       'plugin-linkedin-seite-post-oauth', 'Live-Gate', 'www.linkedin.com', 'freigabe:v2:sha256:'):
+.\linkedin-seite\tests\test_post_server.py:80:                headers['X-Jnpt-Freigabe'] = 'hash=' + digest
+.\linkedin-seite\tests\test_post_server.py:123:                reply = await client.request(method, '/v1/linkedin-post/' + path, headers={**AUTH, 'X-Jnpt-Freigabe': 'hash=freigabe:v2:sha256:' + 'a'*64},
+.\linkedin-seite\tests\test_post_server.py:125:                self.assertEqual((reply.status, await reply.json()), (503, {'error': 'schreiben_nicht_eingerichtet', **({'nicht_ausgefuehrt': True} if method == 'POST' else {})}))
+.\linkedin-seite\tests\test_post_server.py:176:        self.assertEqual((status, body), (409, {'error': 'nicht_freigegeben', 'nicht_ausgefuehrt': True}))
+.\linkedin-seite\tests\test_post_server.py:199:        self.assertEqual((status, body), (429, {'error': 'schreib_tageslimit', 'nicht_ausgefuehrt': True}))
+.\linkedin-seite\tests\test_post_server.py:243:        self.assertEqual((status, body), (429, {'error': 'schreiben_belegt', 'nicht_ausgefuehrt': True}))
+.\linkedin-seite\tests\test_post_server.py:245:        self.assertEqual((status, body['ausgefuehrt']), (200, True))
+.\linkedin-seite\tests\test_post_server.py:341:            auth['X-Jnpt-Freigabe'] = 'hash=' + digest
+.\linkedin-seite\tests\test_post_server.py:350:                auth['X-Jnpt-Freigabe'] = 'hash=' + json.loads(reply.read())['hash']
+.\linkedin-seite\tests\test_post_server.py:365:            self.assertRegex(line, r'^(route=\S+ code=\S+ duration_ms=\d+|spur aktion=\S+ eintrag_id=[0-9a-f]{16} hash=(?:freigabe:v2:sha256:[0-9a-f]{64}|-) '
+.\linkedin-seite\tests\test_f4.py:23:                self.assertEqual(r.wirkung_hash(vector['eingabe']), vector['hash'])
+.\linkedin-seite\tests\test_f4.py:40:                self.assertNotEqual(r.wirkung_hash(base), r.wirkung_hash(changed))
+.\linkedin-seite\tests\test_f4.py:44:            self.assertNotEqual(r.wirkung_hash(base), r.wirkung_hash(changed))
+.\linkedin-seite\tests\test_f4.py:48:        self.assertNotEqual(r.wirkung_hash(base), r.wirkung_hash(dict(base, text='e\u0301')))
+.\linkedin-seite\tests\test_f4.py:51:                r.wirkung_hash(dict(base, umfrage={'frage': 'x', 'antworten': [], 'dauer': bad}))
+.\linkedin-seite\tests\test_f4.py:53:            r.wirkung_hash(dict(base, text='\ud800'))
+.\linkedin-seite\tests\test_f4.py:60:            headers['X-Jnpt-Freigabe'] = value
+.\linkedin-seite\tests\test_f4.py:64:        self.assertEqual(body.get('ausgefuehrt'), True if success else None, body)
+.\linkedin-seite\tests\test_f4.py:65:        self.assertEqual(body.get('nicht_ausgefuehrt'), True if before else None, body)
+.\linkedin-seite\tests\test_f4.py:67:            self.assertNotIn('ausgefuehrt', body)
+.\linkedin-seite\tests\test_f4.py:69:            self.assertNotIn('nicht_ausgefuehrt', body)
+.\linkedin-seite\tests\test_f4.py:84:            for value in ('hash=freigabe:v2:sha256:' + 'f'*64, digest, 'hash=' + digest.upper(),
+.\linkedin-seite\tests\test_f4.py:86:                          'hash=' + digest.removeprefix('freigabe:v2:sha256:')):
+.\linkedin-seite\tests\test_f4.py:103:        header = ('X-Jnpt-Freigabe', 'hash=' + preview['hash'])
+.\linkedin-seite\tests\test_f4.py:116:            self.assertEqual(preview['hash'], r.wirkung_hash(expected))
+.\linkedin-seite\tests\test_f4.py:148:        status, body = await self.call_with('create_post', rid, 'hash=' + r.wirkung_hash(other))
+.\linkedin-seite\tests\test_f4.py:168:        self.assertEqual(preview['hash'], r.wirkung_hash(preview['wirkung']))
+.\linkedin-seite\tests\test_f4.py:197:            status, body = await self.call_with('create_post', rid, 'hash=freigabe:v2:sha256:' + 'a'*64)
+.\linkedin-seite\tests\test_f4.py:246:        for header in (None, 'hash=freigabe:v2:sha256:' + 'f'*64):
+.\linkedin-seite\tests\test_post_adapter.py:89:                                  'state': 'veroeffentlicht', 'post_urn': 'urn:li:share:7000000000000000001', 'bytes': 0, 'ausgefuehrt': True})
+.\linkedin-seite\tests\test_post_adapter.py:184:                                  'state': 'bearbeitet', 'post_urn': 'urn:li:ugcPost:42', 'bytes': 0, 'ausgefuehrt': True})
+.\linkedin-seite\tests\test_post_adapter.py:234:        self.assertEqual(s.WRITE_ENDPOINTS, {
+.\linkedin-seite\tests\test_post_adapter.py:274:            self.assertTrue(cm.exception.nicht_ausgefuehrt)
+.\linkedin-seite\tests\test_post_adapter.py:280:        self.approvals[(rid, 'posten')] = 'freigabe:v2:sha256:' + 'b'*64
