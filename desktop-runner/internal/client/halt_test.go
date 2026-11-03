@@ -87,52 +87,56 @@ func TestHaltDateiFehltOderDefekt(t *testing.T) {
 }
 
 func TestHaltZwischenClaimUndSpawn(t *testing.T) {
-	b := haltBed(t)
-	job := Job{JobID: "11111111-1111-4111-8111-111111111111", Pin: b.env.Origin.Pin, Commit: b.env.Origin.Commit, Path: b.env.Origin.Path, Algo: b.env.Origin.Algo, ManifestSeq: 42, StartBy: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), Input: json.RawMessage(`{}`)}
-	job.Limits.WallS = 10
-	b.engine.API = l1API(t, func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/device/v1/jobs/claim":
-			json.NewEncoder(w).Encode(map[string]any{"job": job})
-		case "/api/device/v1/jobs/" + job.JobID + "/start":
-			json.NewEncoder(w).Encode(StartReply{"token", job.StartBy, "/api/device/v1/mcp"})
-		default:
-			t.Error(r.URL.Path)
-			w.WriteHeader(500)
-		}
-	})
-	claimed, err := b.engine.claim(context.Background())
-	if err != nil || claimed == nil {
-		t.Fatal(claimed, err)
-	}
-	// Block the real preparation path after Claim/Start, before the spawn lock.
-	entered, release := make(chan struct{}), make(chan struct{})
-	b.engine.Temps = &RunTemps{Base: b.base(), Mkdir: func(path string, exclusive bool) error {
-		if !exclusive {
-			return os.MkdirAll(path, 0700)
-		}
-		close(entered)
-		<-release
-		return os.Mkdir(path, 0700)
-	}}
-	done := make(chan error, 1)
-	go func() { done <- b.engine.adhoc(context.Background(), *claimed) }()
-	select {
-	case <-entered:
-	case <-time.After(3 * time.Second):
-		t.Fatal("Vorbereitung fehlt")
-	}
-	mustHalt(t, b.engine, "angehalten", time.Time{})
-	close(release)
-	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
-	if len(b.launches) != 0 {
-		t.Fatal("Start nach Halt")
-	}
-	j := b.st.Journal()
-	if len(j.Results) != 1 || j.Results[0].End != "cancelled" {
-		t.Fatal(j)
+	for _, state := range []string{"angehalten", "pausiert"} {
+		t.Run(state, func(t *testing.T) {
+			b := haltBed(t)
+			job := Job{JobID: "11111111-1111-4111-8111-111111111111", Pin: b.env.Origin.Pin, Commit: b.env.Origin.Commit, Path: b.env.Origin.Path, Algo: b.env.Origin.Algo, ManifestSeq: 42, StartBy: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), Input: json.RawMessage(`{}`)}
+			job.Limits.WallS = 10
+			b.engine.API = l1API(t, func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/api/device/v1/jobs/claim":
+					json.NewEncoder(w).Encode(map[string]any{"job": job})
+				case "/api/device/v1/jobs/" + job.JobID + "/start":
+					json.NewEncoder(w).Encode(StartReply{"token", job.StartBy, "/api/device/v1/mcp"})
+				default:
+					t.Error(r.URL.Path)
+					w.WriteHeader(500)
+				}
+			})
+			claimed, err := b.engine.claim(context.Background())
+			if err != nil || claimed == nil {
+				t.Fatal(claimed, err)
+			}
+			// Block the real preparation path after Claim/Start, before the spawn lock.
+			entered, release := make(chan struct{}), make(chan struct{})
+			b.engine.Temps = &RunTemps{Base: b.base(), Mkdir: func(path string, exclusive bool) error {
+				if !exclusive {
+					return os.MkdirAll(path, 0700)
+				}
+				close(entered)
+				<-release
+				return os.Mkdir(path, 0700)
+			}}
+			done := make(chan error, 1)
+			go func() { done <- b.engine.adhoc(context.Background(), *claimed) }()
+			select {
+			case <-entered:
+			case <-time.After(3 * time.Second):
+				t.Fatal("Vorbereitung fehlt")
+			}
+			mustHalt(t, b.engine, state, time.Time{})
+			close(release)
+			if err := <-done; err != nil {
+				t.Fatal(err)
+			}
+			if len(b.launches) != 0 {
+				t.Fatal("Start nach Halt")
+			}
+			j := b.st.Journal()
+			if len(j.Results) != 1 || j.Results[0].End != "cancelled" {
+				t.Fatal(j)
+			}
+		})
 	}
 	// Structural lock witness supplements the deterministic interleaving: moving
 	// the check just outside the mutex must fail even without scheduler luck.
@@ -154,6 +158,48 @@ type haltProcess struct {
 }
 
 func (p haltProcess) Kill() error { p.kills.Add(1); return p.Process.Kill() }
+
+type haltWriteFailure struct{ before func() }
+
+func (w haltWriteFailure) Write([]byte) (int, error) {
+	if w.before != nil {
+		w.before()
+	}
+	return 0, io.ErrClosedPipe
+}
+func (haltWriteFailure) Close() error { return nil }
+
+type haltInputProcess struct {
+	Process
+	input io.WriteCloser
+}
+
+func (p haltInputProcess) Input() io.WriteCloser { return p.input }
+
+func TestHaltBeiWriteFrameFehler(t *testing.T) {
+	for _, tc := range []struct {
+		name, want string
+		halt       bool
+	}{{"ohne_Halt", "internal", false}, {"mit_Halt", "cancelled", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := haltBed(t)
+			b.exit = func(*io.PipeWriter) {} // WriteFrame fails before reading output.
+			writes := 0
+			b.engine.Spawn = func(ctx context.Context, l Launch) (Process, error) {
+				p, err := b.spawn(ctx, l)
+				return haltInputProcess{p, haltWriteFailure{before: func() {
+					writes++
+					if tc.halt {
+						mustHalt(t, b.engine, "angehalten", time.Time{})
+					}
+				}}}, err
+			}
+			if got := b.execute(); writes != 1 || got.End != tc.want {
+				t.Fatal("WriteFrame-Fehler falsch zugeordnet", writes, got)
+			}
+		})
+	}
+}
 
 func TestAnhaltenBeendetLaufOhneNetz(t *testing.T) {
 	// Synchronous witness: removing only Kill cannot hide behind Execute's own

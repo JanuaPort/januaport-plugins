@@ -23,6 +23,9 @@ CASES = [
     ("adhoc-gate", "engine.go", 'if e.workHalted() {\n\t\treturn nil', 'if false {\n\t\treturn nil', "TestHaltDirekteStartwegeGesperrt"),
     ("execute-early-gate", "engine.go", 'if e.workHalted() {\n\t\treturn finish(r, "cancelled", "")', 'if false {\n\t\treturn finish(r, "cancelled", "")', "TestHaltDirekteStartwegeGesperrt"),
     ("spawn-gate", "engine.go", 'if e.haltedLocked(time.Now()) {', 'if false {', "TestHaltZwischenClaimUndSpawn"),
+    ("spawn-stopped-only", "engine.go", 'if e.haltedLocked(time.Now()) {', 'if e.haltedLocked(time.Now()) && e.halt.State == "angehalten" {', "TestHaltZwischenClaimUndSpawn"),
+    ("writeframe-cancel-label", "engine.go", 'if runCtx.Err() != nil {\n\t\t\treturn finish(r, "cancelled", "")', 'if runCtx.Err() != nil && false {\n\t\t\treturn finish(r, "cancelled", "")', "TestHaltBeiWriteFrameFehler"),
+    ("writeframe-spurious-cancel", "engine.go", 'if runCtx.Err() != nil {\n\t\t\treturn finish(r, "cancelled", "")', 'if runCtx.Err() != nil || true {\n\t\t\treturn finish(r, "cancelled", "")', "TestHaltBeiWriteFrameFehler"),
     ("spawn-check-before-lock", "engine.go", 'e.mu.Lock()\n\t// L2-1: this check and Spawn must remain in the same critical section.\n\tif e.haltedLocked(time.Now()) {', 'e.mu.Lock()\n\tblocked := e.haltedLocked(time.Now())\n\te.mu.Unlock()\n\te.mu.Lock()\n\tif blocked {', "TestHaltZwischenClaimUndSpawn"),
     ("resume-catchup", "halt.go", '|| !slot.After(e.haltThrough)', '|| false', "TestFortsetzenHoltNichtsNach"),
     ("resume-starts", "halt.go", 'return e.setHaltLocked(h, now)', 'if state == "arbeitet" && e.API != nil { _, _ = e.API.Start(context.Background(), Result{RunKey: "demo/daily/2026-11-03T10:00:00Z", ManifestSeq: 1}) }; return e.setHaltLocked(h, now)', "TestHaltBefehleStartenNie"),
@@ -73,6 +76,8 @@ def main():
             tested = command(["docker", "exec", "-w", "/workspace/desktop-runner/internal/client", "l2-test", "/tmp/l2-mutant", "-test.run=^" + test + "$", "-test.timeout=25s"], 40)
             if tested.returncode == 0 or b"--- FAIL: " + test.encode() not in tested.stdout:
                 raise RuntimeError(f"{label}: survived or infrastructure failed\n" + tested.stdout.decode(errors="replace"))
+            if label == "spawn-stopped-only" and b"--- FAIL: " + test.encode() + b"/pausiert" not in tested.stdout:
+                raise RuntimeError("pause must detect the weakened spawn gate\n" + tested.stdout.decode(errors="replace"))
             print(f"{label}: RED ({test})", flush=True)
             count += 1
         finally:

@@ -196,7 +196,7 @@ gegen jemanden mit Zugriff auf diese Sitzung (C4).
 | Native DPAPI/ACL/Entropie/Prozessbaum | TestWindowsFehlerBehaltenUrsache, TestPrivateACLAliasUndVerbote, TestPrivateACLAmDateisystem, TestSecureRootVerweigertJunction, TestDPAPIUndACL, TestWindowsDPAPIBrauchtEntropie, TestWindowsSuspendBisJobZuordnung, TestWindowsJobCloseBeendetEnkel |
 | Task ohne Admin und begrenzter Rückfall | TestWindowsAufgabeOhneAdmin, TestAutostartRueckfallNurBeiRichtlinie |
 | Vertrag 4 / Testweg / K8 (#1240 L1) | TestVertragJeGeraeteart, TestGoldenV3AusKern, TestManifestV4StriktAmAdapter, TestTestgeraeteSynchronisieren1298, TestScreenshotNurTestgeraet, TestErgebnisNurTestauftrag, TestTestadapterVerweigernFalscheBindung, TestSetupUndHaltAmHTTPAdapter, TestSetupSchemaAmAdapter, TestSetupStartVerweigertFremdeFreigaben, TestL1WiderrufAmHTTPAdapter, TestOfflineFristJePinUndUhrMarke, TestOfflineNachmeldungAmAdapter, TestK8ArchivLaengsteWirksameFrist, TestErgebnisNachNeustartMitSignierterFreigabe, TestVertrag4ClaimUndErgebnisOhneServerfelder; Windows-CI: TestWindowsK8UhrmarkeDPAPINeustart |
-| Lokaler Halt B3/B6, L2-1/L2-2 (#1240 L2) | TestHaltUeberstehtNeustart, TestHaltDateiFehltOderDefekt, TestHaltZwischenClaimUndSpawn, TestAnhaltenBeendetLaufOhneNetz, TestPauseLaesstLaufendenZuEnde, TestFortsetzenHoltNichtsNach, TestHaltBefehleStartenNie, TestPauseEndetAutomatisch, TestHaltMeldungKoalesziert, TestHaltRunSperrtClaimsUndHaeltHeartbeat, TestHaltSpeicherfehlerSperrt, TestHaltMeldungNeustartUndBestaetigung, TestHaltMeldungOhneDauerhafteBremseGesperrt, TestHaltBrichtOffenenClaimAb, TestHaltDirekteStartwegeGesperrt, TestPauseNeustartUndAblaufOhneNachholen, TestHaltMeldungWiederholtFehler, TestHaltLaesstServerUnveraendert, TestHaltSperrtSlotreservierung; Windows-CI: TestWindowsAnhaltenBeendetEnkel |
+| Lokaler Halt B3/B6, L2-1/L2-2 (#1240 L2) | TestHaltUeberstehtNeustart, TestHaltDateiFehltOderDefekt, TestHaltZwischenClaimUndSpawn, TestHaltBeiWriteFrameFehler, TestAnhaltenBeendetLaufOhneNetz, TestPauseLaesstLaufendenZuEnde, TestFortsetzenHoltNichtsNach, TestHaltBefehleStartenNie, TestPauseEndetAutomatisch, TestHaltMeldungKoalesziert, TestHaltRunSperrtClaimsUndHaeltHeartbeat, TestHaltSpeicherfehlerSperrt, TestHaltMeldungNeustartUndBestaetigung, TestHaltMeldungOhneDauerhafteBremseGesperrt, TestHaltBrichtOffenenClaimAb, TestHaltDirekteStartwegeGesperrt, TestPauseNeustartUndAblaufOhneNachholen, TestHaltMeldungWiederholtFehler, TestHaltLaesstServerUnveraendert, TestHaltSperrtSlotreservierung; Windows-CI: TestWindowsAnhaltenBeendetEnkel |
 | Hygiene | TestLoggerDeckelUndFesteCodes, TestStriktesJSONAmAdapter, TestFrameGrenzen, TestReleaseUndWindowsCI |
 
 Übernommene Funktionen sind im Dateikopf markiert. Wächter vergleichen die
@@ -281,8 +281,12 @@ Abschlussbericht ausschließlich im Chat, keine Berichtsdatei im Repository.
 
 L2-Mutationen: `python probe/l2_mutations.py`, Container `l2-test` mit Go 1.26.10
 und Repo-Mount `/workspace`, keine parallelen Tests/Mutationen. Der Test für
-L2-1 erzwingt Halt während der Vorbereitung nach einem echten HTTP-Claim und
-bewacht zusätzlich die gemeinsame Spawn-Sperre. Native Sonde
+L2-1 erzwingt tabellarisch `angehalten` und `pausiert` während der Vorbereitung
+nach einem echten HTTP-Claim und bewacht zusätzlich die gemeinsame Spawn-Sperre.
+Die Mutation „Spawn-Gate nur für angehalten“ muss im Fall `pausiert` rot werden.
+`TestHaltBeiWriteFrameFehler` prüft einen echten WriteFrame-Schreibfehler:
+nach Anhalten `cancelled`, ohne Anhalten weiterhin `internal`; beide Zuordnungen
+sind durch Mutationen abgesichert. Native Sonde
 `TestWindowsAnhaltenBeendetEnkel` lokal nur kompilieren; LEAD startet Windows-CI.
 Störung bleibt in L2 als Logcode + Statusflag lokal; dauerhafte Tray-Anzeige und
 Ausweichtext folgen in L4. Außerhalb des Job-Baums gestartete Prozesse bleiben
