@@ -206,16 +206,185 @@ func TestWindowsPipeBesetzt(t *testing.T) {
 
 func TestWindowsPipeClientDarfKeineInstanzAnlegen(t *testing.T) {
 	l := nativeListener(t)
-	name, _ := windows.UTF16PtrFromString(l.name)
-	// FILE_APPEND_DATA is the pipe CREATE_INSTANCE right. Do not accidentally
-	// grant it through GENERIC_WRITE, even to the pipe's user SID.
-	h, err := windows.CreateFile(name, windows.FILE_APPEND_DATA, 0, nil, windows.OPEN_EXISTING, 0, 0)
-	if err == nil {
-		windows.CloseHandle(h)
+	// Use the descriptor actually installed by the production listener. A second
+	// production instance (maxInstances=1) would also fail with a BROKEN DACL.
+	sd, err := windows.GetSecurityInfo(l.handle, windows.SE_KERNEL_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.GROUP_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION|windows.LABEL_SECURITY_INFORMATION)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !errors.Is(err, windows.ERROR_ACCESS_DENIED) {
-		t.Fatal("CREATE_INSTANCE-Recht", err)
+	user, _, _ := currentSIDs()
+	owner, _, err := sd.Owner()
+	if err != nil {
+		t.Fatal(err)
 	}
+	t.Logf("server_elevated=%t owner_is_user=%t", windows.GetCurrentProcessToken().IsElevated(), owner.String() == user)
+	// INBOUND isolates the create-instance bit from the other GENERIC_WRITE
+	// bits needed for a DUPLEX server. Test both, with the real and user owner.
+	for _, access := range []uint32{windows.PIPE_ACCESS_INBOUND, windows.PIPE_ACCESS_DUPLEX} {
+		for _, ownerUser := range []bool{false, true} {
+			for _, broad := range []bool{false, true} {
+				t.Run(fmt.Sprintf("access=%d/force_user_owner=%t/broad=%t", access, ownerUser, broad), func(t *testing.T) {
+					descriptor := sd.String()
+					if broad {
+						// Positive control: add the instance bit, and for DUPLEX
+						// also the remaining write rights needed by a server endpoint.
+						acl, _, err := sd.DACL()
+						if err != nil {
+							t.Fatal(err)
+						}
+						descriptor = "D:P"
+						for i := uint16(0); i < acl.AceCount; i++ {
+							var ace *windows.ACCESS_ALLOWED_ACE
+							if err := windows.GetAce(acl, uint32(i), &ace); err != nil {
+								t.Fatal(err)
+							}
+							mask := windows.ACCESS_MASK(windows.FILE_APPEND_DATA)
+							if access == windows.PIPE_ACCESS_DUPLEX {
+								mask = windows.FILE_GENERIC_WRITE
+							}
+							descriptor += fmt.Sprintf("(A;;0x%x;;;%s)", ace.Mask|mask, (*windows.SID)(unsafe.Pointer(&ace.SidStart)).String())
+						}
+						descriptor = "O:" + owner.String() + descriptor + "S:(ML;;NWNR;;;ME)"
+					}
+					fixture, err := windows.SecurityDescriptorFromString(descriptor)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if ownerUser {
+						fixture, err = fixture.ToAbsolute()
+						if err != nil {
+							t.Fatal(err)
+						}
+						sid, err := windows.StringToSid(user)
+						if err != nil {
+							t.Fatal(err)
+						}
+						if err = fixture.SetOwner(sid, false); err != nil {
+							t.Fatal(err)
+						}
+					}
+					sa := windows.SecurityAttributes{Length: uint32(unsafe.Sizeof(windows.SecurityAttributes{})), SecurityDescriptor: fixture}
+					name, _ := windows.UTF16PtrFromString(l.name + ".rights")
+					const mode = windows.PIPE_TYPE_BYTE | windows.PIPE_READMODE_BYTE | windows.PIPE_WAIT | windows.PIPE_REJECT_REMOTE_CLIENTS
+					first, err := windows.CreateNamedPipe(name, access|windows.FILE_FLAG_FIRST_PIPE_INSTANCE, mode, 2, MaxFrame, MaxFrame, 0, &sa)
+					if err != nil {
+						t.Fatal("first fixture instance", err)
+					}
+					defer windows.CloseHandle(first)
+					withStandardPipeToken(t, func() {
+						if access == windows.PIPE_ACCESS_DUPLEX && !broad {
+							// Diagnose the original CI probe separately: opening a CLIENT
+							// endpoint is not evidence that another SERVER can be created.
+							client, openErr := windows.CreateFile(name, windows.FILE_APPEND_DATA, 0, nil, windows.OPEN_EXISTING, 0, 0)
+							t.Logf("client_open_append_error=%v", openErr)
+							if openErr == nil {
+								windows.CloseHandle(client)
+								if err := windows.DisconnectNamedPipe(first); err != nil {
+									t.Fatal(err)
+								}
+							}
+						}
+						// This really creates another SERVER endpoint, with a free slot.
+						second, err := windows.CreateNamedPipe(name, access, mode, 2, MaxFrame, MaxFrame, 0, nil)
+						if err == nil {
+							windows.CloseHandle(second)
+						}
+						if broad {
+							if err != nil {
+								t.Fatal("positive control cannot create instance", err)
+							}
+						} else if !errors.Is(err, windows.ERROR_ACCESS_DENIED) {
+							t.Fatal("CREATE_INSTANCE-Recht", err)
+						}
+					})
+				})
+			}
+		}
+	}
+}
+
+// Even an elevated CI runner must exercise the DACL with a standard Medium
+// token. LUA_TOKEN removes administrative groups; DISABLE_MAX_PRIVILEGE removes
+// privileges. Verify the resulting token rather than trusting the flags.
+func withStandardPipeToken(t *testing.T, probe func()) {
+	var source, token windows.Token
+	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_DUPLICATE|windows.TOKEN_QUERY|windows.TOKEN_ADJUST_DEFAULT|windows.TOKEN_ADJUST_PRIVILEGES, &source); err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	admin, err := windows.CreateWellKnownSid(windows.WinBuiltinAdministratorsSid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	disable := windows.SIDAndAttributes{Sid: admin}
+	advapi := windows.NewLazySystemDLL("advapi32.dll")
+	ok, _, err := advapi.NewProc("CreateRestrictedToken").Call(uintptr(source), 1|4, 1, uintptr(unsafe.Pointer(&disable)), 0, 0, 0, 0, uintptr(unsafe.Pointer(&token)))
+	if ok == 0 {
+		t.Fatal("CreateRestrictedToken", err)
+	}
+	defer token.Close()
+	medium, _ := windows.StringToSid("S-1-16-8192")
+	label := windows.Tokenmandatorylabel{Label: windows.SIDAndAttributes{Sid: medium, Attributes: windows.SE_GROUP_INTEGRITY}}
+	if err = windows.SetTokenInformation(token, windows.TokenIntegrityLevel, (*byte)(unsafe.Pointer(&label)), uint32(unsafe.Sizeof(label))+uint32(medium.Len())); err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 4096)
+	var size uint32
+	if err = windows.GetTokenInformation(token, windows.TokenElevation, &buf[0], 4, &size); err != nil {
+		t.Fatal(err)
+	}
+	if *(*uint32)(unsafe.Pointer(&buf[0])) != 0 {
+		t.Fatal("client token is elevated")
+	}
+	if err = windows.GetTokenInformation(token, windows.TokenIntegrityLevel, &buf[0], uint32(len(buf)), &size); err != nil {
+		t.Fatal(err)
+	}
+	if !windows.EqualSid((*windows.Tokenmandatorylabel)(unsafe.Pointer(&buf[0])).Label.Sid, medium) {
+		t.Fatal("client token is not Medium")
+	}
+	groups, err := token.GetTokenGroups()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range groups.AllGroups() {
+		if windows.EqualSid(g.Sid, admin) && g.Attributes&windows.SE_GROUP_ENABLED != 0 {
+			t.Fatal("enabled admin SID")
+		}
+	}
+	// Removing every privilege also rules out SeTakeOwnership/SeBackup, even
+	// when the runner has no UAC-linked token (as on hosted Windows runners).
+	if err = windows.AdjustTokenPrivileges(token, true, nil, 0, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err = windows.GetTokenInformation(token, windows.TokenPrivileges, &buf[0], uint32(len(buf)), &size); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range (*windows.Tokenprivileges)(unsafe.Pointer(&buf[0])).AllPrivileges() {
+		if p.Attributes&windows.SE_PRIVILEGE_ENABLED != 0 {
+			t.Fatal("enabled client privilege")
+		}
+	}
+	original, err := source.GetTokenUser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual, err := token.GetTokenUser()
+	if err != nil || !windows.EqualSid(original.User.Sid, actual.User.Sid) {
+		t.Fatal("client user changed", err)
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ok, _, err = advapi.NewProc("ImpersonateLoggedOnUser").Call(uintptr(token))
+	if ok == 0 {
+		t.Fatal("ImpersonateLoggedOnUser", err)
+	}
+	defer func() {
+		if err := windows.RevertToSelf(); err != nil {
+			panic(err)
+		}
+	}()
+	t.Log("client_elevated=false integrity=Medium admin_enabled=false privileges_enabled=0")
+	probe()
 }
 
 func TestWindowsPipeRemoteAbgewiesen(t *testing.T) {

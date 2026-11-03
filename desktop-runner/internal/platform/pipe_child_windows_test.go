@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 	"unsafe"
@@ -68,12 +70,41 @@ func namedPipeHandles(t *testing.T) []string {
 		var needed uint32
 		r, _, _ := objectName.Call(e.Handle, 1, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)), uintptr(unsafe.Pointer(&needed)))
 		if r != 0 {
-			t.Fatalf("pipe object name: %x", r)
+			// FILE_TYPE_PIPE also includes unnamed/unqueryable endpoints.
+			// NtQueryObject can return STATUS_OBJECT_PATH_INVALID for those.
+			// The parent and inherited-handle controls below must still find
+			// the named panel endpoint, so an empty probe cannot pass silently.
+			continue
 		}
 		u := (*windows.NTUnicodeString)(unsafe.Pointer(&buf[0]))
-		names = append(names, u.String())
+		if u.Length != 0 {
+			names = append(names, u.String())
+		}
 	}
 	return names
+}
+
+func TestWindowsPipeKindsondeErkenntVererbtesHandle(t *testing.T) {
+	name, _ := windows.UTF16PtrFromString(fmt.Sprintf(`\\.\pipe\JanuaPort.Bedienfeld.probe.%d`, os.Getpid()))
+	sa := windows.SecurityAttributes{Length: uint32(unsafe.Sizeof(windows.SecurityAttributes{})), InheritHandle: 1}
+	h, err := windows.CreateNamedPipe(name, windows.PIPE_ACCESS_DUPLEX|windows.FILE_FLAG_FIRST_PIPE_INSTANCE, windows.PIPE_TYPE_BYTE|windows.PIPE_REJECT_REMOTE_CLIENTS, 1, 4096, 4096, 0, &sa)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer windows.CloseHandle(h)
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, exe, "-test.run=^TestWindowsPipeChildHelper$", "--", "pipe-probe")
+	cmd.Env = WindowsEnv()
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, AdditionalInheritedHandles: []syscall.Handle{syscall.Handle(h)}}
+	out, err := cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(out), "Pipe-Handle im Kind") {
+		t.Fatalf("inherited pipe was not rejected: %v %s", err, out)
+	}
 }
 
 func TestWindowsKindOhneBedienfeldPipe(t *testing.T) {
@@ -125,7 +156,17 @@ func TestWindowsPythonKindOhneBedienfeldPipe(t *testing.T) {
 	if !found {
 		t.Fatal("Eltern-Pipe fehlt")
 	}
-	root := filepath.Join(t.TempDir(), "state")
+	// Keep the embedded runtime path short, as in the existing Python adapter
+	// probe. A long testing.T.TempDir name can exceed the Python loader's limit.
+	tmp, err := os.MkdirTemp("../../.probe", "h3-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmp)
+	root, err := filepath.Abs(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err = SecureRoot(root); err != nil {
 		t.Fatal(err)
 	}
@@ -147,6 +188,14 @@ class Unicode(c.Structure):
 nt.NtQuerySystemInformation.argtypes = [w.ULONG, c.c_void_p, w.ULONG, c.POINTER(w.ULONG)]
 nt.NtQueryObject.argtypes = [w.HANDLE, w.ULONG, c.c_void_p, w.ULONG, c.POINTER(w.ULONG)]
 k.GetFileType.argtypes = [w.HANDLE]
+k.CreateNamedPipeW.argtypes = [w.LPCWSTR, w.DWORD, w.DWORD, w.DWORD, w.DWORD, w.DWORD, w.DWORD, c.c_void_p]
+k.CreateNamedPipeW.restype = w.HANDLE
+k.CloseHandle.argtypes = [w.HANDLE]
+# A positive control inside this interpreter prevents an empty/broken name
+# probe from silently passing after unqueryable handles have been skipped.
+control_name = "JanuaPort.HandleProbe." + str(os.getpid())
+control = k.CreateNamedPipeW("\\\\.\\pipe\\" + control_name, 3 | 0x80000, 8, 1, 4096, 4096, 0, None)
+assert control != c.c_void_p(-1).value, c.get_last_error()
 size = 65536
 while True:
     data, needed = c.create_string_buffer(size), w.ULONG()
@@ -156,14 +205,18 @@ while True:
     size = max(size * 2, needed.value)
     assert size <= 64 * 1024 * 1024
 count = c.c_size_t.from_buffer(data).value
+found_control = False
 for i in range(count):
     entry = Entry.from_buffer(data, 2*c.sizeof(c.c_size_t) + i*c.sizeof(Entry))
     if entry.pid != os.getpid() or k.GetFileType(entry.handle) != 3: continue
     name = c.create_string_buffer(65536)
-    assert nt.NtQueryObject(entry.handle, 1, name, len(name), c.byref(needed)) == 0
+    if nt.NtQueryObject(entry.handle, 1, name, len(name), c.byref(needed)) != 0: continue
     u = Unicode.from_buffer(name)
     text = c.wstring_at(u.buffer, u.length//2) if u.length else ""
+    found_control = found_control or text.endswith("\\" + control_name)
     assert "JanuaPort.Bedienfeld." not in text
+assert found_control, "Python handle probe missed its positive control"
+assert k.CloseHandle(control)
 `)
 	manifest := []byte("name: demo\ndescription: test\nentry: main.py\ninput_schema: {type: object}\ntools: []\ntimeout_s: 20\npython: python-3.12.10-embed-amd64.zip\n")
 	commit, raw := testfixture.Package(map[string][]byte{"main.py": script, "jnpt-desktop.yaml": manifest, "python-3.12.10-embed-amd64.zip": py}, "")
