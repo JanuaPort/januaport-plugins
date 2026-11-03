@@ -5,7 +5,38 @@ Der Server-Modus ergänzt Container-Pins (JanuaPort/januaport#1195).
 Implementiert und mit Fake-Kern, Linux-Race-Tests und nativen Windows-Sonden
 geprüft. Signiertes Windows-Release: `desktop-runner-v0.1.0` (#1163 D4).
 Gemeinsame Live-Abnahme mit der Anlage steht aus.
-Maßgeblich ist der [Draht-Vertrag](contract/README.md): v1 für Windows, v2 für Linux-Server.
+Maßgeblich ist der [Draht-Vertrag](contract/README.md): historischer v1-D0-Vertrag und v2 für Linux-Server. Windows spricht ab 0.3.0
+**Vertrag 4** in Header und JSON. Das D0-Modul und die alten Goldens bleiben eingefroren.
+
+## Vertrag 4 und Testaufträge
+
+0.3.0 behebt #1298: Signierte Manifeste mit `test_device:true` werden in allen
+unterstützten Fassungen (v1/v2/v3/v4) angenommen. Der aktuelle Windows-Sync
+verlangt Vertrag 4; ältere verifizierte Caches liefern beim Upgrade nur die
+Sequenz für den neuen Sync. Der Parser bleibt strikt: `apps` ist unter v4
+gesperrt, Setup-Beschriftungen haben höchstens 40 Unicode-Zeichen.
+`pins[].setups` enthält feste Eingabe und `frei`-Felddefinitionen;
+`pins[].grace_hours` überschreibt die Gerätefrist.
+
+Die HTTP-Adapter bieten Setup-Start mit Manifestsequenz und zufälliger Nonce,
+`POST /halt`, Test-`result` und PNG-Upload unter `jobs/{id}/screenshot`.
+Ein Testauftrag verlangt signiertes `test_device:true` **und**
+`test_<erste 8 Zeichen der Geräte-ID>` als Pin, gebunden an den verifizierten Job.
+Normale Ergebnisse dürfen kein `result` tragen; Screenshots gehen nur für
+Testaufträge an die Anlage. Testresultate: JSON bis 64 KiB, PNG bis 4 MiB.
+Die signierte Jobfreigabe wird für späteres Ergebnis-Replay separat mit DPAPI
+gespeichert und vor dem Senden erneut geprüft. Der Kern begrenzt Bilder auf fünf
+und auf laufende Tests beziehungsweise zwei Minuten nach deren Ende.
+
+L1 enthält Adapter und K8. Halt-Steuerung, Pipe, Bedienfeld, Python-Helfer
+und Bildschirmaufnahme folgen in L2–L5. Unveränderte Kernreferenzen mit SHA-256:
+[golden-v3](internal/client/testdata/golden-v3/README.md).
+
+Grenzen des geprüften Kernstands: Bei einem noch unbekannten Lauf weist die
+Nachmelderoute Slots außerhalb der historischen Frist und Werkzeugläufe ab,
+auch bei `refused/offline`. Die markierte Meldung erreicht dann den Offline-Zähler
+nicht; es gilt die bestehende gezählte Verwerfung nach zehn HTTP-400-Antworten.
+Auch `result:null` wird vom Kern abgewiesen. L1 ändert diese Kernregeln nicht.
 
 ## Einrichten unter Windows
 
@@ -77,8 +108,15 @@ fälligen Slots werden Manifest und geänderte Pakete synchronisiert.
 Slot und Laufmarker werden gemeinsam dauerhaft gespeichert. Verpasste Minuten
 bilden keinen Rückstau. Ad-hoc-Aufträge kommen über jobs/claim; beide Laufarten
 teilen einen Platz. Offline laufen nur werkzeuglose Pins, wenn
-<code>jetzt - letzter erfolgreicher Sync &lt; grace_hours</code>.
-Gleichheit, fehlender Sync und rückwärts verstellte Uhr verweigern den Start.
+<code>max(Uhr, persistente Uhrmarke) - letzter erfolgreicher Sync &lt; grace_hours</code>.
+Die Pinfrist hat Vorrang vor der Gerätefrist (1–72 Stunden, auch längere Fristen).
+Gleichheit und fehlender Sync verweigern den Start. Die DPAPI-Datei <code>clock</code>
+übersteht Neustarts; die Marke läuft während des Prozesses monoton weiter.
+Ein Uhr-Rücksprung setzt die Frist nicht zurück. Eine defekte Uhrmarke sperrt.
+Nach Ablauf steht der feste Logcode <code>7 1</code> im lokalen Log. Offline-Versuche
+werden mit <code>ran_offline:true</code> nachgemeldet, auch bei Verweigerung.
+Das Kernarchiv berücksichtigt die längste wirksame Pinfrist plus 24 Stunden
+Nachmeldepuffer; das Journal verfällt nicht.
 Ungültige Signaturen zählen nicht als Netzausfall. Verweigerungen werden journalisiert.
 
 Der Pin enthält jnpt-desktop.yaml, Python-Dateien, eine exakt erlaubte
@@ -154,7 +192,8 @@ dieselbe Benutzersitzung, auch nicht vor Veränderungen während eines Skripts.
 Dienstlogs enthalten nur feste numerische Codes/Zähler, fünf Dateien zu je
 1 MiB; keine Eingaben, Skriptlogs, Token, Konten oder Leerlaufzeiten. Codes:
 1 gestartet, 2 Sync fehlgeschlagen, 3 verweigert, 4 abgeschlossen, 5 Ergebnis
-verworfen (Zähler), 6 Rest eines Lauf-Verzeichnisses blieb liegen.
+verworfen (Zähler), 6 Rest eines Lauf-Verzeichnisses blieb liegen,
+7 Offline-Start verweigert (K8: Frist oder Werkzeugbindung).
 
 **Unter Windows ist ein Gerät eine Vertrauensdomäne (SEC D4 A1).** Ein Skript läuft als
 derselbe Nutzer wie der Läufer. Es kann deshalb den DPAPI-geschützten

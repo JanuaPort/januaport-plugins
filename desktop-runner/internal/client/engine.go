@@ -143,7 +143,14 @@ func (e *Engine) Sync(ctx context.Context) error {
 		}
 		envs[key] = env
 	}
-	next := Bundle{ManifestState{signed, time.Now().UTC()}, config, envs}
+	lastSync := time.Now().UTC()
+	if e.Container == nil {
+		lastSync, err = e.State.ObserveTime(lastSync)
+		if err != nil {
+			return err
+		}
+	}
+	next := Bundle{ManifestState{signed, lastSync}, config, envs}
 	if err = e.State.Save("manifest", next); err != nil {
 		return err
 	}
@@ -167,6 +174,9 @@ func (e *Engine) isReady() bool {
 	}
 	if e.Container != nil {
 		return b.Config.Contract == 2 && b.Config.Device.Kind == "server" && b.Config.StartPolicy.Mode == "always"
+	}
+	if b.Config.Contract != 4 {
+		return false
 	}
 	s, err := e.Session()
 	if err != nil {
@@ -436,7 +446,19 @@ func (e *Engine) removeRunTemp(dir string) {
 // Kern dauerhaft abgelehntes Ergebnis, bleibt davon nur eine feste Logzeile.
 func (e *Engine) deliverOne(ctx context.Context) {
 	before := e.State.Dropped()
-	_ = e.State.DeliverOne(func(r Result) error { return e.API.Report(ctx, r) })
+	_ = e.State.DeliverOne(func(r Result) error {
+		if len(r.Result) > 0 {
+			var order TestOrder
+			if !uuidRE.MatchString(r.JobID) {
+				return ErrProtocol
+			}
+			if err := e.State.Load("test-"+r.JobID, &order); err != nil {
+				return err
+			}
+			return e.API.ReportTest(ctx, r, e.Credential, order)
+		}
+		return e.API.Report(ctx, r)
+	})
 	if after := e.State.Dropped(); after > before {
 		e.logCode(LogResultDropped, after)
 	}
@@ -465,7 +487,21 @@ func (e *Engine) scheduled(ctx context.Context, p Pin, s Schedule, slot time.Tim
 		if !IsOffline(e.syncErr) {
 			return e.report(refused(r, e.syncErr))
 		}
-		if !OfflineAllowed(p, m.GraceHours, b.Manifest.LastSync, time.Now()) {
+		now := time.Now()
+		if e.Container == nil {
+			now, err = e.State.ObserveTime(now)
+			if err != nil {
+				return err
+			}
+		}
+		// Windows K8 also marks refusals for the core's offline counters.
+		if e.Container == nil {
+			r.RanOffline = true
+		}
+		if !OfflineAllowed(p, m.GraceHours, b.Manifest.LastSync, now) {
+			if e.Container == nil {
+				e.logCode(LogOfflineExpired, 1)
+			}
 			return e.report(refused(r, ErrOffline))
 		}
 		r.RanOffline = true
@@ -574,6 +610,12 @@ func (e *Engine) adhoc(ctx context.Context, j Job) error {
 	if pin == nil || m.Seq < j.ManifestSeq {
 		return e.report(refused(r, ErrManifest))
 	}
+	order := NewTestOrder(b.Manifest.Envelope, j)
+	if e.Container == nil && order.verified(e.Credential) {
+		if err = e.State.Save("test-"+j.JobID, order); err != nil {
+			return err
+		}
+	}
 	if pin.Container != nil {
 		start, err := e.API.Start(ctx, r)
 		if err != nil {
@@ -605,7 +647,9 @@ func (e *Engine) Run(ctx context.Context) error {
 	}
 	var cached Bundle
 	if err := e.State.Load("manifest", &cached); err == nil {
-		if m, verifyErr := VerifyManifest(cached.Manifest.Envelope, e.Credential.Pubkey, e.Credential.DeviceID, 0); verifyErr != nil || m.Contract != e.API.Contract() {
+		// Older verified Windows caches supply the sequence for the upgrade sync;
+		// they cannot authorize a claim or scheduled execution under contract 4.
+		if m, verifyErr := VerifyManifest(cached.Manifest.Envelope, e.Credential.Pubkey, e.Credential.DeviceID, 0); verifyErr != nil || (m.Contract != e.API.Contract() && !(e.Container == nil && (m.Contract == 1 || m.Contract == 3))) {
 			if verifyErr == nil {
 				verifyErr = ErrManifest
 			}
@@ -649,6 +693,11 @@ func (e *Engine) Run(ctx context.Context) error {
 	e.syncErr = e.Sync(ctx)
 	var presynced time.Time
 	for ctx.Err() == nil {
+		if e.Container == nil {
+			if _, err := e.State.ObserveTime(time.Now()); err != nil {
+				return err
+			}
+		}
 		select {
 		case <-syncNeeded:
 			e.syncErr = e.Sync(ctx)
@@ -662,7 +711,7 @@ func (e *Engine) Run(ctx context.Context) error {
 		minute := now.UTC().Truncate(time.Minute)
 		b := e.view()
 		m, err := ParseManifest(b.Manifest.Envelope.Manifest)
-		if err == nil {
+		if err == nil && m.Contract == e.API.Contract() {
 			// The same minute boundary drives pre-sync (slot - 1 minute) and due work.
 			canRun := presynced.Equal(minute.Add(-time.Minute))
 			presync := false

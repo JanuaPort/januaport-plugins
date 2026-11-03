@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 0.3.0 — 2026-11-03
+
+- Testgeräte synchronisieren wieder (#1298): `test_device` wird in jeder
+  unterstützten Manifestfassung angenommen; Signaturprüfung bleibt verbindlich.
+- Windows spricht Vertrag 4 in Header und JSON, Linux-Server weiter Vertrag 2.
+  Strikte Setup-/Frei-/Pinfrist-Typen; `apps` und Beschriftungen über 40 Zeichen
+  werden abgewiesen. D0-Modul und Goldens v1/v2 bleiben unverändert.
+- Adapter für Setup-Start (Manifestsequenz, zufällige Nonce), Halt-Meldung,
+  Testresultate und PNG-Upload. Beide Testwege prüfen signierte Freigabe und
+  Geräte-Testpin; der normale Ergebnisweg weist `result` ab.
+- K8: Pinfrist vor Gerätefrist, persistente DPAPI-Uhrmarke gegen Uhr-Rücksprung,
+  fester Logcode `7 1` und markierte Offline-Nachmeldung. Kern-Goldens gespiegelt,
+  Adapter-/Negativtests mit Mutationsproben.
+- L1 enthält keine Halt-Steuerung, Pipe, Bedienfeld oder Bildschirmaufnahme.
+
 ## 0.2.0 — 2026-10-30
 
 **Setzt einen Kern ab 0.89.0 voraus.** Ältere Kerne lehnen `refused/idle` ab; der Läufer

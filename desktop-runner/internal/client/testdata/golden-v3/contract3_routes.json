@@ -1,0 +1,33 @@
+[
+  {
+    "path": "runs/start",
+    "request": {
+      "pin": "demo",
+      "setup_id": "raum",
+      "nonce": "gggggggggggggggg",
+      "frei": {
+        "titel": "Profil"
+      }
+    },
+    "status": 200,
+    "response": {
+      "run_key": "setup/demo/raum/gggggggggggggggg",
+      "input": {
+        "monitor": 2,
+        "titel": "Profil"
+      },
+      "run_token": "RUN-TOKEN",
+      "expires_at": "EXPIRY",
+      "mcp_path": "/api/device/v1/mcp"
+    }
+  },
+  {
+    "path": "halt",
+    "request": {
+      "contract": 3,
+      "state": "pausiert",
+      "until": "2026-11-02T12:00:00Z"
+    },
+    "status": 204
+  }
+]
