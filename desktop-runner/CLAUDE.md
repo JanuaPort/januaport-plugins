@@ -265,6 +265,12 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     bleibt dauerhaft violett mit exakt
     „Störung. Anhalten: abmelden oder über den Admin halten lassen.“
     Erst gültiger `zustand` nach erneuter erfolgreicher Prüfung löscht sie.
+    Fehlende Win32-DLLs/Procs lösen keinen Panic aus: geprüfte Auflösung,
+    Modell bleibt in Störung, keine Pipe-Verbindung. Fehlen grundlegende
+    Tray-APIs, endet der Prozess ohne Anzeige; sonst fester Störungstext.
+    Wächter: `TestBedienfeldProcAufloesung`, native Negativprobe
+    `TestWindowsBedienfeldFehlenderProc`. Prozesssonde löst
+    `kernelbase.dll!CompareObjectHandles` mit `Find()` auf, sonst Skip mit Grund.
     Menü: Zustand, Pause 15/60/bis Weiter, Weiter, Anhalten/Fortsetzen, Setups,
     „Test“ nur auf Testgeräten, Beenden nur des Bedienfelds. `bis` lokal;
     offline + Fristablauf → „offline, Frist abgelaufen“. Graue Setups nur bei

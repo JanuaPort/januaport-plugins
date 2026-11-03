@@ -122,6 +122,10 @@ Kein Credential und kein eigener Netzweg. `TestPanelImportWaechter` verbietet
 transitiv `net/http`, `internal/client` und `net` außer über `internal/pipe`.
 Die benannte Ausnahmeliste `importExceptions` ist leer. Win32 nutzt `syscall`
 mit System32-DLLs; direktes `x/sys/windows` würde dessen transitives `net` hereinziehen.
+DLL-/Proc-Auflösung ist geprüft und löst keinen Panic aus. Fehlt eine API,
+bleibt das Modell in Störung und startet keine Pipe-Verbindung. Das Tray zeigt
+den festen Störungstext, sofern seine grundlegenden APIs verfügbar sind;
+fehlen diese, endet der Prozess ohne Anzeige und ohne Panic.
 
 Plan-Invariante 14: Fenster erst nach Klick auf „Rückfrage anzeigen“;
 Titel „JanuaPort – <titel>“, statischer Text und 2–4 gewöhnliche Knöpfe.
@@ -137,6 +141,10 @@ Prüfung: `python probe/l4_mutations.py`, exklusiver Container `l4-test`
 (Go 1.26.10), Linux-Race-Tests, Linux-/Windows-vet, GUI-Cross-Build und D0.
 `TestWindowsBedienfeldProzesssonde` baut die echte Exe, startet ohne Argumente
 und prüft PEB/Umgebung sowie Handle-Vererbung mit positiver Gegenprobe.
+`CompareObjectHandles` wird aus `kernelbase.dll` nach erfolgreichem `Find()`
+verwendet; fehlt die API, überspringt die Sonde mit Begründung.
+`TestWindowsBedienfeldFehlenderProc` prüft echte fehlende DLLs/Procs ohne GUI;
+`TestBedienfeldProcAufloesung` bewacht Panic-Freiheit und die Verbindungssperre.
 Sie läuft bereits durch `go test ./...` im bestehenden Windows-Job;
 keine Workflowänderung. Die Startsonde prüft keinen sichtbaren Tray;
 ein Tray-Rauchtest ist nicht enthalten. Lokal native Tests/Mutanten nur kompilieren.

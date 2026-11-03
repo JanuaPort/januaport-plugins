@@ -17,6 +17,10 @@ import (
 // suspended, then resume it. No probe switch or environment hook in production.
 // The existing Windows job runs this test via go test ./....
 func TestWindowsBedienfeldProzesssonde(t *testing.T) {
+	compare := windows.NewLazySystemDLL("kernelbase.dll").NewProc("CompareObjectHandles")
+	if err := compare.Find(); err != nil {
+		t.Skipf("Handle-Identitätsprüfung nicht verfügbar: kernelbase.dll!CompareObjectHandles: %v", err)
+	}
 	exe := filepath.Join(t.TempDir(), "jnpt-bedienfeld.exe")
 	build := exec.Command("go", "build", "-ldflags=-H=windowsgui", "-o", exe, ".")
 	build.Env = append(os.Environ(), "CGO_ENABLED=0")
@@ -81,7 +85,7 @@ func TestWindowsBedienfeldProzesssonde(t *testing.T) {
 			err := windows.DuplicateHandle(pi.Process, event, windows.CurrentProcess(), &dup, 0, false, windows.DUPLICATE_SAME_ACCESS)
 			found := false
 			if err == nil {
-				r, _, _ := windows.NewLazySystemDLL("kernel32.dll").NewProc("CompareObjectHandles").Call(uintptr(event), uintptr(dup))
+				r, _, _ := compare.Call(uintptr(event), uintptr(dup))
 				found = r != 0
 				windows.CloseHandle(dup)
 			}

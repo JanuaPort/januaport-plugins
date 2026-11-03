@@ -4,6 +4,11 @@
 
 ### 0.4.0 in Arbeit
 
+- Bedienfeld-Prozesssonde: `CompareObjectHandles` aus `kernelbase.dll`,
+  explizite Verfügbarkeitsprüfung und begründeter Skip statt Panic.
+  Produktive DLL-/Proc-Auflösung ebenfalls ohne Panic; fehlende API hält
+  das Modell in Störung und sperrt die Verbindung. Bei fehlenden grundlegenden
+  Tray-APIs ist keine Anzeige möglich. Negative Loader-Tests und Mutationen.
 - Natives Bedienfeld (#1240 L4): Windows-GUI-Exe ohne CGO, Tray mit
   Zustand/Pause/Weiter/Anhalten/Fortsetzen/Setups/Testanzeige und lokalem Beenden.
   Reines Panel-Modell, getrennter Pipe-I/O-Adapter, UI-Thread per PostMessage.
