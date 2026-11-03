@@ -18,6 +18,7 @@ const (
 	LogResultDropped  // n = bisher verworfene Ergebnisse (Verdrängung und abgelehnte)
 	LogTempLeft       // Rest eines Laufverzeichnisses blieb liegen, der Besen räumt beim Start
 	LogOfflineExpired // K8: Offline-Start verweigert (Frist oder Werkzeugbindung)
+	LogHaltFault      // L2-2: Halt-Datei unlesbar/ungültig oder Speicherung fehlgeschlagen
 )
 
 type Logger struct {
@@ -26,7 +27,7 @@ type Logger struct {
 }
 
 func (l *Logger) Write(code LogCode, n uint64) error {
-	if code < LogStarted || code > LogOfflineExpired {
+	if code < LogStarted || code > LogHaltFault {
 		return ErrProtocol
 	}
 	l.mu.Lock()

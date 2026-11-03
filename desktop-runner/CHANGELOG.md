@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### 0.4.0 in Arbeit
+
+- Lokaler Halt im Windows-Engine (#1240 L2): atomare DPAPI-Datei vor dem
+  ersten Takt; fehlend bedeutet arbeitet, unlesbar/ungültig angehalten plus
+  lokale Störung (`8 1`). Anhalten beendet den Job-Baum auch offline mit
+  `cancelled`; Halt und Spawn verwenden dieselbe Sperre (L2-1/L2-2, B6).
+- Pause für 15/60 Minuten oder bis Weiter lässt laufende Arbeit enden und
+  sperrt Slots/Claims/Testaufträge. Fortsetzen ohne Nachholen und ohne Umgehen
+  der Startprüfungen (B3); Heartbeat bleibt bereit. Nur interne Go-Steuerung.
+- Letzte Halt-Meldung koalesziert nachliefern, höchstens sechs Versuche pro
+  Minute, auch über Neustarts. Race-/Adaptertests und Mutationsproben;
+  native Windows-Sonde für Anhalten samt Enkelprozess (Windows-CI).
+
 ## 0.3.0 — 2026-11-03
 
 - Testgeräte synchronisieren wieder (#1298): `test_device` wird in jeder

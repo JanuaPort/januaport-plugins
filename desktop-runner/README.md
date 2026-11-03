@@ -28,8 +28,9 @@ Die signierte Jobfreigabe wird für späteres Ergebnis-Replay separat mit DPAPI
 gespeichert und vor dem Senden erneut geprüft. Der Kern begrenzt Bilder auf fünf
 und auf laufende Tests beziehungsweise zwei Minuten nach deren Ende.
 
-L1 enthält Adapter und K8. Halt-Steuerung, Pipe, Bedienfeld, Python-Helfer
-und Bildschirmaufnahme folgen in L2–L5. Unveränderte Kernreferenzen mit SHA-256:
+L1 enthält Adapter und K8; L2 ergänzt den lokalen Halt im Engine.
+Pipe, Bedienfeld, Python-Helfer und Bildschirmaufnahme folgen in L3–L5.
+Unveränderte Kernreferenzen mit SHA-256:
 [golden-v3](internal/client/testdata/golden-v3/README.md).
 
 Grenzen des geprüften Kernstands: Bei einem noch unbekannten Lauf weist die
@@ -37,6 +38,55 @@ Nachmelderoute Slots außerhalb der historischen Frist und Werkzeugläufe ab,
 auch bei `refused/offline`. Die markierte Meldung erreicht dann den Offline-Zähler
 nicht; es gilt die bestehende gezählte Verwerfung nach zehn HTTP-400-Antworten.
 Auch `result:null` wird vom Kern abgewiesen. L1 ändert diese Kernregeln nicht.
+
+## Lokaler Halt (0.4.0 in Arbeit, L2)
+
+Der Windows-Engine bietet intern `Halt(state, until)`, `Pause(15|60|0)` und
+`HaltStatus()`. Es gibt in L2 noch keinen CLI-Befehl und keine Bedienoberfläche.
+`until` wird als UTC gespeichert; 0 Minuten bedeutet bis zur Fortsetzung.
+
+- **Anhalten:** setzt `angehalten` und beendet den laufenden Job-Baum sofort
+  über Cancel/Kill (`TerminateJobObject`), auch ohne Netz. Sein Ergebnis ist
+  `cancelled`. Halt-Prüfung unmittelbar vor Spawn, Zustand und Kill liegen unter
+  derselben Engine-Sperre (L2-1); auch ein bereits abgeholter Claim startet danach
+  keinen Prozess.
+- **Pause:** sperrt neue Slots, Claims und Testaufträge, lässt den laufenden Lauf
+  regulär enden und endet bei `until` automatisch. Offene Long-Polls werden
+  abgebrochen. `ready` im Heartbeat bleibt von Halt und Pause unabhängig.
+  Auch die Slot-/Markerreservierung prüft Halt unter derselben Engine-Sperre.
+- **Fortsetzen:** entfernt nur die lokale Einschränkung (B3). Konto, Sitzung,
+  Paket, Manifest und Offline-Frist gelten weiter. Verpasste Slots einschließlich
+  der angefangenen Fortsetzungsminute werden ohne Ergebnis übersprungen;
+  kein Nachholen. Halt-Befehle selbst starten nichts. Eine Pause kann einen
+  angehaltenen Zustand nicht abschwächen; dafür ist Fortsetzen erforderlich.
+
+Die atomare DPAPI-CurrentUser-Datei `halt` enthält `{state, until}` und wird vor
+dem ersten Takt gelesen (B6). Nur eine fehlende Datei bedeutet `arbeitet`.
+Unlesbare/ungültige Dateien bedeuten `angehalten` und eine dauerhafte lokale
+Störung mit festem Logcode `8 1` (L2-2). `HaltStatus()` liefert das Störungsflag;
+erst ein erfolgreich gespeicherter expliziter Wechsel hebt es auf. Auch ein
+Speicherfehler sperrt lokal und wird zurückgegeben; ohne erfolgreichen Schreibzugriff
+kann ein neuer Halt nicht für den nächsten Neustart garantiert werden.
+
+Wechsel werden über den vorhandenen `POST /halt`-Adapter nachgeliefert,
+auch während eines laufenden Skripts. Es bleibt nur der letzte Zustand offen;
+höchstens ein Versuch je zehn Sekunden, einschließlich Fehlern. Die ebenfalls
+atomar geschützte Datei `halt-attempt` erhält die Bremse über Neustarts. Ist sie
+unlesbar oder nicht schreibbar, bleibt die Meldung ausstehend. Eine rückwärts
+gestellte Uhr verzögert die Nachlieferung. Ein Neustart meldet den letzten
+gespeicherten Halt erneut. Störung bleibt lokal; auf dem Draht steht `angehalten`.
+
+Die Anzeige der Störung und der feste Ausweichtext „anhalten: abmelden oder über
+den Admin halten lassen“ folgen im Bedienfeld (L4). Der Job-Abbruch erfasst den
+Job-Baum, keine über WMI, Aufgabenplanung oder COM außerhalb gestarteten Prozesse.
+DPAPI und diese Schnittstelle bilden keine Grenze gegen andere Prozesse derselben
+Person; eine Pause kann später auch durch deren UI-Automation aufgehoben werden.
+Linux-Server und Vertrag 2 bleiben unverändert.
+
+Prüfung: `python probe/l2_mutations.py` im exklusiven Worktree mit Container
+`l2-test` (Go 1.26.10). Linux-Race-Tests prüfen die realen HTTP-/State-Adapter;
+`TestWindowsAnhaltenBeendetEnkel` prüft in Windows-CI den echten Job-Baum und
+DPAPI-Neustart. Lokal wird diese native Sonde nur kompiliert.
 
 ## Einrichten unter Windows
 
@@ -193,7 +243,8 @@ Dienstlogs enthalten nur feste numerische Codes/Zähler, fünf Dateien zu je
 1 MiB; keine Eingaben, Skriptlogs, Token, Konten oder Leerlaufzeiten. Codes:
 1 gestartet, 2 Sync fehlgeschlagen, 3 verweigert, 4 abgeschlossen, 5 Ergebnis
 verworfen (Zähler), 6 Rest eines Lauf-Verzeichnisses blieb liegen,
-7 Offline-Start verweigert (K8: Frist oder Werkzeugbindung).
+7 Offline-Start verweigert (K8: Frist oder Werkzeugbindung),
+8 lokale Halt-Störung (Datei unlesbar/ungültig oder Speicherung fehlgeschlagen).
 
 **Unter Windows ist ein Gerät eine Vertrauensdomäne (SEC D4 A1).** Ein Skript läuft als
 derselbe Nutzer wie der Läufer. Es kann deshalb den DPAPI-geschützten

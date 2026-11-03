@@ -19,10 +19,10 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 | internal/client/http.go | Einziger HTTP-Adapter, E3, Tokenrollen, Widerruf |
 | manifest.go, copied_contract.go | Manifest/Kanonisierung/Ed25519, Gitobjekte/SHA-1DC, Cron/IANA |
 | environment.go, copied_lock.go, copied_zip.go | Allowlist, Wheels, Entpacken und Umgebungsseal |
-| engine.go, bootstrap.py | Gemeinsamer Laufplatz, Takt, Claim/Start, Rahmenkanal/MCP |
+| engine.go, halt.go, bootstrap.py | Gemeinsamer Laufplatz, Takt, Claim/Start, lokaler Halt, Rahmenkanal/MCP |
 | state.go, replace_* | Atomare OS-geschützte Dateien, Journal/Marker/Slot-Transaktion, Löschung |
 | runtemp.go | Lauf-TEMP: RunID/RunTemps, Anlegen nur neu, Aufräumen/Besen ohne Reparse-Punkte, Kind-Umgebung |
-| log.go | Geschlossene numerische Codes (1–7), 5 × 1 MiB |
+| log.go | Geschlossene numerische Codes (1–8), 5 × 1 MiB |
 | internal/platform/*_windows.go | DPAPI/ACL (SecureRoot, MkdirPrivate), WTS/LastInput, suspendierter Prozess/Job Object, COM/HKCU |
 | internal/platform/install.go, other.go | Windows-Nähte und Fail-closed-Stubs für andere Systeme |
 | internal/platform/security_linux.go, server_linux.go | Linux-HMAC/Dateirechte, Sperre und Server-Konfiguration |
@@ -144,8 +144,31 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     prüft erneut. Testresultate weder offline noch über Setup-run_key.
     `StartSetup` prüft das signierte Manifest, erzeugt 128 Zufallsbits über
     `crypto/rand` (22 Zeichen base64url) und bindet `X-Jnpt-Manifest-Seq`.
-    `Halt` meldet nur. Halt-Verhalten, Pipe, Bedienfeld, Helfer und Aufnahme
-    folgen in L2–L5. L1 erfasst keinen Bildschirm.
+    `API.Halt` meldet nur; `Engine.Halt` steuert seit L2 lokal (Invariante 14).
+    Pipe, Bedienfeld, Helfer und Aufnahme folgen in L3–L5. L1/L2 erfassen keinen Bildschirm.
+
+14. Lokaler Halt (#1240 L2, nur Windows): atomare DPAPI-Datei `halt`
+    (`{state, until}`), vor jedem ersten Takt gelesen. B6: offline und über
+    Neustart wirksam. L2-2: fehlt → `arbeitet`; unlesbar/ungültig →
+    `angehalten` + dauerhaftes lokales Störungsflag, fester Logcode `8 1`.
+    Speicherfehler sperren ebenfalls; erst erfolgreicher expliziter Wechsel
+    löscht die Störung. Ohne Schreibzugriff ist ein neuer Zustand nicht dauerhaft.
+    L2-1: Halt-Prüfung direkt vor `Spawn` innerhalb desselben `e.mu`-Abschnitts;
+    Anhalten setzt den Zustand und ruft activeCancel/Kill unter genau dieser
+    Sperre auf. Ergebnis `cancelled`, kein Start nach Halt zwischen Claim und Spawn.
+    Pause (15/60/0 Minuten, `until` UTC) lässt den laufenden Lauf regulär enden,
+    sperrt neue Slots/Claims/Testaufträge und endet automatisch. Offene Claims
+    werden abgebrochen, Übergangsantworten verworfen; Heartbeat `ready` bleibt.
+    Slotprüfung und atomare Slot-/Markerreservierung teilen ebenfalls `e.mu`.
+    B3: Halt schränkt nur ein, Befehle starten nie. Fortsetzen umgeht keine
+    bestehenden Startprüfungen. Kein Nachholen, auch nicht innerhalb der
+    Fortsetzungsminute; übersprungene Slots ohne Marker/Ergebnis. Pause schwächt
+    Anhalten nicht ab. `Engine.Halt`, `Pause`, `HaltStatus` sind nur Go-Schnittstellen.
+    Letzten Wechsel via L1-Adapter `POST /halt` nachliefern und koaleszieren,
+    maximal ein Versuch je zehn Sekunden (auch Fehler). DPAPI-Datei `halt-attempt`
+    erhält die Bremse bei Neustart; defekte/nicht schreibbare Bremse sperrt Meldungen.
+    HTTP außerhalb von `e.mu`, damit Widerruf zurückrufen kann; alte Bestätigung
+    löscht keinen neueren Wechsel. Eigener Sender läuft auch während Execute.
 
 ## Benannte Grenzen
 
@@ -173,6 +196,7 @@ gegen jemanden mit Zugriff auf diese Sitzung (C4).
 | Native DPAPI/ACL/Entropie/Prozessbaum | TestWindowsFehlerBehaltenUrsache, TestPrivateACLAliasUndVerbote, TestPrivateACLAmDateisystem, TestSecureRootVerweigertJunction, TestDPAPIUndACL, TestWindowsDPAPIBrauchtEntropie, TestWindowsSuspendBisJobZuordnung, TestWindowsJobCloseBeendetEnkel |
 | Task ohne Admin und begrenzter Rückfall | TestWindowsAufgabeOhneAdmin, TestAutostartRueckfallNurBeiRichtlinie |
 | Vertrag 4 / Testweg / K8 (#1240 L1) | TestVertragJeGeraeteart, TestGoldenV3AusKern, TestManifestV4StriktAmAdapter, TestTestgeraeteSynchronisieren1298, TestScreenshotNurTestgeraet, TestErgebnisNurTestauftrag, TestTestadapterVerweigernFalscheBindung, TestSetupUndHaltAmHTTPAdapter, TestSetupSchemaAmAdapter, TestSetupStartVerweigertFremdeFreigaben, TestL1WiderrufAmHTTPAdapter, TestOfflineFristJePinUndUhrMarke, TestOfflineNachmeldungAmAdapter, TestK8ArchivLaengsteWirksameFrist, TestErgebnisNachNeustartMitSignierterFreigabe, TestVertrag4ClaimUndErgebnisOhneServerfelder; Windows-CI: TestWindowsK8UhrmarkeDPAPINeustart |
+| Lokaler Halt B3/B6, L2-1/L2-2 (#1240 L2) | TestHaltUeberstehtNeustart, TestHaltDateiFehltOderDefekt, TestHaltZwischenClaimUndSpawn, TestHaltBeiWriteFrameFehler, TestAnhaltenBeendetLaufOhneNetz, TestPauseLaesstLaufendenZuEnde, TestFortsetzenHoltNichtsNach, TestHaltBefehleStartenNie, TestPauseEndetAutomatisch, TestHaltMeldungKoalesziert, TestHaltRunSperrtClaimsUndHaeltHeartbeat, TestHaltSpeicherfehlerSperrt, TestHaltMeldungNeustartUndBestaetigung, TestHaltMeldungOhneDauerhafteBremseGesperrt, TestHaltBrichtOffenenClaimAb, TestHaltDirekteStartwegeGesperrt, TestPauseNeustartUndAblaufOhneNachholen, TestHaltMeldungWiederholtFehler, TestHaltLaesstServerUnveraendert, TestHaltSperrtSlotreservierung; Windows-CI: TestWindowsAnhaltenBeendetEnkel |
 | Hygiene | TestLoggerDeckelUndFesteCodes, TestStriktesJSONAmAdapter, TestFrameGrenzen, TestReleaseUndWindowsCI |
 
 Übernommene Funktionen sind im Dateikopf markiert. Wächter vergleichen die
@@ -193,7 +217,8 @@ einmalig neu, bevor ein zweiter Startversuch erfolgt. Ungültige Syncs ändern
 weder Manifest noch LastSync. Verifizierte Umgebungen erhalten eigene
 DPAPI-Metadaten für Wiederaufnahme eines abgebrochenen Mehr-Pin-Syncs.
 State.Use serialisiert Cache-Schreiber gegen Widerruf. Prozessanlage und
-Widerrufsabbruch verwenden dieselbe Engine-Sperre.
+Widerrufsabbruch verwenden dieselbe Engine-Sperre. Der lokale Halt prüft und
+beendet unter dieser Sperre (L2-1), bevor ein weiterer Prozess entstehen kann.
 
 Die Journalgrenze gilt für die veröffentlichte Ciphertext-Datei einschließlich
 Marker, Slot-Merker und Verlustzähler. Atomare Ersatzdateien sind unter Windows verschlüsselt, unter Linux authentisiert;
@@ -253,6 +278,19 @@ Ein Mutant muss kompilieren und sein Zieltest tatsächlich fehlschlagen;
 Compilerfehler zählen nicht. finally stellt Quelldateien byte-genau wieder her.
 Nach externer Zwangsbeendigung den betroffenen Guard ausdrücklich prüfen.
 Abschlussbericht ausschließlich im Chat, keine Berichtsdatei im Repository.
+
+L2-Mutationen: `python probe/l2_mutations.py`, Container `l2-test` mit Go 1.26.10
+und Repo-Mount `/workspace`, keine parallelen Tests/Mutationen. Der Test für
+L2-1 erzwingt tabellarisch `angehalten` und `pausiert` während der Vorbereitung
+nach einem echten HTTP-Claim und bewacht zusätzlich die gemeinsame Spawn-Sperre.
+Die Mutation „Spawn-Gate nur für angehalten“ muss im Fall `pausiert` rot werden.
+`TestHaltBeiWriteFrameFehler` prüft einen echten WriteFrame-Schreibfehler:
+nach Anhalten `cancelled`, ohne Anhalten weiterhin `internal`; beide Zuordnungen
+sind durch Mutationen abgesichert. Native Sonde
+`TestWindowsAnhaltenBeendetEnkel` lokal nur kompilieren; LEAD startet Windows-CI.
+Störung bleibt in L2 als Logcode + Statusflag lokal; dauerhafte Tray-Anzeige und
+Ausweichtext folgen in L4. Außerhalb des Job-Baums gestartete Prozesse bleiben
+eine Grenze; Bedienung durch Prozesse derselben Person ebenfalls (README).
 
 Native Windows-Mutationen zusätzlich: probe/mutations-windows.ps1 (ohne Admin).
 Mutationsfälle für #1245 L: idle-before-spawn, idle-remap-account, result-reject-jam,
