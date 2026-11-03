@@ -16,6 +16,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/januaport/januaport-plugins/desktop-runner/internal/testfixture"
 )
 
 var l5PNG = []byte{137, 80, 78, 71, 13, 10, 26, 10, 0}
@@ -24,6 +26,22 @@ func l5Bed(t *testing.T, test bool, pin string) *bed {
 	t.Helper()
 	b := haltBed(t)
 	b.env.Origin.Pin = pin
+	// Package metadata must bind the test pin too, just like a real job.
+	manifest := "name: " + pin + "\ndescription: test\nentry: main.py\ninput_schema: {type: object}\ntools: []\ntimeout_s: 10\npython: python.zip\n"
+	commit, raw := testfixture.Package(map[string][]byte{"main.py": []byte("pass"), "jnpt-desktop.yaml": []byte(manifest)}, "")
+	b.env.Origin.Commit = commit
+	b.env.Dir = envKey(b.env.Origin)
+	newDir := filepath.Join(b.st.Root, "envs", b.env.Dir)
+	if newDir != b.envDir {
+		if err := os.Rename(b.envDir, newDir); err != nil {
+			t.Fatal(err)
+		}
+	}
+	b.envDir = newDir
+	b.result.Commit = commit
+	if err := os.WriteFile(filepath.Join(b.st.Root, "packages", b.env.Dir), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
 	m := l1Manifest()
 	m.TestDevice = test
 	m.Pins = []Pin{b.env.Origin}
@@ -123,7 +141,10 @@ func testScreenshotRaw(t *testing.T) {
 			case "missing-order":
 				b.result.JobID = "12345678-1234-4234-8234-123456789abd"
 			case "environment-pin":
-				b.env.Origin.Pin = "demo"
+				var o TestOrder
+				b.st.Load("test-"+b.result.JobID, &o)
+				o.Pin = "demo"
+				b.st.Save("test-"+b.result.JobID, o)
 			}
 			var captures, uploads atomic.Int32
 			b.engine.Capture = func(context.Context) ([]byte, error) { captures.Add(1); return l5PNG, nil }
@@ -194,7 +215,7 @@ func TestL5ErgebnisNullUndGrenzen(t *testing.T) {
 	for _, tc := range []struct {
 		name, value string
 		ok          bool
-	}{{"null", "null", true}, {"64KiB", `"` + strings.Repeat("x", 65534) + `"`, true}, {"too-large", `"` + strings.Repeat("x", 65535) + `"`, false}} {
+	}{{"null", "null", true}, {"64KiB", `"` + strings.Repeat("x", 65534) + `"`, true}, {"too-large", `"` + strings.Repeat("x", 65535) + `"`, false}, {"escaped-too-large", `"` + strings.Repeat("<", 11000) + `"`, false}} {
 		t.Run(tc.name, func(t *testing.T) {
 			b := l5Bed(t, true, "test_aaaaaaaa")
 			l5Raw(b, `{"type":"ergebnis","wert":42}`, `{"type":"ergebnis","wert":`+tc.value+`}`)
@@ -276,7 +297,7 @@ func TestL5ScreenshotGrenzen(t *testing.T) {
 			}
 			replies := l5Replies(t, in)
 			if len(frames) > 0 {
-				if len(replies) != 6 || replies[5]["type"] != "fehler" {
+				if len(replies) != 6 || replies[4]["type"] != "fehler" || replies[5]["type"] != "fehler" {
 					t.Fatal(replies)
 				}
 				if tc != "sixth" && replies[0]["type"] != "fehler" {
@@ -384,5 +405,48 @@ func TestL5BootstrapModule(t *testing.T) {
 	r := b.execute()
 	if r.End != "ok" || !l1JSONEqual(r.Result, []byte(`{"last":2}`)) {
 		t.Fatal(r)
+	}
+}
+
+func TestL5TestauftragAmHTTPAdapter(t *testing.T) {
+	b := l5Bed(t, true, "test_aaaaaaaa")
+	// Exercise the actual admission path that stores the signed historical
+	// authorization, rather than relying on the raw-frame fixture's grant.
+	if err := os.Remove(filepath.Join(b.st.Root, "test-"+b.result.JobID)); err != nil {
+		t.Fatal(err)
+	}
+	b.engine.bundle.Environments = map[string]Environment{b.env.Dir: b.env}
+	var starts, captures, uploads, reports atomic.Int32
+	b.engine.Capture = func(context.Context) ([]byte, error) { captures.Add(1); return l5PNG, nil }
+	b.engine.API = l1API(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/device/v1/jobs/" + b.result.JobID + "/start":
+			starts.Add(1)
+			json.NewEncoder(w).Encode(StartReply{"synthetic", time.Now().Add(time.Minute).UTC().Format(time.RFC3339), "/api/device/v1/mcp"})
+		case "/api/device/v1/jobs/" + b.result.JobID + "/screenshot":
+			uploads.Add(1)
+			w.WriteHeader(204)
+		case "/api/device/v1/runs/result":
+			reports.Add(1)
+			body, _ := io.ReadAll(r.Body)
+			var result Result
+			if json.Unmarshal(body, &result) != nil || result.JobID != b.result.JobID || string(result.Result) != `{"ok":true}` {
+				t.Error("result binding", string(body))
+			}
+			w.WriteHeader(204)
+		default:
+			t.Error("unexpected route", r.URL.Path)
+			w.WriteHeader(500)
+		}
+	})
+	l5Raw(b, `{"type":"ergebnis","wert":{"ok":true}}`, `{"type":"screenshot"}`)
+	j := Job{JobID: b.result.JobID, Pin: b.env.Origin.Pin, Commit: b.result.Commit, Path: b.env.Origin.Path, Algo: b.env.Origin.Algo, ManifestSeq: b.result.ManifestSeq, Input: json.RawMessage(`{}`), StartBy: time.Now().Add(time.Minute).UTC().Format(time.RFC3339)}
+	j.Limits.WallS = 10
+	if err := b.engine.adhoc(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	b.engine.deliverOne(context.Background())
+	if starts.Load() != 1 || captures.Load() != 2 || uploads.Load() != 2 || reports.Load() != 1 || len(b.st.Journal().Results) != 0 {
+		t.Fatal(starts.Load(), captures.Load(), uploads.Load(), reports.Load(), b.st.Journal())
 	}
 }

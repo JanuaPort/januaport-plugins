@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/windows"
 )
 
 // Explicit CI/GATE opt-in only. A separate process bounds even a stuck GDI call.
@@ -34,9 +36,20 @@ func TestWindowsScreenshotGDIChild(t *testing.T) {
 	if os.Getenv("JNPT_GDI_PROBE") != "1" || os.Getenv("JNPT_GDI_CHILD") != "1" {
 		t.Skip("GDI child only")
 	}
+	var sessionID uint32
+	if err := windows.ProcessIdToSessionId(windows.GetCurrentProcessId(), &sessionID); err != nil {
+		t.Fatal(err)
+	}
+	session, err := Session()
+	if sessionID == 0 || (err == nil && !session.Active) {
+		t.Skip("No interactive user session for GDI")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
 	b, err := CaptureScreenshot(context.Background())
 	if err != nil {
-		t.Skip("No usable interactive GDI desktop:", err)
+		t.Fatal("GDI capture in interactive session:", err)
 	}
 	cfg, err := png.DecodeConfig(bytes.NewReader(b))
 	if err != nil || cfg.Width < 1 || cfg.Height < 1 || len(b) > 4<<20 {

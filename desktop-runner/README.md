@@ -30,7 +30,7 @@ und auf laufende Tests beziehungsweise zwei Minuten nach deren Ende.
 
 L1 enthält Adapter und K8; L2 ergänzt den lokalen Halt im Engine.
 L3 ergänzt Pipe und Setup-Zulassung, L4 das native Bedienfeld.
-Python-Helfer und Bildschirmaufnahme folgen in L5.
+L5 ergänzt den `jnpt`-Helfer und die Go-seitig freigegebene Bildschirmaufnahme.
 Unveränderte Kernreferenzen mit SHA-256:
 [golden-v3](internal/client/testdata/golden-v3/README.md).
 
@@ -38,7 +38,49 @@ Grenzen des geprüften Kernstands: Bei einem noch unbekannten Lauf weist die
 Nachmelderoute Slots außerhalb der historischen Frist und Werkzeugläufe ab,
 auch bei `refused/offline`. Die markierte Meldung erreicht dann den Offline-Zähler
 nicht; es gilt die bestehende gezählte Verwerfung nach zehn HTTP-400-Antworten.
-Auch `result:null` wird vom Kern abgewiesen. L1 ändert diese Kernregeln nicht.
+Auch `result:null` wird vom geprüften Kernstand abgewiesen. L5 lässt bei
+`jnpt.ergebnis(None)` das Feld vollständig weg (Kern-Folgeänderung #1300).
+
+## Skript-Helfer `jnpt` (0.4.0 in Arbeit, L5)
+
+`import jnpt` steht neben `januaport` bereit. Alle Aufrufe verwenden ausschließlich
+den vorhandenen Rahmenkanal. Der Helfer eröffnet keinen Netzweg.
+
+| Aufruf | Verhalten |
+|---|---|
+| `jnpt.frage(text, optionen, frist_s)` | Nullbasierter Auswahlindex; `None` ohne Bedienfeld, bei Frist oder `fehler`. Text bis 500 Zeichen, 2–4 Optionen mit je bis zu 40 Zeichen, Frist 5–3600 Sekunden. |
+| `jnpt.ergebnis(wert)` | JSON bis 64 KiB; letzter Aufruf gilt. `None` löscht das Ergebnis, kein `result`-Feld. Normale Aufträge verwerfen gültige Werte still. |
+| `jnpt.screenshot()` | `True` nach Aufnahme und Upload, sonst `None`. Nur für Testaufträge mit signiertem `test_device:true` und Geräte-Testpin, niemals eine Aufnahme vor dieser Prüfung. |
+
+Beispiel: `jnpt.ergebnis({"wahl": jnpt.frage("Fortfahren?", ["Ja", "Nein"], 30)})`.
+JSON-Größen gelten in Bytes, einschließlich der Escape-Zeichen des Reports.
+Nicht serialisierbare Werte und NaN/Infinity erzeugen einen Python-Fehler.
+Ungültige rohe Rahmen (auch unbekannte Felder/Typen oder übergroße Ergebnisse)
+beenden den Lauf mit `internal`; gültige Screenshot-Anfragen ohne Freigabe
+antworten mit `fehler`, im Helfer also `None`.
+
+**L3-2:** Sämtliche Grenzen und Berechtigungen werden in Go am Läufer geprüft.
+Python läuft im selben Interpreter wie das Skript und bildet keine Grenze.
+Historische signierte Jobfreigabe, Job-ID, Sequenz, Commit und Pin/Pfad/Algo
+werden vor Aufnahme und Ergebnisannahme gebunden; Setup-/Offline-Läufe sind
+keine Testaufträge. Der unveränderte L1-Adapter prüft vor HTTP erneut.
+
+GDI erfasst in Go ohne CGO den ganzen primären Bildschirm, PNG bis 4 MiB.
+Höchstens fünf Aufnahmeversuche je Lauf, einschließlich Fehlern und der
+automatischen Aufnahme am Laufende. Ein Versuch bleibt für diese Endaufnahme
+reserviert; somit höchstens vier explizite Aufnahmen. Uploadfehler ändern das Skriptergebnis nicht; Bilder werden nicht
+nachgeliefert. Bei gesperrter Sitzung zeigt die Aufnahme den Sperrbildschirm;
+GDI kann je nach Sitzung auch nicht verfügbar sein. Linux liefert einen Fehler.
+H3 bleibt unverändert: kein Bedienfeld-Pipe-Handle und kein `jnpt*` in der
+Kind-Umgebung/Kommandozeile; das Modul wird ausschließlich im Bootstrap erzeugt.
+
+Prüfung: `python3 -B -m unittest discover -s internal/client -p test_bootstrap.py`,
+Go-Tests einschließlich echtem Python-Bootstrap und rohen Rahmen sowie
+`python probe/l5_mutations.py` exklusiv in `l5-test` (Go 1.26.10).
+`TestWindowsScreenshotGDI` und `TestWindowsScreenshotGDIChild` werden lokal nur
+cross-kompiliert. LEAD startet CI/GATE mit `JNPT_GDI_PROBE=1`; der Hilfsprozess
+hat eine feste 15-Sekunden-Grenze. Ohne Opt-in bzw. interaktive Sitzung sichtbarer
+Skip, keine lokale Aufnahme. H3: `TestWindowsPythonKindOhneBedienfeldPipe`.
 
 ## Lokaler Halt (0.4.0 in Arbeit, L2)
 
@@ -149,7 +191,7 @@ Der Windows-Läufer bietet genau einen benannten Listener unter
 `\\.\pipe\JanuaPort.Bedienfeld.<SHA-256(SID)[:16]>` an; der Suffix sind die ersten
 16 kleinen Hex-Zeichen des Hashes der Benutzer-SID als UTF-8. Linux-Server und
 Vertrag 2 bleiben unverändert. L4 ergänzt Bedienfeld-Exe und Tray;
-`bootstrap.py`, Installation und Release bleiben unverändert.
+L5 ergänzt `bootstrap.py`; Installation und Release bleiben L6.
 
 **B1 / L3-1 / H1:** geschützte DACL nur für Benutzer- und Logon-SID mit
 `FILE_GENERIC_READ | FILE_WRITE_DATA` (`0x12008b`). Kein `GENERIC_WRITE`, weil
@@ -252,10 +294,10 @@ skriptseitige Titel und parallele Fragen am echten Execute-Adapter. Ungültige
 oder zweite offene Rahmen werden mit `abgewiesen` zurückgewiesen, Laufende
 `internal`. Ohne Panel oder nach Frist ist die Skriptantwort `wahl:null`;
 Abbruch/Anhalten schließt ohne Wahl. Panel-Antwort nur `antwort{id,wahl}`.
-L5 ergänzt den Python-Helfer; `bootstrap.py` bleibt unverändert. Rohe
-`ergebnis`-/`screenshot`-Rahmen bleiben gesperrt. Die L1-Adapter erlauben
-Ergebnis/Screenshot weiterhin nur bei verifiziertem Testauftrag
-(signiertes `test_device` und Testpin samt Jobbindung).
+L5 ergänzt den Python-Helfer und die strikt geprüften Skript-Rahmen
+`ergebnis`/`screenshot` (siehe Helfer-API oben). Diese sind keine Pipe-Befehle.
+Die L1-Adapter erlauben Ergebnis/Screenshot weiterhin nur bei verifiziertem
+Testauftrag (signiertes `test_device` und Testpin samt Jobbindung).
 
 **H3:** Serverhandles sind nicht vererbbar; der Python-Prozess erhält über
 `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` ausschließlich stdin, stdout und NUL.

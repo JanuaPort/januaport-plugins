@@ -222,7 +222,7 @@ func TestPipeBesetztStartetOhnePipe(t *testing.T) {
 func TestSkriptRoheTestfunktionenBleibenGesperrt(t *testing.T) {
 	// L5 accepts well-formed helper frames; malformed or unknown frames still
 	// fail in Go before forwarding. Authorization is tested with raw L5 frames.
-	for _, raw := range []string{`{"type":"screenshot","token":"x"}`, `{"type":"ergebnis","wert":42,"test":true}`, `{"type":"frage","text":"x","optionen":["a"],"frist_s":0}`} {
+	for _, raw := range []string{`{"type":"unknown"}`, `{"type":"screenshot","token":"x"}`, `{"type":"ergebnis","wert":42,"test":true}`, `{"type":"frage","text":"x","optionen":["a"],"frist_s":0}`} {
 		b := pipeBed(t)
 		var hits atomic.Int32
 		b.engine.API = l1API(t, func(w http.ResponseWriter, r *http.Request) { hits.Add(1) })

@@ -147,8 +147,19 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     `StartSetup` prüft das signierte Manifest, erzeugt 128 Zufallsbits über
     `crypto/rand` (22 Zeichen base64url) und bindet `X-Jnpt-Manifest-Seq`.
     `API.Halt` meldet nur; `Engine.Halt` steuert seit L2 lokal (Invariante 14).
-    L3 ergänzt Pipe und Setup-Zulassung, L4 das native Bedienfeld. Helfer
-    und Aufnahme folgen in L5. L1–L4 erfassen keinen Bildschirm.
+    L3 ergänzt Pipe und Setup-Zulassung, L4 das native Bedienfeld. L5 ergänzt
+    `jnpt.frage/ergebnis/screenshot` ausschließlich über den Rahmenkanal.
+    L3-2: Go prüft rohe Skript-Rahmen strikt, nie auf Python-Prüfung vertrauen.
+    `ergebnis`: höchstens 64 KiB JSON einschließlich Report-Escapes, letzter
+    Aufruf gilt; `None` entfernt das Feld, normale Aufträge verwerfen still.
+    `screenshot`: vor GDI signierte Testfreigabe und Job-/Umgebungsbindung
+    prüfen, sonst `fehler`/Python `None` und null Aufnahmen. Go-GDI ohne CGO,
+    ganzer primärer Bildschirm, PNG bis 4 MiB, höchstens fünf Versuche pro Lauf
+    einschließlich Fehlern; ein Versuch ist für die automatische Endaufnahme
+    reserviert, somit höchstens vier explizite Aufnahmen.
+    Upload über `API.Screenshot`, keine Bildnachlieferung. Linux-Stub mit Fehler.
+    Bei gesperrter Sitzung zeigt die Aufnahme den Sperrbildschirm; je nach
+    Sitzung kann GDI nicht verfügbar sein. Das ist eine dokumentierte Grenze.
 
 14. Lokaler Halt (#1240 L2, nur Windows): atomare DPAPI-Datei `halt`
     (`{state, until}`), vor jedem ersten Takt gelesen. B6: offline und über
@@ -235,8 +246,9 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     samt Laufkontext; skriptseitiger Titel, ungültiger Rahmen oder zweite offene
     Frage → `abgewiesen`, Lauf `internal`. Ohne Panel/bei Frist `wahl:null`;
     Abbruch/Anhalten schließt ohne Wahl. `antwort.wahl` ist nullbasiert.
-    L5 ergänzt den Python-Helfer; `bootstrap.py` bleibt unverändert.
-    Rohe `ergebnis`/`screenshot` bleiben bis L5 abgewiesen; kein Aufnahmeweg.
+    L5 ergänzt den Python-Helfer in `bootstrap.py`. Rohe `ergebnis`/`screenshot`
+    sind ausschließlich Skript-Rahmen mit Go-Prüfung gemäß Invariante 13;
+    im Bedienfeld-Pipe-Schema bleiben sie abgewiesen.
     Setup-Projektion: Pflicht-Bool `braucht_eingabe` ausschließlich aus
     `len(frei)>0` des verifizierten Manifests; `startbar` fasst alle Sperren
     zusammen. Die zweite Schemaänderung ermöglicht den genauen Eingabehinweis.
@@ -322,6 +334,7 @@ das laufende Skript selbst aufheben, endgültig für den Baum ist nur Anhalten.
 | Pipe B1/B2, L3-1/L3-2, H1–H3 (#1240 L3) | TestPipeDACLStruktur, TestPipeBesetztStartetOhnePipe, TestClientPrueftServerbild, TestPipeBefehleGeschlossen, TestPipeGolden, TestPipeRoheRahmenAmLaeufer, TestPipeOhneTraeger, TestSetupStartNurAusManifest, TestSetupStartAmPipeHTTPAdapter, TestSetupHaltWaerendHTTP, TestSetupVeralteteFreigabeStartetNicht, TestSetupFreigabeDirektVorSpawn, TestSetupSperrtUndBrichtClaimAb, TestSetupSperrtAndereStartwege, TestSetupDirektesExecuteBleibtGesperrt, TestSetupFehlerNieOfflineNachmelden, TestPipeHaltBefehle, TestSkriptRoheTestfunktionenBleibenGesperrt, TestPipeKindHandleListe; native Windows-Sonden siehe README „Lokale Pipe“ |
 | Bedienfeld, Plan 14/15/18, §6.6, H4 | TestPanelZustaende, TestPanelMenueBefehleUndSetupEingabe, TestPanelFrageNurLokal, TestPanelStoerungBleibtBisNeuGeprueftemZustand, TestPanelServerpruefungSperrtBefehle, TestServerpruefungSendetNichtsAmAdapter, TestVerbindungVerwirftAlteBefehleUndBrichtSchreibenAb, TestBlockiertesSchreibenTrotzHeartbeatWirdGetrennt, TestFokusWaechter, TestBedienfeldNurGepruefterDial, TestPanelImportWaechter, TestL4SchemaPflichtfelder, TestH4RoheFragenAmLaeufer, TestH4SkriptTitelAbgewiesen, TestH4RoheFrageGrenzen, TestPanelEingabeAusVerifiziertemManifest; Windows: TestWindowsBedienfeldProzesssonde |
 | Rückfragen intern, L3-Anteil | TestFrageNurLokal, TestFrageFristUndDisconnect, TestPipeFrageAntwortWeiterleitung, TestPipeHaltSchliesstFrage |
+| Helfer L5, Plan 3/15/16/18, L3-2/H3 | TestScreenshotNurTestgeraet/roheRahmen, TestErgebnisNurTestauftrag/roheRahmen, client.TestFrageNurLokal (echter Python-Bootstrap), TestL5ErgebnisNullUndGrenzen, TestL5ScreenshotGrenzen, TestL5RahmenStrikt, TestL5BootstrapModule, TestL5TestauftragAmHTTPAdapter, TestKeineListenerDownloaderOderPip, TestScreenshotPNGBufferGrenze, TestScreenshotLinuxStub; Windows nur kompiliert: TestWindowsScreenshotGDI, TestWindowsScreenshotGDIChild, TestWindowsPythonKindOhneBedienfeldPipe |
 
 Übernommene Funktionen sind im Dateikopf markiert. Wächter vergleichen die
 vollständige Funktionsmenge und formatierten Funktionszeilen mit D0 bzw.
@@ -403,6 +416,14 @@ Ein Mutant muss kompilieren und sein Zieltest tatsächlich fehlschlagen;
 Compilerfehler zählen nicht. finally stellt Quelldateien byte-genau wieder her.
 Nach externer Zwangsbeendigung den betroffenen Guard ausdrücklich prüfen.
 Abschlussbericht ausschließlich im Chat, keine Berichtsdatei im Repository.
+
+L5-Mutationen: `python probe/l5_mutations.py`, exklusiv in `l5-test` mit
+Go 1.26.10. Jede Mutation kompiliert und muss den benannten Test rot machen;
+Quelldateien werden bytegenau wiederhergestellt. Python: `python3 -B -m unittest
+discover -s internal/client -p test_bootstrap.py`. Native GDI-Proben nur durch
+LEAD CI/GATE mit `JNPT_GDI_PROBE=1`; separater Hilfsprozess mit 15 Sekunden
+Frist, sichtbarer Skip ohne Opt-in/interaktive Sitzung. Lokal nur cross-kompilieren,
+niemals GUI oder Bildschirmaufnahme. H3-Handleliste/Env/argv bleiben unverändert.
 
 L4-Mutationen: `python probe/l4_mutations.py`, exklusiv in `l4-test`, Go 1.26.10.
 Kompilierende rote Mutanten, bytegenaue Wiederherstellung. Native Mutanten
@@ -511,5 +532,6 @@ Neustart, Manipulation). Keine GUI-Probe für L1.
 Upgrade-Regression: `TestTestgeraetUpgradeSynchronisiertVertrag4` und
 `TestAlterCacheSperrtClaims` prüfen alten Cache, neuen Sync und die Claim-Sperre.
 Kern-Restgrenzen: unbekannte abgelaufene Offline-Slots/Werkzeugläufe werden
-vor dem Zählen abgewiesen, `result:null` ebenfalls (README). Nicht durch
-Klassenumdeutung umgehen; Kern bleibt außerhalb von L1.
+vor dem Zählen abgewiesen, `result:null` ebenfalls (README). L5 lässt bei
+`jnpt.ergebnis(None)` das Feld weg; Kern-Fix #1300 bleibt separat. Nicht durch
+Klassenumdeutung umgehen; Kern bleibt außerhalb von L1/L5.
