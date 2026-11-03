@@ -347,8 +347,15 @@ func (e *Engine) executeReserved(ctx context.Context, r Result, env Environment,
 	e.activeKey = r.Key()
 	e.activeCancel = cancel
 	e.mu.Unlock()
+	questions := newRunQuestions(&e.Questions, env.Origin)
+	var readerDone chan struct{}
 	defer func() {
+		cancel()
 		p.Close()
+		if readerDone != nil {
+			<-readerDone
+		}
+		questions.wait()
 		e.mu.Lock()
 		e.active = nil
 		e.activeKey = ""
@@ -365,36 +372,62 @@ func (e *Engine) executeReserved(ctx context.Context, r Result, env Environment,
 		return finish(r, "internal", "")
 	}
 	exited := make(chan Result, 1)
+	exitResult := func(out Result) {
+		select {
+		case exited <- out:
+		default:
+		}
+	}
+	var inputMu sync.Mutex
+	writeScript := func(v any) error {
+		inputMu.Lock()
+		defer inputMu.Unlock()
+		return WriteFrame(p.Input(), v)
+	}
+	readerDone = make(chan struct{})
 	go func() {
+		defer close(readerDone)
 		used := 0
 		var lastID int64
 		for {
 			b, err := ReadFrame(p.Output())
 			if err != nil {
-				exited <- finish(r, "internal", "")
+				exitResult(finish(r, "internal", ""))
 				return
 			}
 			var kind struct {
 				Type string `json:"type"`
 			}
 			if json.Unmarshal(b, &kind) != nil {
-				exited <- finish(r, "internal", "")
+				exitResult(finish(r, "internal", ""))
 				return
 			}
 			switch kind.Type {
+			case "frage":
+				if questions.start(runCtx, b, func(v any) error {
+					err := writeScript(v)
+					if err != nil {
+						exitResult(finish(r, "internal", ""))
+					}
+					return err
+				}) != nil {
+					writeScript(panel.Message{Type: "fehler", Code: "abgewiesen"})
+					exitResult(finish(r, "internal", ""))
+					return // Reject a second pending raw question at the runner.
+				}
 			case "exited":
 				var v struct {
 					Type string `json:"type"`
 					Code int    `json:"code"`
 				}
 				if strict(b, &v) != nil {
-					exited <- finish(r, "internal", "")
+					exitResult(finish(r, "internal", ""))
 					return
 				}
 				if v.Code == 0 {
-					exited <- finish(r, "ok", "")
+					exitResult(finish(r, "ok", ""))
 				} else {
-					exited <- finish(r, "error", "")
+					exitResult(finish(r, "error", ""))
 				}
 				return
 			case "tool_call":
@@ -405,30 +438,30 @@ func (e *Engine) executeReserved(ctx context.Context, r Result, env Environment,
 					Arguments json.RawMessage `json:"arguments"`
 				}
 				if strict(b, &v) != nil || v.ID <= lastID || !slices.Contains(env.Tools, v.Name) || !inputOK(v.Arguments) || runToken == "" {
-					exited <- finish(r, "internal", "")
+					exitResult(finish(r, "internal", ""))
 					return
 				}
 				lastID = v.ID
 				if used >= calls {
-					exited <- finish(r, "limit", "tool_calls")
+					exitResult(finish(r, "limit", "tool_calls"))
 					return
 				}
 				used++
 				result, err := e.API.MCP(runCtx, runToken, v.ID, v.Name, v.Arguments)
 				if err != nil {
-					exited <- finish(r, "internal", "")
+					exitResult(finish(r, "internal", ""))
 					return
 				}
-				if err = WriteFrame(p.Input(), struct {
+				if err = writeScript(struct {
 					Type   string          `json:"type"`
 					ID     int64           `json:"id"`
 					Result json.RawMessage `json:"result"`
 				}{"tool_result", v.ID, result}); err != nil {
-					exited <- finish(r, "internal", "")
+					exitResult(finish(r, "internal", ""))
 					return
 				}
 			default:
-				exited <- finish(r, "internal", "")
+				exitResult(finish(r, "internal", ""))
 				return // stdout/log are not accepted frames.
 			}
 		}

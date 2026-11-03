@@ -20,10 +20,11 @@ var ErrDisturbance = errors.New("Störung")
 var ErrOccupied = errors.New("pipe_occupied")
 
 type Setup struct {
-	Pin      string `json:"pin"`
-	Setup    string `json:"setup"`
-	Label    string `json:"label"`
-	Startbar bool   `json:"startbar"`
+	Pin            string `json:"pin"`
+	Setup          string `json:"setup"`
+	Label          string `json:"label"`
+	Startbar       bool   `json:"startbar"`
+	BrauchtEingabe bool   `json:"braucht_eingabe"`
 }
 
 // Message is a closed union. Decode checks the exact required/allowed fields of
@@ -43,6 +44,7 @@ type Message struct {
 	Beschaeftigt    bool     `json:"beschaeftigt"`
 	FristAbgelaufen bool     `json:"frist_abgelaufen"`
 	Setups          []Setup  `json:"setups"`
+	Titel           string   `json:"titel"`
 	Text            string   `json:"text"`
 	Optionen        []string `json:"optionen"`
 	FristS          int      `json:"frist_s"`
@@ -105,7 +107,7 @@ func fields(kind string, server bool) (required, optional string) {
 		case "zustand":
 			return "type zustand test netz beschaeftigt setups", "bis frist_abgelaufen"
 		case "frage":
-			return "type id text optionen frist_s", ""
+			return "type id titel text optionen frist_s", ""
 		case "frage_weg":
 			return "type id", ""
 		case "fehler":
@@ -217,7 +219,7 @@ func decode(b []byte, server bool) (Message, error) {
 	case "antwort":
 		valid = name(m.ID) && m.Wahl != nil && *m.Wahl >= 0 && *m.Wahl < 4
 	case "frage":
-		valid = name(m.ID) && bounded(m.Text, 500) && len(m.Optionen) >= 2 && len(m.Optionen) <= 4 && m.FristS >= 5 && m.FristS <= 3600
+		valid = name(m.ID) && bounded(m.Titel, 40) && bounded(m.Text, 500) && len(m.Optionen) >= 2 && len(m.Optionen) <= 4 && m.FristS >= 5 && m.FristS <= 3600
 		for _, s := range m.Optionen {
 			valid = valid && bounded(s, 40)
 		}
@@ -236,7 +238,7 @@ func decode(b []byte, server bool) (Message, error) {
 			return Message{}, ErrProtocol
 		}
 		for _, r := range rows {
-			valid = valid && exactKeys(r, "pin setup label startbar", "")
+			valid = valid && exactKeys(r, "pin setup label startbar braucht_eingabe", "")
 		}
 		for _, s := range m.Setups {
 			valid = valid && name(s.Pin) && name(s.Setup) && bounded(s.Label, 40)
@@ -295,6 +297,7 @@ func (m Message) MarshalJSON() ([]byte, error) {
 	case "frage":
 		server = true
 		v["id"] = m.ID
+		v["titel"] = m.Titel
 		v["text"] = m.Text
 		v["optionen"] = m.Optionen
 		v["frist_s"] = m.FristS

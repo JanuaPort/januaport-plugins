@@ -16,7 +16,7 @@ type pendingQuestion struct {
 }
 
 // Questions relays at most one question to one attached panel, entirely locally.
-// L5 passes its run context: termination closes the question without a selection.
+// The runner passes its run context: termination closes without a selection.
 type Questions struct {
 	mu           sync.Mutex
 	events       chan Message
@@ -119,8 +119,8 @@ func (h *Questions) Answer(id string, wahl int) error {
 	}
 }
 
-// Cancel is also called by the pipe halt path; L5 must additionally use the
-// execution context so all termination paths (revocation, timeout) are covered.
+// Cancel is also called by the pipe halt path; the runner additionally uses
+// the execution context for termination through revocation or timeout.
 func (h *Questions) Cancel() {
 	h.mu.Lock()
 	defer h.mu.Unlock()

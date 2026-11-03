@@ -113,7 +113,7 @@ func TestPipeSchreibgrenzen(t *testing.T) {
 	if err := WriteFrame(shortWriter{}, Message{Type: "status"}); err != io.ErrShortWrite {
 		t.Fatal(err)
 	}
-	if err := WriteFrame(io.Discard, Message{Type: "frage", ID: "x", Text: strings.Repeat("x", 501), Optionen: []string{"a", "b"}, FristS: 5}); err == nil {
+	if err := WriteFrame(io.Discard, Message{Type: "frage", Titel: "Demo", ID: "x", Text: strings.Repeat("x", 501), Optionen: []string{"a", "b"}, FristS: 5}); err == nil {
 		t.Fatal("zu lange Frage")
 	}
 }
@@ -121,9 +121,9 @@ func TestPipeSchreibgrenzen(t *testing.T) {
 func TestPipeServerSchema(t *testing.T) {
 	for _, s := range []string{
 		`{"type":"fehler","code":"secret"}`, `{"type":"frage_weg","id":""}`,
-		`{"type":"frage","id":"x","text":"ok","optionen":["a"],"frist_s":5}`,
-		`{"type":"frage","id":"x","text":"ok","optionen":["a","b"],"frist_s":4}`,
-		`{"type":"frage","id":"x","text":"ok","optionen":["a","b"],"frist_s":3601}`,
+		`{"type":"frage","id":"x","titel":"Demo","text":"ok","optionen":["a"],"frist_s":5}`,
+		`{"type":"frage","id":"x","titel":"Demo","text":"ok","optionen":["a","b"],"frist_s":4}`,
+		`{"type":"frage","id":"x","titel":"Demo","text":"ok","optionen":["a","b"],"frist_s":3601}`,
 		`{"type":"zustand","zustand":"frei","test":false,"netz":true,"beschaeftigt":false,"setups":[]}`,
 		`{"type":"zustand","zustand":"arbeitet","test":false,"netz":true,"beschaeftigt":false,"setups":[{"pin":"demo","setup":"x","label":"x","startbar":true,"input":{}}]}`,
 		`{"type":"status"}`,
@@ -133,9 +133,9 @@ func TestPipeServerSchema(t *testing.T) {
 		}
 	}
 	for _, m := range []Message{
-		{Type: "frage", ID: "x", Text: strings.Repeat("ü", 501), Optionen: []string{"a", "b"}, FristS: 5},
-		{Type: "frage", ID: "x", Text: "ok", Optionen: []string{"a", strings.Repeat("ü", 41)}, FristS: 5},
-		{Type: "frage", ID: "x", Text: "ok", Optionen: []string{"a", "b", "c", "d", "e"}, FristS: 5},
+		{Type: "frage", Titel: "Demo", ID: "x", Text: strings.Repeat("ü", 501), Optionen: []string{"a", "b"}, FristS: 5},
+		{Type: "frage", Titel: "Demo", ID: "x", Text: "ok", Optionen: []string{"a", strings.Repeat("ü", 41)}, FristS: 5},
+		{Type: "frage", Titel: "Demo", ID: "x", Text: "ok", Optionen: []string{"a", "b", "c", "d", "e"}, FristS: 5},
 	} {
 		if WriteFrame(io.Discard, m) == nil {
 			t.Fatal("Fragegrenze")

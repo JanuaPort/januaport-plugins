@@ -72,7 +72,7 @@ CASES = [
     ("status-too-large", "client", "TestPipeStatusPasstNichtWirdStoerung", [c("pipe.go", 'if _, err := json.Marshal(m); err != nil {', 'if _, err := json.Marshal(m); err != nil && false {')]),
     ("setup-expiry", "client", "TestSetupVeralteteFreigabeStartetNicht", [c("pipe.go", '!time.Now().Before(expires)', 'time.Now().Before(expires) && false')]),
     ("admission-other-starts", "client", "TestSetupSperrtAndereStartwege", [c("engine.go", 'if !e.admission.TryLock() {\n\t\t\treturn nil', 'if !e.admission.TryLock() {\n\t\t\treturn e.report(Result{RunKey:"unexpected",End:"internal"})', 2)]),
-    ("script-raw-frames", "client", "TestSkriptRoheTestfunktionenBleibenGesperrt", [c("engine.go", 'default:\n\t\t\t\texited <- finish(r, "internal", "")', 'default:\n\t\t\t\texited <- finish(r, "ok", "")')]),
+    ("script-raw-frames", "client", "TestSkriptRoheTestfunktionenBleibenGesperrt", [c("engine.go", 'default:\n\t\t\t\texitResult(finish(r, "internal", ""))', 'default:\n\t\t\t\texitResult(finish(r, "ok", ""))')]),
     ("h3-handle-list", "client", "TestPipeKindHandleListe", [edit("internal/platform/process_windows.go", 'attrs.Update(windows.PROC_THREAD_ATTRIBUTE_HANDLE_LIST, unsafe.Pointer(&handles[0]), uintptr(len(handles))*unsafe.Sizeof(handles[0]))', 'error(nil)')]),
     ("hygiene-extra-listener", "client", "TestKeineListenerDownloaderOderPip", [p("transport_windows.go", 'h, err := windows.'+'CreateNamedPipe(', 'h, err := windows.'+'CreateNamedPipe('), p("transport_windows.go", '\tctx, cancel := context.WithCancel(context.Background())', '\t_, _ = windows.'+'CreateNamedPipe(p, 0, 0, 1, 0, 0, 0, &sa)\n\tctx, cancel := context.WithCancel(context.Background())')]),
 ]

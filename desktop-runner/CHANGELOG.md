@@ -4,6 +4,25 @@
 
 ### 0.4.0 in Arbeit
 
+- Bedienfeld-Prozesssonde: `CompareObjectHandles` aus `kernelbase.dll`,
+  explizite Verfügbarkeitsprüfung und begründeter Skip statt Panic.
+  Produktive DLL-/Proc-Auflösung ebenfalls ohne Panic; fehlende API hält
+  das Modell in Störung und sperrt die Verbindung. Bei fehlenden grundlegenden
+  Tray-APIs ist keine Anzeige möglich. Negative Loader-Tests und Mutationen.
+- Natives Bedienfeld (#1240 L4): Windows-GUI-Exe ohne CGO, Tray mit
+  Zustand/Pause/Weiter/Anhalten/Fortsetzen/Setups/Testanzeige und lokalem Beenden.
+  Reines Panel-Modell, getrennter Pipe-I/O-Adapter, UI-Thread per PostMessage.
+  Dauerhafte Störung mit festem Ausweichtext bis erneuter Serverprüfung und
+  gültigem Zustand; Verbindung ausschließlich über die L3-Clientbibliothek.
+- Rückfragen ohne Fokusraub, erst nach Klick; Frist/Entfernung/Anhalten schließen
+  ohne Antwort. H4: Pflicht-Titel aus Manifest-Pin (v4: Rückfall Pin-Name),
+  Go-Prüfung roher Skript-Rahmen und höchstens eine offene Frage je Lauf.
+  Pflicht-Bool `braucht_eingabe` aus verifiziertem Setup-Manifest ermöglicht den
+  genauen Hinweis; Schema-Golden ergänzt. Kein Python-Helfer-Umbau.
+- Fokus- und transitive Import-Wächter (benannte Ausnahmeliste leer), Modell-,
+  Adapter- und Mutationstests, native Prozesssonde im bestehenden Windows-Job.
+  Kein Install-/Release-Umbau/lokaler GUI-Start; native Nachweise durch CI/GATE.
+
 - Windows-Pipe-Sonden (#1240 L3): Instanzanlage mit geprüftem Standardtoken
   und echter zweiter Serverinstanz statt bloßem Client-Open; Besitzer- und
   Rechte-Gegenproben. Kindsonden überspringen unbenannte/unlesbare Endpunkte,
@@ -38,7 +57,8 @@
 - Rohe Rahmen, Kanarien-Credential, Hygiene und Mutationsproben; native
   Windows-Sonden für DACL/IL, Squatting, Prozessidentität und H3 (kein
   Pipe-Handle/-Name im Kind, auch echtes Python). Native Ausführung durch
-  Windows-CI; kein Bedienfeld/Tray, Python-Helfer, Install- oder Release-Umbau.
+  Windows-CI. L3 selbst enthielt kein Bedienfeld/Tray und keinen Python-Helfer,
+  Install- oder Release-Umbau; das Bedienfeld folgt oben unter L4.
 - Lokaler Halt im Windows-Engine (#1240 L2): atomare DPAPI-Datei vor dem
   ersten Takt; fehlend bedeutet arbeitet, unlesbar/ungültig angehalten plus
   lokale Störung (`8 1`). Anhalten beendet den Job-Baum auch offline mit
