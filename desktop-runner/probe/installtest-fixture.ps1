@@ -16,3 +16,26 @@ switch ($Operation) {
     environment { [Console]::Write($env:SHOWCASE_PAIR_CODE) }
     code { [Console]::Write($Rest[-1]) }
 }
+
+# Library functions register inert fixtures only in the Windows CI adapter tests.
+function New-InstalltestTaskFixture {
+    param([string]$Executable, [string]$Arguments)
+    $service = New-Object -ComObject 'Schedule.Service'
+    $service.Connect()
+    $folder = $service.GetFolder('\')
+    $definition = $service.NewTask(0)
+    $definition.Principal.LogonType = 3
+    $definition.Principal.RunLevel = 0
+    $action = $definition.Actions.Create(0)
+    $action.Path = $Executable
+    $action.Arguments = $Arguments
+    $name = 'JanuaPort-L6-Test-' + [guid]::NewGuid().ToString('N')
+    $registered = $folder.RegisterTaskDefinition($name, $definition, 2, $null, $null, 3)
+    [Runtime.InteropServices.Marshal]::FinalReleaseComObject($registered) | Out-Null
+    return @{ Name = $name; Objects = @($action, $definition, $folder, $service); Folder = $folder }
+}
+function Remove-InstalltestTaskFixture {
+    param($FixtureTask)
+    $FixtureTask.Folder.DeleteTask($FixtureTask.Name, 0)
+    foreach ($com in $FixtureTask.Objects) { [Runtime.InteropServices.Marshal]::FinalReleaseComObject($com) | Out-Null }
+}

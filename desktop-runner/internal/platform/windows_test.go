@@ -139,6 +139,7 @@ func TestWindowsAufgabeOhneAdmin(t *testing.T) {
 	if windows.GetCurrentProcessToken().IsElevated() {
 		t.Fatal("Sonde muss ohne erhöhte Rechte laufen")
 	}
+	t.Run("L6", testWindowsL6Installation)
 	exe, _ := os.Executable()
 	name := "JanuaPort-Desktop-Test-" + strconv.Itoa(os.Getpid())
 	if e := registerTask(name, exe); e != nil {
