@@ -108,10 +108,17 @@ oder Privilegien und prüft zusätzlich den Benutzer als Besitzer. Eine Gegenpro
 mit erweitertem Instanzrecht muss gelingen. `CreateFile(FILE_APPEND_DATA)`
 öffnet nur einen Client-Endpunkt und belegt allein keine weitere Serverinstanz.
 Die Gegenprobe verwendet eine ausdrückliche Benutzer-ACE und das Medium-Label
-`S:(ML;;NWNR;;;ME)`. Auch die zweite Instanz erhält einen ausdrücklichen
-Deskriptor mit Benutzer als Besitzer/Gruppe, damit keine Standardwerte des
-erhöhten Testprozesses einfließen. Besitzer, Label und Kontroll-ACE werden
-nach der Anlage am Handle geprüft; keine Ausnahme für erhöhte CI-Runner.
+`S:(ML;;NWNR;;;ME)`. Sie läuft vollständig in einem per `CreateProcessAsUserW`
+gestarteten nicht erhöhten Hilfsprozess, der beide Instanzen anlegt. Er prüft
+sein primäres Token vor der ersten Pipe-Anlage; bloße Thread-Impersonation im
+erhöhten CI-Prozess reicht nicht. Quelle, gefiltertes Token und Kind müssen
+null Restricting-SIDs haben, damit keine zusätzliche Zugriffsprüfung einen
+falsch grünen Negativtest erzeugt. Ein echtes Token mit einer Restricting-SID
+wird in einer eigenen Gegenprobe abgewiesen. Schmale und breite DACL werden
+im selben Kind geprüft; die Negativprobe gegen die Produktions-DACL im
+Elternprozess bleibt zusätzlich erhalten. Beide Instanzen behalten ausdrückliche
+Deskriptoren; Besitzer, Label und Kontroll-ACE werden am Handle nachgeprüft.
+Keine Ausnahme oder Rückfall auf einen erhöhten Helfer bei erhöhten CI-Runnern.
 Ausdrückliches Label `S:(ML;;NWNR;;;ME)` sperrt Low-IL beim Lesen und Schreiben;
 keine AppContainer-/Capability-ACE. `PIPE_REJECT_REMOTE_CLIENTS` sperrt Remote-
 Clients. **B2:** `FILE_FLAG_FIRST_PIPE_INSTANCE`, erste Instanz bleibt auch beim
@@ -197,14 +204,18 @@ Native Tests lokal nur kompilieren; Ausführung durch LEAD in Windows-CI:
 `TestWindowsPipeDACLUndLabel`, `TestWindowsPipeLowILReadWrite`,
 `TestWindowsPipeFremdesKonto` (temporäres fremdes Standardkonto, Anlage/Löschung
 braucht erhöhte CI-Testrechte), `TestWindowsPipeFremdesToken` (anonymes Token),
-`TestWindowsPipeClientDarfKeineInstanzAnlegen`, `TestWindowsPipeRemoteAbgewiesen`,
+`TestWindowsPipeClientDarfKeineInstanzAnlegen`, `TestWindowsPipeRestrictingSIDsVerweigert`,
+`TestWindowsPipeRemoteAbgewiesen`,
 `TestWindowsPipeBesetzt`, `TestWindowsClientPrueftEchtenServer`,
 `TestWindowsServerPrueftClientbildUndReconnect`,
 `TestWindowsKindOhneBedienfeldPipe`, `TestWindowsPythonKindOhneBedienfeldPipe`,
 `TestWindowsPipeKindsondeErkenntVererbtesHandle`.
 `probe/l3_mutations.py --native` führt die nativen Mutationen dort aus.
 H1: `native-create-instance` und `native-create-instance-bit` erweitern die
-Produktions-ACL. H3: `native-h3` und `native-h3-python` vererben das echte
+Produktions-ACL. `native-create-instance-child` prüft die Mutation isoliert im
+Hilfsprozess; `native-helper-token` entfernt dessen gefiltertes Prozesstoken,
+`native-restricting-token` entfernt die Restricting-SID-Prüfung.
+H3: `native-h3` und `native-h3-python` vererben das echte
 Serverhandle; beide Kindtests müssen jeweils einzeln rot werden.
 Fehlende Kontoanlage-Rechte, ein fehlender lokaler SMB-Transport oder eine fehlende Python-ZIP
 wird als Skip ausgewiesen; die Struktur- und native Kindsonde bleiben aktiv.

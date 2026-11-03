@@ -184,6 +184,13 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Die Gegenprobe setzt eine direkte Benutzer-ACE und Medium-NWNR ausdrücklich;
     beide Instanzanlagen bekommen einen vollständigen Deskriptor statt Token-
     Standardwerten. Besitzer, Label und Kontroll-ACE werden am Handle nachgeprüft.
+    Die gesamte Gegenprobe läuft in einem per `CreateProcessAsUserW` gestarteten
+    nicht erhöhten Hilfsprozess, einschließlich erster Instanz; reine Thread-
+    Impersonation im erhöhten CI-Prozess genügt nicht. Das primäre Kind-Token
+    wird vor jeder Pipe-Anlage geprüft. Quelle, gefiltertes Token und Kind haben
+    null Restricting-SIDs, damit keine zweite Zugriffsprüfung die Abweisung
+    verursacht. Im Kind laufen schmale und breite DACL; die Negativprobe gegen
+    die Produktions-DACL des Elternprozesses bleibt zusätzlich erhalten.
     `CreateFile(FILE_APPEND_DATA)` allein belegt keine Instanzanlage. L3-1: ausdrücklich
     `S:(ML;;NWNR;;;ME)`; Low-IL READ und WRITE werden abgewiesen.
     `PIPE_REJECT_REMOTE_CLIENTS` und `FILE_FLAG_FIRST_PIPE_INSTANCE`; die erste

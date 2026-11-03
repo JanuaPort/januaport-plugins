@@ -12,8 +12,12 @@
   Produktions-DACL und Handle-Vererbung unverändert.
 - H1-Positivkontrolle: direkte Benutzer-ACE, ausdrückliches Medium-NWNR und
   Deskriptoren für beide Instanzanlagen, einschließlich Besitzer/Gruppe der
-  zweiten Instanz. Rücklesen von Besitzer, Label und Kontroll-ACE verhindert
-  eine unbemerkte Abhängigkeit von Standardwerten des erhöhten CI-Prozesses.
+  zweiten Instanz. Beide Instanzen entstehen jetzt im selben nicht erhöhten
+  Hilfsprozess (`CreateProcessAsUserW`), statt die erste im erhöhten CI-Prozess
+  anzulegen. Primäres Kind-Token wird vor der Pipe-Anlage geprüft; Restricting-
+  SIDs müssen in Quelle, gefiltertem Token und Kind fehlen. Eigener Negativtest
+  mit echter Restricting-SID und Mutationen für Kind-Token und Kind-DACL.
+  Die Negativprobe gegen die Produktions-DACL des Elternprozesses bleibt erhalten.
 - Lokale Windows-Pipe zwischen Läufer und künftigem Bedienfeld (#1240 L3):
   geschlossenes JSON-Schema mit 4-KiB-Rahmen und eigenem Golden, genau ein
   benannter Listener. B1/B2, ausdrückliches Medium-Label mit No-Read-Up und

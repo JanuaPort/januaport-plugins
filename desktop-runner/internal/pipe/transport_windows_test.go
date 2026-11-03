@@ -205,6 +205,95 @@ func TestWindowsPipeBesetzt(t *testing.T) {
 }
 
 func TestWindowsPipeClientDarfKeineInstanzAnlegen(t *testing.T) {
+	token := standardPipeToken(t)
+	// Preserve the negative probe against the parent runner's actual descriptor,
+	// including an elevated server/Administrators owner on CI.
+	t.Run("production_server", func(t *testing.T) {
+		pipeInstanceRights(t, token, []bool{false})
+	})
+	// Both positive-control endpoints must originate in a standard PROCESS.
+	// Thread impersonation left the first server endpoint in the elevated runner.
+	t.Run("standard_process", func(t *testing.T) {
+		out, err := runPipeRightsHelper(t, token, false)
+		t.Log(string(out))
+		if err != nil || !strings.Contains(string(out), "PIPE_RIGHTS_HELPER_OK") {
+			t.Fatalf("standard process control: %v", err)
+		}
+	})
+}
+
+func runPipeRightsHelper(t *testing.T, token windows.Token, restricting bool) ([]byte, error) {
+	t.Helper()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	mode := "pipe-rights-helper"
+	if restricting {
+		mode = "pipe-rights-restricted-helper"
+	}
+	cmd := exec.CommandContext(ctx, exe, "-test.run=^TestWindowsPipeRightsHelper$", "-test.v", "--", mode)
+	// Go implements SysProcAttr.Token with CreateProcessAsUserW. Do not fall
+	// back to an ordinary (possibly elevated) child if this call fails.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Token: syscall.Token(token), HideWindow: true, CreationFlags: windows.CREATE_NO_WINDOW}
+	return cmd.CombinedOutput()
+}
+
+func TestWindowsPipeRestrictingSIDsVerweigert(t *testing.T) {
+	token := standardPipeToken(t)
+	out, err := runPipeRightsHelper(t, token, true)
+	if err == nil || !strings.Contains(string(out), "1 restricting SIDs would add a second access check") || strings.Contains(string(out), "PIPE_RIGHTS_HELPER_OK") {
+		t.Fatalf("helper must reject restricting SIDs before testing pipe access: %v %s", err, out)
+	}
+}
+
+func pipeRestrictedControlToken(t *testing.T, token windows.Token) windows.Token {
+	world, err := windows.CreateWellKnownSid(windows.WinWorldSid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restrict := windows.SIDAndAttributes{Sid: world}
+	var restricted windows.Token
+	ok, _, err := windows.NewLazySystemDLL("advapi32.dll").NewProc("CreateRestrictedToken").Call(uintptr(token), 0, 0, 0, 0, 0, 1, uintptr(unsafe.Pointer(&restrict)), uintptr(unsafe.Pointer(&restricted)))
+	if ok == 0 {
+		t.Fatal("restricted control token", err)
+	}
+	t.Cleanup(func() { restricted.Close() })
+	if count := pipeRestrictingSIDCount(t, restricted); count != 1 {
+		t.Fatalf("restricting control SID count=%d", count)
+	}
+	return restricted
+}
+
+func TestWindowsPipeRightsHelper(t *testing.T) {
+	if len(os.Args) < 2 {
+		return
+	}
+	mode := os.Args[len(os.Args)-1]
+	if mode != "pipe-rights-helper" && mode != "pipe-rights-restricted-helper" {
+		return
+	}
+	var token windows.Token
+	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_DUPLICATE|windows.TOKEN_QUERY, &token); err != nil {
+		t.Fatal(err)
+	}
+	defer token.Close()
+	// Check the child's primary token before creating ANY listener. Checking
+	// only an impersonation token would repeat the original CI probe defect.
+	assertStandardPipeToken(t, token)
+	if mode == "pipe-rights-restricted-helper" {
+		token = pipeRestrictedControlToken(t, token)
+		assertStandardPipeToken(t, token)
+	}
+	pipeInstanceRights(t, token, []bool{false, true})
+	if !t.Failed() {
+		fmt.Println("PIPE_RIGHTS_HELPER_OK")
+	}
+}
+
+func pipeInstanceRights(t *testing.T, token windows.Token, widths []bool) {
 	l := nativeListener(t)
 	// Use the descriptor actually installed by the production listener. A second
 	// production instance (maxInstances=1) would also fail with a BROKEN DACL.
@@ -222,7 +311,7 @@ func TestWindowsPipeClientDarfKeineInstanzAnlegen(t *testing.T) {
 	// bits needed for a DUPLEX server. Test both, with the real and user owner.
 	for _, access := range []uint32{windows.PIPE_ACCESS_INBOUND, windows.PIPE_ACCESS_DUPLEX} {
 		for _, ownerUser := range []bool{false, true} {
-			for _, broad := range []bool{false, true} {
+			for _, broad := range widths {
 				t.Run(fmt.Sprintf("access=%d/force_user_owner=%t/broad=%t", access, ownerUser, broad), func(t *testing.T) {
 					descriptor := sd.String()
 					controlMask := uint32(windows.FILE_GENERIC_READ | windows.FILE_WRITE_DATA | windows.FILE_APPEND_DATA)
@@ -319,7 +408,7 @@ func TestWindowsPipeClientDarfKeineInstanzAnlegen(t *testing.T) {
 						t.Fatal(err)
 					}
 					clientSA := windows.SecurityAttributes{Length: uint32(unsafe.Sizeof(windows.SecurityAttributes{})), SecurityDescriptor: clientSD}
-					withStandardPipeToken(t, func() {
+					withPipeToken(t, token, func() {
 						if access == windows.PIPE_ACCESS_DUPLEX && !broad {
 							// Diagnose the original CI probe separately: opening a CLIENT
 							// endpoint is not evidence that another SERVER can be created.
@@ -353,27 +442,63 @@ func TestWindowsPipeClientDarfKeineInstanzAnlegen(t *testing.T) {
 
 // Even an elevated CI runner must exercise the DACL with a standard Medium
 // token. LUA_TOKEN removes administrative groups; DISABLE_MAX_PRIVILEGE removes
-// privileges. Verify the resulting token rather than trusting the flags.
-func withStandardPipeToken(t *testing.T, probe func()) {
+// privileges. RestrictedSidCount=0: no second access check against restricting
+// SIDs. Verify both the source and result; inherited restrictions are not safe
+// evidence that the pipe DACL denied an otherwise authorized standard user.
+func standardPipeToken(t *testing.T) windows.Token {
 	var source, token windows.Token
-	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_DUPLICATE|windows.TOKEN_QUERY|windows.TOKEN_ADJUST_DEFAULT|windows.TOKEN_ADJUST_PRIVILEGES, &source); err != nil {
+	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_ASSIGN_PRIMARY|windows.TOKEN_DUPLICATE|windows.TOKEN_QUERY|windows.TOKEN_ADJUST_DEFAULT|windows.TOKEN_ADJUST_PRIVILEGES, &source); err != nil {
 		t.Fatal(err)
 	}
 	defer source.Close()
+	if count := pipeRestrictingSIDCount(t, source); count != 0 {
+		t.Fatalf("source already has %d restricting SIDs", count)
+	}
 	admin, err := windows.CreateWellKnownSid(windows.WinBuiltinAdministratorsSid)
 	if err != nil {
 		t.Fatal(err)
 	}
 	disable := windows.SIDAndAttributes{Sid: admin}
 	advapi := windows.NewLazySystemDLL("advapi32.dll")
-	ok, _, err := advapi.NewProc("CreateRestrictedToken").Call(uintptr(source), 1|4, 1, uintptr(unsafe.Pointer(&disable)), 0, 0, 0, 0, uintptr(unsafe.Pointer(&token)))
+	const disableMaxPrivilege, luaToken = 1, 4
+	ok, _, err := advapi.NewProc("CreateRestrictedToken").Call(uintptr(source), disableMaxPrivilege|luaToken, 1, uintptr(unsafe.Pointer(&disable)), 0, 0, 0, 0, uintptr(unsafe.Pointer(&token)))
 	if ok == 0 {
 		t.Fatal("CreateRestrictedToken", err)
 	}
-	defer token.Close()
+	t.Cleanup(func() { token.Close() })
+	t.Logf("source_restricting_sids=%d filtered_restricting_sids=%d", pipeRestrictingSIDCount(t, source), pipeRestrictingSIDCount(t, token))
 	medium, _ := windows.StringToSid("S-1-16-8192")
 	label := windows.Tokenmandatorylabel{Label: windows.SIDAndAttributes{Sid: medium, Attributes: windows.SE_GROUP_INTEGRITY}}
 	if err = windows.SetTokenInformation(token, windows.TokenIntegrityLevel, (*byte)(unsafe.Pointer(&label)), uint32(unsafe.Sizeof(label))+uint32(medium.Len())); err != nil {
+		t.Fatal(err)
+	}
+	// DISABLE_MAX_PRIVILEGE retains SeChangeNotifyPrivilege; disable that too.
+	if err = windows.AdjustTokenPrivileges(token, true, nil, 0, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	original, err := source.GetTokenUser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual, err := token.GetTokenUser()
+	if err != nil || !windows.EqualSid(original.User.Sid, actual.User.Sid) {
+		t.Fatal("client user changed", err)
+	}
+	assertStandardPipeToken(t, token)
+	return token
+}
+
+func assertStandardPipeToken(t *testing.T, token windows.Token) {
+	t.Helper()
+	if count := pipeRestrictingSIDCount(t, token); count != 0 {
+		t.Fatalf("%d restricting SIDs would add a second access check", count)
+	}
+	medium, err := windows.StringToSid("S-1-16-8192")
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := windows.CreateWellKnownSid(windows.WinBuiltinAdministratorsSid)
+	if err != nil {
 		t.Fatal(err)
 	}
 	buf := make([]byte, 4096)
@@ -395,14 +520,9 @@ func withStandardPipeToken(t *testing.T, probe func()) {
 		t.Fatal(err)
 	}
 	for _, g := range groups.AllGroups() {
-		if windows.EqualSid(g.Sid, admin) && g.Attributes&windows.SE_GROUP_ENABLED != 0 {
-			t.Fatal("enabled admin SID")
+		if windows.EqualSid(g.Sid, admin) && (g.Attributes&windows.SE_GROUP_ENABLED != 0 || g.Attributes&windows.SE_GROUP_USE_FOR_DENY_ONLY == 0) {
+			t.Fatal("admin SID must be deny-only")
 		}
-	}
-	// Removing every privilege also rules out SeTakeOwnership/SeBackup, even
-	// when the runner has no UAC-linked token (as on hosted Windows runners).
-	if err = windows.AdjustTokenPrivileges(token, true, nil, 0, nil, nil); err != nil {
-		t.Fatal(err)
 	}
 	if err = windows.GetTokenInformation(token, windows.TokenPrivileges, &buf[0], uint32(len(buf)), &size); err != nil {
 		t.Fatal(err)
@@ -412,17 +532,13 @@ func withStandardPipeToken(t *testing.T, probe func()) {
 			t.Fatal("enabled client privilege")
 		}
 	}
-	original, err := source.GetTokenUser()
-	if err != nil {
-		t.Fatal(err)
-	}
-	actual, err := token.GetTokenUser()
-	if err != nil || !windows.EqualSid(original.User.Sid, actual.User.Sid) {
-		t.Fatal("client user changed", err)
-	}
+	t.Log("token_elevated=false integrity=Medium admin=absent_or_deny_only privileges_enabled=0 restricting_sids=0")
+}
+
+func withPipeToken(t *testing.T, token windows.Token, probe func()) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	ok, _, err = advapi.NewProc("ImpersonateLoggedOnUser").Call(uintptr(token))
+	ok, _, err := windows.NewLazySystemDLL("advapi32.dll").NewProc("ImpersonateLoggedOnUser").Call(uintptr(token))
 	if ok == 0 {
 		t.Fatal("ImpersonateLoggedOnUser", err)
 	}
@@ -431,8 +547,21 @@ func withStandardPipeToken(t *testing.T, probe func()) {
 			panic(err)
 		}
 	}()
-	t.Log("client_elevated=false integrity=Medium admin_enabled=false privileges_enabled=0")
 	probe()
+}
+
+func pipeRestrictingSIDCount(t *testing.T, token windows.Token) uint32 {
+	t.Helper()
+	var size uint32
+	err := windows.GetTokenInformation(token, windows.TokenRestrictedSids, nil, 0, &size)
+	if !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) {
+		t.Fatal("restricted SID size", err)
+	}
+	buf := make([]byte, size)
+	if err := windows.GetTokenInformation(token, windows.TokenRestrictedSids, &buf[0], size, &size); err != nil {
+		t.Fatal("restricted SIDs", err)
+	}
+	return (*windows.Tokengroups)(unsafe.Pointer(&buf[0])).GroupCount
 }
 
 func TestWindowsPipeRemoteAbgewiesen(t *testing.T) {

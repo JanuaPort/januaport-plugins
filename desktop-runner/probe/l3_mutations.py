@@ -82,6 +82,9 @@ NATIVE = [
     ("native-low-label", "pipe", "TestWindowsPipeLowILReadWrite", [p("security.go", 'S:(ML;;NWNR;;;ME)', '')]),
     ("native-create-instance", "pipe", "TestWindowsPipeClientDarfKeineInstanzAnlegen", [p("security.go", '0x12008b', '0x12019f', 2)]),
     ("native-create-instance-bit", "pipe", "TestWindowsPipeClientDarfKeineInstanzAnlegen", [p("security.go", '0x12008b', '0x12008f', 2)]),
+    ("native-create-instance-child", "pipe", "TestWindowsPipeClientDarfKeineInstanzAnlegen/standard_process", [p("security.go", '0x12008b', '0x12008f', 2)]),
+    ("native-helper-token", "pipe", "TestWindowsPipeClientDarfKeineInstanzAnlegen/standard_process", [p("transport_windows_test.go", 'Token: syscall.Token(token), HideWindow: true', 'Token: syscall.Token(0), HideWindow: true')]),
+    ("native-restricting-token", "pipe", "TestWindowsPipeRestrictingSIDsVerweigert", [p("transport_windows_test.go", 'if count := pipeRestrictingSIDCount(t, token); count != 0 {', 'if count := pipeRestrictingSIDCount(t, token); count != 0 && false {')]),
     ("native-client-path", "pipe", "TestWindowsServerPrueftClientbildUndReconnect", [p("transport_windows.go", '!sameFolder(own, p.Image, "jnpt-bedienfeld.exe")', '!sameFolder(own, p.Image, "jnpt-bedienfeld.exe") && false')]),
     ("native-server-check", "pipe", "TestWindowsClientPrueftEchtenServer", [p("transport_windows.go", 'return verifyServer(own, server)', '_ = own; _ = server; return nil'), p("transport_windows.go", 'processPeer(pid, true)', 'processPeer(pid, false)'), p("transport_windows.go", 'processPeer(windows.GetCurrentProcessId(), true)', 'processPeer(windows.GetCurrentProcessId(), false)')]),
     ("native-h3", "platform", "TestWindowsKindOhneBedienfeldPipe", [p("transport_windows.go", 'InheritHandle: 0', 'InheritHandle: 1'), edit("internal/platform/process_windows.go", 'attrs.Update(windows.PROC_THREAD_ATTRIBUTE_HANDLE_LIST, unsafe.Pointer(&handles[0]), uintptr(len(handles))*unsafe.Sizeof(handles[0]))', 'error(nil)')]),
@@ -96,6 +99,8 @@ def command(args, timeout=120, cwd=ROOT):
 
 def run(case, native=False, execute_native=False):
     label, package, test, changes = case
+    # Go splits -run at slashes before compiling each subtest expression.
+    pattern = "/".join("^(" + part + ")$" for part in test.split("/"))
     originals = {}
     try:
         for file, old, new, expected in changes:
@@ -116,13 +121,13 @@ def run(case, native=False, execute_native=False):
             print(f"{label}: COMPILED ONLY ({test}); native result pending", flush=True)
             return
         if execute_native:
-            args = ["go", "test", "-count=1", "-timeout=35s", "-run=^(" + test + ")$", "./internal/" + package]
+            args = ["go", "test", "-count=1", "-timeout=35s", "-run=" + pattern, "./internal/" + package]
             code, output = command(args)
         else:
             code, output = command(["docker", "exec", "l3-test", "go", "test", "-c", "-o", "/tmp/l3-mutant", "./internal/" + package])
             if code:
                 raise RuntimeError(f"{label}: compile failure is NOT a rejection\n{output}")
-            code, output = command(["docker", "exec", "-w", "/workspace/desktop-runner/internal/" + package, "l3-test", "/tmp/l3-mutant", "-test.run=^(" + test + ")$", "-test.timeout=20s"])
+            code, output = command(["docker", "exec", "-w", "/workspace/desktop-runner/internal/" + package, "l3-test", "/tmp/l3-mutant", "-test.run=" + pattern, "-test.timeout=20s"])
         if code == 0 or not any("--- FAIL: " + name in output for name in test.split("|")):
             raise RuntimeError(f"{label}: survived or infrastructure failed\n{output}")
         print(f"{label}: RED ({test})", flush=True)
