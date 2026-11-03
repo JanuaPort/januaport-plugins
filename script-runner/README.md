@@ -411,7 +411,10 @@ ETag und `If-None-Match` tragen den Commit in Anführungszeichen. Jede Fassung w
 gebunden; es gibt kein Dateisystem-Checkout. Pro App bleibt eine Fassung im RAM,
 frühestens fünf Sekunden nach Abschluss des Abrufs wird nachgefragt. Je App läuft
 höchstens ein Abruf gleichzeitig; wartende Anfragen teilen sein Ergebnis und können
-einzeln abbrechen. Andere Apps und Sitzungsprüfungen warten nicht auf diesen Abruf.
+einzeln abbrechen, auch der erste Anfrager. Der gemeinsame Flight verwendet
+`context.WithoutCancel` und eine eigene feste Frist von 30 Sekunden; ein
+Anfrageabbruch erzeugt kein Fehlerergebnis im Cache.
+Andere Apps und Sitzungsprüfungen warten nicht auf diesen Abruf.
 304 erhält die Fassung, 404 verwirft sie,
 Transport-/Prüffehler sperren die Auslieferung. Ein Neustart leert alle Caches.
 

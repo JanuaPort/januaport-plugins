@@ -1191,7 +1191,9 @@ Paketdaten und Sitzungen liegen ausschließlich im RAM; ein Neustart löscht die
 Sitzungen, verhindert aber keinen Callback mit noch gültigem Code und Cookie.
 Die ETag-Abfrage erfolgt je App frühestens fünf Sekunden nach Abrufabschluss;
 404 und Fehler geben keine alte Fassung frei. Pro App läuft höchstens ein Abruf,
-wartende Anfragen teilen das Ergebnis und können unabhängig abbrechen. Während
+wartende Anfragen teilen das Ergebnis und können unabhängig abbrechen, auch der
+erste Anfrager. Der Flight verwendet `context.WithoutCancel` plus eigene feste
+30-Sekunden-Frist; Anfrageabbrüche schreiben kein Fehlerergebnis in den Cache. Während
 Netzabruf und Paketprüfung bleibt der globale Mutex frei, andere Apps werden nicht
 blockiert. Laufende Abrufe zählen zur Cache-Grenze und werden nicht verdrängt.
 Die Sitzungstabelle bleibt auf 4096 Einträge begrenzt: zuerst abgelaufene entfernen,
@@ -1207,6 +1209,7 @@ bei weiter voller Tabelle den frühesten Ablauf verdrängen, statt Anmeldungen m
 | Zustandsloser Callback, Code-Bindung und Einmaligkeit im Kern-Stub | `TestF2StatelessCallbackCoreBindingAtHTTP` |
 | 5000 anonyme Navigationen sperren keine Anmeldung; frühesten Sitzungsablauf verdrängen | `TestF2AnonymousNavigationsCannotExhaustLoginAtHTTP`, `TestF2SessionCapacityEvictsEarliestAtHTTP` |
 | Paketabrufe je App zusammenfassen, andere Apps nicht blockieren | `TestH2PackageFetchIsolationAndCoalescingAtHTTP` |
+| Erster Anfrager bricht unabhängig ab, Cache bleibt nutzbar; eigene Flight-Frist 30 s | `TestFlightFirstCallerCancellationAtHTTP`, `TestFlightOwnDeadlineAtHTTP` |
 | App ausschließlich aus dem Host | `TestInvariant5AppFromHostAtHTTP` |
 | Cookie- und CSP-Literale, begrenzte Sitzungsdauer | `TestInvariant6CookiesAndCSPAtHTTP` |
 | Origin, Headerfilter, Bodygrenze, 401 und Geheimnisfreiheit | `TestInvariant7ProxyAtHTTP`, `TestLogsNeverContainCredentialsOrQuery` |
