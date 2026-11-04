@@ -284,7 +284,7 @@ CASES = [
     ("bedienfeld-schliesst-nicht", "fensterio", "TestBedienfeldSchliesstFensterVerschwundenerApps", [edit(APW, "			fensterio.CloseMissing(a.surfaces, l.Names)\n", "")]),
     ("watch-notexist-ignoriert", "fensterio", "TestWatchLeertDieListeSofortBeiFehlenderDatei", [edit(RTM, "			if errors.Is(err, fs.ErrNotExist) {\n				failures = 3 // die Zustandsdatei ist weg (Widerruf): eindeutig, nicht erst nach drei Versuchen\n			}\n", "")]),
     ("watch-eins", "fensterio", "TestWatchLeertDieListeErstNachDreiFehlern", [edit(RTM, "if failures == 3 &&", "if failures == 1 &&")]),
-    ("apps-fehlende-datei-verloren", "fensterio", "TestRuntimeAppsMeldetFehlendeDatei", [edit(RTM, "		if errors.Is(err, fs.ErrNotExist) {\n			return AppList{}, fmt.Errorf(\"%w: %w\", ErrOpen, fs.ErrNotExist)\n		}\n", "")]),
+    ("apps-fehlende-datei-verloren", "fensterio", "TestRuntimeAppsMeldetFehlendeDatei", [edit(RTM, "		if errors.Is(err, fs.ErrNotExist) {\n			return AppList{}, fmt.Errorf(\"%w: %w\", ErrOpen, fs.ErrNotExist)\n		}\n", "\t\t_ = fmt.Sprint\n")]),
     ("host-cap-weg", "fensterio", "TestHostBegrenztGleichzeitigeNachrichten", [edit(HOSTF, "if h.inflight.Add(1) > maxInflight {", "if h.inflight.Add(1) > maxInflight*100 {")]),
     ("falsche-aussage", "fensterio", "TestKeineFalschenAussagen", [edit(EVS, "sonst wird die Navigation abgebrochen.", "sonst wird die Navigation abgebrochen (Abbruch vor der Anfrage).")]),
     ("sollliste-waechst", "fensterio", "TestRueckleseprobeDecktSollListeAb", [edit("internal/fenster/settings.go", '		{"IsZoomControlEnabled", false},', '		{"IsZoomControlEnabled", false},\n		{"IsNeueEinstellung", false},')]),

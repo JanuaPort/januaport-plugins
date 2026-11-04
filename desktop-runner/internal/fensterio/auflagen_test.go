@@ -13,7 +13,6 @@ import (
 	"reflect"
 	"sort"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -159,20 +158,33 @@ func TestBedienfeldSchliesstFensterVerschwundenerApps(t *testing.T) {
 // Verschwindet die Zustandsdatei (Widerruf des Läufers), ist das eindeutig: die Liste wird sofort leer, ohne drei
 // Fehlversuche abzuwarten.
 func TestWatchLeertDieListeSofortBeiFehlenderDatei(t *testing.T) {
-	var mu sync.Mutex
-	state := AppList{Names: []string{"a"}}
-	var err error
-	read := func() (AppList, error) { mu.Lock(); defer mu.Unlock(); return state, err }
-	var got []AppList
-	var gmu sync.Mutex
+	var failing atomic.Bool
+	var failedReads atomic.Int32
+	read := func() (AppList, error) {
+		if failing.Load() {
+			failedReads.Add(1)
+			return AppList{}, fmt.Errorf("lesen: %w", fs.ErrNotExist)
+		}
+		return AppList{Names: []string{"a"}}, nil
+	}
+	emitted := make(chan int32, 4)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go Watch(ctx, 2*time.Millisecond, read, func(l AppList) { gmu.Lock(); got = append(got, l); gmu.Unlock() })
-	waitFor(t, "erste Meldung", func() bool { gmu.Lock(); defer gmu.Unlock(); return len(got) == 1 })
-	mu.Lock()
-	err = fmt.Errorf("lesen: %w", fs.ErrNotExist)
-	mu.Unlock()
-	waitFor(t, "leere Liste", func() bool { gmu.Lock(); defer gmu.Unlock(); return len(got) == 2 && len(got[1].Names) == 0 })
+	go Watch(ctx, 2*time.Millisecond, read, func(l AppList) {
+		if len(l.Names) == 0 {
+			emitted <- failedReads.Load() // Zahl der Fehlversuche zum Zeitpunkt der Meldung
+		}
+	})
+	time.Sleep(10 * time.Millisecond) // die Liste mit der App wurde gemeldet
+	failing.Store(true)
+	select {
+	case n := <-emitted:
+		if n != 1 {
+			t.Fatalf("Liste nach %d Fehlversuchen geleert, erwartet sofort nach dem ersten", n)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Liste wurde nie geleert")
+	}
 }
 
 // Ein anderer Lesefehler leert die Liste erst beim dritten Fehlversuch in Folge (kurze Störungen schließen kein Fenster).
