@@ -142,3 +142,25 @@ func TestAdapterBindetAlleEreignisse(t *testing.T) {
 	}
 	_ = filepath.Join
 }
+
+// Jede Einstellung der Sollliste hat im Adapter einen Setter; fehlt einer, wäre das Fenster offener als
+// vorgesehen. (Der Adapter fällt zusätzlich zur Laufzeit zu, wenn ein Setter fehlt.)
+func TestAdapterWendetAlleSettingsAn(t *testing.T) {
+	f, err := parser.ParseFile(token.NewFileSet(), "webview_windows.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	literals := map[string]bool{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+			s, _ := strconv.Unquote(lit.Value)
+			literals[s] = true
+		}
+		return true
+	})
+	for _, set := range fenster.Settings() {
+		if !literals[set.Name] {
+			t.Errorf("Adapter kennt die Einstellung %s nicht", set.Name)
+		}
+	}
+}

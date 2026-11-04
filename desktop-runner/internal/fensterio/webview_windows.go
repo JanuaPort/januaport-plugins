@@ -23,6 +23,8 @@ type SurfaceConfig struct {
 	OnLink func(Link)
 	// OnClosed: Das Fenster ist weg (UI-Thread).
 	OnClosed func()
+	// Probe meldet jedes native Ereignis mit Einzelheit; nur die nativen Sonden setzen es.
+	Probe func(event, detail string)
 }
 
 // Surface ist ein natives Fenster mit WebView. Alle Methoden laufen auf dem UI-Thread, der es angelegt hat.
@@ -100,6 +102,7 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 		}},
 		{"bind ProcessFailed", func() error {
 			s.chromium.ProcessFailedCallback = func(*edge.ICoreWebView2, *edge.ICoreWebView2ProcessFailedEventArgs) {
+				s.trace("ProcessFailed", "")
 				s.o.Host.Fail()
 				s.requestClose()
 			}
@@ -133,6 +136,7 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 			h := wv2com.NewHandler(wv2com.IIDNewWindowHandler, func(_, args uintptr) uintptr {
 				a := wv2com.P(args)
 				uri, _ := wv2com.GetString(a, wv2com.IdxNewWindowURI)
+				s.trace("NewWindowRequested", uri)
 				v := NewWindowVerdict(app, uri)
 				if !wv2com.PutBool(a, wv2com.IdxNewWindowPutHandled, true) {
 					s.requestClose()
@@ -150,6 +154,7 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 			defer wv2com.Release(v4)
 			h := wv2com.NewHandler(wv2com.IIDDownloadStartingHandler, func(_, args uintptr) uintptr {
 				a := wv2com.P(args)
+				s.trace("DownloadStarting", "")
 				if !wv2com.PutBool(a, wv2com.IdxDownloadPutCancel, true) || !wv2com.PutBool(a, wv2com.IdxDownloadPutHandled, true) {
 					s.requestClose()
 				}
@@ -168,6 +173,7 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 				if !ok {
 					return 0
 				}
+				s.trace("WebMessageReceived", source)
 				s.o.Host.Receive(MessageSource(source), msg)
 				return 0
 			})
@@ -199,6 +205,12 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+func (s *Surface) trace(event, detail string) {
+	if s.cfg.Probe != nil {
+		s.cfg.Probe(event, detail)
+	}
 }
 
 func (s *Surface) com() wv2com.Obj { return unsafe.Pointer(s.view) }
@@ -262,6 +274,7 @@ func (s *Surface) bindNavigation(addIdx int) error {
 		a := wv2com.P(args)
 		v := NavVerdict{Cancel: true}
 		if uri, ok := wv2com.GetString(a, wv2com.IdxNavURI); ok {
+			s.trace("NavigationStarting", uri)
 			v = NavigationVerdict(app, uri)
 		}
 		if v.Cancel && !wv2com.PutBool(a, wv2com.IdxNavPutCancel, true) {

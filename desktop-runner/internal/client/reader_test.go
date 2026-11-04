@@ -404,3 +404,25 @@ func TestAppPrepareNachWiderrufLegtNichtsAb(t *testing.T) {
 		t.Fatal("Wurzel nach Widerruf neu angelegt")
 	}
 }
+
+// B4: Das Gerätetoken wird für die Liste der Apps nie in ein Go-Feld dekodiert. Steht im Feld "token" etwas,
+// das als Token ungültig wäre, scheitert Credential(), aber Apps() liest weiter.
+func TestReaderAppsDekodiertKeinToken(t *testing.T) {
+	b := newReaderBed(t, false)
+	raw, err := json.Marshal(map[string]any{"trust": b.cred.Trust, "device_id": b.cred.DeviceID, "token": 12345, "expires_at": b.cred.ExpiresAt, "pubkey": b.cred.Pubkey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed, _ := testCipher{}.Seal(raw)
+	if err = os.WriteFile(filepath.Join(b.root, "credential"), sealed, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r, _ := NewReader(b.root, testCipher{})
+	if _, err = r.Credential(); err == nil {
+		t.Fatal("Credential() hätte scheitern müssen: Testaufbau")
+	}
+	view, err := r.Apps()
+	if err != nil || len(view.Apps) != 1 {
+		t.Fatalf("Apps() liest das Token mit: %v", err)
+	}
+}
