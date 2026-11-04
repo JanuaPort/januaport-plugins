@@ -3,6 +3,8 @@ package fensterio
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io/fs"
 	"path/filepath"
 	"slices"
 	"time"
@@ -22,7 +24,10 @@ type Cipher interface {
 
 // UserDataDir ist das Benutzerdatenverzeichnis der WebView einer App: <Zustandswurzel>\webview\<name>.
 // Es liegt unter der Wurzel, damit der Widerruf des Läufers es mit dem Zustand löscht, ohne Verweisen zu
-// folgen (State.Revoke/removeTree). Je App ein eigenes Verzeichnis.
+// folgen (State.Revoke/removeTree). Solange das Fenster offen ist, sind die Dateien gesperrt und das Löschen
+// scheitert; das Bedienfeld schließt das Fenster darum, sobald die App aus der Liste verschwindet (CloseMissing),
+// und löscht selbst nichts (B3). Reste können bleiben, wenn der Läufer vor dem Schließen löschte (Restgrenze).
+// Je App ein eigenes Verzeichnis.
 func UserDataDir(root, app string) (string, error) {
 	if root == "" || !filepath.IsAbs(root) || filepath.Clean(root) != root || !fenster.ValidAppName(app) {
 		return "", ErrOpen
@@ -63,10 +68,15 @@ func NewRuntime(cfg RuntimeConfig) (*Runtime, error) {
 	return &Runtime{cfg: cfg, reader: r}, nil
 }
 
-// Apps liest und prüft das Manifest (Signatur, Gerät, Vertrag 5). Das Gerätetoken wird dabei nicht gelesen.
+// Apps liest und prüft das Manifest (Signatur, Gerät, Vertrag 5). Dafür wird die Datei credential entschlüsselt, das Gerätetoken
+// landet aber in keinem Go-Feld, und der Klartext-Puffer wird danach genullt. Fehlt die Datei (Widerruf des Läufers), ist
+// das im Fehler erkennbar (fs.ErrNotExist), ohne Pfad.
 func (r *Runtime) Apps() (AppList, error) {
 	v, err := r.reader.Apps()
 	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return AppList{}, fmt.Errorf("%w: %w", ErrOpen, fs.ErrNotExist)
+		}
 		return AppList{}, ErrOpen
 	}
 	l := AppList{TestDevice: v.TestDevice}
@@ -166,6 +176,9 @@ func Watch(ctx context.Context, interval time.Duration, read func() (AppList, er
 			}
 		default:
 			failures++
+			if errors.Is(err, fs.ErrNotExist) {
+				failures = 3 // die Zustandsdatei ist weg (Widerruf): eindeutig, nicht erst nach drei Versuchen
+			}
 			if failures == 3 && (!have || len(last.Names) != 0) {
 				last, have = AppList{}, true
 				emit(last)
@@ -177,4 +190,17 @@ func Watch(ctx context.Context, interval time.Duration, read func() (AppList, er
 		case <-tick.C:
 		}
 	}
+}
+
+// CloseMissing schließt die Fenster aller Apps, die in names nicht mehr vorkommen (Widerruf, Entzug), und liefert
+// deren Namen. Close darf den Eintrag selbst aus der Menge entfernen (OnClosed). Das Bedienfeld löscht nichts.
+func CloseMissing[T interface{ Close() }](open map[string]T, names []string) []string {
+	var closed []string
+	for name, w := range open {
+		if !slices.Contains(names, name) {
+			closed = append(closed, name)
+			w.Close()
+		}
+	}
+	return closed
 }

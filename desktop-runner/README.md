@@ -88,7 +88,7 @@ nötige Schnittstelle, öffnet das Fenster nicht und das Bedienfeld meldet das n
 - **Blockiert nie den Halt:** Gateway, Brücke und Pipe-Gespräch laufen in Goroutinen, nie auf dem
   UI-Thread. Ein hängendes Gateway hält Anhalten nicht auf, ein WebView2-Absturz schließt nur das Fenster.
 - **Native Sperren** (Pflicht, sonst öffnet das Fenster nicht): NavigationStarting/FrameNavigationStarting
-  (nur `.html`-Seiten der eigenen App; Abbruch vor der Anfrage, auch Redirect und meta refresh),
+  (nur `.html`-Seiten der eigenen App; Abbruch der Navigation, auch Redirect und meta refresh; die Anfrage selbst sperren Ressourcenfilter und Netzsperre),
   NewWindowRequested (nie ein Fenster), DownloadStarting (Abbruch), WebMessageReceived mit Quelle,
   PermissionRequested (Deny), ProcessFailed. Externe `https`-Links öffnen nur nach einem nativen
   Ja-Dialog mit Host im Standardbrowser. Auf Testgeräten zeigt eine native Leiste „Test – Testgerät“.

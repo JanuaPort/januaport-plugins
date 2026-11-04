@@ -283,12 +283,6 @@ func (e *Chromium) CreateCoreWebView2ControllerCompleted(res uintptr, controller
 			e.errorCallback(err)
 			return 0
 		}
-
-		// Set a fixed rasterization scale for better performance
-		if err := controller3.PutRasterizationScale(1.0); err != nil {
-			e.errorCallback(err)
-			return 0
-		}
 	}
 	var token _EventRegistrationToken
 	webview, err := e.controller.GetCoreWebView2()

@@ -41,6 +41,8 @@ func (a *application) drainApps() {
 	for {
 		select {
 		case l := <-a.appLists:
+			// Verschwindet eine App (Widerruf), schließt ihr Fenster; offene Fenster sperren die Dateien der WebView.
+			fensterio.CloseMissing(a.surfaces, l.Names)
 			a.model.SetApps(l.Names)
 			a.render()
 		case r := <-a.opened:
@@ -79,7 +81,8 @@ func (a *application) openApp(name string) {
 }
 
 func (a *application) handleOpened(r openResult) {
-	delete(a.opening, r.name)
+	// Erst nach dem Start freigeben: ein zweiter Klick während NewSurface öffnet kein zweites Fenster auf demselben Profil.
+	defer delete(a.opening, r.name)
 	if r.err != nil || r.o == nil {
 		a.notice("JanuaPort – App", "Die App „"+r.name+"“ ist nicht verfügbar.")
 		return

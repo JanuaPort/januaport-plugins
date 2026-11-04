@@ -34,6 +34,13 @@ func (r *Reader) Load(name string, v any) error {
 	if err != nil {
 		return err
 	}
+	return strictUndLoeschen(b, v)
+}
+
+// strictUndLoeschen dekodiert streng und nullt den Klartext-Puffer danach, auch im Fehlerfall: Der Klartext von
+// credential trägt das Gerätetoken und soll nicht länger im Speicher liegen als nötig.
+func strictUndLoeschen(b []byte, v any) error {
+	defer clear(b)
 	return strict(b, v)
 }
 
@@ -68,7 +75,8 @@ func (r *Reader) Credential() (Credential, error) {
 	return c, err
 }
 
-// identity liest nur, was die Manifestprüfung braucht; das Token wird nie in ein Go-Feld dekodiert.
+// identity liest nur, was die Manifestprüfung braucht. Die ganze Datei credential samt Token wird dafür entschlüsselt
+// (alle 15 s), aber das Token wird nie in ein Go-Feld dekodiert, und der Klartext-Puffer wird nach dem Dekodieren genullt.
 func (r *Reader) identity() (id struct {
 	DeviceID string
 	Pubkey   []byte
@@ -77,6 +85,7 @@ func (r *Reader) identity() (id struct {
 	if err != nil {
 		return id, err
 	}
+	defer clear(b)
 	var v struct {
 		DeviceID string `json:"device_id"`
 		Pubkey   []byte `json:"pubkey"`

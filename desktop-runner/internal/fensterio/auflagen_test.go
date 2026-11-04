@@ -215,3 +215,18 @@ func TestHostBegrenztGleichzeitigeNachrichten(t *testing.T) {
 		t.Fatalf("gleichzeitig %d Aufrufe, erlaubt sind %d", b.g.peak.Load(), maxInflight)
 	}
 }
+
+// Fehlt die Zustandsdatei, bleibt das im Fehler erkennbar (fs.ErrNotExist), ohne Pfad und ohne Text der Ursache.
+func TestRuntimeAppsMeldetFehlendeDatei(t *testing.T) {
+	b := newRuntimeBed(t)
+	if err := os.Remove(filepath.Join(b.bed.Root, "credential")); err != nil {
+		t.Fatal(err)
+	}
+	_, err := b.rt.Apps()
+	if !errors.Is(err, ErrOpen) || !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("Fehler: %v", err)
+	}
+	if strings.Contains(err.Error(), b.bed.Root) {
+		t.Fatalf("Pfad im Fehler: %v", err)
+	}
+}

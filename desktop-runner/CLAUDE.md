@@ -395,8 +395,8 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     v1.0.19, siehe unten) plus dünner eigener COM-Adapter `internal/wv2com` für alles, was die Bibliothek nicht durchreicht
     (Vtable-Positionen und IIDs aus WebView2.h, SDK 1.0.2535.41). **Nativ gebunden, Pflicht, sonst öffnet das
     Fenster nicht** (`RunSteps`, fester Fehler `webview_nicht_nutzbar`): `NavigationStarting` und
-    `FrameNavigationStarting` (Abbruch vor der Anfrage, auch Redirect und meta refresh; nur `.html`-Seiten der
-    eigenen App laufen), `NewWindowRequested` (immer `Handled`, nie ein Fenster; externe https-Links nur über
+    `FrameNavigationStarting` (Abbruch der Navigation, auch Redirect und meta refresh; nur `.html`-Seiten der
+    eigenen App laufen; die Anfrage verhindert erst Schicht 1 und 2), `NewWindowRequested` (immer `Handled`, nie ein Fenster; externe https-Links nur über
     den nativen Ja-Dialog mit Host, dann `ShellExecuteW`), `DownloadStarting` (Cancel und Handled),
     `WebMessageReceived` mit Quelle (`MessageSource` → `MessageAllowed`), `PermissionRequested` (global
     Deny), `ProcessFailed` (Fenster schließen, Host abbrechen). Dazu `Settings()` vollständig,
@@ -404,7 +404,10 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     `Layout`: Die WebView bekommt einen Bereich, auf Testgeräten darüber die native Leiste „Test – Testgerät“.
     Das Benutzerdatenverzeichnis `<Zustand>\webview\<app>` entsteht mit `platform.MkdirPrivate`
     (private DACL) und wird vom Widerruf des Läufers ohne Verweisen zu folgen gelöscht
-    (`TestRevokeLoeschtWebviewOhneVerweiseZuFolgen`). `WebResourceRequested` wird nicht benutzt.
+    (`TestRevokeLoeschtWebviewOhneVerweiseZuFolgen`). `WebResourceRequested` ist Schicht 1 (siehe unten). Ein offenes Fenster
+    sperrt die Dateien: Das Bedienfeld schließt das Fenster einer App, sobald sie aus der Liste verschwindet (`CloseMissing`),
+    und die Liste leert sich sofort, wenn die Zustandsdatei fehlt. **Restgrenze:** Löschte der Läufer vor dem Schließen,
+    können Reste von `webview\<app>` bleiben; das Bedienfeld löscht nichts (B3).
 
     **Start des WebView ist begrenzt (VM-Befund, B1):** Die Bibliothek beendete den Prozess bei jedem Fehler
     (`os.Exit` im Fehlerrückruf) und wartete in `Embed` ohne Grenze (`GetMessage`); ein Fehlstart hing den

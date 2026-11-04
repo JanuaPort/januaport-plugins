@@ -7,8 +7,8 @@ import (
 
 // NetworkLockArguments sind Schicht 2 gegen Ausleitung (SEC): ein totes Proxy-Ziel, das kein Port ist, den ein
 // anderes Konto binden kann (0.0.0.0:0 gibt es nicht), Loopback geht ausdrücklich nicht am Proxy vorbei
-// (<-loopback), und DNS ist aus.
-const NetworkLockArguments = `--proxy-server=http://0.0.0.0:0 --proxy-bypass-list=<-loopback> --host-resolver-rules="MAP * ~NOTFOUND"`
+// (<-loopback), DNS ist aus, und die Richtlinie für WebRTC lässt nur Verkehr über den Proxy zu.
+const NetworkLockArguments = `--proxy-server=http://0.0.0.0:0 --proxy-bypass-list=<-loopback> --host-resolver-rules="MAP * ~NOTFOUND" --webrtc-ip-handling-policy=disable_non_proxied_udp`
 
 // BrowserArguments sind alle zusätzlichen Argumente des Browserprozesses: die Netzsperre, sonst nichts. Der
 // Kommandozeilenwert ist keine harte Grenze: Umgebungsvariablen und Richtlinien können ihn übersteuern. Darum liest der
@@ -22,7 +22,7 @@ const BrowserArguments = NetworkLockArguments
 
 // NetworkLockArgs liefert NetworkLockArguments als einzelne Argumente.
 func NetworkLockArgs() []string {
-	return []string{`--proxy-server=http://0.0.0.0:0`, `--proxy-bypass-list=<-loopback>`, `--host-resolver-rules="MAP * ~NOTFOUND"`}
+	return []string{`--proxy-server=http://0.0.0.0:0`, `--proxy-bypass-list=<-loopback>`, `--host-resolver-rules="MAP * ~NOTFOUND"`, `--webrtc-ip-handling-policy=disable_non_proxied_udp`}
 }
 
 // BrowserArgs liefert BrowserArguments als einzelne Argumente.
@@ -38,10 +38,18 @@ func BrowserCommandLineProblems(line string) []string {
 		args = args[1:] // das Programm selbst
 	}
 	for _, a := range args {
-		if !strings.HasPrefix(a, "--") {
+		// Chromium nimmt unter Windows --x, -x und /x an und unterscheidet Groß- und Kleinschreibung nicht.
+		var rest string
+		switch {
+		case strings.HasPrefix(a, "--"):
+			rest = a[2:]
+		case strings.HasPrefix(a, "-"), strings.HasPrefix(a, "/"):
+			rest = a[1:]
+		default:
 			continue
 		}
-		key, value, _ := strings.Cut(a, "=")
+		name, value, _ := strings.Cut(rest, "=")
+		key := "--" + strings.ToLower(name)
 		values[key] = append(values[key], value)
 	}
 	var problems []string
@@ -49,6 +57,7 @@ func BrowserCommandLineProblems(line string) []string {
 		{"--proxy-server", "http://0.0.0.0:0"},
 		{"--proxy-bypass-list", "<-loopback>"},
 		{"--host-resolver-rules", "MAP * ~NOTFOUND"},
+		{"--webrtc-ip-handling-policy", "disable_non_proxied_udp"},
 	} {
 		switch got := values[w.key]; {
 		case len(got) == 0:

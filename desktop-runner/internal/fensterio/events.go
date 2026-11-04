@@ -17,7 +17,8 @@ type NavVerdict struct {
 }
 
 // NavigationVerdict gilt für NavigationStarting (auch Redirects und meta refresh) und
-// FrameNavigationStarting: Nur .html-Seiten der eigenen App laufen weiter, sonst wird vor der Anfrage abgebrochen.
+// FrameNavigationStarting: Nur .html-Seiten der eigenen App laufen weiter, sonst wird die Navigation abgebrochen. Das
+// verhindert die Anfrage nicht allein (Sondenlauf 4); dafür sind Schicht 1 und 2 da.
 func NavigationVerdict(app, uri string) NavVerdict {
 	d, host := fenster.Decide(app, uri)
 	switch d {

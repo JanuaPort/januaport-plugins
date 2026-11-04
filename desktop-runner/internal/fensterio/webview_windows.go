@@ -46,9 +46,9 @@ type SurfaceConfig struct {
 // Surface ist ein natives Fenster mit WebView. Alle Methoden laufen auf dem UI-Thread, der es angelegt hat.
 // Jedes sicherheitsrelevante Ereignis wird nativ gebunden (NavigationStarting, FrameNavigationStarting,
 // NewWindowRequested, DownloadStarting, WebMessageReceived mit Quelle, PermissionRequested, ProcessFailed);
-// scheitert eines, öffnet das Fenster nicht (RunSteps). WebResourceRequested wird nicht benutzt: Die
-// Bibliothek beendet bei einem COM-Fehler dort den Prozess (log.Fatal), und CSP plus Navigationssperre
-// decken die Unterressourcen.
+// scheitert eines, öffnet das Fenster nicht (RunSteps). Dazu kommt WebResourceRequested für alle Anfragen
+// (Schicht 1, fenster.ResourceAllowed) und die Netzsperre im Browserprozess (Schicht 2, fenster.NetworkLockArgs):
+// NavigationStarting bricht die Navigation ab, verhindert aber die Anfrage nicht allein.
 type Surface struct {
 	o        *Opened
 	cfg      SurfaceConfig
