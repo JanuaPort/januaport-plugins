@@ -186,6 +186,18 @@ func BlockedResponse(env, args Obj) bool {
 	return !Failed(Call(args, IdxResPutResponse, uintptr(resp)))
 }
 
+// IdxGetBrowserProcessID ist ICoreWebView2::get_BrowserProcessId.
+const IdxGetBrowserProcessID = 37
+
+// BrowserProcessID liefert die Prozess-ID des Browserprozesses dieser WebView.
+func BrowserProcessID(webview Obj) (uint32, bool) {
+	var pid uint32
+	if Failed(Call(webview, IdxGetBrowserProcessID, uintptr(unsafe.Pointer(&pid)))) || pid == 0 {
+		return 0, false
+	}
+	return pid, true
+}
+
 // GetInt32 ruft einen get_X-Zugriff mit 32-Bit-Ergebnis (BOOL, Enum).
 func GetInt32(o Obj, idx int) (int32, bool) {
 	var v int32

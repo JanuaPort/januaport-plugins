@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -34,6 +35,9 @@ type SurfaceConfig struct {
 	// noResourceFilter und noNetLock schalten Schicht 1 und 2 für die Ursachensonde ab (nur in-package).
 	noResourceFilter bool
 	noNetLock        bool
+	noSpeculation    bool
+	// extraBrowserArgs erzwingt in der Sonde einen widersprechenden Eingriff (das Fenster darf dann nicht öffnen).
+	extraBrowserArgs []string
 }
 
 // Surface ist ein natives Fenster mit WebView. Alle Methoden laufen auf dem UI-Thread, der es angelegt hat.
@@ -131,6 +135,12 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 		{"umgebung", func() error {
 			// Auflage SEC (a): Die Browserprozesse erben diese Umgebung. Variablen mit Namen JNPT* (Konfiguration,
 			// Opt-ins, vielleicht Träger) werden vorher entfernt; das Bedienfeld liest keine davon.
+			// Jede WEBVIEW2_*-Variable ist ein Eingriff in den Start des Browsers (Ordner, Argumente): Das Fenster
+			// öffnet nicht. Das kommt vor allem anderen, auch vor dem Entfernen der JNPT*-Variablen.
+			if names := webview2Names(os.Environ()); len(names) > 0 {
+				s.trace("Eingriff", "WEBVIEW2-Variablen gesetzt: "+strings.Join(names, ","))
+				return ErrWebView
+			}
 			for _, name := range jnptNames(os.Environ()) {
 				if err := os.Unsetenv(name); err != nil {
 					return err
@@ -140,10 +150,16 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 		}},
 		{"embed begin", func() error {
 			s.chromium.DataPath = o.UserDataDir
+			// Schicht 2: Netz im Browserprozess aus (tote Proxy-Adresse, DNS aus) und spekulatives Laden aus;
+			// Schicht 1 ist Pflicht daneben, und der Schritt "browser pruefen" verlangt das Ergebnis nach dem Start.
+			var args []string
 			if !cfg.noNetLock {
-				// Schicht 2: Netz im Browserprozess aus (tote Proxy-Adresse, DNS aus); Schicht 1 ist Pflicht daneben.
-				s.chromium.AdditionalBrowserArgs = fenster.BrowserArgs()
+				args = append(args, fenster.NetworkLockArgs()...)
 			}
+			if !cfg.noSpeculation {
+				args = append(args, fenster.SpeculationArgs()...)
+			}
+			s.chromium.AdditionalBrowserArgs = append(args, cfg.extraBrowserArgs...)
 			return s.chromium.Begin(s.hwnd)
 		}},
 		{"embed wait", func() error {
@@ -168,6 +184,29 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 				return ErrWebView
 			}
 			s.view = v
+			return nil
+		}},
+		{"browser pruefen", func() error {
+			// Fail-closed nach Wirkung: Die Kommandozeile des Browserprozesses muss unsere Argumente exakt tragen.
+			// Fehlt eine, oder widerspricht eine (Umgebung, Richtlinie, Versehen), öffnet das Fenster nicht.
+			pid, ok := wv2com.BrowserProcessID(s.com())
+			if !ok {
+				return ErrWebView
+			}
+			line, err := processCommandLine(pid)
+			if err != nil {
+				return ErrWebView
+			}
+			if cfg.Probe != nil {
+				s.trace("BrowserKommandozeile", fenster.DiagText(line))
+			}
+			problems := fenster.BrowserCommandLineProblems(line)
+			for _, p := range problems {
+				s.trace("BrowserArgument", p)
+			}
+			if len(problems) > 0 && !cfg.noNetLock && !cfg.noSpeculation {
+				return ErrWebView
+			}
 			return nil
 		}},
 		{"settings", s.applySettings},

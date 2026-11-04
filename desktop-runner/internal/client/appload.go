@@ -88,7 +88,7 @@ func isCSPMeta(t html.Token) bool {
 // Prüfung ist die Parser-Sicht auf das fertige Dokument (parserSiehtLiteral), denn Chromium
 // verwirft eine CSP-Meta, die der Parser nicht in <head> einordnet (SEC-R4 F1).
 func injectCSP(b []byte) ([]byte, error) {
-	if !textSicher(b) {
+	if !textSicher(b) || spekulativesLaden(b) {
 		return nil, errHead
 	}
 	s, ok := scanHead(b)
@@ -184,4 +184,49 @@ func nodeContent(n *html.Node) string {
 		return ""
 	}
 	return value
+}
+
+// spekulativesLaden erkennt Seiten, die den Browser zum Vorabholen auffordern: <link rel> mit prerender,
+// prefetch, preconnect oder dns-prefetch (Token, Groß- und Kleinschreibung egal) und <script
+// type="speculationrules">. Das ist die zweite Schicht neben den Browserargumenten und dem Ressourcenfilter;
+// dynamisch per Skript erzeugte Link-Elemente deckt sie nicht ab, dafür halten die Schichten der Oberfläche.
+func spekulativesLaden(b []byte) bool {
+	doc, err := html.Parse(bytes.NewReader(b))
+	if err != nil {
+		return true
+	}
+	found := false
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if found {
+			return
+		}
+		if n.Type == html.ElementNode {
+			switch n.Data {
+			case "link":
+				for _, a := range n.Attr {
+					if a.Key != "rel" {
+						continue
+					}
+					for _, token := range strings.Fields(strings.ToLower(a.Val)) {
+						switch token {
+						case "prerender", "prefetch", "preconnect", "dns-prefetch":
+							found = true
+						}
+					}
+				}
+			case "script":
+				for _, a := range n.Attr {
+					if a.Key == "type" && strings.EqualFold(strings.TrimSpace(a.Val), "speculationrules") {
+						found = true
+					}
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(doc)
+	return found
 }
