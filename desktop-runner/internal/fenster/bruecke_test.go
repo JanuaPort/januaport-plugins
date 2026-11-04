@@ -224,6 +224,23 @@ func TestBrueckeAntwortOhneTraeger(t *testing.T) {
 		{"ergebnisMitEscape", func(g *fakeGateway, l *fakeLokal) {
 			g.callResult = json.RawMessage(`{"t":"jnptpc_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"}`)
 		}, `{"id":"1","befehl":"werkzeug","args":{"name":"x","arguments":{}}}`, "antwort_ungueltig"},
+		// SEC-R4 F3: Träger, die erst nach dem JSON-Unescaping sichtbar sind (kein Treffer im Rohtext).
+		{"traegerNurEscaped", func(g *fakeGateway, l *fakeLokal) {
+			g.callResult = json.RawMessage(`{"t":"\u006anptpc_` + strings.Repeat("Q", 30) + `"}`)
+		}, `{"id":"1","befehl":"werkzeug","args":{"name":"x","arguments":{}}}`, "antwort_ungueltig"},
+		{"traegerMusterNurEscaped", func(g *fakeGateway, l *fakeLokal) {
+			g.listResult = json.RawMessage(`{"t":["a",{"b":"np" + "tx"}]}`)
+			g.listResult = json.RawMessage(`{"t":["a",{"b":"jn\u0070trun_` + strings.Repeat("Q", 30) + `"}]}`)
+		}, `{"id":"1","befehl":"werkzeuge","args":{}}`, "antwort_ungueltig"},
+		{"traegerImSchluessel", func(g *fakeGateway, l *fakeLokal) {
+			g.listResult = json.RawMessage(`{"jn` + `ptpc_` + strings.Repeat("Q", 30) + `":1}`)
+		}, `{"id":"1","befehl":"werkzeuge","args":{}}`, "antwort_ungueltig"},
+		{"traegerImSchluesselNurEscaped", func(g *fakeGateway, l *fakeLokal) {
+			g.listResult = json.RawMessage(`{"a":{"\u006anptpc_` + strings.Repeat("Q", 30) + `":1}}`)
+		}, `{"id":"1","befehl":"werkzeuge","args":{}}`, "antwort_ungueltig"},
+		{"traegerTiefVerschachtelt", func(g *fakeGateway, l *fakeLokal) {
+			g.listResult = json.RawMessage(`{"a":[[{"b":[{"c":"\u006anptapp_` + strings.Repeat("Q", 30) + `"}]}]]}`)
+		}, `{"id":"1","befehl":"werkzeuge","args":{}}`, "antwort_ungueltig"},
 		{"ergebnisKeinJSON", func(g *fakeGateway, l *fakeLokal) { g.listResult = json.RawMessage(`<html>`) }, `{"id":"1","befehl":"werkzeuge","args":{}}`, "antwort_ungueltig"},
 		{"ergebnisLeer", func(g *fakeGateway, l *fakeLokal) { g.listResult = nil }, `{"id":"1","befehl":"werkzeuge","args":{}}`, "antwort_ungueltig"},
 	}
@@ -297,5 +314,26 @@ func TestNewBrueckeAppnameUndNil(t *testing.T) {
 	}
 	if _, err := NewBruecke("demo", g, l, nil); err == nil {
 		t.Error("ohne View")
+	}
+}
+
+// SEC-R4 F3: Die Erkennung arbeitet auf dem entschlüsselten JSON, nicht nur auf dem Rohtext.
+func TestTraegerErkennungNachUnescaping(t *testing.T) {
+	q := strings.Repeat("Q", 30)
+	for raw, want := range map[string]bool{
+		`"\u006anptpc_` + q + `"`:                true,
+		`"\u006e` + `ptpc_` + q + `"`:            false, // "nptpc_…": kein j, kein Träger
+		`{"\u006anptpc_` + q + `":1}`:            true,
+		`{"a":{"\u006anptapp_` + q + `":[1]}}`:   true,
+		`["x",{"y":["\u006anptrun_` + q + `"]}]`: true,
+		`{"a":"\u006anptpc_"}`:                   true,
+		`{"a":"\u006anpt_kurz"}`:                 false,
+		`{"a":"\u006anpt-bedienfeld.exe"}`:       false,
+		`{"a":1,"b":[true,null,"text"]}`:         false,
+		`"\u00e4\u00f6\u00fc"`:                   false,
+	} {
+		if got := EnthaeltTraeger([]byte(raw)); got != want {
+			t.Errorf("EnthaeltTraeger(%s) = %v", raw, got)
+		}
 	}
 }

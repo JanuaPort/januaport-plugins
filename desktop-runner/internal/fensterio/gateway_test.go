@@ -281,3 +281,61 @@ func TestGatewayParallelUndRennenfrei(t *testing.T) {
 		t.Fatalf("%d Aufrufe, %d Tokenabrufe", next.Load(), k.tokenFetch)
 	}
 }
+
+type fakeAppAPI struct {
+	tokenErr, rpcErr error
+	tokens, rpcs     int
+}
+
+func (f *fakeAppAPI) AppToken(context.Context, string) (client.AppSession, error) {
+	f.tokens++
+	return client.AppSession{}, f.tokenErr
+}
+
+func (f *fakeAppAPI) AppRPC(context.Context, client.AppSession, int64, string, any) (json.RawMessage, error) {
+	f.rpcs++
+	return nil, f.rpcErr
+}
+
+// SEC-R4 F3 gw-revoked-code: Ein widerrufenes Gerät ist „nicht angemeldet“, ohne Wiederholung.
+func TestGatewayWiderrufIstNichtAngemeldetOhneWiederholung(t *testing.T) {
+	revoked := fmt.Errorf("wrap: %w", client.ErrRevoked)
+	f := &fakeAppAPI{tokenErr: revoked}
+	if _, err := NewGateway(f, "demo").Werkzeuge(context.Background()); !errors.Is(err, fenster.ErrNichtAngemeldet) || f.tokens != 1 {
+		t.Fatalf("Token-Weg: %v, %d Abrufe", err, f.tokens)
+	}
+}
+
+func TestGatewayFehlerabbildungAmFake(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		rpcErr  error
+		want    error
+		retries int
+	}{
+		{"widerruf", fmt.Errorf("wrap: %w", client.ErrRevoked), fenster.ErrNichtAngemeldet, 0},
+		{"unauthorizedEinmalNeu", &client.HTTPError{Status: 401, Class: "unauthorized"}, fenster.ErrNichtAngemeldet, 1},
+		{"fremdeKlasse401", &client.HTTPError{Status: 401, Class: "anders"}, fenster.ErrNichtAngemeldet, 0},
+		{"rpcFehler", &client.RPCError{Code: -32602}, fenster.ErrAbgelehnt, 0},
+		{"unbekannt", errors.New("C:/geheim/pfad"), fenster.ErrFehler, 0},
+		{"protokoll", client.ErrProtocol, fenster.ErrFehler, 0},
+		{"zeit", context.DeadlineExceeded, fenster.ErrNichtErreichbar, 0},
+		{"abbruch", context.Canceled, fenster.ErrNichtErreichbar, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fakeAppAPI{rpcErr: tc.rpcErr}
+			g := NewGateway(f, "demo")
+			g.session = client.AppSession{}
+			_, err := g.Werkzeuge(context.Background())
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("err = %v", err)
+			}
+			if strings.Contains(err.Error(), "geheim") {
+				t.Fatal("Fehlertext trägt Rohdaten")
+			}
+			if f.rpcs != 1+tc.retries {
+				t.Fatalf("%d RPC-Aufrufe, erwartet %d", f.rpcs, 1+tc.retries)
+			}
+		})
+	}
+}

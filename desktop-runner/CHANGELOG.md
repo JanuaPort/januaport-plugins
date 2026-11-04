@@ -18,7 +18,8 @@
   `MessageAllowed`, `Settings()`-Sollliste, strikter Umschlag (256 KiB) und die Brücke mit
   `status`, `anhalten` (lokal, genau zwei Pipe-Operationen), `werkzeuge`, `werkzeug`;
   Antworten nur mit festen Codes, nie mit einem Träger. `internal/fensterio` hängt Gateway
-  und Pipe-Wrapper an. Mutationen: `probe/k6b_mutations.py`.
+  und Pipe-Wrapper an. Mutationen: `probe/k6b_mutations.py`. SEC-R4 F3: Tests für Träger in Escapes und
+  Schlüsseln, nur `tools/list`/`tools/call`, nie zwei Träger, App-Token nur an `mcp`, Antwort-ID, Widerruf.
 
 ## 0.4.0 — 2026-11-04 (JanuaPort/januaport#1240)
 

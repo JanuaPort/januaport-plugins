@@ -506,6 +506,7 @@ Compilerfehler zählen nicht. finally stellt Quelldateien byte-genau wieder her.
 Nach externer Zwangsbeendigung den betroffenen Guard ausdrücklich prüfen.
 Abschlussbericht ausschließlich im Chat, keine Berichtsdatei im Repository.
 
+SEC-R4 F3 ergänzt Mutanten für Träger in JSON-Escapes und Schlüsseln (`traeger-unescape`, `traeger-schluessel`), `rpc-methode`, `rpc-id`, `rpc-version`, `rpc-ergebnis-und-fehler`, `http-beide-traeger`, `http-app-endpoint`, `http-app-praefix`, `gw-revoked-code`.
 K6b-1-Mutationen: `python3 probe/k6b_mutations.py [name…]`, im Container `golang:1.26.10` mit
 nachinstalliertem Python (Worktree als Mount, exklusiv). Jeder Mutant muss kompilieren und den
 benannten Test rot machen; Compilerfehler zählen nicht; `finally` stellt die Bytes her. Reine

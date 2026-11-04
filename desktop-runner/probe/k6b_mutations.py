@@ -27,6 +27,7 @@ TOK = "internal/client/apptoken.go"
 STO = "internal/client/appstore.go"
 LOA = "internal/client/appload.go"
 COP = "internal/client/copied_apphost.go"
+HTP = "internal/client/http.go"
 
 
 def edit(path, old, new):
@@ -82,6 +83,17 @@ CASES = [
     ("app-token-praefix", "client", "TestAppTokenAntwortStrikt", [edit(TOK, "!strings.HasPrefix(out.AppToken, appTokenPrefix) || ", "")]),
     ("app-token-druckt", "client", "TestAppSitzungDruckenTraegtKeinToken", [edit(TOK, "func (s AppSession) Format(f fmt.State, _ rune) { _, _ = fmt.Fprint(f, \"AppSession(***)\") }", "func (s AppSession) Format(f fmt.State, _ rune) { _, _ = fmt.Fprint(f, s.token) }")]),
     ("app-token-rpc-text", "client", "TestAppRPCAmHTTPAdapter", [edit(TOK, "return nil, &RPCError{Code: e.Code}", "return nil, fmt.Errorf(\"%w %s\", &RPCError{Code: e.Code}, reply.Error)")]),
+    # SEC-R4 F3: Testlücken
+    ("traeger-unescape", "fenster", "TestTraegerErkennungNachUnescaping", [edit(BRU, "\treturn traegerWert(v)\n}", "\treturn false\n}")]),
+    ("traeger-schluessel", "fenster", "TestBrueckeAntwortOhneTraeger", [edit(BRU, "if traegerText(k) || traegerWert(e) {", "if k == \"\" || traegerWert(e) {")]),
+    ("rpc-methode", "client", "TestAppRPCNurZweiMethoden", [edit(TOK, "(method != \"tools/list\" && method != \"tools/call\")", "false")]),
+    ("rpc-id", "client", "TestAppRPCAntwortMussZurFrageGehoeren", [edit(TOK, "|| reply.ID != id {", "{")]),
+    ("rpc-version", "client", "TestAppRPCAntwortMussZurFrageGehoeren", [edit(TOK, "reply.JSONRPC != \"2.0\" ||", "")]),
+    ("rpc-ergebnis-und-fehler", "client", "TestAppRPCAntwortMussZurFrageGehoeren", [edit(TOK, "if len(reply.Result) != 0 || json.Unmarshal(reply.Error, &e) != nil {", "if json.Unmarshal(reply.Error, &e) != nil {")]),
+    ("http-beide-traeger", "client", "TestRequestAppTraegerRegeln", [edit(HTP, "endpoint != \"mcp\" || appToken != \"\" || strings.ContainsAny(runToken", "endpoint != \"mcp\" || strings.ContainsAny(runToken")]),
+    ("http-app-endpoint", "client", "TestRequestAppTraegerRegeln", [edit(HTP, "if endpoint != \"mcp\" || !strings.HasPrefix(appToken, appTokenPrefix)", "if !strings.HasPrefix(appToken, appTokenPrefix)")]),
+    ("http-app-praefix", "client", "TestRequestAppTraegerRegeln", [edit(HTP, "|| !strings.HasPrefix(appToken, appTokenPrefix) ||", "||")]),
+    ("gw-revoked-code", "fensterio", "TestGatewayFehlerabbildungAmFake", [edit(GAT, "case errors.Is(err, client.ErrRevoked):", "case false:")]),
     ("app-siegel-beim-oeffnen", "client", "TestAppSiegelVorJedemOeffnen", [edit(STO, "if err := VerifyEnvironment(dir, seal.Files); err != nil {", "if false {")]),
     ("app-csp-literal", "client", "TestAppCSPWirdEingesetzt", [edit(LOA, "out = append(out, meta...)", "out = append(out, strings.Replace(meta, \"connect-src 'none'\", \"connect-src *\", 1)...)")]),
     ("app-csp-reihenfolge", "client", "TestAppCSPWirdEingesetzt", [edit(LOA, "s.headEnd = pos", "s.headEnd = len(b)")]),
