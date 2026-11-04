@@ -262,3 +262,44 @@ func TestBedienfeldNurGepruefterDial(t *testing.T) {
 		t.Fatal("Dial/UI-Thread/Wake-Anbindung", dials, locks, wakes)
 	}
 }
+
+// SEC (Kopie internal/edge), Bedingung 4: Die Edge-Kopie und der COM-Adapter hängen hinter der Tür. Weder
+// panel, panelio und pipe noch cmd/bedienfeld direkt dürfen sie importieren (der strenge Lauf oben meldet es),
+// und im ganzen Modul importiert nur internal/fensterio internal/edge.
+func TestEdgeNurVonFensterio(t *testing.T) {
+	cmd := exec.Command("go", "list", "-json", "./...")
+	cmd.Dir = filepath.Join("..", "..")
+	for _, v := range os.Environ() {
+		if !strings.HasPrefix(v, "GOOS=") && !strings.HasPrefix(v, "CGO_ENABLED=") {
+			cmd.Env = append(cmd.Env, v)
+		}
+	}
+	cmd.Env = append(cmd.Env, "GOOS=windows", "CGO_ENABLED=0")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := json.NewDecoder(bytes.NewReader(out))
+	found := false
+	for {
+		var p guardPkg
+		err = d.Decode(&p)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, dep := range p.Imports {
+			if dep == guardBase+"internal/edge" || dep == guardBase+"internal/edge/w32" {
+				if p.ImportPath != guardBase+"internal/fensterio" && p.ImportPath != guardBase+"internal/edge" {
+					t.Errorf("%s importiert %s; erlaubt ist nur internal/fensterio", p.ImportPath, dep)
+				}
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Error("kein Importeur von internal/edge gefunden, Wächter blind")
+	}
+}
