@@ -21,8 +21,7 @@ LOG = logging.getLogger("linkedin_seite")
 CONFIG_PATH = "/etc/linkedin-seite/config.json"
 BRIDGE_KEY_PATH = "/run/secrets/jnpt/runtime-key"
 IDENTITY_PATH = "/run/secrets/oauth/runtime-key"
-# Stufe B1 (#1237): own places for the write grant and the Beisteller's own gateway token.
-POST_IDENTITY_PATH = "/run/secrets/post-oauth/runtime-key"
+# Stufe B1 (#1237): the Beisteller's own gateway token. Reading and writing share the one grant above.
 GATEWAY_TOKEN_PATH = "/run/secrets/gateway/runtime-key"
 POST_PREFIX = ["v1", "linkedin-post"]
 MAX_POST_BODY = 1024
@@ -49,25 +48,17 @@ def read_gateway_token(path):
     return value.decode("ascii")
 
 
-def load_write_side(cfg, identity_path=POST_IDENTITY_PATH, token_path=GATEWAY_TOKEN_PATH):
-    """((write identity, gateway token), "an") or (None, fixed reason). Never breaks Stufe A."""
-    from .oauth import load_write_identity
-
+def load_write_side(cfg, token_path=GATEWAY_TOKEN_PATH):
+    """(gateway token, "an") or (None, fixed reason). Never breaks Stufe A."""
     if cfg.schreiben is None:
         return None, "nicht_konfiguriert"
-    try:
-        identity = load_write_identity(identity_path)
-    except FileNotFoundError:
-        return None, "schreib_identitaet_fehlt"
-    except (OSError, ValueError):
-        return None, "schreib_identitaet_ungueltig"
     try:
         token = read_gateway_token(token_path)
     except FileNotFoundError:
         return None, "gateway_token_fehlt"
     except (OSError, ValueError):
         return None, "gateway_token_ungueltig"
-    return (identity, token), "an"
+    return token, "an"
 
 
 def check_bridge(request, key):
@@ -234,11 +225,12 @@ def serve():
     # Exact plugin-network IPv4 is provisioned by the operator, never 0.0.0.0.
     bind = bind_ip(os.environ.get("LINKEDIN_SEITE_BIND_IP", ""))
     from .oauth import load_identity
-    pool = WorkerPool(cfg, load_identity(IDENTITY_PATH))
+    identity = load_identity(IDENTITY_PATH)
+    pool = WorkerPool(cfg, identity)
     from .post_pool import WritePool
-    side, reason = load_write_side(cfg)
+    token, reason = load_write_side(cfg)
     LOG.info("schreiben=%s", reason)
-    write_pool = WritePool(cfg, side[0], side[1]) if side else None
+    write_pool = WritePool(cfg, identity, token) if token else None
     from .safe_http import serve_app
 
     asyncio.run(serve_app(create_app(cfg, key, pool, write_pool), bind))

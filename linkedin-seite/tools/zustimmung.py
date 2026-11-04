@@ -35,9 +35,9 @@ CONTROL_CHARACTER_MESSAGE = (
     'einlesen und per --secret-stdin uebergeben (siehe SETUP.md).')
 
 
-def authorization(client_id, state, verifier=None, scopes=s.SCOPES):
+def authorization(client_id, state, verifier=None):
     params = {s.RESPONSE_TYPE: s.CODE, s.CLIENT_ID: client_id, s.REDIRECT: s.REDIRECT_URI,
-              s.STATE: state, s.SCOPE: ' '.join(scopes)}
+              s.STATE: state, s.SCOPE: ' '.join(s.GRANT_SCOPES)}
     if verifier:
         params[s.CODE_CHALLENGE] = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b'=').decode()
         params[s.CODE_CHALLENGE_METHOD] = s.S256
@@ -77,8 +77,7 @@ class CallbackServer(HTTPServer):
         pass  # no request bytes, codes, state or tracebacks
 
 
-def consent(client_id, client_secret, pkce=False, *, opener=webbrowser.open, transport=None, timeout=TIMEOUT,
-            scopes=s.SCOPES):
+def consent(client_id, client_secret, pkce=False, *, opener=webbrowser.open, transport=None, timeout=TIMEOUT):
     deadline = time.monotonic() + timeout
     secret(client_id)
     secret(client_secret)
@@ -122,7 +121,7 @@ def consent(client_id, client_secret, pkce=False, *, opener=webbrowser.open, tra
             print('IPv6 nicht verfuegbar; weiter auf 127.0.0.1.', file=sys.stderr)
         for server in servers:
             server.deadline = deadline
-        if not opener(authorization(client_id, state, verifier, scopes)):
+        if not opener(authorization(client_id, state, verifier)):
             raise ValueError('browser_start_failed')
         ready, _, _ = select.select(servers, [], [], max(0, deadline - time.monotonic()))
         for server in ready:
@@ -140,11 +139,9 @@ def consent(client_id, client_secret, pkce=False, *, opener=webbrowser.open, tra
         raise ValueError('zustimmung_abgewiesen')
     transport.timeout = min(18, remaining)
     raw = transport.token(fields)
-    result = token_result(raw, datetime.now(timezone.utc), scopes=scopes)
-    result.update({s.CLIENT_ID: client_id, s.CLIENT_SECRET: client_secret})
-    if scopes == s.WRITE_SCOPES:
-        # Stufe B1 (#1237, SEC Bed. 4): the write JSON names its grant; the read check refuses it.
-        result[s.SCOPE] = ' '.join(s.WRITE_SCOPES)
+    result = token_result(raw, datetime.now(timezone.utc), scope_required=True)
+    # #1237, 0.3.1: the JSON names the one grant, normalised; the service refuses any other set.
+    result.update({s.CLIENT_ID: client_id, s.CLIENT_SECRET: client_secret, s.SCOPE: ' '.join(s.GRANT_SCOPES)})
     return result
 
 
@@ -157,9 +154,11 @@ def main():
     parser.add_argument('--client-id', required=True)
     parser.add_argument('--secret-stdin', action='store_true')
     parser.add_argument('--pkce', action='store_true', help='Nur nach belegter S256-Unterstützung der LinkedIn-App verwenden.')
-    parser.add_argument('--schreiben', action='store_true',
-                        help='Stufe B1: genau w_organization_social und w_organization_social_feed, '
-                             'Ausgabe nur in plugin-linkedin-seite-post-oauth.')
+    # Required, not implied: an old command line must stop here, not silently ask LinkedIn for another
+    # scope set. A different set voids the tokens granted before it (#1237).
+    parser.add_argument('--gesamt', action='store_true', required=True,
+                        help='Der einzige Modus: eine Zustimmung mit allen vier Scopes, '
+                             'Ausgabe nur in plugin-linkedin-seite-oauth.')
     args = parser.parse_args()
     timer = None
     try:
@@ -177,12 +176,9 @@ def main():
         timer = threading.Timer(TIMEOUT, expired)
         timer.daemon = True
         timer.start()
-        if args.schreiben:
-            print('Schreib-Zustimmung (w_organization_social, w_organization_social_feed): '
-                  'Ausgabe nur an plugin-linkedin-seite-post-oauth.',
-                  file=sys.stderr)
-        # Read mode calls consent exactly as before 0.2.0; only --schreiben adds the write scopes.
-        result = consent(args.client_id, value, args.pkce, **({'scopes': s.WRITE_SCOPES} if args.schreiben else {}))
+        print('Gesamt-Zustimmung (' + ', '.join(s.GRANT_SCOPES) + '): Ausgabe nur an plugin-linkedin-seite-oauth.',
+              file=sys.stderr)
+        result = consent(args.client_id, value, args.pkce)
         print('Refresh-Token: ' + ('ja' if s.REFRESH_TOKEN in result else 'nein'), file=sys.stderr)
         print(encode_response(result).decode())
     except (Exception, KeyboardInterrupt):

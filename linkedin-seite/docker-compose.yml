@@ -37,15 +37,10 @@ services:
         target: /run/secrets/oauth
         read_only: true
         bind: {create_host_path: false}
-      # Stufe B1 (#1306 F4, 0.3.0): Schreib-Grant (plugin-linkedin-seite-post-oauth)
-      # und der eigene, nur lesende Gateway-Token (plugin-linkedin-seite-gateway).
+      # Stufe B1 (#1306 F4): der eigene, nur lesende Gateway-Token (plugin-linkedin-seite-gateway).
       # Genau redaktionsplan_get + redaktion_medien_get_file; Freigabe kommt als Kern-Header.
-      # Die Ordner müssen per tmpfiles existieren; die Dateien darin sind optional.
-      - type: bind
-        source: /run/jnpt/plugins/linkedin-seite-post-oauth
-        target: /run/secrets/post-oauth
-        read_only: true
-        bind: {create_host_path: false}
+      # Der Ordner muss per tmpfiles existieren; die Datei darin ist optional. Lesen und Schreiben
+      # tragen seit 0.3.1 den einen Grant aus oauth/runtime-key (#1237).
       - type: bind
         source: /run/jnpt/plugins/linkedin-seite-gateway
         target: /run/secrets/gateway

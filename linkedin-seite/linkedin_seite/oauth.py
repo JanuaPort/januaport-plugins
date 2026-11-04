@@ -71,10 +71,17 @@ def secret(value):
 
 
 def validate_identity(data, now=None):
+    """The vault JSON of the one grant (#1237, 0.3.1): `scope` is exactly GRANT_SCOPES.
+
+    A JSON without `scope` is a grant from before 0.3.1, any other set is not this grant.
+    Both fail closed: the token could not serve both paths, and nothing would say why.
+    """
     now = now or datetime.now(timezone.utc)
-    required = {s.CLIENT_ID, s.CLIENT_SECRET, s.ACCESS_TOKEN, 'access_expires_at'}
+    required = {s.CLIENT_ID, s.CLIENT_SECRET, s.ACCESS_TOKEN, 'access_expires_at', s.SCOPE}
     optional = {s.REFRESH_TOKEN, 'refresh_expires_at'}
     if not isinstance(data, dict) or not required <= data.keys() or set(data) - required - optional:
+        raise ValueError('invalid_identity')
+    if scope_set(data[s.SCOPE]) != set(s.GRANT_SCOPES):
         raise ValueError('invalid_identity')
     for field in (s.CLIENT_ID, s.CLIENT_SECRET, s.ACCESS_TOKEN):
         secret(data[field])
@@ -99,22 +106,6 @@ def read_identity_file(path):
 
 def load_identity(path):
     return validate_identity(read_identity_file(path))
-
-
-def validate_write_identity(data, now=None):
-    """Stufe B1 (#1237, SEC Bed. 4): the write identity carries `scope` = exactly the write scope.
-
-    The unchanged Stufe-A check rejects any `scope` field, so a write JSON in the read place fails
-    there, and a read JSON (no `scope`) fails here: the two tokens cannot be exchanged unnoticed.
-    Returns the identity without the marker, in the shape `Tokens` expects.
-    """
-    if not isinstance(data, dict) or not isinstance(data.get(s.SCOPE), str) or scope_set(data[s.SCOPE]) != set(s.WRITE_SCOPES):
-        raise ValueError('invalid_identity')
-    return validate_identity({k: v for k, v in data.items() if k != s.SCOPE}, now)
-
-
-def load_write_identity(path):
-    return validate_write_identity(read_identity_file(path))
 
 
 def warning(data, now=None):
@@ -151,11 +142,19 @@ def lifetime(seconds, days):
     return min(seconds, cap)
 
 
-def token_result(raw, now, original_refresh_expiry=None, scopes=s.SCOPES):
+def token_result(raw, now, original_refresh_expiry=None, scope_required=False):
+    """Validated token fields. The scope set is exact whenever LinkedIn names one.
+
+    The consent demands it (scope_required): it writes the set into the vault JSON, so the set has
+    to be answered, not assumed. A refresh only tolerates its absence: it cannot widen a grant, and
+    a refusal here would turn an omission into an outage around day 55.
+    """
     try:
         if not isinstance(raw, dict):
             raise ValueError()
-        if s.SCOPE in raw and scope_set(raw[s.SCOPE]) != set(scopes):
+        if scope_required and s.SCOPE not in raw:
+            raise ValueError()
+        if s.SCOPE in raw and scope_set(raw[s.SCOPE]) != set(s.GRANT_SCOPES):
             raise ValueError()
         if raw.get(s.TOKEN_TYPE, 'Bearer').lower() != 'bearer':
             raise ValueError()
@@ -174,11 +173,10 @@ def token_result(raw, now, original_refresh_expiry=None, scopes=s.SCOPES):
 
 
 class Tokens:
-    def __init__(self, data, transport, now=None, scopes=s.SCOPES):
+    def __init__(self, data, transport, now=None):
         self.data = validate_identity(data)
         self.transport = transport
         self.now = now or (lambda: datetime.now(timezone.utc))
-        self.scopes = scopes  # the read grant, or for Stufe B1 the separate write grant
 
     def access(self):
         now = self.now()
@@ -188,7 +186,7 @@ class Tokens:
         if refresh and now >= expiry - timedelta(minutes=5) and now < refresh_expiry:
             raw = self.transport.token({s.GRANT_TYPE: s.REFRESH_TOKEN, s.REFRESH_TOKEN: refresh,
                                        s.CLIENT_ID: self.data[s.CLIENT_ID], s.CLIENT_SECRET: self.data[s.CLIENT_SECRET]})
-            update = token_result(raw, now, refresh_expiry, self.scopes)
+            update = token_result(raw, now, refresh_expiry)
             self.data.update(update)  # RAM only; source file remains untouched
             expiry = timestamp(self.data['access_expires_at'])
         if now >= expiry:

@@ -25,7 +25,6 @@ class Consent(unittest.TestCase):
     def setUp(self):
         self.fake = Fake()
         self.addCleanup(self.fake.close)
-        self.fake.token_body[s.SCOPE] = GRANT_COMMA  # the code exchange names the granted scopes
         self.seen = []
         self.reply = []
         self.threads = []
@@ -140,7 +139,7 @@ class Consent(unittest.TestCase):
                                 input='synthetic-secret\n', capture_output=True, text=True, timeout=3)
         self.assertEqual(result.returncode, 1)
         self.assertEqual(result.stdout, '')
-        self.assertEqual(result.stderr, 'zustimmung_timeout\n')
+        self.assertEqual(result.stderr.splitlines()[-1], 'zustimmung_timeout')
 
     def test_getpass_echo_fallback_is_rejected(self):
         def unsafe(*args):

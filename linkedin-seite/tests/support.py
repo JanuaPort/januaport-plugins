@@ -58,7 +58,7 @@ class Fake:
         self.body = None
         self.delay = 0
         self.location = '/leak'
-        self.token_body = {s.ACCESS_TOKEN: secrets.token_urlsafe(32), s.EXPIRES_IN: 60*86400}
+        self.token_body = {s.ACCESS_TOKEN: secrets.token_urlsafe(32), s.EXPIRES_IN: 60*86400, s.SCOPE: GRANT_COMMA}
         outer = self
 
         class Handler(BaseHTTPRequestHandler):

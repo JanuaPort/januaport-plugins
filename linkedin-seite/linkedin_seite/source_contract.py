@@ -94,13 +94,20 @@ S256 = 'S256'
 #   D_POLL = .../shares/poll-post-api?view=li-lms-2026-10 (question <=140, 2-4 options <=30, durations)
 #   D_COMMENTS = .../shares/comments-api?view=li-lms-2026-10 (POST socialActions/{urn}/comments, actor org)
 #   D_LITTLE = .../shares/little-text-format?view=li-lms-2026-10 (reserved characters, backslash escape)
-# The write grant is its own consent and its own vault place (Bed. 4). Exactly two scopes:
+# What the write path needs. Exactly two scopes:
 #   w_organization_social: D_POSTS "Post, comment, and like posts on behalf of an organization"
 #     (posts, edit, delete; images/documents/videos upload),
 #   w_organization_social_feed: D_COMMENTS Permissions "Post, comment, and react on posts on behalf
 #     of an organization" (create a comment as the organization).
 # Gate-Befund VENDOR (#1237): the app already carries both. No further scope.
 WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed')
+# The ONE grant (#1237, 0.3.1). SCOPES and WRITE_SCOPES stay as the meaning of what each path needs;
+# LinkedIn is only ever asked for their union, in one consent. Separate grants do not hold: a second
+# consent with another set voids the older token. Aus Herstellerdoku, live zu belegen:
+#   https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow
+#   "If you request a different scope than the previously granted scope, all the previous access
+#   tokens are invalidated." Seen 03.11.2026: read access denied after the second consent.
+GRANT_SCOPES = SCOPES + WRITE_SCOPES
 # Closed list: operation -> (method, path below API_ROOT). Nothing else is ever sent to LinkedIn.
 WRITE_ENDPOINTS = {
     'post_create': ('POST', 'posts'),                                   # D_POSTS 201, x-restli-id

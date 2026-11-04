@@ -74,7 +74,7 @@ class PostAdapter:
         self.cfg, self.w = cfg, cfg.schreiben
         self.link = link
         self.transport = transport_factory(link.permit_http)
-        self.tokens = Tokens(identity, self.transport, scopes=s.WRITE_SCOPES)
+        self.tokens = Tokens(identity, self.transport)
         self.gateway = gateway_factory(self.w, gateway_token)
         self.sleep, self.monotonic = sleep, monotonic
         self.begonnen = False
