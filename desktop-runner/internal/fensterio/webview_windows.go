@@ -280,9 +280,12 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 		{"bind WebMessageReceived", func() error {
 			h := wv2com.NewHandler(wv2com.IIDWebMessageHandler, func(_, args uintptr) uintptr {
 				a := wv2com.P(args)
-				source, ok := wv2com.GetString(a, wv2com.IdxMessageSource)
+				source, hr, nilPtr, ok := wv2com.ReadString(a, wv2com.IdxMessageSource)
 				if !ok {
-					s.trace("WebMessageVerworfen", "quelle nicht lesbar")
+					// Fail-closed: Ohne lesbare Quelle wird verworfen. Die Spur nennt das HRESULT und die Seite, auf der
+					// die WebView gerade steht, nie den Inhalt der Nachricht.
+					current, _ := wv2com.GetString(s.com(), wv2com.IdxGetSource)
+					s.trace("WebMessageVerworfen", fmt.Sprintf("quelle nicht lesbar hr=%#08x zeiger_leer=%v aktuelle_seite=%s", uint32(hr), nilPtr, fenster.DiagText(current)))
 					return 0
 				}
 				msg, ok := wv2com.GetString(a, wv2com.IdxMessageTryGetAsStr)

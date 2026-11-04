@@ -131,6 +131,22 @@ func takeString(get func(out uintptr) uintptr) (string, bool) {
 	return s, true
 }
 
+// ReadString wie GetString, nennt aber bei einem Fehlschlag den Grund: das HRESULT des Aufrufs und ob der Zeiger
+// trotz Erfolg leer war. Nur für die Diagnose der Sonden; der Wert selbst erscheint nie in Ausgaben.
+func ReadString(o Obj, idx int) (s string, hr uintptr, nilPtr, ok bool) {
+	var p *uint16
+	hr = Call(o, idx, uintptr(unsafe.Pointer(&p)))
+	if Failed(hr) {
+		return "", hr, p == nil, false
+	}
+	if p == nil {
+		return "", hr, true, false
+	}
+	s = windows.UTF16PtrToString(p)
+	windows.CoTaskMemFree(unsafe.Pointer(p))
+	return s, hr, false, true
+}
+
 // GetString ruft einen get_X-Zugriff mit LPWSTR-Ergebnis.
 func GetString(o Obj, idx int) (string, bool) {
 	return takeString(func(out uintptr) uintptr { return Call(o, idx, out) })
@@ -185,6 +201,9 @@ func BlockedResponse(env, args Obj) bool {
 	defer Release(resp)
 	return !Failed(Call(args, IdxResPutResponse, uintptr(resp)))
 }
+
+// IdxGetSource ist ICoreWebView2::get_Source (die Adresse des Dokuments, auf dem die WebView steht).
+const IdxGetSource = 4
 
 // IdxGetBrowserProcessID ist ICoreWebView2::get_BrowserProcessId.
 const IdxGetBrowserProcessID = 37

@@ -514,7 +514,14 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Ein Rückruf der Seite (Fehlercode, nie Position) ist der Beleg, Zeitablauf nie; bleibt die Abfrage hängen, ist der
     Fall rot und nennt die Windows-Standort-Einwilligung. „Ereignis lehnt ab“ (PermissionRequested mit Deny) und „Browser
     verweigert selbst“ (die Seite erhält nichts, ohne Ereignis) werden getrennt gemeldet; nur das erste belegt die
-    Ereignis-Sperre.
+    Ereignis-Sperre. Lehren aus Lauf 8: Eine Seite im Hintergrund drosselt Zeitgeber auf 1 s, deshalb wartet die Seite
+    auf den Fokus nach Zeit (5 s), nicht nach Zählern; die Sonde bringt ihr Fenster vorher in den Vordergrund
+    (`forceForeground`, Alt-Trick, nur Sonde, das Ergebnis steht im Protokoll). Steht die Windows-Standort-Einwilligung
+    der Maschine (`HKLM\...\ConsentStore\location`) auf `Deny`, bleibt die Standortabfrage der Seite bei `prompt` hängen, ohne
+    PermissionRequested und ohne Rückruf (Lauf 8); steht sie auf `Allow`, verlangt die Sonde `PermissionRequested art=3`
+    mit Deny und den Rückruf `PERMISSION_DENIED`. Ohne Rückruf bleibt der Fall rot und sagt „unbelegt“.
+    Eine verworfene Webnachricht (Quelle nicht lesbar) nennt in der Spur das HRESULT, ob der Zeiger leer war und die
+    Seite, auf der die WebView steht (`wv2com.ReadString`); verworfen wird weiterhin fail-closed, nie zugelassen.
     Service Worker: `ClearBrowsingData` (Profile2.ClearBrowsingDataAll) wird für Service Worker nativ geprüft
     (`TestWindowsWebViewServiceWorkerWirdGeloescht`). Läufe der nativen Sonden brauchen `-test.timeout 20m`.
     Grenzen: alte Fassungen

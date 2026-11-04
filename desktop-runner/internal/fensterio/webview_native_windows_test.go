@@ -640,8 +640,8 @@ func TestWindowsWebViewBerechtigungenAbgelehnt(t *testing.T) {
 	}
 	// waitFocus lässt die Seite warten, bis sie den Fokus hat (Zwischenablage und Standort fragen sonst nicht).
 	const waitFocus = `
-var versuche = 0;
-function mitFokus(start) { if (document.hasFocus() || versuche++ > 40) { send("fokus", {hat: document.hasFocus()}); start(); } else { setTimeout(function(){ mitFokus(start); }, 100); } }
+var fokusStart = Date.now();
+function mitFokus(start) { if (document.hasFocus() || Date.now() - fokusStart > 5000) { send("fokus", {hat: document.hasFocus()}); start(); } else { setTimeout(function(){ mitFokus(start); }, 100); } }
 `
 	marker := fmt.Sprintf("synthetisch-zwischenablage-%x", time.Now().UnixNano())
 	clipJS := waitFocus + `mitFokus(function(){
@@ -733,16 +733,26 @@ setTimeout(function(){ send("geo_frist", {}); }, 13000);
 					"rechte.js":  tc.js,
 					"probe.js":   probeJS,
 				}, func(c *SurfaceConfig) { c.allowPermissions = tc.allow })
-				s.Focus() // der Fokus gehört der Seite
+				forceForeground(t, s.hwnd) // der Fokus gehört der Seite; ohne Vordergrund fragen Zwischenablage und Standort nicht
+				s.Focus()
 				answered := func() bool { return b.gw.has(tc.ready) || (tc.name == "geolocation" && b.gw.has("geo_frist")) }
 				if !pump(t, s, 20*time.Second, answered) {
 					t.Fatalf("%s: keine Antwort der Seite innerhalb der Frist", tc.name)
 				}
 				if tc.name == "geolocation" {
 					pump(t, s, 500*time.Millisecond, nil) // geo_status2 nach dem Rückruf
+					consent := logLocationConsent(t)
 					if !b.gw.has("geo ") {
-						logLocationConsent(t)
-						t.Fatalf("Geolocation unbelegt: kein Rückruf der Seite innerhalb der Frist, kein PermissionRequested art=3 (Zeitablauf ist kein Beleg). Seite meldet: %v", b.gw.snapshot())
+						t.Fatalf("Geolocation unbelegt: kein Rückruf der Seite innerhalb der Frist, kein PermissionRequested art=3 (Zeitablauf ist kein Beleg; Standort-Einwilligung des Systems: %q). Seite meldet: %v", consent, b.gw.snapshot())
+					}
+					if consent == "Allow" {
+						// Ist der Standort im System erlaubt, muss die Abfrage den Browser erreichen und vom Ereignis abgelehnt werden.
+						if n, denied := asked(*trace, 3); n == 0 || denied != n {
+							t.Fatalf("Standort im System erlaubt, aber PermissionRequested art=3 kam %d-mal und wurde %d-mal abgelehnt: %v", n, denied, *trace)
+						}
+						if !b.gw.has(`"code":1`) {
+							t.Fatalf("Standort im System erlaubt, abgelehnt, aber die Seite bekam nicht PERMISSION_DENIED: %v", b.gw.snapshot())
+						}
 					}
 				}
 				n, denied := asked(*trace, tc.art)
@@ -1260,3 +1270,30 @@ func TestWindowsEnvMomentaufnahmeVorLader(t *testing.T) {
 
 // ptrOf macht aus einer von Windows gelieferten Adresse einen Zeiger (go vet kennt den Ursprung nicht).
 func ptrOf(u uintptr) unsafe.Pointer { return *(*unsafe.Pointer)(unsafe.Pointer(&u)) }
+
+var (
+	pKeybd         = user32.NewProc("keybd_event")
+	pGetForeground = user32.NewProc("GetForegroundWindow")
+)
+
+// forceForeground bringt das Fenster der Sonde in den Vordergrund, auch aus einem Hintergrundprozess (nur Sonde,
+// nie im Produkt). SetForegroundWindow scheitert dort oft; der übliche Weg ist, vorher kurz die Alt-Taste zu
+// drücken. Das Ergebnis wird protokolliert, denn ohne Vordergrund hat die Seite keinen Fokus und Zwischenablage
+// und Standort fragen gar nicht erst.
+func forceForeground(t *testing.T, hwnd uintptr) {
+	t.Helper()
+	const vkMenu, keyUp = 0x12, 0x2
+	pShow.Call(hwnd, swRestore)
+	if pForeground.Call(hwnd); isForeground(hwnd) {
+		return
+	}
+	pKeybd.Call(vkMenu, 0, 0, 0)
+	pForeground.Call(hwnd)
+	pKeybd.Call(vkMenu, 0, keyUp, 0)
+	t.Logf("Vordergrund nach Alt-Trick: %v", isForeground(hwnd))
+}
+
+func isForeground(hwnd uintptr) bool {
+	h, _, _ := pGetForeground.Call()
+	return h == hwnd
+}

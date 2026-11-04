@@ -369,7 +369,7 @@ func TestWindowsWebViewBrowserpruefungFailClosed(t *testing.T) {
 
 // logLocationConsent erklärt, warum eine Standortabfrage hängen kann: Die Windows-Datenschutzeinstellung für den
 // Standort (Maschine und Benutzer) als Allow/Deny. Nur für die Fehlerausgabe der Geolocation-Sonde.
-func logLocationConsent(t *testing.T) {
+func logLocationConsent(t *testing.T) (machine string) {
 	t.Helper()
 	for _, root := range []struct {
 		name string
@@ -383,5 +383,9 @@ func logLocationConsent(t *testing.T) {
 		v, _, err := k.GetStringValue("Value")
 		k.Close()
 		t.Logf("Standort-Einwilligung %s: %s (%v)", root.name, fenster.DiagText(v), err)
+		if root.name == "HKLM" && err == nil {
+			machine = v
+		}
 	}
+	return machine
 }
