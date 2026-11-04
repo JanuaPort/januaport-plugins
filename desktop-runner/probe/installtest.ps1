@@ -222,8 +222,10 @@ function Assert-InstalltestEntry {
             if (-not $Panel -and $arguments -cne 'run') { throw 'runner_arguments' }
             $commands = $xml.SelectNodes('//t:Exec/t:Command', $ns)
             if ($commands.Count -ne 1 -or $commands[0].InnerText -ne $Executable) { throw 'task_command_invalid' }
+            # Windows omits the default level on export; only a stated other level is a finding.
+            $runLevel = $xml.SelectSingleNode('//t:RunLevel', $ns)
             if ($xml.SelectSingleNode('//t:LogonType', $ns).InnerText -cne 'InteractiveToken' -or
-                $xml.SelectSingleNode('//t:RunLevel', $ns).InnerText -cne 'LeastPrivilege' -or
+                ($runLevel -and $runLevel.InnerText -cne 'LeastPrivilege') -or
                 -not $xml.SelectSingleNode('//t:LogonTrigger', $ns)) { throw 'task_principal_invalid' }
         }
     } finally {

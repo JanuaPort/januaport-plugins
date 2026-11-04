@@ -89,10 +89,14 @@ func testWindowsL6Installation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, want := range []string{"LogonTrigger", "InteractiveToken", "LeastPrivilege"} {
+		for _, want := range []string{"LogonTrigger", "InteractiveToken"} {
 			if !strings.Contains(x, want) {
 				t.Fatal(want, x)
 			}
+		}
+		// Windows omits the default level from exported XML, so ask the definition.
+		if level, err := taskRunLevel(n.name); err != nil || level != 0 {
+			t.Fatal("LeastPrivilege", level, err)
 		}
 		if n.panel && strings.Contains(x, "<Arguments>") && !strings.Contains(x, "<Arguments></Arguments>") {
 			t.Fatal("Bedienfeld mit Argument", x)
