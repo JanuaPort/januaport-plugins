@@ -242,7 +242,7 @@ func flip(b []byte, i int) []byte {
 // <head>, nach der Paketprüfung und vor dem Siegel. Pakete mit eigener CSP-Meta oder ohne sauberes
 // <head> werden abgewiesen.
 func TestAppCSPWirdEingesetzt(t *testing.T) {
-	csp := fenster.CSPMeta()
+	csp := fenster.HeadPrefix()
 	for _, tc := range []struct {
 		name, html, want string
 	}{
@@ -319,7 +319,7 @@ func TestAppCSPAbweisungen(t *testing.T) {
 }
 
 func TestLeadingCSP(t *testing.T) {
-	csp := fenster.CSPMeta()
+	csp := fenster.HeadPrefix()
 	for _, tc := range []struct {
 		name, html string
 		ok         bool
@@ -521,7 +521,7 @@ func TestAppAblageVerschwindetBeimWiderruf(t *testing.T) {
 // bewusst nachsichtig (Unicode-Leerraum vor dem Head), der Parser verschiebt das <head> aber in den Body:
 // Das Literal läge im Body, Chromium verwürfe es. Nur die Parserprüfung fängt das.
 func TestAppCSPParserPruefungIstDieEigentlichePruefung(t *testing.T) {
-	csp := fenster.CSPMeta()
+	csp := fenster.HeadPrefix()
 	if _, err := injectCSP([]byte("\u00a0<html><head></head></html>")); err == nil {
 		t.Fatal("NBSP vor dem Head eingesetzt, obwohl der Parser das Literal in den Body legt")
 	}
@@ -540,5 +540,119 @@ func TestAppCSPParserPruefungIstDieEigentlichePruefung(t *testing.T) {
 	out, err := injectCSP([]byte("<html><head></head></html>"))
 	if err != nil || !leadingCSP(out) {
 		t.Fatal(err)
+	}
+}
+
+// SEC-R4 F4: Ein Zeichensatz-Trick darf die eingesetzte CSP nie unsichtbar machen. Der Browser dekodiert
+// vor dem Parsen: ESC $ B in einem Kommentar vor <head> plus <meta charset=iso-2022-jp> dahinter lässt ihn
+// alles bis ESC ( B als Doppelbyte-Text lesen, auch die eingesetzte Meta. Der Läufer setzt deshalb zuerst
+// <meta charset="utf-8"> und dann das Literal ein und lehnt ESC-Bytes sowie ungültiges UTF-8 ab.
+func TestAppCSPZeichensatzTrick(t *testing.T) {
+	esc := "\x1b"
+	script := `<script src="http://fremd.example/evil.js"></script>`
+	for name, html := range map[string]string{
+		"iso2022Charset":    "<!doctype html><!--" + esc + "$B--><head></head>" + esc + "(B-->" + script + "<meta charset=iso-2022-jp>",
+		"iso2022HttpEquiv":  "<!doctype html><!--" + esc + "$B--><head></head>" + esc + "(B-->" + script + `<meta http-equiv="content-type" content="text/html; charset=iso-2022-jp">`,
+		"escImKommentar":    "<html><!-- " + esc + " --><head></head></html>",
+		"escImText":         "<html><head></head><body>a" + esc + "b</body></html>",
+		"escAlsDritterTeil": "<html><head><title>x" + esc + "(B</title></head></html>",
+		"ungueltigesUTF8":   "<html><head><title>x\xff</title></head></html>",
+		"abgeschnittenUTF8": "<html><head><title>x\xc3</title></head></html>",
+		"utf16Bom":          "\xff\xfe<\x00h\x00t\x00m\x00l\x00>\x00",
+		"latin1Umlaut":      "<html><head><title>Gr\xfc\xdfe</title></head></html>",
+		"nulByte":           "<html><head><title>x\x00</title></head></html>",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if out, err := injectCSP([]byte(html)); err == nil {
+				t.Fatalf("angenommen: %q", out)
+			}
+			files := goodApp()
+			files["index.html"] = []byte(html)
+			app, raw := buildApp(t, files, "")
+			if _, err := loadAppPackage(raw, app); err == nil {
+				t.Fatal("Ladeprüfung nahm HTML an")
+			}
+		})
+	}
+}
+
+// Gute Fälle: eigene Zeichensatz-Meta des Pakets bleibt erlaubt, die des Läufers steht davor und gewinnt.
+func TestAppCSPZeichensatzMetaVorn(t *testing.T) {
+	prefix := fenster.HeadPrefix()
+	if prefix != fenster.CharsetMeta()+fenster.CSPMeta() || fenster.CharsetMeta() != `<meta charset="utf-8">` {
+		t.Fatalf("Präfix: %q", prefix)
+	}
+	for name, tc := range map[string]struct{ in, want string }{
+		"eigenesUTF8":      {"<html><head><meta charset=utf-8><title>x</title></head></html>", "<html><head>" + prefix + "<meta charset=utf-8><title>x</title></head></html>"},
+		"eigenesUTF8Gross": {`<html><head><meta charset="UTF-8"></head></html>`, "<html><head>" + prefix + `<meta charset="UTF-8"></head></html>`},
+		// Ohne ESC ist auch eine fremde Deklaration harmlos: Die erste Deklaration (unsere) gewinnt.
+		"eigenesIso":    {"<html><head><meta charset=iso-2022-jp></head></html>", "<html><head>" + prefix + "<meta charset=iso-2022-jp></head></html>"},
+		"eigenesLatin1": {`<html><head><meta http-equiv="content-type" content="text/html; charset=iso-8859-1"></head></html>`, "<html><head>" + prefix + `<meta http-equiv="content-type" content="text/html; charset=iso-8859-1"></head></html>`},
+		"umlauteUTF8":   {"<html><head><title>Grüße</title></head></html>", "<html><head>" + prefix + "<title>Grüße</title></head></html>"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, err := injectCSP([]byte(tc.in))
+			if err != nil || string(got) != tc.want || !leadingCSP(got) {
+				t.Fatalf("injectCSP = %q, %v", got, err)
+			}
+		})
+	}
+}
+
+func TestLeadingCSPBrauchtZuerstDieZeichensatzMeta(t *testing.T) {
+	csp, cs := fenster.CSPMeta(), fenster.CharsetMeta()
+	for name, tc := range map[string]struct {
+		html string
+		ok   bool
+	}{
+		"beideInOrdnung":     {"<html><head>" + cs + csp + "<title>x</title></head></html>", true},
+		"nurCSP":             {"<html><head>" + csp + "</head></html>", false},
+		"charsetNachCSP":     {"<html><head>" + csp + cs + "</head></html>", false},
+		"andereDeklaration":  {`<html><head><meta charset="iso-2022-jp">` + csp + "</head></html>", false},
+		"charsetNichtErstes": {"<html><head><title>x</title>" + cs + csp + "</head></html>", false},
+		"zweiCharsetVorCSP":  {"<html><head>" + cs + cs + csp + "</head></html>", false},
+		"charsetKommentar":   {"<html><head><!-- " + cs + " -->" + csp + "</head></html>", false},
+		"escImDokument":      {"<html><head>" + cs + csp + "\x1b</head></html>", false},
+		"ungueltigesUTF8":    {"<html><head>" + cs + csp + "\xff</head></html>", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := leadingCSP([]byte(tc.html)); got != tc.ok {
+				t.Fatalf("leadingCSP = %v", got)
+			}
+		})
+	}
+}
+
+// Open lehnt auch ein in sich stimmiges Siegel ab, wenn der Zeichensatztrick nachträglich in der Ablage steckt.
+func TestAppOpenLehntZeichensatzTrickTrotzNeuemSiegelAb(t *testing.T) {
+	store, st := newStore(t)
+	app, raw := buildApp(t, goodApp(), "")
+	if err := store.Prepare(raw, app); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := store.Open(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	orig, _ := os.ReadFile(filepath.Join(dir, "index.html"))
+	for name, mod := range map[string]string{
+		"charsetEntfernt": strings.Replace(string(orig), fenster.CharsetMeta(), "", 1),
+		"escEingefuegt":   strings.Replace(string(orig), "<body>", "<body>\x1b$B", 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte(mod), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			files, err := Snapshot(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = st.Save(sealName(app), appSeal{Name: app.Name, Commit: app.Commit, Files: files}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.Open(app); err == nil {
+				t.Fatal("Open akzeptiert die Datei")
+			}
+		})
 	}
 }
