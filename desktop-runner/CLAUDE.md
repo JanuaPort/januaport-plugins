@@ -31,7 +31,8 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 | container.go, container_engine.go, secrets_linux.go | Docker-CLI, Startwege und Geheimnisgrenze |
 | internal/fenster | Reines Go ohne Netz/Prozess/Datei/Windows (K6b-1): CSP-Literal, Navigation, Nachrichten, Einstellungen, Umschlag, Brücke |
 | internal/fensterio | Hinter der Tür des Bedienfelds (K6b-2): Gateway (App-Token im RAM, 401 → einmal neu), Pipe-Wrapper mit zwei Operationen, `Host` (UI-Thread-sicher), `PanelExchange` über die vorhandene Verbindung, `Runtime` (Apps lesen, öffnen), Urteile für native Ereignisse, `Surface` (nur Windows) |
-| internal/wv2com | Nur Windows: dünner COM-Adapter neben go-webview2 für NavigationStarting, NewWindowRequested, DownloadStarting, Quelle der Webnachricht, ClearBrowsingData |
+| internal/wv2com | Nur Windows: dünner COM-Adapter für NavigationStarting, NewWindowRequested, DownloadStarting, Quelle der Webnachricht, ClearBrowsingData |
+| internal/edge | Nur Windows: geprüfte, angepasste Kopie von go-webview2 v1.0.19 `pkg/edge` (MIT, NOTICE): kein `os.Exit`, kein `log.Fatal`, Start mit `Begin`/`Ready`/`Cancel`/`Close` statt `Embed` |
 | internal/client/reader.go | `Reader`: nur lesender Zugriff des Bedienfelds auf Zugangsdaten, geprüftes Manifest und App-Siegel |
 | apptoken.go, appstore.go, appload.go, copied_apphost.go | Vertrag 5 im Client: App-Token, privates Ablegen mit Siegel, Ladeprüfung, markierte apphost-Kopie |
 | contract/golden-v5 | Bytegleicher Kernspiegel von Vertrag 5 (Manifest und Routen) mit SHA256SUMS |
@@ -390,8 +391,8 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     **K6b-2 (App-Fenster im Bedienfeld, SEC-B1–B4 und natives Ereignismodell):** Menüeintrag je App
     (`panel.Model.SetApps`, nur Namen), Öffnen in einer fensterio-Goroutine (`Runtime.OpenAsync`: Manifest
     prüfen, Siegel prüfen, erst dann Zugangsdaten lesen, `client.NewAPI` mit onRevoke ohne Löschen).
-    `Surface` (nur Windows, UI-Thread): natives Fenster, WebView2 über `go-webview2` v1.0.19 (gepinnt, MIT,
-    NOTICE) plus dünner eigener COM-Adapter `internal/wv2com` für alles, was die Bibliothek nicht durchreicht
+    `Surface` (nur Windows, UI-Thread): natives Fenster, WebView2 über `internal/edge` (Kopie von go-webview2
+    v1.0.19, siehe unten) plus dünner eigener COM-Adapter `internal/wv2com` für alles, was die Bibliothek nicht durchreicht
     (Vtable-Positionen und IIDs aus WebView2.h, SDK 1.0.2535.41). **Nativ gebunden, Pflicht, sonst öffnet das
     Fenster nicht** (`RunSteps`, fester Fehler `webview_nicht_nutzbar`): `NavigationStarting` und
     `FrameNavigationStarting` (Abbruch vor der Anfrage, auch Redirect und meta refresh; nur `.html`-Seiten der
@@ -403,9 +404,25 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     `Layout`: Die WebView bekommt einen Bereich, auf Testgeräten darüber die native Leiste „Test – Testgerät“.
     Das Benutzerdatenverzeichnis `<Zustand>\webview\<app>` entsteht mit `platform.MkdirPrivate`
     (private DACL) und wird vom Widerruf des Läufers ohne Verweisen zu folgen gelöscht
-    (`TestRevokeLoeschtWebviewOhneVerweiseZuFolgen`). `WebResourceRequested` wird nicht benutzt (die
-    Bibliothek beendet dort bei einem COM-Fehler den Prozess). Grenzen: Die Bibliothek spiegelt jede
-    Seitennachricht an die Seite zurück (Echo, die Seite ignoriert Nachrichten ohne `ok`); alte Fassungen
+    (`TestRevokeLoeschtWebviewOhneVerweiseZuFolgen`). `WebResourceRequested` wird nicht benutzt.
+
+    **Start des WebView ist begrenzt (VM-Befund, B1):** Die Bibliothek beendete den Prozess bei jedem Fehler
+    (`os.Exit` im Fehlerrückruf) und wartete in `Embed` ohne Grenze (`GetMessage`); ein Fehlstart hing den
+    UI-Thread ein. `internal/edge` ist deshalb eine Kopie mit festen Abweichungen: Fehler werden gemeldet und
+    gemerkt, der Prozess endet nie; `Embed` ist durch `Begin` (stößt die Umgebung an), `Ready` (fertig oder
+    erster Fehler), `Cancel` (spätere Rückrufe wirkungslos) und `Close` ersetzt; der Controller-Rückruf kehrt bei
+    jedem Fehler zurück und registriert nur Berechtigungen und Prozessabsturz (das Echo der Seitennachrichten,
+    `WebResourceRequested` mit `log.Fatal` und ungenutzte Rückrufe entfallen); ungenutzte Antwort-Erzeugung ist
+    entfernt. `NewSurface` wartet über `WaitFor` höchstens `startFrist` (20 s) und verteilt dabei Nachrichten
+    (`pumpOnce`, WM_QUIT wird für die Hauptschleife erneut eingestellt); bei Fehler oder Frist `Cancel`, fester
+    Fehler, kein Fenster. Vorher prüft der Schritt "com apartment", dass der Thread ein STA ist
+    (`checkThread`); `fensterio.EnterUI` initialisiert COM und das Bedienfeld ruft es direkt nach
+    `LockOSThread` auf (`TestBedienfeldInitialisiertCOMAufDemUIThread`). Tests: `TestWaitForBegrenzt`,
+    `TestStartFristBegrenzt`, `TestEdgeKopieOhneProzessendeUndOhneUnbegrenzteWartezeit`,
+    `TestAdapterPruefteThreadUndWartetBegrenzt`; native Sonden `TestWindowsWebViewOhneCOMOeffnetNicht` und
+    `TestWindowsWebViewFehlstartHaengtNicht` (erzwungener Fehlstart ohne COM). Jede native Sonde läuft auf einem
+    festen Thread mit COM-STA und hat eine eigene Frist (`probeFrist`, 90 s je Sonde und Unterfall): Ein Hänger
+    kostet eine Sonde, nicht den Lauf. Grenzen: alte Fassungen
     unter `apps\` werden nicht aufgeräumt; die Ereignisse sind unter Linux nur als Urteile geprüft, ihre
     Bindung belegt allein die native Sonde (`webview_native_windows_test.go`, Opt-in).
 

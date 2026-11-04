@@ -105,7 +105,7 @@ nötige Schnittstelle, öffnet das Fenster nicht und das Bedienfeld meldet das n
 // Seite -> Bedienfeld: ein STRING (kein Objekt)
 chrome.webview.postMessage(JSON.stringify({ id: "1", befehl: "werkzeuge", args: {} }));
 
-// Bedienfeld -> Seite: e.data ist ein JSON-String. Nachrichten OHNE "ok" ignorieren (Echo der Bibliothek).
+// Bedienfeld -> Seite: e.data ist ein JSON-String. Nachrichten OHNE "ok" ignorieren.
 chrome.webview.addEventListener("message", (e) => {
   const m = JSON.parse(e.data);
   if (typeof m !== "object" || m === null || !("ok" in m)) return;
