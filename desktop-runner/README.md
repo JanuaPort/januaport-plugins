@@ -56,7 +56,7 @@ prüfbare Grundlage, die K6b-2 an das Fenster hängt. Es gibt keinen lokalen Fen
   Speicher), prüft es vollständig (Git-IDs, SHA-1DC/SHA-256, Objektmenge, Namen, Modus
   100644) und danach die apphost-Regeln als markierte Kopie (`copied_apphost.go`:
   MIME-Liste, Geheimnismuster, keine aktive Markup). Das CSP-Literal `fenster.CSP` setzt der Läufer
-  selbst als erstes Element in jedes `<head>` ein und versiegelt danach; HTML mit eigener CSP-Meta oder
+  selbst als erstes Element in jedes `<head>` ein und versiegelt danach (davor `<meta charset="utf-8">`, SEC-R4 F4); HTML mit eigener CSP-Meta oder
   ohne sauberes `<head>` wird abgewiesen, `Open` prüft das führende Literal erneut. Die apphost-CSP wird
   nicht übernommen. Ablage privat unter `<Zustand>\apps\<name>\<commit>\`, Siegel (Pfad,
   Größe, SHA-256) im verschlüsselten Zustand, Prüfung vor **jedem** Öffnen, nie stilles

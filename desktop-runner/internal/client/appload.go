@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/fenster"
 	"golang.org/x/net/html"
@@ -87,14 +88,17 @@ func isCSPMeta(t html.Token) bool {
 // Prüfung ist die Parser-Sicht auf das fertige Dokument (parserSiehtLiteral), denn Chromium
 // verwirft eine CSP-Meta, die der Parser nicht in <head> einordnet (SEC-R4 F1).
 func injectCSP(b []byte) ([]byte, error) {
+	if !textSicher(b) {
+		return nil, errHead
+	}
 	s, ok := scanHead(b)
 	if !ok || s.cspMetas != 0 {
 		return nil, errHead
 	}
-	meta := fenster.CSPMeta()
-	out := make([]byte, 0, len(b)+len(meta))
+	prefix := fenster.HeadPrefix()
+	out := make([]byte, 0, len(b)+len(prefix))
 	out = append(out, b[:s.headEnd]...)
-	out = append(out, meta...)
+	out = append(out, prefix...)
 	out = append(out, b[s.headEnd:]...)
 	if !parserSiehtLiteral(out) {
 		return nil, errHead
@@ -102,11 +106,20 @@ func injectCSP(b []byte) ([]byte, error) {
 	return out, nil
 }
 
+// textSicher ist die zweite Schicht gegen Zeichensatz-Tricks (SEC-R4 F4): Der Browser dekodiert vor dem Parsen,
+// wir lesen Bytes. Ein ESC-Byte (ISO-2022-Umschaltung), ein NUL oder ungültiges UTF-8 kommt nicht in die Ablage.
+func textSicher(b []byte) bool {
+	return utf8.Valid(b) && bytes.IndexByte(b, 0x1b) < 0 && bytes.IndexByte(b, 0) < 0
+}
+
 // leadingCSP prüft beim Öffnen: genau eine CSP-Meta im Dokument, sie ist genau unser Literal direkt
 // hinter dem <head>-Starttag, und der HTML-Parser ordnet sie als erstes Element in <head> ein.
 func leadingCSP(b []byte) bool {
+	if !textSicher(b) {
+		return false
+	}
 	s, ok := scanHead(b)
-	return ok && s.cspMetas == 1 && bytes.HasPrefix(b[s.headEnd:], []byte(fenster.CSPMeta())) && parserSiehtLiteral(b)
+	return ok && s.cspMetas == 1 && bytes.HasPrefix(b[s.headEnd:], []byte(fenster.HeadPrefix())) && parserSiehtLiteral(b)
 }
 
 // parserSiehtLiteral baut den Baum wie ein Browser: Das erste Element-Kind von <head> ist die Meta mit
@@ -136,13 +149,18 @@ func parserSiehtLiteral(b []byte) bool {
 	if head == nil || count != 1 {
 		return false
 	}
-	for c := head.FirstChild; c != nil; c = c.NextSibling {
-		if c.Type != html.ElementNode {
-			continue
+	var first []*html.Node
+	for c := head.FirstChild; c != nil && len(first) < 2; c = c.NextSibling {
+		if c.Type == html.ElementNode {
+			first = append(first, c)
 		}
-		return c.Data == "meta" && nodeIsCSPMeta(c) && nodeContent(c) == fenster.CSP
 	}
-	return false
+	return len(first) == 2 && nodeIsCharsetUTF8(first[0]) && first[1].Data == "meta" && nodeIsCSPMeta(first[1]) && nodeContent(first[1]) == fenster.CSP
+}
+
+// nodeIsCharsetUTF8: die Zeichensatz-Meta des Läufers, genau <meta charset="utf-8"> ohne weitere Attribute.
+func nodeIsCharsetUTF8(n *html.Node) bool {
+	return n.Data == "meta" && len(n.Attr) == 1 && n.Attr[0].Key == "charset" && n.Attr[0].Val == "utf-8"
 }
 
 func nodeIsCSPMeta(n *html.Node) bool {

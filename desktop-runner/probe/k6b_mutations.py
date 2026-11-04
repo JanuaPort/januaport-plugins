@@ -95,7 +95,7 @@ CASES = [
     ("http-app-praefix", "client", "TestRequestAppTraegerRegeln", [edit(HTP, "|| !strings.HasPrefix(appToken, appTokenPrefix) ||", "||")]),
     ("gw-revoked-code", "fensterio", "TestGatewayFehlerabbildungAmFake", [edit(GAT, "case errors.Is(err, client.ErrRevoked):", "case false:")]),
     ("app-siegel-beim-oeffnen", "client", "TestAppSiegelVorJedemOeffnen", [edit(STO, "if err := VerifyEnvironment(dir, seal.Files); err != nil {", "if false {")]),
-    ("app-csp-literal", "client", "TestAppCSPWirdEingesetzt", [edit(LOA, "out = append(out, meta...)", "out = append(out, strings.Replace(meta, \"connect-src 'none'\", \"connect-src *\", 1)...)")]),
+    ("app-csp-literal", "client", "TestAppCSPWirdEingesetzt", [edit(LOA, "out = append(out, prefix...)", "out = append(out, strings.Replace(prefix, \"connect-src 'none'\", \"connect-src *\", 1)...)")]),
     ("app-csp-reihenfolge", "client", "TestAppCSPWirdEingesetzt", [edit(LOA, "s.headEnd = pos", "s.headEnd = len(b)")]),
     ("app-csp-pflicht", "client", "TestAppCSPJedeHTMLDatei", [edit(COP, "if path.Ext(file) == \".html\" {\n\t\t\t\tvar err error", "if path.Ext(file) == \"index.html\" {\n\t\t\t\tvar err error")]),
     ("app-csp-eigene-meta", "client", "TestAppCSPAbweisungen", [edit(LOA, "if !ok || s.cspMetas != 0 {", "if !ok {"), edit(LOA, "if !parserSiehtLiteral(out) {", "if false {")]),  # zwei Schichten: Vorfilter und Parserprüfung
@@ -103,6 +103,13 @@ CASES = [
     ("app-csp-unsauberes-head", "client", "TestAppCSPAbweisungen", [edit(LOA, "case heads == 0 && t.Data != \"html\":", "case false:"), edit(LOA, "if !parserSiehtLiteral(out) {", "if false {")]),  # zwei Schichten
     ("app-csp-open-pruefung", "client", "TestAppOpenPrueftFuehrendesLiteralTrotzNeuemSiegel", [edit(STO, "if err != nil || !leadingCSP(b) {", "if err != nil || !leadingCSP(b) && false {")]),
     ("app-csp-open-genau-eine", "client", "TestLeadingCSP", [edit(LOA, "s.cspMetas == 1 &&", "s.cspMetas >= 1 &&"), edit(LOA, "&& parserSiehtLiteral(b)", "")]),  # zwei Schichten
+    # SEC-R4 F4: Zeichensatz-Trick
+    ("app-csp-charset-meta", "client", "TestAppCSPZeichensatzMetaVorn", [edit(LOA, "prefix := fenster.HeadPrefix()", "prefix := fenster.CSPMeta()")]),
+    ("app-csp-esc", "client", "TestAppCSPZeichensatzTrick", [edit(LOA, "utf8.Valid(b) && bytes.IndexByte(b, 0x1b) < 0 && bytes.IndexByte(b, 0) < 0", "utf8.Valid(b) && bytes.IndexByte(b, 0) < 0")]),
+    ("app-csp-utf8", "client", "TestAppCSPZeichensatzTrick", [edit(LOA, "utf8.Valid(b) && bytes.IndexByte(b, 0x1b) < 0", "(utf8.Valid(b) || true) && bytes.IndexByte(b, 0x1b) < 0")]),
+    ("app-csp-nul", "client", "TestAppCSPZeichensatzTrick", [edit(LOA, " && bytes.IndexByte(b, 0) < 0", "")]),
+    ("app-csp-open-charset", "client", "TestLeadingCSPBrauchtZuerstDieZeichensatzMeta", [edit(LOA, "bytes.HasPrefix(b[s.headEnd:], []byte(fenster.HeadPrefix()))", "bytes.HasPrefix(b[s.headEnd:], []byte(fenster.CSPMeta()))"), edit(LOA, "return len(first) == 2 && nodeIsCharsetUTF8(first[0]) && first[1].Data == \"meta\" && nodeIsCSPMeta(first[1]) && nodeContent(first[1]) == fenster.CSP", "return len(first) >= 1 && first[0].Data == \"meta\" && nodeIsCSPMeta(first[0]) && nodeContent(first[0]) == fenster.CSP")]),  # zwei Schichten: Präfix und Parser
+    ("app-csp-open-esc", "client", "TestAppOpenLehntZeichensatzTrickTrotzNeuemSiegelAb", [edit(LOA, "\tif !textSicher(b) {\n\t\treturn false\n\t}", "")]),
     # SEC-R4 F1: Tokenizer-Vorfilter und Parserprüfung sind zwei Schichten; die Einzelmutanten für Text und End-Tag
     # überleben absichtlich, weil die jeweils andere Schicht greift. Rot werden sie nur gemeinsam.
     ("app-csp-parserpruefung", "client", "TestAppCSPParserPruefungIstDieEigentlichePruefung", [edit(LOA, "if !parserSiehtLiteral(out) {", "if false {"), edit(LOA, "&& parserSiehtLiteral(b)", "")]),
