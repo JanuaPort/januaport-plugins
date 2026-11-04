@@ -126,7 +126,7 @@ func TestAdapterBindetAlleEreignisse(t *testing.T) {
 	})
 	want := RequiredEvents()
 	sort.Strings(want)
-	if !reflect.DeepEqual(want, []string{"DownloadStarting", "FrameNavigationStarting", "NavigationStarting", "NewWindowRequested", "PermissionRequested", "ProcessFailed", "WebMessageReceived"}) {
+	if !reflect.DeepEqual(want, []string{"DownloadStarting", "FrameNavigationStarting", "NavigationStarting", "NewWindowRequested", "PermissionRequested", "ProcessFailed", "WebMessageReceived", "WebResourceRequested"}) {
 		t.Fatalf("Pflichtereignisse: %v", want)
 	}
 	for _, ev := range want {
@@ -161,6 +161,27 @@ func TestAdapterWendetAlleSettingsAn(t *testing.T) {
 	for _, set := range fenster.Settings() {
 		if !literals[set.Name] {
 			t.Errorf("Adapter kennt die Einstellung %s nicht", set.Name)
+		}
+	}
+}
+
+// SEC Fremdserver-Befund: Schicht 1 (WebResourceRequested für alles) und Schicht 2 (Netz im Browserprozess aus)
+// sind im Adapter verdrahtet, mit den Entscheidungen aus internal/fenster.
+func TestAdapterSperrtRessourcenUndNetz(t *testing.T) {
+	f, err := parser.ParseFile(token.NewFileSet(), "webview_windows.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := map[string]bool{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		if c, ok := n.(*ast.CallExpr); ok {
+			calls[callName(c.Fun)] = true
+		}
+		return true
+	})
+	for _, want := range []string{"fenster.ResourceAllowed", "fenster.BrowserArgs", "wv2com.AddWebResourceRequestedFilter", "wv2com.BlockedResponse"} {
+		if !calls[want] {
+			t.Errorf("webview_windows.go ruft %s nicht auf", want)
 		}
 	}
 }
