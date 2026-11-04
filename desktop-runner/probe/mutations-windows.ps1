@@ -15,7 +15,7 @@ $cases = @(
     @{Name='pair-test-key'; File='client/http.go'; Old='== rfc8032TestPublicKey {'; New='== rfc8032TestPublicKey && false {'; Test='TestPairRFC8032PubkeySpeichertNichts'; Package='.'},
     @{Name='suspended'; File='platform/process_windows.go'; Old='windows.CREATE_SUSPENDED |'; New=''; Test='TestWindowsSuspendBisJobZuordnung'},
     @{Name='job-close'; File='platform/process_windows.go'; Old='limits.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE'; New='limits.BasicLimitInformation.LimitFlags = 0'; Test='TestWindowsJobCloseBeendetEnkel'},
-    @{Name='task-privilege'; File='platform/install_windows.go'; Old='<RunLevel>LeastPrivilege</RunLevel>'; New='<RunLevel>HighestAvailable</RunLevel>'; Test='TestWindowsAufgabeOhneAdmin'},
+    @{Name='task-privilege'; File='platform/install.go'; Old='<RunLevel>LeastPrivilege</RunLevel>'; New='<RunLevel>HighestAvailable</RunLevel>'; Test='TestWindowsAufgabeOhneAdmin'},
     @{Name='entropy'; File='platform/security_windows.go'; Old='blob(entropy)'; New='blob(nil)'; Test='TestWindowsDPAPIBrauchtEntropie'},
     @{Name='token-env'; File='client/engine.go'; Old='Env: slices.Clone(e.ChildEnv)'; New='Env: append(slices.Clone(e.ChildEnv), "RUN_TOKEN="+runToken)'; Test='TestWindowsPythonEchterStartUndManipulation'},
     @{Name='token-argv'; File='client/engine.go'; Old='Args: []string{"-I", "-B", "bootstrap.py"}'; New='Args: []string{"-I", "-B", "bootstrap.py", runToken}'; Test='TestWindowsPythonEchterStartUndManipulation'},

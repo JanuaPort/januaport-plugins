@@ -6,6 +6,7 @@ param([string]$ScriptPath = (Join-Path $PSScriptRoot 'installtest.ps1'),
     [string]$Only = '*', [string]$ReleaseDirectory, [string]$ReleaseVersion = '0.1.0')
 $ErrorActionPreference = 'Stop'
 . $ScriptPath
+. (Join-Path $PSScriptRoot 'installtest-fixture.ps1') -Operation library
 $Fixture = Join-Path $PSHOME 'pwsh.exe'
 $fixturePrefix = @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'installtest-fixture.ps1'))
 
@@ -41,14 +42,68 @@ try {
             [IO.File]::WriteAllText((Join-Path $testRoot 'desktop-runner.exe'), 'synthetic')
             [IO.File]::WriteAllText((Join-Path $testRoot 'SHA256SUMS'), 'not-a-checksum')
             Assert-Rejected { Assert-InstalltestDigest $testRoot } 'checksum_format'
+            [IO.File]::WriteAllText((Join-Path $testRoot 'SHA256SUMS'), "not-a-checksum`nnot-a-checksum")
+            Assert-Rejected { Assert-InstalltestDigest $testRoot } 'checksum_format'
         }
         checksum_mismatch = {
             [IO.File]::WriteAllText((Join-Path $testRoot 'desktop-runner.exe'), 'tampered')
-            [IO.File]::WriteAllText((Join-Path $testRoot 'SHA256SUMS'), (('0' * 64) + ' *desktop-runner.exe'))
+            [IO.File]::WriteAllText((Join-Path $testRoot 'SHA256SUMS'), ((('0' * 64) + ' *desktop-runner.exe') + "`n" + (('0' * 64) + ' *jnpt-bedienfeld.exe')))
             Assert-Rejected { Assert-InstalltestDigest $testRoot } 'checksum_mismatch'
+            [IO.File]::WriteAllText((Join-Path $testRoot 'jnpt-bedienfeld.exe'), 'synthetic-panel')
+            $panelHash = (Get-FileHash (Join-Path $testRoot 'jnpt-bedienfeld.exe')).Hash.ToLowerInvariant()
+            $hash = (Get-FileHash (Join-Path $testRoot 'desktop-runner.exe')).Hash.ToLowerInvariant()
+            [IO.File]::WriteAllText((Join-Path $testRoot 'SHA256SUMS'), "$hash *desktop-runner.exe`n$panelHash *jnpt-bedienfeld.exe`n")
+            Assert-InstalltestDigest $testRoot
+        }
+        panel_checksum_missing = {
+            [IO.File]::WriteAllText((Join-Path $testRoot 'desktop-runner.exe'), 'synthetic')
             $hash = (Get-FileHash (Join-Path $testRoot 'desktop-runner.exe')).Hash.ToLowerInvariant()
             [IO.File]::WriteAllText((Join-Path $testRoot 'SHA256SUMS'), "$hash *desktop-runner.exe`n")
-            Assert-InstalltestDigest $testRoot
+            Assert-Rejected { Assert-InstalltestDigest $testRoot } 'checksum_format'
+        }
+        panel_checksum_mismatch = {
+            [IO.File]::WriteAllText((Join-Path $testRoot 'desktop-runner.exe'), 'synthetic')
+            [IO.File]::WriteAllText((Join-Path $testRoot 'jnpt-bedienfeld.exe'), 'tampered-panel')
+            $hash = (Get-FileHash (Join-Path $testRoot 'desktop-runner.exe')).Hash.ToLowerInvariant()
+            [IO.File]::WriteAllText((Join-Path $testRoot 'SHA256SUMS'), ("$hash *desktop-runner.exe`n" + ('0' * 64) + ' *jnpt-bedienfeld.exe'))
+            Assert-Rejected { Assert-InstalltestDigest $testRoot } 'checksum_mismatch'
+        }
+        panel_arguments = {
+            $fixtureTask = New-InstalltestTaskFixture $Fixture 'forbidden-argument'
+            try {
+                Assert-Rejected { Assert-InstalltestEntry $fixtureTask.Name 'absent-synthetic-run' $Fixture -Panel } 'panel_arguments'
+            } finally { Remove-InstalltestTaskFixture $fixtureTask }
+        }
+        panel_run_arguments = {
+            $value = 'JanuaPort-L6-Test-' + [guid]::NewGuid().ToString('N')
+            $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Software\Microsoft\Windows\CurrentVersion\Run')
+            try {
+                $key.SetValue($value, ('"' + $Fixture + '" forbidden-argument'))
+                Assert-Rejected { Assert-InstalltestEntry 'absent-synthetic-task' $value $Fixture -Panel } 'run_command_invalid'
+                $key.SetValue($value, ('"' + $Fixture + '"'))
+                Assert-InstalltestEntry 'absent-synthetic-task' $value $Fixture -Panel
+            } finally { $key.DeleteValue($value); $key.Dispose() }
+        }
+        panel_task_missing = {
+            Assert-Rejected { Assert-InstalltestEntry 'absent-synthetic-task' 'absent-synthetic-value' $Fixture -Panel } 'autostart_missing'
+        }
+        runner_arguments = {
+            $fixtureTask = New-InstalltestTaskFixture $Fixture 'forbidden-argument'
+            try {
+                Assert-Rejected { Assert-InstalltestEntry $fixtureTask.Name 'absent-synthetic-run' $Fixture } 'runner_arguments'
+            } finally { Remove-InstalltestTaskFixture $fixtureTask }
+        }
+        task_command_invalid = {
+            $fixtureTask = New-InstalltestTaskFixture $Fixture ''
+            try {
+                Assert-Rejected { Assert-InstalltestEntry $fixtureTask.Name 'absent-synthetic-run' ($Fixture + '.wrong') -Panel } 'task_command_invalid'
+            } finally { Remove-InstalltestTaskFixture $fixtureTask }
+        }
+        task_principal_invalid = {
+            $fixtureTask = New-InstalltestTaskFixture $Fixture '' -NoTrigger
+            try {
+                Assert-Rejected { Assert-InstalltestEntry $fixtureTask.Name 'absent-synthetic-run' $Fixture -Panel } 'task_principal_invalid'
+            } finally { Remove-InstalltestTaskFixture $fixtureTask }
         }
         signature_invalid = {
             $unsigned = Join-Path $testRoot 'unsigned.ps1'

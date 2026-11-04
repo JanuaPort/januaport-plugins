@@ -18,7 +18,81 @@ func TestReleaseUndWindowsCI(t *testing.T) {
 		t.Fatal("YAML")
 	}
 	jobs := w["jobs"].(map[string]any)
+	stepText := func(job, marker string) string {
+		t.Helper()
+		for _, raw := range jobs[job].(map[string]any)["steps"].([]any) {
+			s := raw.(map[string]any)
+			name, _ := s["name"].(string)
+			if strings.Contains(name, marker) {
+				if run, ok := s["run"].(string); ok {
+					return run
+				}
+				return s["with"].(map[string]any)["script"].(string)
+			}
+		}
+		t.Fatal("Release-Schritt fehlt", job, marker)
+		return ""
+	}
+	buildText := stepText("build", "Tag prüfen")
+	verifyText := stepText("sign", "Signatursonde")
+	for _, exe := range []string{"desktop-runner.exe", "jnpt-bedienfeld.exe"} {
+		if !strings.Contains(buildText, "-o out/"+exe) {
+			t.Fatal("Exe nicht gebaut", exe)
+		}
+		for _, required := range []string{"Test-Path -LiteralPath release/" + exe, "verify /pa release/" + exe, "Get-FileHash release/" + exe, "*" + exe + "`n"} {
+			if !strings.Contains(verifyText, required) {
+				t.Fatal("Existenz/Signatur/Summen", exe, required)
+			}
+		}
+		if !regexp.MustCompile(`verify /pa release/` + regexp.QuoteMeta(exe) + `\s+if \(\$LASTEXITCODE -ne 0\) \{ throw '[a-z_]+invalid' \}`).MatchString(verifyText) {
+			t.Fatal("Signaturfehler wird nicht abgewiesen", exe)
+		}
+	}
+	if !strings.Contains(buildText, "-H=windowsgui") || !strings.Contains(buildText, "./cmd/bedienfeld") {
+		t.Fatal("Bedienfeld-GUI-Build fehlt")
+	}
+	for _, job := range []string{"build", "publish"} {
+		found := false
+		for _, raw := range jobs[job].(map[string]any)["steps"].([]any) {
+			s := raw.(map[string]any)
+			uses, _ := s["uses"].(string)
+			if (job == "build" && strings.Contains(uses, "upload-artifact@")) || (job == "publish" && strings.Contains(uses, "attest-build-provenance@")) {
+				key := "path"
+				if job == "publish" {
+					key = "subject-path"
+				}
+				v := s["with"].(map[string]any)[key].(string)
+				for _, exe := range []string{"desktop-runner.exe", "jnpt-bedienfeld.exe"} {
+					if !strings.Contains(v, exe) {
+						t.Fatal(job, "Artefakt/Provenance fehlt", exe)
+					}
+				}
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal(job, "Artefakt/Provenance fehlt")
+		}
+	}
+	if !strings.Contains(stepText("publish", "Release mit Provenance"), "'jnpt-bedienfeld.exe'") {
+		t.Fatal("Bedienfeld nicht veröffentlicht")
+	}
 	sign := jobs["sign"].(map[string]any)
+	signActions := 0
+	for _, raw := range sign["steps"].([]any) {
+		step := raw.(map[string]any)
+		uses, _ := step["uses"].(string)
+		if strings.HasPrefix(uses, "azure/artifact-signing-action@") {
+			signActions++
+			with := step["with"].(map[string]any)
+			if with["files-folder"] != `${{ github.workspace }}\release` || with["files-folder-filter"] != "exe" || step["if"] != nil {
+				t.Fatal("Azure muss beide Exe verpflichtend signieren")
+			}
+		}
+	}
+	if signActions != 1 {
+		t.Fatal("Vorhandene Azure-Signatur fehlt")
+	}
 	if sign["environment"] != "release-signing" || sign["permissions"].(map[string]any)["id-token"] != "write" {
 		t.Fatal("Signierberechtigung")
 	}

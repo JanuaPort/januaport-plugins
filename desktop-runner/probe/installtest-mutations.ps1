@@ -9,6 +9,14 @@ $original = [IO.File]::ReadAllBytes($sourcePath)
 $source = [Text.Encoding]::UTF8.GetString($original)
 & $testPath -ReleaseDirectory $ReleaseDirectory -ReleaseVersion $ReleaseVersion
 $mutations = @(
+    @('panel_checksum_missing', "if (`$sums.Count -ne 2) { throw 'checksum_format' }", "if (`$sums.Count -gt 2) { throw 'checksum_format' }; if (`$sums.Count -eq 1) { return }"),
+    @('panel_arguments', "if (`$Panel -and `$arguments -ne '') { throw 'panel_arguments' }", ''),
+    @('panel_run_arguments', "if (`$run -cne `$expected -and `$run -cne `$quoted) { throw 'run_command_invalid' }", ''),
+    @('panel_task_missing', "if (-not `$present) { throw 'autostart_missing' }", ''),
+    @('panel_checksum_mismatch', "throw 'checksum_mismatch'", 'return'),
+    @('runner_arguments', "throw 'runner_arguments'", 'return'),
+    @('task_command_invalid', "throw 'task_command_invalid'", 'return'),
+    @('task_principal_invalid', "throw 'task_principal_invalid'", 'return'),
     @('version', "[ValidatePattern('\A[0-9]+\.[0-9]+\.[0-9]+\z')]", ''),
     @('checksum_format', "throw 'checksum_format'", 'return'),
     @('checksum_mismatch', "throw 'checksum_mismatch'", 'return'),

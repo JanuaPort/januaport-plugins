@@ -4,6 +4,15 @@
 
 ### 0.4.0 in Arbeit
 
+- L6: gemeinsame Installation von Läufer und Bedienfeld aus demselben Ordner;
+  zweite Anmelde-Aufgabe mit HKCU-Run-Rückfall, Bedienfeld ohne Argumente.
+  Fehlende Bedienfeld-Exe: E1 ohne Registrierung; Fehler nehmen Autostartänderungen
+  zurück. Uninstall entfernt beide Einträge und beendet das eigene Bedienfeld;
+  Halt und übrige DPAPI-Dateien bleiben erhalten.
+- Release baut und signiert beide Exe, prüft beide mit signtool und bindet beide
+  in SHA256SUMS/Provenance. Installtest prüft beide Autostartwege und Argumentfreiheit;
+  Invariante 19, Negativtests und L6-Mutationen ergänzt. G-L3 vor Geräte-Rollout:
+  native Opt-in-Proben und Bedienfeld-Prozesssonde auf dem Testgerät PASS ohne SKIP.
 - L5 SEC-R4 F1: keine Endaufnahme nach lokalem Anhalten. L2-Haltzustand
   unmittelbar davor unter `e.mu` geprüft, Aufnahme/Upload außerhalb der Sperre;
   nach Wandzeitablauf bleibt die Endaufnahme erhalten. Regression und Mutationen

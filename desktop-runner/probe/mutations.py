@@ -64,7 +64,7 @@ CASES = [
     ("autostart", "platform/install.go", "if !a.PolicyDenied(err) {", "if !a.PolicyDenied(err) && false {", "platform", "TestAutostartRueckfallNurBeiRichtlinie"),
     ("suspended", "platform/process_windows.go", "windows.CREATE_SUSPENDED |", "", "platform", "TestWindowsSuspendBisJobZuordnung"),
     ("job-close", "platform/process_windows.go", "limits.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE", "limits.BasicLimitInformation.LimitFlags = 0", "platform", "TestWindowsJobCloseBeendetEnkel"),
-    ("task-privilege", "platform/install_windows.go", "<RunLevel>LeastPrivilege</RunLevel>", "<RunLevel>HighestAvailable</RunLevel>", "platform", "TestWindowsAufgabeOhneAdmin"),
+    ("task-privilege", "platform/install.go", "<RunLevel>LeastPrivilege</RunLevel>", "<RunLevel>HighestAvailable</RunLevel>", "platform", "TestWindowsAufgabeOhneAdmin"),
 ]
 
 
