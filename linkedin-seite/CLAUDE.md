@@ -130,7 +130,7 @@ Seit 0.3.1 gilt:
   Ohne das stirbt `_supervise`, `job.future` bleibt offen und der Schreibaufruf hängt für immer.
 
 Bewusste Grenzen: Die 25-Minuten-Frist eines Schreibjobs wird während einer Erneuerung nicht geprüft
-und kann sich um höchstens 36 Sekunden verschieben (18 Transport plus 18 Sperre), der Job schreibt
+und kann sich im Normalfall um bis zu 36 Sekunden verschieben, bei Störung des Tokenendpunkts länger (18 s Socket-Timeout je Operation, gescheiterte Erneuerungen laufen hintereinander), der Job schreibt
 in der Zeit nichts. Beim Herunterfahren wartet der Dienst bis zu 18 Sekunden auf einen laufenden
 Tausch. Refresh-Tokens bleiben nur im RAM: Nach einem Neustart beginnt der Dienst beim Tresorstand.
 

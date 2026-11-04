@@ -229,8 +229,8 @@ Freigabevertrag seit #1306: Plan v2/v2.1, SEC c-6602359446 A1/A3 und c-660473859
 **nicht live belegt**. Der Beisteller postet, bearbeitet, löscht und kommentiert auf der eigenen
 Unternehmensseite — **ausschließlich** für Einträge des Redaktionsplans, die ein Mensch im
 Kern mit passendem Wirkungs-Hash freigegeben hat. Formate: Text (mit Link), ein
-Bild, mehrere Bilder (2–20), PDF-Dokument, Umfrage, Video. Stufe A bleibt in Verhalten und
-Scopes unverändert; ohne Schreib-Konfiguration liefern die Schreibrouten nach gültiger
+Bild, mehrere Bilder (2–20), PDF-Dokument, Umfrage, Video. Stufe A bleibt im Verhalten unverändert,
+verlangt seit 0.3.1 aber wie jeder Betrieb den Grant mit allen vier Scopes; ohne Schreib-Konfiguration liefern die Schreibrouten nach gültiger
 Bridge-/Headerprüfung HTTP 200 mit `nicht_ausgefuehrt: true` und
 `error: schreiben_nicht_eingerichtet`. Die Vorschau behält dafür HTTP 503.
 
