@@ -135,21 +135,20 @@ CASES = [
     ("host-gemeinsame-plaetze", "fensterio", "TestHostAnhaltenBleibtBeiHaengendemGatewayBedienbar", [edit(HST, "b, err := fenster.NewBruecke(cfg.App, &limitedGateway{inner: cfg.Gateway, sem: make(chan struct{}, cfg.MaxGateway)}, &limitedLokal{inner: cfg.Lokal, sem: make(chan struct{}, cfg.MaxLokal)}, hostView{h})", "shared := make(chan struct{}, cfg.MaxGateway)\n\tb, err := fenster.NewBruecke(cfg.App, &limitedGateway{inner: cfg.Gateway, sem: shared}, &limitedLokal{inner: cfg.Lokal, sem: shared}, hostView{h})")]),
     ("host-fail-ohne-abbruch", "fensterio", "TestHostFailBrichtAbUndNimmtNichtsMehrAn", [edit(HST, "\t\th.cancel()\n\t\tif h.onClosed != nil {", "\t\tif h.onClosed != nil {")]),
     ("host-warteschlange-unbegrenzt", "fensterio", "TestHostAntwortschlangeBegrenztUndBlockiertNie", [edit(HST, "if h.closed || len(h.out) >= queueSize {", "if h.closed {")]),
-    ("host-zu-viele-gateway", "fensterio", "TestHostReceiveBlockiertNie", [edit(HST, "\tcase g.sem <- struct{}{}:\n\t\treturn true\n\tdefault:\n\t\treturn false", "\tcase g.sem <- struct{}{}:\n\t\treturn true\n\tdefault:\n\t\treturn true")]),
-    ("exchange-alle-rahmen", "fensterio", "TestPanelExchangeNurZustandUndFehlerBeantworten", [edit(EXC, "if err != nil || (m.Type != \"zustand\" && m.Type != \"fehler\") {", "if err != nil {")]),
+    ("host-zu-viele-gateway", "fensterio", "TestHostReceiveBlockiertNie", [edit(HST, "func (g *limitedGateway) take() bool {\n\tselect {\n\tcase g.sem <- struct{}{}:\n\t\treturn true\n\tdefault:\n\t\treturn false\n\t}", "func (g *limitedGateway) take() bool {\n\treturn true"), edit(HST, "defer func() { <-g.sem }()\n\treturn g.inner.Werkzeuge(ctx)", "return g.inner.Werkzeuge(ctx)"), edit(HST, "defer func() { <-g.sem }()\n\treturn g.inner.Werkzeug(ctx, name, arguments)", "return g.inner.Werkzeug(ctx, name, arguments)")]),  # ohne Grenze und ohne das passende Freigeben, sonst hängt der Aufräumer
+    ("exchange-alle-rahmen", "fensterio", "TestPanelExchangeNurZustandUndFehlerBeantworten", [edit(EXC, "if err != nil || (m.Type != \"zustand\" && m.Type != \"fehler\") {", "if err != nil || m.Type == \"\" {")]),
     ("exchange-parallel", "fensterio", "TestPanelExchangeSerialisiertGleichzeitigeBefehle", [edit(EXC, "slot: make(chan struct{}, 1)", "slot: make(chan struct{}, 8)")]),
-    ("exchange-reset", "fensterio", "TestPanelExchangeVerbindungsverlustWeckt", [edit(EXC, "\tif w != nil {\n\t\tw.lost()\n\t}", "")]),
+    ("exchange-reset", "fensterio", "TestPanelExchangeVerbindungsverlustWeckt", [edit(EXC, "\tif w != nil {\n\t\tw.lost()\n\t}", "\t_ = w")]),
     ("lokal-nachfragen", "fensterio", "TestLokalAnhaltenNachVeraltetemRahmen", [edit(LOK, "i < 3 &&", "i < 0 &&")]),
     ("runtime-open-async-synchron", "fensterio", "TestRuntimeOpenAsyncKehrtSofortZurueck", [edit(RUN, "\tgo func() {\n\t\to, err := r.Open(name)\n\t\tdone(o, err)\n\t}()", "\to, err := r.Open(name)\n\tdone(o, err)")]),
     # B3: nur lesen
     ("reader-schreibt", "client", "TestReaderOhneSchreibendeAufrufe", [edit(RDR, "\tinfo, err := os.Lstat(p)\n\tif err != nil {\n\t\treturn nil, err\n\t}", "\tinfo, err := os.Lstat(p)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\t_ = os.Chmod(p, info.Mode())")]),
     ("reader-openapp-ohne-siegel", "client", "TestReaderOpenAppPrueftSiegel", [edit(RDR, "return openApp(r.root, r, app)", "return filepath.Join(r.root, \"apps\", app.Name, app.Commit), nil")]),
-    ("reader-manifest-signatur", "client", "TestReaderFehlerfaelle", [edit(RDR, "m, err := VerifyManifest(bundle.Manifest.Envelope, id.Pubkey, id.DeviceID, 0)", "m, err := ParseManifest(bundle.Manifest.Envelope.Manifest)")]),
-    ("reader-vertrag", "client", "TestReaderFehlerfaelle", [edit(RDR, "m.Contract != WindowsContract || m.Apps == nil", "m.Apps == nil")]),
+    ("reader-manifest-signatur", "client", "TestReaderFehlerfaelle", [edit(RDR, "m, err := VerifyManifest(bundle.Manifest.Envelope, id.Pubkey, id.DeviceID, 0)", "_ = id\n\tm, err := ParseManifest(bundle.Manifest.Envelope.Manifest)")]),
+    ("reader-vertrag", "client", "TestReaderFehlerfaelle", [edit(RDR, "m.Contract != WindowsContract || m.Apps == nil", "m.Apps == nil"), edit(MAN, "(m.Apps != nil) != (m.Contract == appsContract) || ", "")]),  # zwei Schichten: Leser und ParseManifest
     ("reader-apps-liest-token", "client", "TestReaderAppsDekodiertKeinToken", [edit(RDR, "id, err := r.identity()", "c, err := r.Credential()\n\tid := struct {\n\t\tDeviceID string\n\t\tPubkey   []byte\n\t}{c.DeviceID, c.Pubkey}")]),
     ("runtime-widerruf-loescht", "fensterio", "TestRuntimeWiderrufLoeschtNichts", [edit(RUN, "\t\"context\"\n\t\"errors\"\n", "\t\"context\"\n\t\"errors\"\n\t\"os\"\n"), edit(RUN, "func() error { return nil })", "func() error { return os.Remove(filepath.Join(r.cfg.Root, \"credential\")) })")]),
     ("runtime-client-engine", "fensterio", "TestFensterioRuftNurLeserUndAppAPI", [edit(RUN, "var ErrOpen = ", "var _ = client.OpenState\n\nvar ErrOpen = ")]),
-    ("runtime-token-zu-frueh", "fensterio", "TestRuntimeOpenFehlerOhneNetz", [edit(RUN, "\tview, err := r.reader.Apps()\n\tif err != nil {\n\t\treturn nil, ErrOpen\n\t}\n\ti := ", "\tif _, err := r.reader.Credential(); err != nil {\n\t\treturn nil, ErrOpen\n\t}\n\tview, err := r.reader.Apps()\n\tif err != nil {\n\t\treturn nil, ErrOpen\n\t}\n\ti := ")]),
     ("sync-legt-apps-ab", "client", "TestSyncLegtAppsAb", [edit(ENG, "\te.ensureApps(ctx, m)\n", "")]),
     ("prepare-ohne-sperre", "client", "TestAppPrepareNachWiderrufLegtNichtsAb", [edit(STO, "return s.state.Use(func() error {", "return (func(f func() error) error { return f() })(func() error {")]),
     ("log-code-app", "client", "TestLogCodeAppStoerung", [edit(LOGF, "code > LogAppFault {", "code > LogPipeFault {")]),
@@ -165,7 +164,7 @@ CASES = [
     ("download-nicht-abgebrochen", "fensterio", "TestDownloadVerdictBrichtImmerAb", [edit(EVT, "func DownloadVerdict() NavVerdict { return NavVerdict{Cancel: true} }", "func DownloadVerdict() NavVerdict { return NavVerdict{} }")]),
     ("quelle-ignoriert", "fensterio", "TestMessageSource", [edit(EVT, "return fenster.Source{MainFrame: true, URL: url}", "return fenster.Source{MainFrame: true, URL: fenster.StartURL(\"demo\")}")]),
     ("schritte-laufen-weiter", "fensterio", "TestRunStepsHaeltBeimErstenFehlerAn", [edit(EVT, "\t\tif err := s.Run(); err != nil {\n\t\t\treturn &StepError{Step: s.Name}\n\t\t}", "\t\tif err := s.Run(); err != nil {\n\t\t\t_ = err\n\t\t}")]),
-    ("schritt-ursache", "fensterio", "TestRunStepsHaeltBeimErstenFehlerAn", [edit(EVT, "func (e *StepError) Is(target error) bool { return target == ErrWebView }", "func (e *StepError) Is(target error) bool { return target == ErrWebView }\nfunc (e *StepError) Unwrap() error { return errors.New(\"QueryInterface C:\\\\geheim\") }")]),
+    ("schritt-ursache", "fensterio", "TestRunStepsHaeltBeimErstenFehlerAn", [edit(EVT, "type StepError struct{ Step string }", "type StepError struct {\n\tStep  string\n\tCause error\n}\n\nfunc (e *StepError) Unwrap() error { return e.Cause }"), edit(EVT, "return &StepError{Step: s.Name}", "return &StepError{Step: s.Name, Cause: err}")]),
     ("adapter-download-fehlt", "fensterio", "TestAdapterBindetAlleEreignisse", [edit(WVW, "{\"bind DownloadStarting\", func() error {", "{\"bind Download\", func() error {")]),
     ("adapter-neues-fenster-fehlt", "fensterio", "TestAdapterBindetAlleEreignisse", [edit(WVW, "{\"bind NewWindowRequested\", func() error {", "{\"bind NewWindow\", func() error {")]),
     ("adapter-navigation-fehlt", "fensterio", "TestAdapterBindetAlleEreignisse", [edit(WVW, "{\"bind NavigationStarting\", func() error {", "{\"bind Navigation\", func() error {")]),
@@ -174,12 +173,12 @@ CASES = [
     ("adapter-prozessabsturz-fehlt", "fensterio", "TestAdapterBindetAlleEreignisse", [edit(WVW, "{\"bind ProcessFailed\", func() error {", "{\"bind Process\", func() error {")]),
     ("adapter-setting-fehlt", "fensterio", "TestAdapterWendetAlleSettingsAn", [edit(WVW, "\"IsStatusBarEnabled\":", "\"IsStatusBar\":")]),
     # fenster: externe Links, Layout; panel: App-Menü
-    ("ext-userinfo", "fenster", "TestExternalLink", [edit(EXT, "u.User != nil || ", ""), edit(EXT, "strings.ContainsAny(authority, \"@%[]\")", "strings.ContainsAny(authority, \"%[]\")")]),  # zwei Schichten
-    ("ext-http", "fenster", "TestExternalLink", [edit(EXT, "!strings.HasPrefix(raw, \"https://\")", "false"), edit(EXT, "u.Scheme != \"https\" || ", "")]),  # zwei Schichten
+    ("ext-userinfo", "fenster", "TestExternalLink", [edit(EXT, "u.User != nil || ", ""), edit(EXT, "authority != u.Host || strings.ContainsAny(authority, \"@%[]\")", "strings.ContainsAny(authority, \"%[]\")"), edit(EXT, "r != '-' {", "r != '-' && r != '@' {")]),  # vier Schichten
+    ("ext-http", "fenster", "TestExternalLink", [edit(EXT, "!strings.HasPrefix(raw, \"https://\")", "false"), edit(EXT, "u.Scheme != \"https\" || ", ""), edit(EXT, "rest := strings.TrimPrefix(raw, \"https://\")", "rest := raw[strings.Index(raw, \"://\")+3:]")]),  # drei Schichten
     ("ext-invalid-host", "fenster", "TestDecide", [edit(EXT, "strings.HasSuffix(strings.SplitN(host, \":\", 2)[0], \".invalid\")", "false")]),
     ("ext-zeichen", "fenster", "TestExternalLink", [edit(EXT, "r <= 0x20 || r >= 0x7f || r == '\\\\'", "false && r == 0")]),
     ("layout-leiste", "fenster", "TestLayout", [edit(EXT, "view = Rect{0, bh, w, h - bh}", "view = Rect{0, 0, w, h}")]),
-    ("panel-app-unbekannt", "panel", "TestPanelAppNurBekannteNamen", [edit(MDL, "\t\t\tif n == name {", "\t\t\tif true {")]),
+    ("panel-app-unbekannt", "panel", "TestPanelAppNurBekannteNamen", [edit(MDL, "\t\t\tif n == name {", "\t\t\tif n == name || true {")]),
     ("panel-app-validierung", "panel", "TestPanelAppNurBekannteNamen", [edit(MDL, "if appName.MatchString(n) && !seen[n] {", "if !seen[n] {")]),
 ]
 

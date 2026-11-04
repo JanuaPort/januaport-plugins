@@ -194,6 +194,14 @@ func TestReaderFehlerfaelle(t *testing.T) {
 			t.Fatalf("Vertrag 4 ohne Apps: %v", err)
 		}
 	})
+	t.Run("alterVertragMitApps", func(t *testing.T) {
+		b := newReaderBed(t, false)
+		b.saveManifest(t, Manifest{Apps: &[]App{}, Contract: 4, DeviceID: b.cred.DeviceID, Seq: 8, IssuedAt: "2026-11-04T10:00:00Z", GraceHours: 24, Pins: []Pin{}})
+		r, _ := NewReader(b.root, testCipher{})
+		if _, err := r.Apps(); !errors.Is(err, ErrManifest) {
+			t.Fatalf("Vertrag 4 mit Apps: %v", err)
+		}
+	})
 	t.Run("verweisAlsZugangsdaten", func(t *testing.T) {
 		b := newReaderBed(t, false)
 		outside := filepath.Join(t.TempDir(), "credential")
