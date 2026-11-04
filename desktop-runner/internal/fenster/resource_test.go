@@ -56,7 +56,7 @@ func TestResourceAllowed(t *testing.T) {
 // Schicht 2: Das Netz im Browserprozess ist aus. Das tote Ziel ist kein Port, den ein anderes Konto binden
 // kann (kein Loopback, kein fester Port); DNS ist ebenfalls aus. Exakter Wortlaut, kein Träger darin.
 func TestBrowserArguments(t *testing.T) {
-	const want = `--proxy-server=http://0.0.0.0:0 --proxy-bypass-list=<-loopback> --host-resolver-rules="MAP * ~NOTFOUND"`
+	const want = `--proxy-server=http://0.0.0.0:0 --proxy-bypass-list=<-loopback> --host-resolver-rules="MAP * ~NOTFOUND" --webrtc-ip-handling-policy=disable_non_proxied_udp`
 	if BrowserArguments != want {
 		t.Fatalf("BrowserArguments = %q", BrowserArguments)
 	}
@@ -71,7 +71,7 @@ func TestBrowserArguments(t *testing.T) {
 			t.Fatalf("Browserargumente nennen %q: ein Konto könnte den Port binden", bad)
 		}
 	}
-	for _, must := range []string{"--proxy-server=", "--proxy-bypass-list=<-loopback>", "--host-resolver-rules="} {
+	for _, must := range []string{"--proxy-server=", "--proxy-bypass-list=<-loopback>", "--host-resolver-rules=", "--webrtc-ip-handling-policy=disable_non_proxied_udp"} {
 		if !strings.Contains(BrowserArguments, must) {
 			t.Fatalf("%s fehlt", must)
 		}

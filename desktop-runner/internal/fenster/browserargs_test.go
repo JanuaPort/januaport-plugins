@@ -9,7 +9,7 @@ import (
 // Argumente werden exakt verlangt. Geprüft wird die Wirkung (was der Browser wirklich bekam), nicht eine Liste.
 const goodLine = `"C:/Programme/Edge/msedgewebview2.exe" --type=browser --disable-features=msWebOOUI,Foo ` +
 	`--proxy-server=http://0.0.0.0:0 --proxy-bypass-list=<-loopback> "--host-resolver-rules=MAP * ~NOTFOUND" ` +
-	`--embedded-browser-webview=1`
+	`--webrtc-ip-handling-policy=disable_non_proxied_udp --embedded-browser-webview=1`
 
 func TestBrowserCommandLineProblems(t *testing.T) {
 	if p := BrowserCommandLineProblems(goodLine); len(p) != 0 {
@@ -58,7 +58,7 @@ func TestBrowserCommandLineProblems(t *testing.T) {
 // NoStatePrefetch) wirkten in Runtime 156 nachweislich nicht (Sondenlauf 7) und sind entfernt, ebenso Schalter, die
 // keine Messung trägt.
 func TestBrowserArgumentsNurNetzsperre(t *testing.T) {
-	const net = `--proxy-server=http://0.0.0.0:0 --proxy-bypass-list=<-loopback> --host-resolver-rules="MAP * ~NOTFOUND"`
+	const net = `--proxy-server=http://0.0.0.0:0 --proxy-bypass-list=<-loopback> --host-resolver-rules="MAP * ~NOTFOUND" --webrtc-ip-handling-policy=disable_non_proxied_udp`
 	if strings.Join(NetworkLockArgs(), " ") != net || BrowserArguments != net || strings.Join(BrowserArgs(), " ") != net {
 		t.Fatalf("BrowserArguments = %q", BrowserArguments)
 	}
