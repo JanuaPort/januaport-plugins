@@ -105,6 +105,17 @@ try {
                 Assert-Rejected { Assert-InstalltestEntry $fixtureTask.Name 'absent-synthetic-run' $Fixture -Panel } 'task_principal_invalid'
             } finally { Remove-InstalltestTaskFixture $fixtureTask }
         }
+        task_run_level = {
+            # Trigger and logon type are valid, so only the stated level can reject.
+            $taskXml = {
+                param([string]$Level)
+                "<Task xmlns='http://schemas.microsoft.com/windows/2004/02/mit/task'><Triggers><LogonTrigger/></Triggers>" +
+                "<Principals><Principal><LogonType>InteractiveToken</LogonType>$Level</Principal></Principals></Task>"
+            }
+            Assert-InstalltestTaskPrincipal (& $taskXml '')
+            Assert-InstalltestTaskPrincipal (& $taskXml '<RunLevel>LeastPrivilege</RunLevel>')
+            Assert-Rejected { Assert-InstalltestTaskPrincipal (& $taskXml '<RunLevel>HighestAvailable</RunLevel>') } 'task_principal_invalid'
+        }
         signature_invalid = {
             $unsigned = Join-Path $testRoot 'unsigned.ps1'
             [IO.File]::WriteAllText($unsigned, '# synthetic unsigned script')

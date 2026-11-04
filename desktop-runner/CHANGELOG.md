@@ -13,6 +13,8 @@
   in SHA256SUMS/Provenance. Installtest prüft beide Autostartwege und Argumentfreiheit;
   Invariante 19, Negativtests und L6-Mutationen ergänzt. G-L3 vor Geräte-Rollout:
   native Opt-in-Proben und Bedienfeld-Prozesssonde auf dem Testgerät PASS ohne SKIP.
+- L6 SEC-R4 F1: Installtest hält die RunLevel-Prüfung mit eigenem Fall und Mutante fest;
+  README nennt `install` nach dem Exe-Tausch (H3).
 - L5 SEC-R4 F1: keine Endaufnahme nach lokalem Anhalten. L2-Haltzustand
   unmittelbar davor unter `e.mu` geprüft, Aufnahme/Upload außerhalb der Sperre;
   nach Wandzeitablauf bleibt die Endaufnahme erhalten. Regression und Mutationen

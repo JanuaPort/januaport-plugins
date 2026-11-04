@@ -201,6 +201,17 @@ function Get-InstalltestAutostart {
     return $taskPresent -or $runPresent
 }
 
+function Assert-InstalltestTaskPrincipal {
+    param([xml]$Xml)
+    $ns = [Xml.XmlNamespaceManager]::new($Xml.NameTable)
+    $ns.AddNamespace('t', 'http://schemas.microsoft.com/windows/2004/02/mit/task')
+    # Windows omits the default level on export; only a stated other level is a finding.
+    $runLevel = $Xml.SelectSingleNode('//t:RunLevel', $ns)
+    if ($Xml.SelectSingleNode('//t:LogonType', $ns).InnerText -cne 'InteractiveToken' -or
+        ($runLevel -and $runLevel.InnerText -cne 'LeastPrivilege') -or
+        -not $Xml.SelectSingleNode('//t:LogonTrigger', $ns)) { throw 'task_principal_invalid' }
+}
+
 # Read the actual COM action and HKCU command; both must obey the launch contract.
 function Assert-InstalltestEntry {
     param([string]$TaskName, [string]$RunValue, [string]$Executable, [switch]$Panel)
@@ -222,11 +233,7 @@ function Assert-InstalltestEntry {
             if (-not $Panel -and $arguments -cne 'run') { throw 'runner_arguments' }
             $commands = $xml.SelectNodes('//t:Exec/t:Command', $ns)
             if ($commands.Count -ne 1 -or $commands[0].InnerText -ne $Executable) { throw 'task_command_invalid' }
-            # Windows omits the default level on export; only a stated other level is a finding.
-            $runLevel = $xml.SelectSingleNode('//t:RunLevel', $ns)
-            if ($xml.SelectSingleNode('//t:LogonType', $ns).InnerText -cne 'InteractiveToken' -or
-                ($runLevel -and $runLevel.InnerText -cne 'LeastPrivilege') -or
-                -not $xml.SelectSingleNode('//t:LogonTrigger', $ns)) { throw 'task_principal_invalid' }
+            Assert-InstalltestTaskPrincipal $xml
         }
     } finally {
         foreach ($com in @($tasks, $folder, $service)) { [Runtime.InteropServices.Marshal]::FinalReleaseComObject($com) | Out-Null }
