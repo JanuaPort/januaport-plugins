@@ -1,0 +1,19 @@
+//go:build windows
+// +build windows
+
+package edge
+
+import (
+	"github.com/januaport/januaport-plugins/desktop-runner/internal/edge/w32"
+)
+
+func (e *Chromium) SetSize(bounds w32.Rect) {
+	if e.controller == nil {
+		return
+	}
+
+	err := e.controller.PutBounds(bounds)
+	if err != nil {
+		e.errorCallback(err)
+	}
+}
