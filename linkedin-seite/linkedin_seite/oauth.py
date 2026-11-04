@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import re
+import threading
 import urllib.request
 import urllib.error
 from urllib.parse import urlencode
@@ -173,22 +174,51 @@ def token_result(raw, now, original_refresh_expiry=None, scope_required=False):
 
 
 class Tokens:
-    def __init__(self, data, transport, now=None):
+    """THE token state of the service (#1237, 0.3.1). Lives in the server process, nowhere else.
+
+    Reading and writing share this one object: two on one refresh token would race. The caller
+    passes its own transport, so quota and HTTP limits stay with the path that needed the renewal.
+    The lock spans check, exchange and update: whoever waited finds the renewed token and does not
+    exchange again. It is a thread lock on purpose. access() runs in a thread (asyncio.to_thread),
+    so a cancelled request neither releases it nor stops the exchange, and the result lands here
+    even if the worker that asked was killed. Never call access() on the event loop.
+    """
+
+    def __init__(self, data, now=None):
         self.data = validate_identity(data)
-        self.transport = transport
         self.now = now or (lambda: datetime.now(timezone.utc))
+        self.lock = threading.Lock()
+
+    def warning(self):
+        return warning(self.data)
+
+    def access(self, transport):
+        with self.lock:
+            now = self.now()
+            expiry = timestamp(self.data['access_expires_at'])
+            refresh = self.data.get(s.REFRESH_TOKEN)
+            refresh_expiry = timestamp(self.data['refresh_expires_at']) if refresh else None
+            if refresh and now >= expiry - timedelta(minutes=5) and now < refresh_expiry:
+                raw = transport.token({s.GRANT_TYPE: s.REFRESH_TOKEN, s.REFRESH_TOKEN: refresh,
+                                       s.CLIENT_ID: self.data[s.CLIENT_ID], s.CLIENT_SECRET: self.data[s.CLIENT_SECRET]})
+                update = token_result(raw, now, refresh_expiry)
+                # RAM only, source file untouched. One step: warning() reads without the lock.
+                self.data = {**self.data, **update}
+                expiry = timestamp(self.data['access_expires_at'])
+            if now >= expiry:
+                raise ReportError(503, 'token_abgelaufen')
+            return self.data[s.ACCESS_TOKEN]
+
+
+class TokenClient:
+    """What a worker or job process holds instead of a token: it asks the server process.
+
+    Only the access token crosses the pipe, per request and never cached. Refresh token and client
+    secret stay in the server process, and a renewed token reaches every process at once.
+    """
+
+    def __init__(self, ask):
+        self.ask = ask
 
     def access(self):
-        now = self.now()
-        expiry = timestamp(self.data['access_expires_at'])
-        refresh = self.data.get(s.REFRESH_TOKEN)
-        refresh_expiry = timestamp(self.data['refresh_expires_at']) if refresh else None
-        if refresh and now >= expiry - timedelta(minutes=5) and now < refresh_expiry:
-            raw = self.transport.token({s.GRANT_TYPE: s.REFRESH_TOKEN, s.REFRESH_TOKEN: refresh,
-                                       s.CLIENT_ID: self.data[s.CLIENT_ID], s.CLIENT_SECRET: self.data[s.CLIENT_SECRET]})
-            update = token_result(raw, now, refresh_expiry)
-            self.data.update(update)  # RAM only; source file remains untouched
-            expiry = timestamp(self.data['access_expires_at'])
-        if now >= expiry:
-            raise ReportError(503, 'token_abgelaufen')
-        return self.data[s.ACCESS_TOKEN]
+        return self.ask('token')[1]

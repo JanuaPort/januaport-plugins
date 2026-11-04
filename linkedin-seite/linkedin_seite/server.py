@@ -61,6 +61,17 @@ def load_write_side(cfg, token_path=GATEWAY_TOKEN_PATH):
     return token, "an"
 
 
+def build_pools(cfg, identity_path=IDENTITY_PATH, token_path=GATEWAY_TOKEN_PATH):
+    """Both pools on ONE Tokens object (#1237): two on one refresh token would race."""
+    from .oauth import Tokens, load_identity
+    from .post_pool import WritePool
+
+    tokens = Tokens(load_identity(identity_path))
+    token, reason = load_write_side(cfg, token_path)
+    LOG.info("schreiben=%s", reason)
+    return WorkerPool(cfg, tokens), WritePool(cfg, tokens, token) if token else None
+
+
 def check_bridge(request, key):
     header = request.headers.getall("Authorization", [])
     if len(header) != 1:
@@ -224,13 +235,7 @@ def serve():
     key = load_runtime_files()
     # Exact plugin-network IPv4 is provisioned by the operator, never 0.0.0.0.
     bind = bind_ip(os.environ.get("LINKEDIN_SEITE_BIND_IP", ""))
-    from .oauth import load_identity
-    identity = load_identity(IDENTITY_PATH)
-    pool = WorkerPool(cfg, identity)
-    from .post_pool import WritePool
-    token, reason = load_write_side(cfg)
-    LOG.info("schreiben=%s", reason)
-    write_pool = WritePool(cfg, identity, token) if token else None
+    pool, write_pool = build_pools(cfg)
     from .safe_http import serve_app
 
     asyncio.run(serve_app(create_app(cfg, key, pool, write_pool), bind))

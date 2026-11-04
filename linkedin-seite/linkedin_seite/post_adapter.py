@@ -17,7 +17,7 @@ from . import redaktion as r
 from . import source_contract as s
 from .domain import ReportError, strict_json
 from .gateway import GatewayClient
-from .oauth import MAX_SOURCE, Tokens, Transport
+from .oauth import MAX_SOURCE, Transport
 
 API_TIMEOUT = 18
 UPLOAD_TIMEOUT = 120
@@ -69,12 +69,12 @@ def value_of(data, key, pattern=None):
 
 
 class PostAdapter:
-    def __init__(self, cfg, identity, gateway_token, link, *, transport_factory=WriteTransport,
+    def __init__(self, cfg, tokens, gateway_token, link, *, transport_factory=WriteTransport,
                  gateway_factory=GatewayClient, sleep=time.sleep, monotonic=time.monotonic):
         self.cfg, self.w = cfg, cfg.schreiben
         self.link = link
         self.transport = transport_factory(link.permit_http)
-        self.tokens = Tokens(identity, self.transport)
+        self.tokens = tokens  # anything with access(): in a job the pipe to the server process
         self.gateway = gateway_factory(self.w, gateway_token)
         self.sleep, self.monotonic = sleep, monotonic
         self.begonnen = False
