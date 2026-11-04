@@ -15,7 +15,7 @@ import (
 )
 
 func appHTML(body string) []byte {
-	return []byte("<!doctype html><html><head><meta charset=\"utf-8\">" + fenster.CSPMeta() + "<title>t</title><script src=\"app.js\"></script></head><body>" + body + "</body></html>")
+	return []byte("<!doctype html><html><head><meta charset=\"utf-8\"><title>t</title><script src=\"app.js\"></script></head><body>" + body + "</body></html>")
 }
 
 func goodApp() map[string][]byte {
@@ -166,13 +166,13 @@ func TestAppPaketAblehnungenLegenNichtsAb(t *testing.T) {
 		{"unbekannteEndung", with(func(f map[string][]byte) { f["tool.exe"] = []byte("MZ") }), ""},
 		{"wasm", with(func(f map[string][]byte) { f["m.wasm"] = []byte("\x00asm") }), ""},
 		{"inlineSkript", with(func(f map[string][]byte) {
-			f["index.html"] = []byte("<html><head>" + fenster.CSPMeta() + "</head><body><script>alert(1)</script></body></html>")
+			f["index.html"] = []byte("<html><head></head><body><script>alert(1)</script></body></html>")
 		}), ""},
 		{"onClick", with(func(f map[string][]byte) {
-			f["index.html"] = []byte("<html><head>" + fenster.CSPMeta() + "</head><body><a onclick=\"x()\">a</a></body></html>")
+			f["index.html"] = []byte("<html><head></head><body><a onclick=\"x()\">a</a></body></html>")
 		}), ""},
 		{"javascriptLink", with(func(f map[string][]byte) {
-			f["index.html"] = []byte("<html><head>" + fenster.CSPMeta() + "</head><body><a href=\"JaVa\tscript:x()\">a</a></body></html>")
+			f["index.html"] = []byte("<html><head></head><body><a href=\"JaVa\tscript:x()\">a</a></body></html>")
 		}), ""},
 		{"geheimnisImSkript", with(func(f map[string][]byte) { f["app.js"] = []byte("const t='jnptpc_ABCDEFGH.IJKLMNOP'") }), ""},
 		{"privaterSchluessel", with(func(f map[string][]byte) { f["app.js"] = []byte("-----BEGIN PRIVATE KEY-----") }), ""},
@@ -238,63 +238,191 @@ func flip(b []byte, i int) []byte {
 	return c
 }
 
-// Ladeprüfung: Das CSP steht als Meta-Element in jeder HTML-Datei (kein Header
-// am virtuellen Host), exakt als Literal und vor allem, was Ressourcen lädt.
-func TestAppLadepruefungCSPLiteral(t *testing.T) {
+// Das Literal setzt der Läufer beim Ablegen selbst ein (LEAD c-6637272308): als erstes Element in
+// <head>, nach der Paketprüfung und vor dem Siegel. Pakete mit eigener CSP-Meta oder ohne sauberes
+// <head> werden abgewiesen.
+func TestAppCSPWirdEingesetzt(t *testing.T) {
 	csp := fenster.CSPMeta()
 	for _, tc := range []struct {
-		name, html string
-		ok         bool
+		name, html, want string
 	}{
-		{"exakt", "<!doctype html><html><head><meta charset=\"utf-8\">" + csp + "<script src=\"a.js\"></script></head><body></body></html>", true},
-		{"ohneHeadTags", csp + "<p>x</p>", true},
-		{"grossKleinAttribut", `<html><head><META HTTP-EQUIV="content-security-policy" content="` + fenster.CSP + `"></head></html>`, true},
-		{"titelDavor", "<html><head><title>x</title>" + csp + "</head></html>", true},
-		{"fehlt", "<html><head><title>x</title></head><body></body></html>", false},
-		{"nurImKommentar", "<html><head><!-- " + csp + " --></head></html>", false},
-		{"nurImText", "<html><body><p>" + strings.ReplaceAll(csp, "<", "&lt;") + "</p></body></html>", false},
-		{"gelockert", `<html><head><meta http-equiv="Content-Security-Policy" content="` + fenster.CSP + `; script-src 'unsafe-inline'"></head></html>`, false},
-		{"anderesCSP", `<html><head><meta http-equiv="Content-Security-Policy" content="default-src *"></head></html>`, false},
-		{"leereContent", `<html><head><meta http-equiv="Content-Security-Policy" content=""></head></html>`, false},
-		{"leerzeichenAmEnde", `<html><head><meta http-equiv="Content-Security-Policy" content="` + fenster.CSP + ` "></head></html>`, false},
-		{"nameStattHttpEquiv", `<html><head><meta name="Content-Security-Policy" content="` + fenster.CSP + `"></head></html>`, false},
-		{"skriptVorCSP", "<html><head><script src=\"a.js\"></script>" + csp + "</head></html>", false},
-		{"bildVorCSP", "<html><head><link rel=\"stylesheet\" href=\"a.css\">" + csp + "</head></html>", false},
-		{"bodyVorCSP", "<html><body>" + csp + "</body></html>", false},
-		{"zweitesCSP", "<html><head>" + csp + csp + "</head></html>", false},
-		{"zweitesAnderesCSP", `<html><head>` + csp + `<meta http-equiv="Content-Security-Policy" content="default-src *"></head></html>`, false},
-		{"baseVorCSP", `<html><head><base href="https://evil.example/">` + csp + `</head></html>`, false},
-		{"leer", "", false},
+		{"einfach", "<html><head><title>x</title></head><body></body></html>", "<html><head>" + csp + "<title>x</title></head><body></body></html>"},
+		{"mitDoctype", "<!doctype html><html><head><meta charset=\"utf-8\"></head></html>", "<!doctype html><html><head>" + csp + "<meta charset=\"utf-8\"></head></html>"},
+		{"headMitAttribut", "<html><head lang=\"de\"><title>x</title></head></html>", "<html><head lang=\"de\">" + csp + "<title>x</title></head></html>"},
+		{"grossgeschrieben", "<HTML><HEAD><TITLE>x</TITLE></HEAD></HTML>", "<HTML><HEAD>" + csp + "<TITLE>x</TITLE></HEAD></HTML>"},
+		{"kommentarDavor", "<!-- c --><html>\n<head>\n<title>x</title></head></html>", "<!-- c --><html>\n<head>" + csp + "\n<title>x</title></head></html>"},
+		{"ohneHtmlTag", "<head><title>x</title></head><body></body>", "<head>" + csp + "<title>x</title></head><body></body>"},
+		{"umlaute", "<html><head><title>Grüße</title></head></html>", "<html><head>" + csp + "<title>Grüße</title></head></html>"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := hasExactCSPMeta([]byte(tc.html)); got != tc.ok {
-				t.Fatalf("hasExactCSPMeta = %v", got)
+			got, err := injectCSP([]byte(tc.html))
+			if err != nil || string(got) != tc.want {
+				t.Fatalf("injectCSP = %q, %v", got, err)
 			}
-			// Dieselbe Entscheidung fällt in der Ladeprüfung, nicht nur im Hilfsprüfer.
-			files := goodApp()
-			files["index.html"] = []byte(tc.html)
-			app, raw := buildApp(t, files, "")
-			if _, err := loadAppPackage(raw, app); (err == nil) != tc.ok {
-				t.Fatalf("Ladeprüfung: err = %v", err)
+			if !leadingCSP(got) {
+				t.Fatal("eingesetztes Literal steht nicht an erster Stelle")
 			}
 		})
 	}
 }
 
-// Jede HTML-Datei, nicht nur index.html, braucht das Literal.
-func TestAppLadepruefungCSPJedeHTMLDatei(t *testing.T) {
+func TestAppCSPAbweisungen(t *testing.T) {
+	csp := fenster.CSPMeta()
+	for name, html := range map[string]string{
+		"eigenesCSP":              "<html><head>" + csp + "</head></html>",
+		"eigenesCSPWeiter":        "<html><head><title>x</title>" + csp + "</head></html>",
+		"anderesCSP":              `<html><head><meta http-equiv="Content-Security-Policy" content="default-src *"></head></html>`,
+		"gelockertesCSP":          `<html><head><meta http-equiv="Content-Security-Policy" content="` + fenster.CSP + `; script-src 'unsafe-inline'"></head></html>`,
+		"leereContentCSP":         `<html><head><meta http-equiv="Content-Security-Policy" content=""></head></html>`,
+		"grossKleinCSP":           `<html><head><META HTTP-EQUIV="content-security-policy" content="x"></head></html>`,
+		"cspImBody":               "<html><head></head><body>" + csp + "</body></html>",
+		"keinHead":                "<html><body><p>x</p></body></html>",
+		"nurText":                 "hallo",
+		"leer":                    "",
+		"headNachBody":            "<html><body></body><head></head></html>",
+		"zweitesHead":             "<html><head></head><head></head></html>",
+		"selbstschliessendesHead": "<html><head/><body></body></html>",
+		"skriptVorHead":           "<html><script src=\"a.js\"></script><head></head></html>",
+		"metaVorHead":             "<html><meta charset=\"utf-8\"><head></head></html>",
+		"textVorHead":             "<html>Text<head></head></html>",
+		"headNurImKommentar":      "<html><!-- <head> --><body></body></html>",
+		"headImTitel":             "<html><title><head></title><body></body></html>",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if out, err := injectCSP([]byte(html)); err == nil {
+				t.Fatalf("angenommen: %q", out)
+			}
+			files := goodApp()
+			files["index.html"] = []byte(html)
+			app, raw := buildApp(t, files, "")
+			if _, err := loadAppPackage(raw, app); err == nil {
+				t.Fatal("Ladeprüfung nahm HTML an")
+			}
+		})
+	}
+}
+
+func TestLeadingCSP(t *testing.T) {
+	csp := fenster.CSPMeta()
+	for _, tc := range []struct {
+		name, html string
+		ok         bool
+	}{
+		{"erstes", "<html><head>" + csp + "<title>x</title></head></html>", true},
+		{"nichtErstes", "<html><head><title>x</title>" + csp + "</head></html>", false},
+		{"fehlt", "<html><head><title>x</title></head></html>", false},
+		{"zweimal", "<html><head>" + csp + csp + "</head></html>", false},
+		{"zusaetzlichesAnderes", `<html><head>` + csp + `<meta http-equiv="Content-Security-Policy" content="default-src *"></head></html>`, false},
+		{"abgeaendertesLiteral", `<html><head><meta http-equiv="Content-Security-Policy" content="` + fenster.CSP + `;"></head></html>`, false},
+		{"keinHead", "<html><body>" + csp + "</body></html>", false},
+		{"leer", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := leadingCSP([]byte(tc.html)); got != tc.ok {
+				t.Fatalf("leadingCSP = %v", got)
+			}
+		})
+	}
+}
+
+// Jede HTML-Datei, nicht nur index.html, bekommt das Literal; eine ohne sauberes <head> kippt das Paket.
+func TestAppCSPJedeHTMLDatei(t *testing.T) {
 	store, st := newStore(t)
 	files := goodApp()
-	files["seite2.html"] = []byte("<html><head><title>x</title></head><body></body></html>")
+	files["seite2.html"] = []byte("<html><body></body></html>")
 	app, raw := buildApp(t, files, "")
 	if err := store.Prepare(raw, app); err == nil {
-		t.Fatal("zweite HTML-Datei ohne CSP angenommen")
+		t.Fatal("zweite HTML-Datei ohne <head> angenommen")
 	}
 	assertNichtsAbgelegt(t, st, app)
 	files["seite2.html"] = appHTML("")
+	files["unter/seite3.html"] = appHTML("")
 	app, raw = buildApp(t, files, "")
 	if err := store.Prepare(raw, app); err != nil {
 		t.Fatal(err)
+	}
+	dir, err := store.Open(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"index.html", "seite2.html", "unter/seite3.html"} {
+		b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(name)))
+		if err != nil || !leadingCSP(b) || strings.Count(string(b), fenster.CSPMeta()) != 1 {
+			t.Fatalf("%s ohne genau ein führendes Literal: %v", name, err)
+		}
+	}
+	// Nur HTML wird verändert; andere Dateien bleiben bytegleich zum Paket.
+	js, _ := os.ReadFile(filepath.Join(dir, "app.js"))
+	if string(js) != "console.log(1)" {
+		t.Fatal("Nicht-HTML verändert")
+	}
+}
+
+// Das Siegel deckt die veränderten Bytes, nicht die Paketbytes.
+func TestAppSiegelDecktEingesetztesLiteral(t *testing.T) {
+	store, st := newStore(t)
+	app, raw := buildApp(t, goodApp(), "")
+	if err := store.Prepare(raw, app); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := store.Open(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seal appSeal
+	if err = st.Load(sealName(app), &seal); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "index.html"))
+	found := false
+	for _, f := range seal.Files {
+		if f.Path != "index.html" {
+			continue
+		}
+		found = true
+		if f.SHA256 != sum(b) || f.SHA256 == sum(goodApp()["index.html"]) {
+			t.Fatal("Siegel deckt nicht die veränderten Bytes")
+		}
+	}
+	if !found {
+		t.Fatal("index.html nicht versiegelt")
+	}
+}
+
+// Auch bei einem neu berechneten, in sich stimmigen Siegel (Angreifer mit Zugriff auf den
+// Zustand) prüft Open, dass genau das Literal an erster Stelle steht.
+func TestAppOpenPrueftFuehrendesLiteralTrotzNeuemSiegel(t *testing.T) {
+	store, st := newStore(t)
+	app, raw := buildApp(t, goodApp(), "")
+	if err := store.Prepare(raw, app); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := store.Open(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	orig, _ := os.ReadFile(filepath.Join(dir, "index.html"))
+	without := strings.Replace(string(orig), fenster.CSPMeta(), "", 1)
+	for name, mod := range map[string]string{
+		"literalEntfernt":   without,
+		"literalVerschoben": strings.Replace(without, "</head>", fenster.CSPMeta()+"</head>", 1),
+		"literalGelockert":  strings.Replace(string(orig), "connect-src 'none'", "connect-src *", 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte(mod), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			files, err := Snapshot(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = st.Save(sealName(app), appSeal{Name: app.Name, Commit: app.Commit, Files: files}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.Open(app); err == nil {
+				t.Fatal("Open akzeptiert HTML ohne führendes Literal")
+			}
+		})
 	}
 }
 
