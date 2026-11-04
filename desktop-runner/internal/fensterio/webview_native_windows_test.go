@@ -86,8 +86,9 @@ type probeMsg struct {
 // probeGateway zeichnet die Werkzeugaufrufe der Seite auf: Die Seite meldet ihre Beobachtungen als
 // Werkzeug "report" an die Brücke; so kommen sie durch genau den Weg, den sie später im Betrieb nehmen.
 type probeGateway struct {
-	mu     sync.Mutex
-	events []string
+	mu        sync.Mutex
+	events    []string
+	versteckt int // Seiten, die visibilityState anders als "visible" gemeldet haben (die WebView war nicht sichtbar)
 }
 
 func (g *probeGateway) Werkzeuge(context.Context) (json.RawMessage, error) {
@@ -95,10 +96,19 @@ func (g *probeGateway) Werkzeuge(context.Context) (json.RawMessage, error) {
 }
 func (g *probeGateway) Werkzeug(_ context.Context, name string, args json.RawMessage) (json.RawMessage, error) {
 	g.mu.Lock()
+	if name == "seite_zustand" && !strings.Contains(string(args), `"sichtbar":"visible"`) {
+		g.versteckt++
+	}
 	g.events = append(g.events, name+" "+string(args))
 	g.mu.Unlock()
 	return json.RawMessage(`{"ok":true}`), nil
 }
+func (g *probeGateway) hiddenPages() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.versteckt
+}
+
 func (g *probeGateway) reset() {
 	g.mu.Lock()
 	g.events = nil
@@ -365,7 +375,13 @@ func (b *probeBed) run(t *testing.T, frist time.Duration, body func(t *testing.T
 			return
 		}
 		defer leave()
+		hiddenBefore := b.gw.hiddenPages()
 		defer func() {
+			// Für alle Sonden gilt: Die Seite war sichtbar. Sonst sagt kein Ergebnis etwas (Zeitgeber gedrosselt, Eingabe
+			// kommt nicht an, Berechtigungen werden vertagt).
+			if n := b.gw.hiddenPages() - hiddenBefore; n > 0 {
+				t.Errorf("%d Seite(n) meldeten visibilityState != visible: Die WebView war nicht sichtbar geschaltet", n)
+			}
 			if t.Failed() {
 				b.dump(t)
 			}
@@ -392,6 +408,7 @@ const probeJS = `
 function send(name, data) { window.chrome.webview.postMessage(JSON.stringify({id: String(Math.random()).slice(2), befehl: "werkzeug", args: {name: name, arguments: data}})); }
 window.send = send;
 send("js_ok", {seite: location.pathname});
+send("seite_zustand", {sichtbar: document.visibilityState, fokus: document.hasFocus()});
 `
 
 // Kontrolle für alle: die Seite lädt, Skript läuft, die Brücke antwortet (auch mit Doppelbindestrich im Host).
@@ -654,7 +671,6 @@ func TestWindowsWebViewBerechtigungenAbgelehnt(t *testing.T) {
 	// Fläche, im Sekundentakt); kommt keiner, ist der Fall rot ("kein Klick, unbelegt"), nie grün.
 	const clickJS = `
 var geklickt = false;
-send("seite_zustand", {sichtbar: document.visibilityState, fokus: document.hasFocus()});
 window.addEventListener("focus", function(){ send("fenster_fokus", {ereignis: "focus"}); });
 window.addEventListener("blur", function(){ send("fenster_fokus", {ereignis: "blur"}); });
 function beiAktivierung(start) {
@@ -1332,4 +1348,62 @@ func forceForeground(t *testing.T, hwnd uintptr) {
 func isForeground(hwnd uintptr) bool {
 	h, _, _ := pGetForeground.Call()
 	return h == hwnd
+}
+
+// Pixel-Beleg (Lauf 12): Nicht nur der Zustand der Seite, auch das Bild. Die Seite füllt die Fläche mit einer großen
+// Farbe, die Sonde liest im Bildschirmbild die Mitte der Fläche. Zwei verschiedene Farben als Kontrolle, dass die
+// Sonde Änderungen sieht (kein Zufallstreffer auf Weiß oder die Fensterfarbe).
+func TestWindowsWebViewSichtbarMitFarbe(t *testing.T) {
+	b := newProbeBed(t)
+	for _, c := range []struct {
+		name     string
+		css      string
+		r, g, b8 uint8
+	}{
+		{"magenta", "#ff00ff", 255, 0, 255},
+		{"gruen", "#00aa00", 0, 170, 0},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			b.t = t
+			b.run(t, probeFrist, func(t *testing.T) {
+				s, _, _ := b.openProbe("probe", map[string]string{
+					"index.html": probePage(`<script src="probe.js"></script><link rel="stylesheet" href="farbe.css">`, `<script src="gemalt.js"></script>`),
+					"farbe.css":  "html, body { margin: 0; height: 100%; background: " + c.css + "; }",
+					"gemalt.js":  `requestAnimationFrame(function(){ requestAnimationFrame(function(){ send("gemalt", {}); }); });`,
+					"probe.js":   probeJS,
+				}, nil)
+				forceForeground(t, s.hwnd)
+				if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("gemalt") }) {
+					t.Fatal("die Seite hat nicht gemalt (requestAnimationFrame lief nie; sichtbar?)")
+				}
+				pump(t, s, time.Second, nil) // das Bild auf den Schirm kommen lassen
+				x, y := s.viewCenterScreen()
+				got := screenPixel(x, y)
+				r, g, bl := uint8(got&0xff), uint8((got>>8)&0xff), uint8((got>>16)&0xff)
+				t.Logf("Pixel in der Mitte der Fläche (%d,%d): RGB(%d,%d,%d), erwartet RGB(%d,%d,%d); Vordergrund: %v", x, y, r, g, bl, c.r, c.g, c.b8, isForeground(s.hwnd))
+				near := func(a, e uint8) bool { return int(a)-int(e) < 12 && int(e)-int(a) < 12 }
+				if !near(r, c.r) || !near(g, c.g) || !near(bl, c.b8) {
+					t.Fatalf("Die Farbe %s ist nicht im Bild: RGB(%d,%d,%d)", c.name, r, g, bl)
+				}
+			})
+		})
+	}
+}
+
+var (
+	gdi32      = windows.NewLazySystemDLL("gdi32.dll")
+	pGetPixel  = gdi32.NewProc("GetPixel")
+	pGetDC     = user32.NewProc("GetDC")
+	pReleaseDC = user32.NewProc("ReleaseDC")
+)
+
+// screenPixel liest die Farbe (COLORREF 0x00BBGGRR) eines Bildschirmpunkts; 0xFFFFFFFF, wenn er nicht lesbar ist.
+func screenPixel(x, y int32) uint32 {
+	dc, _, _ := pGetDC.Call(0)
+	if dc == 0 {
+		return 0xFFFFFFFF
+	}
+	defer pReleaseDC.Call(0, dc)
+	c, _, _ := pGetPixel.Call(dc, uintptr(x), uintptr(y))
+	return uint32(c)
 }

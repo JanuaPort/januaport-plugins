@@ -527,6 +527,15 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     (`s.chromium.Focus`, MoveFocus programmatisch; `TestSurfaceGibtDerSeiteDenFokus`), sonst landet Tastatureingabe nicht
     in der Seite, bis jemand hineinklickt (auch für Nutzer ein Mangel, nicht nur für die Sonde). Die Geolocation-Sonde
     nennt zusätzlich den Zustand des Dienstes `lfsvc` und die Standort-Einwilligung.
+    **Lauf 12, echter Produktfehler:** Die WebView wurde nie sichtbar geschaltet (`seite_zustand` meldete `hidden` in allen Fällen,
+    Klicks erreichten die Seite nicht, das Fenster blieb weiß). Der Schritt `show` ruft jetzt `Chromium.SetVisible(true)`
+    (`PutIsVisible`) vor dem Fokus auf, bei Fehler öffnet das Fenster nicht; `WM_SIZE` schaltet beim Minimieren unsichtbar und
+    beim Wiederherstellen sichtbar (`TestSurfaceSchaltetDieWebViewSichtbar`). Für alle Sonden gilt: Jede Seite meldet
+    `visibilityState` über `probe.js`, sonst ist die Sonde rot; `TestWindowsWebViewSichtbarMitFarbe` liest dazu im
+    Bildschirmbild die Mitte der Fläche (zwei Farben als Kontrolle). Gefährdet durch `hidden` waren: Berechtigungen
+    (Chromium vertagt Abfragen für unsichtbare Seiten, passt zur hängenden Geolocation), die Vektoren des spekulativen
+    Ladens (Prerender, Prefetch und Preconnect hängen am Zustand der Seite), Zeitgeber (auf 1 s gedrosselt),
+    Eingabe und `hasFocus`, der Prozessbaum (andere Renderer-Prozesse). Das sind die Fälle, die nach dem Fix neu zu fahren sind.
     Lauf 11: `WM_SETFOCUS` kam während `Close` und traf den geleerten Controller (`Chromium.Focus`); im Bedienfeld hätte das den
     Prozess samt Halt beendet. Jetzt prüft jede Methode der Kopie, die `e.controller` oder `e.webview` aufruft, das Feld
     vorher auf nil (`TestEdgeMethodenPruefenControllerUndWebviewAufNil`); ungenutzte Methoden ohne Prüfung sind entfernt.

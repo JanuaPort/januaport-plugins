@@ -331,6 +331,10 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 		{"show", func() error {
 			s.layout()
 			pShow.Call(s.hwnd, 1)
+			// Ohne sichtbare WebView meldet die Seite "hidden", drosselt Zeitgeber und bekommt keine Eingabe (Lauf 12).
+			if err := s.chromium.SetVisible(true); err != nil {
+				return ErrWebView
+			}
 			// Das Bedienfeld hat gerade die Eingabe (Klick auf den Menüeintrag) und darf das neue Fenster nach vorn holen;
 			// ohne aktives Fenster hat die Seite keinen Fokus. Danach gehört der Fokus der WebView.
 			pForeground.Call(s.hwnd)
@@ -402,13 +406,20 @@ func (s *Surface) traceGeometry() {
 	if s.cfg.Probe == nil {
 		return
 	}
-	var win, client winRect
+	var win winRect
 	pWindowRect.Call(s.hwnd, uintptr(unsafe.Pointer(&win)))
+	x, y := s.viewCenterScreen()
+	s.trace("Fenster", fmt.Sprintf("rect=(%d,%d,%d,%d) flaeche_mitte_bildschirm=(%d,%d)", win.Left, win.Top, win.Right, win.Bottom, x, y))
+}
+
+// viewCenterScreen liefert die Mitte der Fläche der WebView in Bildschirmkoordinaten (Ziel für Klick und Pixelprobe).
+func (s *Surface) viewCenterScreen() (x, y int32) {
+	var client winRect
 	pClientRect.Call(s.hwnd, uintptr(unsafe.Pointer(&client)))
 	view, _ := fenster.Layout(int(client.Right-client.Left), int(client.Bottom-client.Top), s.o.TestDevice)
 	pt := struct{ X, Y int32 }{int32(view.X + view.W/2), int32(view.Y + view.H/2)}
 	pToScreen.Call(s.hwnd, uintptr(unsafe.Pointer(&pt)))
-	s.trace("Fenster", fmt.Sprintf("rect=(%d,%d,%d,%d) flaeche_mitte_bildschirm=(%d,%d)", win.Left, win.Top, win.Right, win.Bottom, pt.X, pt.Y))
+	return pt.X, pt.Y
 }
 
 // traceMessage hält die Eingabenachrichten des Fensters fest, die für Klick und Fokus zählen: Ein Klick in die WebView
@@ -651,6 +662,8 @@ func surfaceProc(hwnd, msg, wp, lp uintptr) uintptr {
 		switch msg {
 		case wmSize:
 			if s.view != nil {
+				// SIZE_MINIMIZED (1): unsichtbar schalten, sonst sichtbar; ein Fehler lässt sich hier nicht mehr melden.
+				_ = s.chromium.SetVisible(wp != 1)
 				s.layout()
 			}
 			return 0

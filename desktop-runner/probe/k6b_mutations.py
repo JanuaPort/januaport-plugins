@@ -257,6 +257,11 @@ CASES = [
     ("vordergrund-beim-anzeigen-fehlt", "fensterio", "TestSurfaceGibtDerSeiteDenFokus", [edit(WVS, "\t\t\tpForeground.Call(s.hwnd)\n\t\t\ts.chromium.Focus()\n\t\t\ts.traceGeometry()", "\t\t\ts.chromium.Focus()\n\t\t\ts.traceGeometry()")]),
     ("edge-focus-ohne-nil", "fensterio", "TestEdgeMethodenPruefenControllerUndWebviewAufNil", [edit(ECH, "\tif e.controller == nil {\n\t\treturn\n\t}\n\terr := e.controller.MoveFocus(", "\terr := e.controller.MoveFocus(")]),
     ("edge-getsettings-ohne-nil", "fensterio", "TestEdgeMethodenPruefenControllerUndWebviewAufNil", [edit(ECH, "\tif e.webview == nil {\n\t\treturn nil, errors.New(\"keine WebView\")\n\t}\n", "")]),
+    # Lauf 12: die WebView muss sichtbar sein
+    ("sichtbar-schalten-fehlt", "fensterio", "TestSurfaceSchaltetDieWebViewSichtbar", [edit(WVS, "\t\t\tif err := s.chromium.SetVisible(true); err != nil {\n\t\t\t\treturn ErrWebView\n\t\t\t}\n", "")]),
+    ("sichtbar-fehler-ignoriert", "fensterio", "TestSurfaceSchaltetDieWebViewSichtbar", [edit(WVS, "\t\t\tif err := s.chromium.SetVisible(true); err != nil {\n\t\t\t\treturn ErrWebView\n\t\t\t}", "\t\t\tif err := s.chromium.SetVisible(true); err != nil {\n\t\t\t\t_ = err\n\t\t\t}")]),
+    ("sichtbar-nach-fokus", "fensterio", "TestSurfaceSchaltetDieWebViewSichtbar", [edit(WVS, "\t\t\tif err := s.chromium.SetVisible(true); err != nil {\n\t\t\t\treturn ErrWebView\n\t\t\t}\n", ""), edit(WVS, "\t\t\ts.chromium.Focus()\n\t\t\ts.traceGeometry()", "\t\t\ts.chromium.Focus()\n\t\t\tif err := s.chromium.SetVisible(true); err != nil {\n\t\t\t\treturn ErrWebView\n\t\t\t}\n\t\t\ts.traceGeometry()")]),
+    ("minimieren-ignoriert", "fensterio", "TestSurfaceSchaltetDieWebViewSichtbar", [edit(WVS, "\t\t\t\t_ = s.chromium.SetVisible(wp != 1)\n", "")]),
 ]
 
 

@@ -490,6 +490,15 @@ func (e *Chromium) NotifyParentWindowPositionChanged() error {
 	return e.controller.NotifyParentWindowPositionChanged()
 }
 
+// SetVisible schaltet die WebView sichtbar oder unsichtbar (Minimieren). Ohne sichtbare WebView meldet die Seite
+// visibilityState "hidden", drosselt Zeitgeber und bekommt keine Eingabe.
+func (e *Chromium) SetVisible(visible bool) error {
+	if e.controller == nil {
+		return errors.New("kein Controller")
+	}
+	return e.controller.PutIsVisible(visible)
+}
+
 func (e *Chromium) Focus() {
 	// WM_SETFOCUS kommt auch während Close, der Controller ist dann schon weg.
 	if e.controller == nil {
