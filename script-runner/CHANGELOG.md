@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.1 — 2026-11-04 (JanuaPort/januaport#1299, #1296)
+
 - #1299: Eine fehlende Speicher-Pinliste erzeugt INFO nur beim ersten Fehlen
   und bei Zustandswechseln. Andere Lese-, Signatur- und Hashfehler warnen je
   Durchlauf; Entzug der Freigaben und Fünf-Sekunden-Takt bleiben unverändert.

@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-### 0.4.0 in Arbeit
+## 0.4.0 — 2026-11-04 (JanuaPort/januaport#1240)
 
 - L6: gemeinsame Installation von Läufer und Bedienfeld aus demselben Ordner;
   zweite Anmelde-Aufgabe mit HKCU-Run-Rückfall, Bedienfeld ohne Argumente.
