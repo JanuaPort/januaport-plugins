@@ -15,11 +15,26 @@ import (
 	"testing"
 )
 
-// Named exceptions; intentionally empty in L4. K6b must name its one exception.
+// importExceptions bleibt leer (SEC K6b-2 B2): Keine Kantenliste. Stattdessen wird der Wächter je
+// Wurzel geschnitten. internal/panel, internal/panelio und internal/pipe bleiben strikt ohne
+// net/http, internal/client und freies net. Für cmd/bedienfeld gibt es genau eine benannte Tür:
+// cmd/bedienfeld -> internal/fensterio. Hinter dieser Tür gelten die eigenen Wächter von
+// internal/fensterio (B3, AST-Test dort); der Wächter steigt für diese Wurzel nicht hinein.
 var importExceptions = []struct{ Name, From, To string }{}
 
-func TestPanelImportWaechter(t *testing.T) {
-	cmd := exec.Command("go", "list", "-deps", "-json", "./cmd/bedienfeld", "./internal/panel")
+const guardBase = "github.com/januaport/januaport-plugins/desktop-runner/"
+
+// doors nennt je Wurzel die einzige Kante, hinter der der strenge Wächter nicht weiterläuft.
+var doors = map[string]string{guardBase + "cmd/bedienfeld": guardBase + "internal/fensterio"}
+
+type guardPkg struct {
+	ImportPath string
+	Imports    []string
+}
+
+func loadGraph(t *testing.T) map[string][]string {
+	t.Helper()
+	cmd := exec.Command("go", "list", "-deps", "-json", "./cmd/bedienfeld", "./internal/panel", "./internal/panelio", "./internal/pipe")
 	cmd.Dir = filepath.Join("..", "..")
 	for _, v := range os.Environ() {
 		if !strings.HasPrefix(v, "GOOS=") && !strings.HasPrefix(v, "CGO_ENABLED=") {
@@ -31,14 +46,10 @@ func TestPanelImportWaechter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	type pkg struct {
-		ImportPath string
-		Imports    []string
-	}
 	graph := map[string][]string{}
 	d := json.NewDecoder(bytes.NewReader(out))
 	for {
-		var p pkg
+		var p guardPkg
 		err = d.Decode(&p)
 		if err == io.EOF {
 			break
@@ -48,34 +59,80 @@ func TestPanelImportWaechter(t *testing.T) {
 		}
 		graph[p.ImportPath] = p.Imports
 	}
-	const base = "github.com/januaport/januaport-plugins/desktop-runner/"
-	for _, root := range []string{base + "cmd/bedienfeld", base + "internal/panel"} {
-		seen := map[string]bool{}
-		var visit func(string, bool)
-		visit = func(p string, throughPipe bool) {
-			throughPipe = throughPipe || p == base+"internal/pipe"
-			key := p + strconv.FormatBool(throughPipe)
-			if seen[key] {
-				return
+	return graph
+}
+
+// visitRoot läuft den Importgraphen ab und meldet jede verbotene Kante. Die Tür der Wurzel wird
+// weder gemeldet noch betreten; sie muss aber tatsächlich genutzt werden (sonst ist sie Altlast).
+func visitRoot(t *testing.T, graph map[string][]string, root string) (doorUsed bool) {
+	t.Helper()
+	door := doors[root]
+	seen := map[string]bool{}
+	var visit func(string, bool)
+	visit = func(p string, throughPipe bool) {
+		throughPipe = throughPipe || p == guardBase+"internal/pipe"
+		key := p + strconv.FormatBool(throughPipe)
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		for _, dep := range graph[p] {
+			if p == root && dep == door {
+				doorUsed = true
+				continue
 			}
-			seen[key] = true
-			for _, dep := range graph[p] {
-				allowed := false
-				for _, ex := range importExceptions {
-					if ex.Name != "" && ex.From == p && ex.To == dep {
-						allowed = true
-					}
+			allowed := false
+			for _, ex := range importExceptions {
+				if ex.Name != "" && ex.From == p && ex.To == dep {
+					allowed = true
 				}
-				if !allowed && (dep == "net/http" || dep == base+"internal/client" || (dep == "net" && !throughPipe)) {
-					t.Errorf("verbotener Importweg %s -> %s", p, dep)
-				}
-				visit(dep, throughPipe)
+			}
+			if !allowed && (dep == "net/http" || dep == guardBase+"internal/client" || dep == guardBase+"internal/fensterio" || (dep == "net" && !throughPipe)) {
+				t.Errorf("verbotener Importweg %s -> %s", p, dep)
+			}
+			visit(dep, throughPipe)
+		}
+	}
+	if _, ok := graph[root]; !ok {
+		t.Fatal("Paket fehlt", root)
+	}
+	visit(root, false)
+	return doorUsed
+}
+
+func TestPanelImportWaechter(t *testing.T) {
+	if len(importExceptions) != 0 {
+		t.Fatal("importExceptions muss leer bleiben (B2): Wächter je Wurzel schneiden")
+	}
+	graph := loadGraph(t)
+	for _, root := range []string{guardBase + "internal/panel", guardBase + "internal/panelio", guardBase + "internal/pipe"} {
+		if visitRoot(t, graph, root) {
+			t.Errorf("%s hat eine Tür", root)
+		}
+	}
+	// cmd/bedienfeld: genau die benannte Tür, sonst strikt.
+	if !visitRoot(t, graph, guardBase+"cmd/bedienfeld") {
+		t.Error("cmd/bedienfeld nutzt die benannte Tür internal/fensterio nicht")
+	}
+	if len(doors) != 1 {
+		t.Error("mehr als eine Tür")
+	}
+}
+
+// B2: Hinter der Tür ist alles Netz erlaubt, vor ihr nichts. Die Tür darf nicht von den Modellen
+// aus erreichbar sein; das prüft der strenge Lauf oben (internal/fensterio ist dort verboten).
+func TestFensterioNurUeberDieTuer(t *testing.T) {
+	graph := loadGraph(t)
+	importers := []string{}
+	for pkg, imports := range graph {
+		for _, dep := range imports {
+			if dep == guardBase+"internal/fensterio" {
+				importers = append(importers, pkg)
 			}
 		}
-		if _, ok := graph[root]; !ok {
-			t.Fatal("Paket fehlt", root)
-		}
-		visit(root, false)
+	}
+	if len(importers) != 1 || importers[0] != guardBase+"cmd/bedienfeld" {
+		t.Fatalf("internal/fensterio wird von %v importiert, erlaubt ist nur cmd/bedienfeld", importers)
 	}
 }
 

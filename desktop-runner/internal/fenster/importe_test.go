@@ -16,7 +16,7 @@ import (
 // ausdrückliche, kurze Liste von Standardpaketen (Allowlist statt Denylist).
 var erlaubteImporte = map[string]bool{
 	"bytes": true, "context": true, "encoding/json": true, "errors": true, "fmt": true,
-	"io": true, "net/url": true, "regexp": true, "slices": true, "sort": true, "strings": true,
+	"io": true, "net/url": true, "regexp": true, "slices": true, "sort": true, "strconv": true, "strings": true,
 	"time": true, "unicode/utf8": true,
 }
 
