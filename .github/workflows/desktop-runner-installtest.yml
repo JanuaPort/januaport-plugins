@@ -36,7 +36,7 @@ jobs:
         uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4.2.0
         with:
           authkey: ${{ secrets.TS_AUTHKEY }}
-          tags: tag:installtest
+          tags: tag:testgeraet
       - name: Signiertes Release im Standardkonto prüfen
         env:
           INSTALLTEST_VERSION: ${{ inputs.version }}
