@@ -9,7 +9,6 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/januaport/januaport-plugins/desktop-runner/internal/edge/w32"
 	"golang.org/x/sys/windows"
 )
 
@@ -100,19 +99,4 @@ func (i *ICoreWebView2WebResourceResponse) PutContent(content *IStream) error {
 	}
 
 	return nil
-}
-
-func (i *ICoreWebView2WebResourceResponse) PutByteContent(content []byte) error {
-	var stream *IStream
-	if len(content) > 0 {
-		// Create stream for response
-		str, err := w32.SHCreateMemStream(content)
-		if err != nil {
-			return err
-		}
-		stream = (*IStream)(unsafe.Pointer(str))
-		defer stream.Release()
-	}
-
-	return i.PutContent(stream)
 }
