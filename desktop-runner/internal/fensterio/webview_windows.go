@@ -30,6 +30,9 @@ type SurfaceConfig struct {
 	// noThreadCheck schaltet die Prüfung des COM-Threads ab; nur die nativen Sonden erzwingen damit den
 	// Fehlstart der Umgebung. Unexportiert: das Bedienfeld kann es nicht setzen.
 	noThreadCheck bool
+	// noResourceFilter und noNetLock schalten Schicht 1 und 2 für die Ursachensonde ab (nur in-package).
+	noResourceFilter bool
+	noNetLock        bool
 }
 
 // Surface ist ein natives Fenster mit WebView. Alle Methoden laufen auf dem UI-Thread, der es angelegt hat.
@@ -110,6 +113,9 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 		{"userdata", func() error { return platform.MkdirPrivate(o.UserDataDir, false) }},
 		{"bind PermissionRequested", func() error {
 			s.chromium.SetGlobalPermission(edge.CoreWebView2PermissionStateDeny)
+			s.chromium.PermissionCallback = func(kind edge.CoreWebView2PermissionKind, state edge.CoreWebView2PermissionState) {
+				s.trace("PermissionRequested", fmt.Sprintf("art=%d antwort=%d", kind, state))
+			}
 			return nil
 		}},
 		{"bind ProcessFailed", func() error {
@@ -123,6 +129,10 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 		}},
 		{"embed begin", func() error {
 			s.chromium.DataPath = o.UserDataDir
+			if !cfg.noNetLock {
+				// Schicht 2: Netz im Browserprozess aus (tote Proxy-Adresse, DNS aus); Schicht 1 ist Pflicht daneben.
+				s.chromium.AdditionalBrowserArgs = fenster.BrowserArgs()
+			}
 			return s.chromium.Begin(s.hwnd)
 		}},
 		{"embed wait", func() error {
@@ -155,6 +165,31 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 		}},
 		{"bind FrameNavigationStarting", func() error {
 			return s.bindNavigation(wv2com.IdxAddFrameNavigationStarting)
+		}},
+		{"bind WebResourceRequested", func() error {
+			if cfg.noResourceFilter {
+				return nil
+			}
+			// Schicht 1: Jede Anfrage des Browsers, nicht nur Navigationen, geht durch fenster.ResourceAllowed.
+			// Nur der eigene virtuelle Host kommt durch, alles andere bekommt eine lokale 403-Antwort.
+			env := unsafe.Pointer(s.chromium.Environment())
+			h := wv2com.NewHandler(wv2com.IIDWebResourceHandler, func(_, args uintptr) uintptr {
+				a := wv2com.P(args)
+				uri, ok := wv2com.RequestURI(a)
+				context, _ := wv2com.GetInt32(a, wv2com.IdxResGetContext)
+				if ok && fenster.ResourceAllowed(app, uri, context == wv2com.ResourceContextDocument) {
+					return 0
+				}
+				s.trace("WebResourceBlockiert", fmt.Sprintf("kontext=%d url=%s", context, fenster.DiagText(uri)))
+				if !wv2com.BlockedResponse(env, a) {
+					s.requestClose()
+				}
+				return 0
+			})
+			if err := wv2com.AddEvent(s.com(), wv2com.IdxAddWebResourceRequested, h); err != nil {
+				return err
+			}
+			return wv2com.AddWebResourceRequestedFilter(s.com(), "*", wv2com.ResourceContextAll)
 		}},
 		{"bind NewWindowRequested", func() error {
 			h := wv2com.NewHandler(wv2com.IIDNewWindowHandler, func(_, args uintptr) uintptr {

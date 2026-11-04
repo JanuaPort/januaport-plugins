@@ -25,6 +25,8 @@ type Obj = unsafe.Pointer
 const (
 	// ICoreWebView2
 	IdxAddNavigationStarting      = 7
+	IdxAddWebResourceRequested    = 55
+	IdxAddResourceFilter          = 57
 	IdxAddNavigationCompleted     = 15 // nur Diagnose der Sonden
 	IdxAddFrameNavigationStarting = 17
 	IdxAddWebMessageReceived      = 34
@@ -56,6 +58,7 @@ var (
 	IIDWebView2_13                = mustGUID("{F75F09A8-667E-4983-88D6-C8773F315E84}")
 	IIDProfile2                   = mustGUID("{fa740d4b-5eae-4344-a8ad-74be31925397}")
 	IIDNavigationStartingHandler  = mustGUID("{9adbe429-f36d-432b-9ddc-f8881fbd76e3}")
+	IIDWebResourceHandler         = mustGUID("{ab00b74c-15f1-4646-80e8-e76341d25d71}")
 	IIDNavigationCompletedHandler = mustGUID("{d33a35bf-1c49-4f98-93ab-006e0533fe1c}")
 	IIDNewWindowHandler           = mustGUID("{d4c185fe-c81c-4989-97af-2d3fa7ab5651}")
 	IIDDownloadStartingHandler    = mustGUID("{efedc989-c396-41ca-83f7-07f845a55724}")
@@ -131,6 +134,56 @@ func takeString(get func(out uintptr) uintptr) (string, bool) {
 // GetString ruft einen get_X-Zugriff mit LPWSTR-Ergebnis.
 func GetString(o Obj, idx int) (string, bool) {
 	return takeString(func(out uintptr) uintptr { return Call(o, idx, out) })
+}
+
+// Indizes für WebResourceRequested (Schicht 1).
+const (
+	IdxResGetRequest        = 3 // ICoreWebView2WebResourceRequestedEventArgs::get_Request
+	IdxResPutResponse       = 5
+	IdxResGetContext        = 7
+	IdxRequestGetURI        = 3 // ICoreWebView2WebResourceRequest::get_Uri
+	IdxEnvCreateResponse    = 4 // ICoreWebView2Environment::CreateWebResourceResponse
+	ResourceContextAll      = 0
+	ResourceContextDocument = 1
+	blockedStatus           = 403
+)
+
+// AddWebResourceRequestedFilter registriert einen Filter (uri mit * als Muster, ctx wie COREWEBVIEW2_WEB_RESOURCE_CONTEXT).
+func AddWebResourceRequestedFilter(webview Obj, filter string, ctx int32) error {
+	p, err := windows.UTF16PtrFromString(filter)
+	if err != nil {
+		return ErrCOM
+	}
+	if Failed(Call(webview, IdxAddResourceFilter, uintptr(unsafe.Pointer(p)), uintptr(ctx))) {
+		return ErrCOM
+	}
+	return nil
+}
+
+// RequestURI liest die URL der Anfrage eines WebResourceRequested-Ereignisses.
+func RequestURI(args Obj) (string, bool) {
+	var req unsafe.Pointer
+	if Failed(Call(args, IdxResGetRequest, uintptr(unsafe.Pointer(&req)))) || req == nil {
+		return "", false
+	}
+	defer Release(req)
+	return GetString(req, IdxRequestGetURI)
+}
+
+// BlockedResponse beantwortet die Anfrage lokal mit 403, ohne Inhalt: Sie verlässt den Browser nie.
+// Gelingt das nicht, ist false die Antwort, und der Aufrufer schließt das Fenster.
+func BlockedResponse(env, args Obj) bool {
+	reason, err1 := windows.UTF16PtrFromString("Blocked")
+	headers, err2 := windows.UTF16PtrFromString("")
+	if err1 != nil || err2 != nil || env == nil {
+		return false
+	}
+	var resp unsafe.Pointer
+	if Failed(Call(env, IdxEnvCreateResponse, 0, blockedStatus, uintptr(unsafe.Pointer(reason)), uintptr(unsafe.Pointer(headers)), uintptr(unsafe.Pointer(&resp)))) || resp == nil {
+		return false
+	}
+	defer Release(resp)
+	return !Failed(Call(args, IdxResPutResponse, uintptr(resp)))
 }
 
 // GetInt32 ruft einen get_X-Zugriff mit 32-Bit-Ergebnis (BOOL, Enum).

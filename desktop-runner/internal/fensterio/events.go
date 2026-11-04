@@ -48,7 +48,7 @@ func MessageSource(url string) fenster.Source { return fenster.Source{MainFrame:
 // RequiredEvents nennt die Ereignisse, die der Adapter nativ binden muss. Fehlt eine Schnittstelle,
 // öffnet das Fenster nicht (RunSteps).
 func RequiredEvents() []string {
-	return []string{"NavigationStarting", "FrameNavigationStarting", "NewWindowRequested", "DownloadStarting", "WebMessageReceived", "PermissionRequested", "ProcessFailed"}
+	return []string{"NavigationStarting", "FrameNavigationStarting", "NewWindowRequested", "DownloadStarting", "WebMessageReceived", "PermissionRequested", "ProcessFailed", "WebResourceRequested"}
 }
 
 // ErrWebView ist der feste Fehler, wenn die WebView nicht vollständig und sicher einzurichten ist.

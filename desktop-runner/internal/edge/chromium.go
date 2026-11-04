@@ -68,6 +68,7 @@ type Chromium struct {
 	WebResourceRequestedCallback             func(request *ICoreWebView2WebResourceRequest, args *ICoreWebView2WebResourceRequestedEventArgs)
 	NavigationCompletedCallback              func(sender *ICoreWebView2, args *ICoreWebView2NavigationCompletedEventArgs)
 	ProcessFailedCallback                    func(sender *ICoreWebView2, args *ICoreWebView2ProcessFailedEventArgs)
+	PermissionCallback                       func(kind CoreWebView2PermissionKind, state CoreWebView2PermissionState)
 	ContainsFullScreenElementChangedCallback func(sender *ICoreWebView2, args *ICoreWebView2ContainsFullScreenElementChangedEventArgs)
 	AcceleratorKeyCallback                   func(uint) bool
 
@@ -423,21 +424,20 @@ func (e *Chromium) SetGlobalPermission(state CoreWebView2PermissionState) {
 
 func (e *Chromium) PermissionRequested(_ *ICoreWebView2, args *iCoreWebView2PermissionRequestedEventArgs) uintptr {
 	kind, err := args.GetPermissionKind()
+	result := CoreWebView2PermissionStateDeny // Fehlerpfade lehnen ab, nie die Standardabfrage
 	if err != nil {
 		e.errorCallback(err)
-	}
-	var result CoreWebView2PermissionState
-	if e.globalPermission != nil {
+	} else if e.globalPermission != nil {
 		result = *e.globalPermission
+	} else if r, ok := e.permissions[kind]; ok {
+		result = r
 	} else {
-		var ok bool
-		result, ok = e.permissions[kind]
-		if !ok {
-			result = CoreWebView2PermissionStateDefault
-		}
+		result = CoreWebView2PermissionStateDefault
 	}
-	err = args.PutState(result)
-	if err != nil {
+	if e.PermissionCallback != nil {
+		e.PermissionCallback(kind, result)
+	}
+	if err = args.PutState(result); err != nil {
 		e.errorCallback(err)
 	}
 	return 0
