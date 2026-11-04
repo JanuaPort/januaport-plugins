@@ -454,7 +454,30 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     machen Kontrollen blind. Diagnose je Runde (nur Sonden, nie im Betrieb): Spur je Fenster mit Quelle
     (`fenster.DiagText`: gequotet, begrenzt, Träger maskiert), Urteil `fenster.SourceVerdict` mit festem Grund,
     `NavigationCompleted` mit Erfolg und Status, Antworten als `fenster.ReplySummary` (ok oder fester Code),
-    verworfene Webnachrichten mit Grund; im Fehlerfall und bei Frist wird alles ausgegeben. Grenzen: alte Fassungen
+    verworfene Webnachrichten mit Grund; im Fehlerfall und bei Frist wird alles ausgegeben.
+
+    **Fremdserver-Befund (Sondenlauf 4) und drei Schichten gegen Ausleitung (SEC):** `NavigationStarting`
+    brach `metaRefresh`, `location.href` und fremde Links ab (`NavigationCompleted` status 14), trotzdem kam
+    `GET /ziel.html` am Testserver an. Bis die Ursache bewiesen ist, gilt das als echter Ausleitungsweg. Daher
+    (1) **WebResourceRequested für alles** (`fenster.ResourceAllowed`, Filter `*` über alle Kontexte): nur der
+    eigene virtuelle Host kommt durch (Dokumente zusätzlich mit der `.html`-Regel von `NavigationAllowed`,
+    Unterressourcen nur mit dem Host), alles andere bekommt eine lokale 403-Antwort ohne Netz; scheitert die
+    Antwort, schließt das Fenster. (2) **Netz im Browserprozess aus** (`fenster.BrowserArguments`): totes
+    Proxy-Ziel `0.0.0.0:0` (kein Port, den ein anderes Konto binden kann), `<-loopback>` (auch Loopback geht
+    nicht am Proxy vorbei), `--host-resolver-rules="MAP * ~NOTFOUND"` (DNS aus), kein Träger darin. Der
+    Kommandozeilenwert ist keine harte Grenze: `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` und Richtlinien der
+    Maschine oder des Benutzers können ihn übersteuern (`TestWindowsWebViewRichtlinienHinweis` listet sie auf;
+    eine Proxy-Richtlinie ist eine Restgrenze von Schicht 2). Deshalb ist Schicht 1 Pflicht. (3)
+    `NavigationStarting` bleibt dritte Schicht. Belegt wird nur nativ: `TestWindowsWebViewFremdserverNull`
+    (17 Wege, Loopback und eigene IPv4-Adresse des Gasts, 0 Anfragen und 0 Verbindungen, sehende Kontrolle) und
+    `TestWindowsWebViewFremdserverUrsache` (ohne Schichten, nur Schicht 1, nur Schicht 2; Sec-Fetch-*,
+    Sec-Purpose, Purpose und Zeitpunkt je Treffer). Auflage SEC (a): Der Schritt `umgebung` entfernt JNPT*-
+    Variablen aus der Umgebung des Bedienfelds, bevor der Browser erbt (`jnptNames`); der Produktpfad des
+    Datenordners (`<Cache>\JanuaPort\desktop-runner\webview\<app>`) trägt kein jnpt, der öffentliche
+    Hostname `*.jnpt.invalid` ist kein Geheimnis und wird in der Sonde nur als solcher ausgenommen und gezählt.
+    Service Worker: `ClearBrowsingData` (Profile2.ClearBrowsingDataAll) wird für Service Worker nativ geprüft
+    (`TestWindowsWebViewServiceWorkerWirdGeloescht`). Läufe der nativen Sonden brauchen `-test.timeout 20m`.
+    Grenzen: alte Fassungen
     unter `apps\` werden nicht aufgeräumt; die Ereignisse sind unter Linux nur als Urteile geprüft, ihre
     Bindung belegt allein die native Sonde (`webview_native_windows_test.go`, Opt-in).
 
