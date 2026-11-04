@@ -3,6 +3,26 @@
 > [Server-Vertrag 2](#server-vertrag-2). Die folgenden Python-/DPAPI-Regeln
 > beschreiben Vertrag 1, soweit dort keine gemeinsame Regel genannt wird.
 
+## Windows-Vertrag 5 (PC-Apps)
+
+K6a-Quelle: `januaport`, `docs/contract-proposals/k6-vertrag5.md`,
+`internal/desktop/testdata/manifest_apps_canonical.bin` und `contract5_routes.json`.
+Beide Dateien liegen bytegleich in `golden-v5/` (mit `SHA256SUMS`); `golden/`,
+`golden-v2/` und `internal/client/testdata/golden-v3/` bleiben unverändert
+(`TestGoldenV5AusKern` pinnt alle).
+
+Windows-Geräte senden ab dem Läufer von K6b-1 `X-Jnpt-Desktop-Contract: 5` und
+`contract: 5` in Kopplung, Heartbeat und Halt. Vertrag 5 enthält Setups, Pin-Fristen und
+`test_device` unverändert aus Vertrag 4. Neu ist `apps:[{name,commit,path}]` oben im
+Manifest, immer ein Array (auch `[]`), nur unter Vertrag 5 (v1–v4 weisen das Feld ab).
+Der Läufer prüft streng: Name `^[a-z0-9_]{1,48}$`, `commit` 64 kleine Hex-Zeichen
+(SHA-256-Speichercommit), `path` exakt `apps/<name>`, streng aufsteigend nach Name.
+Pakete kommen über `GET packages/{commit}?path=apps/<name>`. App-Token:
+`POST apps/{name}/token` mit leerem Körper, Antwort `{app_token,expires_at,mcp_path}`
+mit Präfix `jnptpc_`; der Läufer hält es nur im RAM und holt es bei 401 neu.
+`POST mcp` trägt `Authorization` (Gerätetoken) und genau einen `X-Jnpt-App-Token`,
+nie zusätzlich `X-Jnpt-Run-Token`.
+
 ## Server-Vertrag 2
 
 K1-Quelle: `januaport`, `origin/feat/1195-server-container`, Abschnitt

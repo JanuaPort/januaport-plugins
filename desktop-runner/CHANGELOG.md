@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- K6b-1 (JanuaPort/januaport#1048, Hyperfokus #1313 B2), fensterloser Teil des PC-Fensters, ohne
+  Fenster und ohne Release. **Windows spricht Vertrag 5** (Header und JSON; Vertrag 4 plus
+  `apps:[{name,commit,path}]`); der Läufer braucht einen Kern mit K6a, ältere Caches (v1, v3, v4)
+  liefern beim Upgrade nur die Sequenz. `apps` wird streng gelesen (Name, SHA-256-Commit,
+  Pfad `apps/<name>`, sortiert), unter v1–v4 abgewiesen. Goldens des Kerns als
+  `contract/golden-v5/` gespiegelt, alle bestehenden Goldens bytegleich.
+- App-Paket: `AppStore` holt, prüft (Git-IDs, SHA-1DC/SHA-256, apphost-Regeln als markierte Kopie
+  `copied_apphost.go`), legt privat unter `apps\<name>\<commit>\` ab und versiegelt; das Siegel
+  wird vor jedem Öffnen geprüft. Jede HTML-Datei braucht das CSP-Literal als
+  `<meta http-equiv>` vor allen ladenden Elementen; die apphost-CSP wird nicht übernommen.
+- App-Token (`POST apps/{name}/token`) nur im RAM, bei 401 einmal neu geholt; gedruckt wird es nie.
+- `internal/fenster` (reines Go, Import-Wächter): exaktes CSP-Literal, `NavigationAllowed`,
+  `MessageAllowed`, `Settings()`-Sollliste, strikter Umschlag (256 KiB) und die Brücke mit
+  `status`, `anhalten` (lokal, genau zwei Pipe-Operationen), `werkzeuge`, `werkzeug`;
+  Antworten nur mit festen Codes, nie mit einem Träger. `internal/fensterio` hängt Gateway
+  und Pipe-Wrapper an. Mutationen: `probe/k6b_mutations.py`.
+
 ## 0.4.0 — 2026-11-04 (JanuaPort/januaport#1240)
 
 - L6: gemeinsame Installation von Läufer und Bedienfeld aus demselben Ordner;

@@ -7,7 +7,7 @@ Kopplung, signiertes Manifest, lokaler Takt, Paket-/Runtimeprüfung,
 COM-Autostart und DPAPI-Journal sind implementiert. Fake-Kern, Linux-Race-Tests
 und native Windows-Sonden; signiertes Windows-Release `desktop-runner-v0.1.0`
 vorhanden, Live-Anlage steht aus. Manueller Installationstest: README „Installationstest“.
-Windows spricht Vertrag 4, Linux-Server unverändert Vertrag 2.
+Windows spricht Vertrag 5 (K6b-1: Vertrag 4 plus `apps`), Linux-Server unverändert Vertrag 2.
 Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 [contract/](contract/README.md) bleibt der eingefrorene historische D0-Vertrag 1.
 
@@ -29,6 +29,11 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 | internal/platform/install.go, other.go | Windows-Nähte und Fail-closed-Stubs für andere Systeme |
 | internal/platform/security_linux.go, server_linux.go | Linux-HMAC/Dateirechte, Sperre und Server-Konfiguration |
 | container.go, container_engine.go, secrets_linux.go | Docker-CLI, Startwege und Geheimnisgrenze |
+| internal/fenster | Reines Go ohne Netz/Prozess/Datei/Windows (K6b-1): CSP-Literal, Navigation, Nachrichten, Einstellungen, Umschlag, Brücke |
+| internal/fensterio | Adapter zu `fenster`: Gateway (App-Token im RAM, 401 → einmal neu) und Pipe-Wrapper mit zwei Operationen |
+| apptoken.go, appstore.go, appload.go, copied_apphost.go | Vertrag 5 im Client: App-Token, privates Ablegen mit Siegel, Ladeprüfung, markierte apphost-Kopie |
+| contract/golden-v5 | Bytegleicher Kernspiegel von Vertrag 5 (Manifest und Routen) mit SHA256SUMS |
+| probe/k6b_mutations.py | Mutationen K6b-1 im Container mit Go und Python |
 | internal/testfixture | Synthetische Gitpakete nur für Tests |
 | probe/mutations.py | Negativtests unter entfernten Sperren, exakte Wiederherstellung |
 | probe/installtest*.ps1 | Manueller Release-Installationstest, Offline-Adaptertests und isolierte Mutationen |
@@ -60,11 +65,11 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
    alte/gleiche seq oder falsche Signatur → Klasse `manifest`; alter Stand
    und letzter erfolgreicher Sync bleiben erhalten. seq uint64, dauerhaft,
    ab 1, je erfolgreichem Sync erhöht, auch bei gleichen Pins.
-4. JSON streng mit `DisallowUnknownFields`. Windows-Vertrag-4-Heartbeat ausschließlich
+4. JSON streng mit `DisallowUnknownFields`. Windows-Heartbeat (Vertrag 4/5) ausschließlich
    `contract`, `ready`, `runner_version`, `manifest_seq`; kein Sitzungsstatus,
    keine Leerlaufzeit, kein Konto. Antwort ergänzt `manifest_seq_current`;
    bei höherem Wert Manifest holen. Nur Testaufträge dürfen `result` (JSON bis 64 KiB) senden;
-   der normale Report-Weg weist es ab. `apps` wird unter v4 abgewiesen,
+   der normale Report-Weg weist es ab. `apps` wird unter v1–v4 abgewiesen und ist unter v5 Pflicht (Invariante 18),
    Setup-Beschriftungen über 40 Unicode-Zeichen ebenfalls.
 5. Takt auf dem Gerät: 1 min vor jedem geplanten Lauf Manifest und bei
    neuem Commit unter Windows das Paket voll prüfen; Server prüfen vor Start
@@ -111,7 +116,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
    Alle anderen Fehler (409, 429, 503, Netz) verwerfen nie. Kein Tokenablauf-Cutoff.
 10. Box hält Ad-hoc-Aufträge persistent, löscht Eingabe bei Ende; Claim nach
     Box-Neustart funktioniert. Auch Start-/Ergebnis-/Manifesthistorie bleibt;
-    kein pauschales Neustart-404 mit Verwerfen. Windows: Contract 4 und unverändert Paketversion 1; Linux-Server: Contract 2,
+    kein pauschales Neustart-404 mit Verwerfen. Windows: Contract 5 und unverändert Paketversion 1; Linux-Server: Contract 2,
     Updates zuerst Kern, dann Läufer; geschlossene Klassen inkl. offline und idle.
 11. `refused/idle` (#1245 L): Die Startregel ist nicht erfüllt, weil nur der
     Leerlauf fehlt (Sitzung aktiv, Konto passt, Modus `idle`, Leerlauf kürzer als
@@ -138,7 +143,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 13. Testauftrag: signiertes `test_device:true` UND Pinname
     `test_<erste 8 Zeichen der Geräte-ID>`, zusätzlich geprüfte Geräte-,
     Signatur- und Jobbindung (Pin, Commit, Pfad, Algo, Freigabe-seq).
-    Claims enthalten kein Testmerkmal. `test_device` wird in v1/v2/v3/v4
+    Claims enthalten kein Testmerkmal. `test_device` wird in v1 bis v5
     angenommen (#1298). `Screenshot` und `ReportTest` prüfen vor HTTP;
     `Report` weist `result` ab. Historische Freigaben liegen separat in
     DPAPI-Dateien `test-<job_id>`, nur Bindungsfelder und signiertes Manifest,
@@ -233,7 +238,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Golden: `internal/pipe/testdata/messages.json`. Keine Token-, Eingabe-, Pfad-
     oder Modusfelder; Status wird ausdrücklich projiziert, kein Bundle serialisiert.
     L3-2: jeder rohe Rahmen wird am Läufer in Go geprüft. Setup nur aus erneut
-    verifiziertem v4-Manifest, ohne `frei`, bei passendem Konto/Sitzung, online,
+    verifiziertem Windows-Manifest (v5; v4 nur als Upgrade-Cache), ohne `frei`, bei passendem Konto/Sitzung, online,
     ohne Halt/Pause und ohne belegten/reservierten Platz. Reservierung umfasst
     HTTP und Prozessvorbereitung; Zeitplan, Ad-hoc und direktes Execute bleiben
     ausgeschlossen. Offene Claims werden abgebrochen und ihre Übergangsantworten
@@ -244,7 +249,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Engine-Sperre erneut gebunden; die L2-Haltprüfung bleibt unverändert.
     Rückfragen lokal: `frage{id,titel,text,optionen,frist_s}`, Titel höchstens
     40 Zeichen, Text 500 Zeichen, 2–4 Optionen zu je 40 Zeichen, 5–3600 Sekunden.
-    H4: Titel aus dem Manifest-Pin, nie Skripttext. Vertrag 4 hat kein Pin-Label;
+    H4: Titel aus dem Manifest-Pin, nie Skripttext. Vertrag 4 und 5 haben kein Pin-Label;
     Rückfall Pin-Name, auf 40 Zeichen begrenzt. Höchstens eine offene Frage je
     Lauf, in Go am echten stdout-Adapter geprüft. L4 ergänzt diesen H4-Rahmenweg
     samt Laufkontext; skriptseitiger Titel, ungültiger Rahmen oder zweite offene
@@ -324,6 +329,44 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     echte COM/HKCU-Proben über die bestehende Standardkonto-Sonde, PS-Adaptertests
     mit Argument-/Summen-Negativfällen. Fristen des Installtests unverändert.
 
+18. PC-Fenster, fensterloser Teil (#1048 K6b-1; Plan 5, SEC K6b (a)–(c)). Kein Fenster, kein
+    WebView2-Adapter, keine Änderung am Bedienfeld (das ist K6b-2).
+    **Vertrag 5:** `client.WindowsContract = 5`; `apps:[{name,commit,path}]` ist unter v5 Pflicht
+    (auch `[]`), sonst verboten. Name `^[a-z0-9_]{1,48}$`, `commit` 64 kleine Hex-Zeichen,
+    `path == apps/<name>`, streng aufsteigend nach Name. Ein Cache v1/v3/v4 liefert beim Upgrade nur
+    die Sequenz (Invariante 5/10). Goldens: `contract/golden-v5/` (Kernbytes), alle älteren
+    bleiben bytegleich (`TestGoldenV5AusKern`).
+    **App-Paket:** `AppStore.Ensure/Prepare/Open`. Erst `decodePackage` (Git-IDs, SHA-1DC/SHA-256,
+    exakte Objektmenge, Namen), dann die kopierten apphost-Regeln (Modus nur 100644, ≤ 1000 Dateien,
+    ≤ 4 MiB, MIME-Liste, Geheimnismuster, keine aktive Markup), dann **jede HTML-Datei genau ein**
+    `<meta http-equiv="Content-Security-Policy">` mit `fenster.CSP` vor jedem anderen Element außer
+    html/head/title/meta. Abgelegt wird privat im Staging und mit einem Umbenennen unter
+    `<Zustand>\apps\<name>\<commit>\`; das Siegel (Pfad, Größe, SHA-256, auch gegen zusätzliche Dateien
+    und Verweise) liegt im verschlüsselten Zustand und wird vor **jedem** `Open` geprüft. Nie
+    stilles Reparieren: Eine vorhandene, nicht zum Siegel passende Ablage ergibt `refused/hash`
+    ohne erneuten Abruf. Widerruf löscht über `State.Revoke` auch `apps\`.
+    **App-Token:** `API.AppToken` (`POST apps/{name}/token`, leerer Körper) und `API.AppRPC` (nur
+    `tools/list`, `tools/call`) senden `Authorization` (Gerätetoken) plus genau einen
+    `X-Jnpt-App-Token`, nie `X-Jnpt-Run-Token`. `AppSession` hat keinen Getter und druckt sich nie.
+    `fensterio.Gateway` hält sie nur im RAM, holt sie bei 401 `unauthorized` genau einmal neu
+    (kein Wiederholen bei der zweiten 401) und bildet jeden Fehler auf einen festen Code ab.
+    **Fenster-Policy (`internal/fenster`):** Import-Allowlist (keine Netz-, Prozess-, Datei-,
+    Windows-Pakete). `NavigationAllowed` erlaubt nur `https://app-<name mit - statt _>-pc.jnpt.invalid`
+    ohne Port, Userinfo, Großschreibung, Steuer- und Nicht-ASCII-Zeichen. `MessageAllowed` verlangt
+    obersten Rahmen, eigene Origin und einen der vier Befehle; andere Quellen bekommen keine Antwort.
+    `Settings()` ist die Sollliste (nur `IsScriptEnabled` und `IsWebMessageEnabled` an).
+    Umschlag `{id,befehl,args}`: ≤ 256 KiB, `DisallowUnknownFields`, keine doppelten Schlüssel;
+    `status`/`anhalten`/`werkzeuge` verlangen `args:{}`, `werkzeug` `{name,arguments}`.
+    **Plan 4c / Träger nie an die Seite:** Antworten tragen ausschließlich feste Codes
+    (`fenster.Codes()`); Adapterfehler sind `*fenster.Fehler`-Sentinels, jeder andere Fehler wird
+    `fehler`, nie sein Text. Ein Ergebnis mit Token-Muster (`jnpt…_<20+ Zeichen>`, `jnptpc_`,
+    `jnptapp_`, auch nach JSON-Unescaping) wird zu `antwort_ungueltig` verworfen.
+    **Lokal genau zwei Operationen:** `fenster.Lokal` = `Status`, `Anhalten`; `fensterio.NewLokal`
+    sendet nur `status` und `anhalten` über eine übergebene `Exchange` (K6b-2 bindet sie an die
+    vorhandene Bedienfeld-Verbindung, es gibt keine zweite Pipe-Verbindung). `Status` projiziert nur
+    `zustand`, `bis`, `netz`; `Anhalten` gilt erst, wenn der Läufer `angehalten` bestätigt.
+    Grenze (SEC K6b (c), Invariante 15): Die Pipe-ACL schützt nicht gegen den WebView2-Hauptprozess.
+
 ## Benannte Grenzen
 
 Widerruf wird offline erst beim Kontakt sichtbar, bis zur Gnadenfrist kann
@@ -376,6 +419,7 @@ mit PASS ohne SKIP laufen. CI/Kompilierung ersetzen diesen Gate-Beleg nicht.
 | Bedienfeld, Plan 14/15/18, §6.6, H4 | TestPanelZustaende, TestPanelMenueBefehleUndSetupEingabe, TestPanelFrageNurLokal, TestPanelStoerungBleibtBisNeuGeprueftemZustand, TestPanelServerpruefungSperrtBefehle, TestServerpruefungSendetNichtsAmAdapter, TestVerbindungVerwirftAlteBefehleUndBrichtSchreibenAb, TestBlockiertesSchreibenTrotzHeartbeatWirdGetrennt, TestFokusWaechter, TestBedienfeldNurGepruefterDial, TestPanelImportWaechter, TestL4SchemaPflichtfelder, TestH4RoheFragenAmLaeufer, TestH4SkriptTitelAbgewiesen, TestH4RoheFrageGrenzen, TestPanelEingabeAusVerifiziertemManifest; Windows: TestWindowsBedienfeldProzesssonde |
 | Rückfragen intern, L3-Anteil | TestFrageNurLokal, TestFrageFristUndDisconnect, TestPipeFrageAntwortWeiterleitung, TestPipeHaltSchliesstFrage |
 | L5 SEC-R4 F1/H2 | TestL5EndaufnahmeNachHaltUndWandzeit (Anhalten: 0 Aufnahmen/Uploads; Wandzeit: 1, ohne Engine-Sperre), TestL5LaufpinSeparatGebunden (verified gültig, nur Laufpin abweichend); Mutationen completion-halt, completion-wall-context, run-pin-binding |
+| PC-Fenster K6b-1 (Plan 4c/5, SEC K6b) | fenster: TestCSPExakt, TestNavigationAllowed, TestMessageAllowed, TestSettingsSollliste, TestUmschlagStrikt, TestUmschlagGrenzeGenau256KiB, TestBrueckeAntwortOhneTraeger, TestBrueckeUnerlaubteQuelleBleibtStumm, TestFensterImportWaechter; fensterio: TestLokalGenauZweiOperationen, TestLokalAnhalten, TestGatewayHolTokenEinmalUndSendetNurZweiTraeger, TestGatewayHoltBei401NeuUndWiederholtEinmal, TestGatewayZweite401IstNichtAngemeldet, TestGatewayFehlerOhneTraeger; client: TestGoldenV5AusKern, TestManifestV5StriktAmAdapter, TestAppTokenAmHTTPAdapter, TestAppTokenAntwortStrikt, TestAppRPCAmHTTPAdapter, TestAppPaketGuterFallLegtPrivatAbUndVersiegelt, TestAppSiegelVorJedemOeffnen, TestAppPaketAblehnungenLegenNichtsAb, TestAppLadepruefungCSPLiteral, TestAppLadepruefungCSPJedeHTMLDatei, TestEnsureHoltPaketUeberHTTPNurEinmal, TestCopiedApphostFunctions |
 | Helfer L5, Plan 3/15/16/18, L3-2/H3 | TestScreenshotNurTestgeraet/roheRahmen, TestErgebnisNurTestauftrag/roheRahmen, client.TestFrageNurLokal (echter Python-Bootstrap), TestL5ErgebnisNullUndGrenzen, TestL5ScreenshotGrenzen, TestL5RahmenStrikt, TestL5BootstrapModule, TestL5TestauftragAmHTTPAdapter, TestKeineListenerDownloaderOderPip, TestScreenshotPNGBufferGrenze, TestScreenshotLinuxStub; Windows nur kompiliert: TestWindowsScreenshotGDI, TestWindowsScreenshotGDIChild, TestWindowsPythonKindOhneBedienfeldPipe |
 
 Übernommene Funktionen sind im Dateikopf markiert. Wächter vergleichen die
@@ -459,6 +503,12 @@ Compilerfehler zählen nicht. finally stellt Quelldateien byte-genau wieder her.
 Nach externer Zwangsbeendigung den betroffenen Guard ausdrücklich prüfen.
 Abschlussbericht ausschließlich im Chat, keine Berichtsdatei im Repository.
 
+K6b-1-Mutationen: `python3 probe/k6b_mutations.py [name…]`, im Container `golang:1.26.10` mit
+nachinstalliertem Python (Worktree als Mount, exklusiv). Jeder Mutant muss kompilieren und den
+benannten Test rot machen; Compilerfehler zählen nicht; `finally` stellt die Bytes her. Reine
+Linux-Proben, kein Fenster, kein Prozess. Die Mutationen für `WindowsContract` stehen zusätzlich
+in `probe/l1_mutations.py` und `probe/l3_mutations.py` (Anker auf die Konstante umgestellt).
+
 L6-Mutationen: `python probe/l6_mutations.py`, exklusiv in `l6-test`, Go 1.26.10.
 Git-Archiv statt Windows-Bind-Mount; ausschließlich Container-Kopien mutieren,
 kompilierende rote Zieltests und geprüfte Wiederherstellung. Installtest lokal
@@ -508,7 +558,7 @@ dort belegt TestRunTempJunctionKanarienvogel das Aufräumen an einer echten Junc
 
 ## Linux-Server: zusätzliche Invarianten (JanuaPort/januaport#1195)
 
-- Server ausschließlich Vertrag 2, Windows ausschließlich Vertrag 4. Header,
+- Server ausschließlich Vertrag 2, Windows ausschließlich Vertrag 5 (bis K6b-1: 4). Header,
   Config-Geräteart und signiertes Manifest müssen zusammenpassen. Container-Pins:
   SHA256-Commit = Image-Digest, leerer Pfad, keine declared_tools, kein Paketweg.
   Kanonisierung unverändert; neues K1-Golden in contract/golden-v2 neben den
