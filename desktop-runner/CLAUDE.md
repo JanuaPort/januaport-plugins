@@ -422,7 +422,39 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     `TestAdapterPruefteThreadUndWartetBegrenzt`; native Sonden `TestWindowsWebViewOhneCOMOeffnetNicht` und
     `TestWindowsWebViewFehlstartHaengtNicht` (erzwungener Fehlstart ohne COM). Jede native Sonde läuft auf einem
     festen Thread mit COM-STA und hat eine eigene Frist (`probeFrist`, 90 s je Sonde und Unterfall): Ein Hänger
-    kostet eine Sonde, nicht den Lauf. Grenzen: alte Fassungen
+    kostet eine Sonde, nicht den Lauf.
+
+    **Die Kopie `internal/edge` ist Sicherheitskern (SEC-Bedingungen):** (1) Herkunft: `doc.go` nennt Repository,
+    Tag `v1.0.19`, Commit `11c6e567b916645d5fe6df006681f988ac52c13d` und die `go.sum`-Prüfsumme;
+    `internal/edge/upstream-diff.sh` holt das Original, prüft den Commit gegen den Go-Modulproxy und zeigt den
+    Diff (`docker run --rm -v "$PWD:/w" -w /w golang:1.26.10 sh internal/edge/upstream-diff.sh`);
+    `TestEdgeKopieNenntUpstream` hält doc.go, go.mod und go.sum zusammen. (2) Wächter: kein `os.Exit`, kein
+    `log.Fatal`, kein `panic`, keine Endlosschleife, kein `Sleep`/`Wait`, kein `GetMessage`, kein `Embed`, keine
+    Rückkanäle, die das Fenster nicht braucht (`TestEdgeKopieOhneProzessendeUndOhneUnbegrenzteWartezeit`,
+    `TestEdgeKopieOhnePanicEndlosschleifeUndWarten`; Mutanten `edge-exit`, `edge-fatal`, `edge-panic`,
+    `edge-endlosschleife`, `edge-sleep`, `edge-getmessage`, `edge-echo`). (3) Fehlerpfade: Auf jeden
+    `errorCallback` in den Rückrufen der Umgebung und des Controllers folgt ein `return`
+    (`TestEdgeRueckrufeKehrenNachFehlerZurueck`); `Ready` liefert den ersten Fehler, `NewSurface` macht daraus
+    den festen Fehler `webview_nicht_nutzbar` (`RunSteps` verwirft die Ursache), das Fenster bleibt zu, Tray und
+    Pipe stehen; nativ belegt `TestWindowsEdgeControllerFehlerBleibtFehler` (Controller-Start mit Elternfenster 0)
+    und `TestWindowsWebViewFehlstartHaengtNicht` (Umgebung scheitert). (4) Import-Tür: `internal/edge`,
+    `internal/edge/w32` und `internal/wv2com` sind für `panel`, `panelio`, `pipe` und `cmd/bedienfeld` verboten
+    (`TestPanelImportWaechter`), und im ganzen Modul importiert nur `internal/fensterio` die Kopie
+    (`TestEdgeNurVonFensterio`; Mutant `edge-wird-importiert`). (5) **Prüfpunkt je Läufer-Release: Upstream-
+    Sicherheitsfixes.** Vor jedem Release des Läufers prüft der Releasende, ob `wailsapp/go-webview2` oder das
+    WebView2-SDK nach `v1.0.19` Sicherheitsfixes veröffentlicht hat (`upstream-diff.sh` und das Changelog des
+    Originals ansehen, relevant sind besonders `pkg/edge`, `internal/w32` und die COM-Aufrufe); das Ergebnis
+    („nichts relevant“ oder „übernommen in Commit …“) steht im Release-Eintrag. Eine Übernahme ändert Tag,
+    Commit und Prüfsumme in doc.go, go.mod und go.sum zugleich und läuft durch dieselbe SEC-Prüfung wie die
+    Kopie selbst.
+
+    **Lehre aus Sondenlauf 3:** Die CSP (`script-src 'self'`) blockiert Inline-Skripte; Probeseiten liefern ihre
+    Auslöser deshalb als Dateien (`TestWindowsWebViewInlineSkriptBlockiert` belegt es). Der Gateway-Speicher der
+    Sonde wird je Fall geleert, sonst beenden Ereignisse früherer Fälle spätere Warteschleifen sofort und
+    machen Kontrollen blind. Diagnose je Runde (nur Sonden, nie im Betrieb): Spur je Fenster mit Quelle
+    (`fenster.DiagText`: gequotet, begrenzt, Träger maskiert), Urteil `fenster.SourceVerdict` mit festem Grund,
+    `NavigationCompleted` mit Erfolg und Status, Antworten als `fenster.ReplySummary` (ok oder fester Code),
+    verworfene Webnachrichten mit Grund; im Fehlerfall und bei Frist wird alles ausgegeben. Grenzen: alte Fassungen
     unter `apps\` werden nicht aufgeräumt; die Ereignisse sind unter Linux nur als Urteile geprüft, ihre
     Bindung belegt allein die native Sonde (`webview_native_windows_test.go`, Opt-in).
 
