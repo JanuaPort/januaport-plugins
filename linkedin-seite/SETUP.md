@@ -1,4 +1,4 @@
-# LinkedIn-Seite 0.3.0 einrichten — Stufe A und Stufe B1
+# LinkedIn-Seite 0.3.1 einrichten — Stufe A und Stufe B1
 
 Diese Anleitung führt den Admin durch LinkedIn-Zustimmung und Tresoreintrag. Der Betreiber
 installiert vorher den Beisteller, legt die beiden Tresor-Stellen an und setzt den Bridge-Key.
@@ -11,9 +11,11 @@ Die API-Formen und der Live-Zugriff müssen vor produktiver Freigabe geprüft we
    Community-Management-Zugang einschließlich Development Tier bei LinkedIn beantragen.
    Die zustimmende Person braucht die passende **Seiten-Admin-Rolle** dieser Organisation.
 2. In der App exakt die Redirect-URI `http://localhost:8765/linkedin/callback` eintragen.
-3. Genau die Scopes `rw_organization_admin r_organization_social` freigeben lassen.
-   Der benötigte Admin-Scope hat bei LinkedIn keine Read-only-Alternative. Der Beisteller
-   begrenzt den Zugriff deshalb auf feste GET-Routen; Posten gehört nicht zu Stufe A.
+3. Genau die vier Scopes `rw_organization_admin r_organization_social w_organization_social w_organization_social_feed`
+   freigeben lassen. Sie stehen im Produkt „Community Management API“. **Ein** Grant trägt Lesen
+   und Schreiben. Der benötigte Admin-Scope hat bei LinkedIn keine Read-only-Alternative. Die
+   Lese-Routen senden deshalb nur feste GETs; geschrieben wird nur über die Schreibrouten von
+   Stufe B1, nach Freigabe im Kern.
 4. Client-ID und Client-Secret bereithalten. Organisations-ID/URN und eine unterstützte
    LinkedIn-Version (YYYYMM) an den Betreiber geben; diese Angaben kommen in dessen
    Konfiguration und sind keine Werkzeugparameter.
@@ -26,8 +28,15 @@ Es benötigt nur die Python-Standardbibliothek. Der Browser und Port 8765 müsse
 verfügbar sein. Die Betreiber-CLI muss für die vorgesehene Anlage eingerichtet sein.
 
 ```bash
-python linkedin-seite/tools/zustimmung.py --client-id APP_CLIENT_ID | jnpt credential set --name plugin-linkedin-seite-oauth
+python linkedin-seite/tools/zustimmung.py --client-id APP_CLIENT_ID --gesamt | jnpt credential set --name plugin-linkedin-seite-oauth
 ```
+
+**Nur diese eine Zustimmung.** `--gesamt` ist Pflicht und der einzige Modus des Skripts; ohne ihn
+bricht es ab, bevor es nach dem Secret fragt. LinkedIn entwertet laut
+[Herstellerdoku](https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow) alle früheren
+Access-Tokens, sobald ein anderer Scope-Satz angefordert wird. Getrennte Zustimmungen für Lesen und
+Schreiben tragen deshalb nicht. Beobachtet: nach einer zweiten Zustimmung am 03.11.2026 lieferte
+jeder Lesezugriff `source_access_denied`; dass dies die Ursache war, ist nicht live belegt.
 
 Der Client-Secret-Prompt blendet Eingaben aus; das Secret niemals als Argument übergeben.
 Alternativ `--secret-stdin` verwenden und den Wert aus dem Passwortmanager in stdin pipen.
@@ -45,7 +54,7 @@ Option nicht) und per `--secret-stdin` übergeben. Eine Zeile, `APP_CLIENT_ID` i
 Client-ID der App:
 
 ```powershell
-Read-Host -MaskInput 'Client-Secret' | python linkedin-seite/tools/zustimmung.py --client-id APP_CLIENT_ID --secret-stdin | jnpt credential set --name plugin-linkedin-seite-oauth
+Read-Host -MaskInput 'Client-Secret' | python linkedin-seite/tools/zustimmung.py --client-id APP_CLIENT_ID --secret-stdin --gesamt | jnpt credential set --name plugin-linkedin-seite-oauth
 ```
 
 Das Secret wird nur von `Read-Host` gelesen und direkt durchgereicht: nicht als Argument, nicht
@@ -65,13 +74,15 @@ einschalten; ohne diesen Beleg gilt der vertrauliche Client-Code-Tausch ohne PKC
 Anschließend meldet stderr **„Refresh-Token: ja“** oder **„Refresh-Token: nein“**.
 LinkedIn liefert die gewährten Scopes kommagetrennt und die Laufzeiten gelegentlich knapp
 über dem Höchstwert (beobachtet: Refresh-Token 59 Sekunden über 365 Tagen). Das Skript und
-der Dienst akzeptieren Komma oder Leerraum als Trenner, verlangen aber genau die zwei
+der Dienst akzeptieren Komma oder Leerraum als Trenner, verlangen aber genau die vier
 gepinnten Scopes, und deckeln eine Überschreitung bis zu einem Tag auf 60 bzw. 365 Tage.
 Alles darüber hinaus wird als unerwartete Antwort abgewiesen; die Frist wird nie verlängert.
+Nennt die Antwort auf die Zustimmung keine Scopes, bricht das Skript ohne JSON ab.
 
 Die Tresor-Stelle `plugin-linkedin-seite-oauth` enthält JSON mit `client_id`, `client_secret`,
-`access_token`, `access_expires_at` und, falls LinkedIn sie liefert, gemeinsam
-`refresh_token`, `refresh_expires_at`. Ablaufwerte sind ISO-8601-Zeitstempel mit Zeitzone.
+`access_token`, `access_expires_at`, `scope` (die vier Werte) und, falls LinkedIn sie liefert,
+gemeinsam `refresh_token`, `refresh_expires_at`. Ablaufwerte sind ISO-8601-Zeitstempel mit Zeitzone.
+Ohne `scope` oder mit einer anderen Menge startet der Dienst nicht (`startup_failed`).
 Der Dienst bekommt ausschließlich eine RAM-Datei im read-only Mount; der Betreiber muss
 die Path-Unit für den automatischen Neustart nach Schlüsselwechsel eingerichtet haben.
 Der zweite Tresorplatz `plugin-linkedin-seite` enthält den vom Betreiber erzeugten Bridge-Key.
@@ -110,50 +121,48 @@ vor Ablauf ergänzt der Dienst Antworten um `warnung: token_laeuft_ab` und das A
 (nur Datum), nach Ablauf kommt `token_abgelaufen`.
 
 Ein optionales Refresh-Token gilt höchstens **365 Tage ab Erstzustimmung**, die Frist
-verlängert sich nicht. Der Dienst erneuert Access vor Ablauf beim nächsten Abruf selbst,
-das Ergebnis bleibt nur im RAM. Er kann nicht in den Tresor zurückschreiben. Deshalb
-jährlich vor Ablauf erneut zustimmen; ab 14 Tagen vorher warnt jede Anwendungsantwort
-mit dem Refresh-Ablaufdatum. Kill/Neustart verliert erneuerte RAM-Tokens; falls LinkedIn
-das alte Refresh-Token dabei widerruft, erneut zustimmen. Ein Access-Token bleibt bis zu
-seinem eigenen Ablauf nutzbar. Kürzere Herstellerfristen werden eingehalten.
+verlängert sich nicht. Der Dienst erneuert Access vor Ablauf beim nächsten Abruf selbst, einmal
+für Lesen und Schreiben, das Ergebnis bleibt nur im RAM.
+Er kann nicht in den Tresor zurückschreiben. Deshalb jährlich vor Ablauf erneut zustimmen; ab
+14 Tagen vorher warnt jede Anwendungsantwort mit dem Refresh-Ablaufdatum. Ein Neustart des Dienstes
+verliert erneuerte RAM-Tokens; falls LinkedIn das alte Refresh-Token dabei widerruft, erneut
+zustimmen. Ein Access-Token bleibt bis zu seinem eigenen Ablauf nutzbar. Kürzere Herstellerfristen
+werden eingehalten.
 
 Bei Verdacht sofort die Autorisierung bei LinkedIn widerrufen und neu zustimmen.
 Entfernen aus dem Tresor ist kein Widerruf beim Hersteller. Eine etwaige Sicherung gehört
 höchstens in den Passwortmanager. Niemals Tokens in ein Supportticket kopieren.
 
+## Umstieg auf den einen Grant (von 0.3.0)
+
+Wer schon getrennt für Lesen und Schreiben zugestimmt hat, stellt in dieser Reihenfolge um:
+
+1. **Alte Autorisierung bei LinkedIn widerrufen** (PO, im eigenen LinkedIn-Konto). Beide alten
+   Grants hängen an derselben App und demselben Mitglied. Deshalb zuerst: ein späterer Widerruf
+   träfe auch die neue Zustimmung. Ab hier gehen weder Lesen noch Posten.
+2. **Version 0.3.1 einspielen** (Betreiber): Image, `docker-compose.yml`, die Path-Unit aus `deploy/`
+   und `systemctl daemon-reload`. Bis Schritt 3 endet der Dienst mit `startup_failed`, weil das alte
+   JSON kein `scope` trägt. Das ist gewollt.
+3. **Neu zustimmen** (PO): die Zeile mit `--gesamt` von oben. LinkedIn zeigt den Dialog mit allen vier
+   Scopes, stderr meldet `Refresh-Token: ja` (bei „nein“ gilt die 60-Tage-Regel unten). Das JSON geht
+   nach `plugin-linkedin-seite-oauth`, die Path-Unit erzeugt den Container neu, im Log steht
+   `schreiben=an`.
+4. **Alte Stelle leeren** (Betreiber): `jnpt credential delete plugin-linkedin-seite-post-oauth`; die
+   Datei verschwindet beim nächsten Abgleich (bis 60 Sekunden). Dann die Zeile aus der tmpfiles-Datei
+   nehmen und den leeren Ordner `/run/jnpt/plugins/linkedin-seite-post-oauth` entfernen; erst danach
+   verschwindet die Stelle aus der Basis-Einrichtung. Was dort noch liegt, hat keine Wirkung: 0.3.1
+   hängt den Ordner nicht ein und liest ihn nicht.
+5. **Prüfen:** Ein Lesewerkzeug liefert Zahlen statt `source_access_denied`. Der erste Post gehört in
+   die gemeinsame Live-Abnahme mit dem Kern.
+
 ## Stufe B1: Posten nach Freigabe
 
 Ab Version 0.3.0 (#1306 F4) kann der Beisteller auf der eigenen Unternehmensseite posten, bearbeiten, löschen
 und eigene Kommentare setzen — nur für Einträge des Redaktionsplans, die ein Mensch freigegeben hat.
-Dafür gibt es eine **zweite, eigene Zustimmung** mit genau den Scopes `w_organization_social`
-(Posten, Bearbeiten, Löschen, Medien) und `w_organization_social_feed` (eigene Kommentare). Der
-Lese-Zugang aus Stufe A bleibt unverändert; Lese- und Schreib-Token sind getrennte Tresor-Stellen
-und werden nie getauscht. Ohne diese Zustimmung bleibt Posten aus.
-
-### Schreib-Zustimmung
-
-1. In der LinkedIn-App prüfen, dass das Produkt „Community Management API“ die Scopes
-   `w_organization_social` und `w_organization_social_feed` freigibt. Die zustimmende Person braucht auf der Seite die Rolle
-   Administrator (oder Content-Admin). Die Redirect-URI bleibt dieselbe.
-2. Am PO-Rechner das Zustimmungsskript im Schreib-Modus starten. Es fordert **nur**
-   `w_organization_social` und `w_organization_social_feed` an und schreibt das JSON in eine **andere**
-   Stelle als Stufe A:
-
-```bash
-python linkedin-seite/tools/zustimmung.py --client-id APP_CLIENT_ID --schreiben | jnpt credential set --name plugin-linkedin-seite-post-oauth
-```
-
-Unter Windows wie oben mit PowerShell 7 und maskierter Eingabe:
-
-```powershell
-Read-Host -MaskInput 'Client-Secret' | python linkedin-seite/tools/zustimmung.py --client-id APP_CLIENT_ID --secret-stdin --schreiben | jnpt credential set --name plugin-linkedin-seite-post-oauth
-```
-
-stderr nennt die Ziel-Stelle `plugin-linkedin-seite-post-oauth`. Das JSON trägt zusätzlich das Feld
-`scope`; der Dienst weist es in der Lese-Stelle ab und verlangt es in der Schreib-Stelle. Wer die
-Pipe vertauscht, sieht das beim nächsten Start: Stufe A startet nicht (falsches JSON in der
-Lese-Stelle) bzw. das Schreiben bleibt aus (`schreiben_nicht_eingerichtet`). Die Ausgabe nie in eine
-Datei umleiten. Laufzeit und Erneuerung wie beim Lese-Token (60 Tage, Refresh höchstens 365 Tage).
+Eine eigene Zustimmung braucht das nicht: Der eine Grant trägt auch `w_organization_social`
+(Posten, Bearbeiten, Löschen, Medien) und `w_organization_social_feed` (eigene Kommentare). Die
+Trennung von Lesen und Schreiben liegt im Gateway: Lesevorlage `linkedin-seite`, Schreibvorlage
+`linkedin-seite-manage`, je eigene Werkzeugrechte. Ohne den Gateway-Zugang unten bleibt Posten aus.
 
 ### Gateway-Zugang des Beistellers
 
@@ -209,5 +218,6 @@ Es gelten höchstens **5 schreibende Aktionen** je UTC-Tag, über Posten, Bearbe
 Kommentieren zusammen; ein Video zählt ab dem Upload-Start als eine Aktion. Eine Umfrage lässt sich
 nach dem Posten nicht mehr ändern; die Admins der Seite sehen bei LinkedIn, wer wie abgestimmt hat,
 der Beisteller liest keine Stimmen. Ein Post-Entwurf (DRAFT) über die Schnittstelle ist bei LinkedIn
-nicht möglich. Rückbau: die Schreib-Autorisierung bei LinkedIn widerrufen und die Stelle
-`plugin-linkedin-seite-post-oauth` leeren; das Entfernen aus dem Tresor allein ist kein Widerruf.
+nicht möglich. Rückbau: `schreiben` aus der Konfiguration nehmen und die Stelle
+`plugin-linkedin-seite-gateway` leeren. Das Token behält dabei seine Schreib-Scopes; sie enden erst
+mit dem Widerruf bei LinkedIn, und einen Grant nur zum Lesen gibt es seit 0.3.1 nicht mehr.

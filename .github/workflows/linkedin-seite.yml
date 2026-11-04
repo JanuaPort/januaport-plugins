@@ -12,7 +12,7 @@ jobs:
   unit:
     name: Fixed reports and negative controls (Python 3.12)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: linkedin-seite

@@ -7,6 +7,7 @@ count requests per host (SEC V1: "Stub zählt die Anfragen").
 """
 import base64
 from datetime import datetime, timedelta, timezone
+from functools import partial
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -17,6 +18,8 @@ from urllib.parse import quote, unquote, urlsplit
 from linkedin_seite import source_contract as s
 from linkedin_seite.domain import Config
 from linkedin_seite.post_adapter import PostAdapter, WriteTransport
+from linkedin_seite.post_pool import WritePool
+from support import DirectTokens, GRANT, GRANT_COMMA
 
 ORG = 'urn:li:organization:123456'
 PLAN = 'redaktionsplan'
@@ -40,11 +43,11 @@ def mp4(size):
 
 
 def write_identity(port, days=60, refresh=False):
-    """The validated write identity as the adapter receives it (scope field already checked)."""
+    """The one grant, marked so a test can tell which requests carried which access token."""
     now = datetime.now(timezone.utc)
     out = {s.CLIENT_ID: str(port), s.CLIENT_SECRET: secrets.token_urlsafe(32),
            s.ACCESS_TOKEN: 'WRITE-' + secrets.token_urlsafe(32),
-           'access_expires_at': (now + timedelta(days=days)).isoformat()}
+           'access_expires_at': (now + timedelta(days=days)).isoformat(), s.SCOPE: GRANT}
     if refresh:
         out.update({s.REFRESH_TOKEN: secrets.token_urlsafe(32),
                     'refresh_expires_at': (now + timedelta(days=365)).isoformat()})
@@ -191,7 +194,7 @@ class FakeLinkedIn(_Server):
         self.override = None
         self.posts = 0
         self.token_body = {s.ACCESS_TOKEN: 'WRITE-REFRESHED-' + secrets.token_urlsafe(16), s.EXPIRES_IN: 60*86400,
-                           s.SCOPE: 'w_organization_social,w_organization_social_feed'}
+                           s.SCOPE: GRANT_COMMA}
         self.upload_host = 'www.linkedin.com'
         self.lock = threading.Lock()
         outer = self
@@ -308,13 +311,38 @@ class VirtualClock:
 
 
 class LocalPostAdapter(PostAdapter):
-    """Top-level so the spawned job process can import it; LinkedIn port travels as client_id."""
+    """Direct use inside the test process; the port travels as client_id."""
 
     def __init__(self, cfg, data, gateway_token, link):
         clock = VirtualClock()
-        port = int(data[s.CLIENT_ID])
-        super().__init__(cfg, data, gateway_token, link, transport_factory=lambda p: LocalWriteTransport(p, port),
+        transport = LocalWriteTransport(link.permit_http, int(data[s.CLIENT_ID]))
+        super().__init__(cfg, DirectTokens(data, transport), gateway_token, link, transport_factory=lambda p: transport,
                          sleep=clock.sleep, monotonic=clock.monotonic)
+
+
+class JobPostAdapter(PostAdapter):
+    """What a spawned job runs: token over its pipe, only the target is the local fake."""
+
+    def __init__(self, port, cfg, tokens, gateway_token, link):
+        clock = VirtualClock()
+        super().__init__(cfg, tokens, gateway_token, link, transport_factory=lambda p: LocalWriteTransport(p, port),
+                         sleep=clock.sleep, monotonic=clock.monotonic)
+
+
+class PreviewAsksForToken(PostAdapter):
+    """A preview that tries to reach LinkedIn anyway: the server process has to refuse it."""
+
+    def __init__(self, port, cfg, tokens, gateway_token, link):
+        super().__init__(cfg, tokens, gateway_token, link, transport_factory=lambda p: LocalWriteTransport(p, port))
+
+    def vorschau(self, req):
+        self.tokens.access()
+        raise AssertionError('a preview got a token')
+
+
+def write_pool(cfg, tokens, port, gateway_token=GATEWAY_TOKEN, adapter=JobPostAdapter, **kwargs):
+    return WritePool(cfg, tokens, gateway_token, adapter_factory=partial(adapter, port),
+                     transport_factory=partial(LocalWriteTransport, port=port), **kwargs)
 
 
 class NoisyWriteTransport(LocalWriteTransport):
@@ -327,9 +355,8 @@ class NoisyWriteTransport(LocalWriteTransport):
 
 
 class NoisyPostAdapter(PostAdapter):
-    def __init__(self, cfg, data, gateway_token, link):
-        port = int(data[s.CLIENT_ID])
-        super().__init__(cfg, data, gateway_token, link, transport_factory=lambda p: NoisyWriteTransport(p, port))
+    def __init__(self, port, cfg, tokens, gateway_token, link):
+        super().__init__(cfg, tokens, gateway_token, link, transport_factory=lambda p: NoisyWriteTransport(p, port))
 
 
 class Link:
@@ -357,9 +384,6 @@ class Link:
 
     def write_request(self):
         self.finals = getattr(self, 'finals', 0) + 1
-
-    def expiry(self, value):
-        pass
 
 
 def sha(data):

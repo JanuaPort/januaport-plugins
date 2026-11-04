@@ -86,8 +86,7 @@ class F2Preview(Service):
 
     async def test_only_the_four_optional_warning_fields_from_f2_are_added(self):
         expiry = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
-        self.pool.identity['access_expires_at'] = expiry
-        self.writes.identity['access_expires_at'] = expiry
+        self.tokens.data['access_expires_at'] = expiry
         rid = self.plan(post_text='x')
         status, preview = await self.vorschau(rid)
         self.assertEqual(status, 200)

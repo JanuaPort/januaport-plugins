@@ -1,0 +1,90 @@
+........Executing <Task pending name='Task-1' coro=<SharedState.asyncSetUp() running at linkedin-seite\tests\test_token_state.py:160> cb=[_run_until_complete_cb() at python\Lib\asyncio\base_events.py:181] created at python\Lib\asyncio\runners.py:100> took 0.532 seconds
+.Executing <Task pending name='Task-16' coro=<SharedState.asyncSetUp() running at linkedin-seite\tests\test_token_state.py:160> cb=[_run_until_complete_cb() at python\Lib\asyncio\base_events.py:181] created at python\Lib\asyncio\runners.py:100> took 0.531 seconds
+.Executing <Task pending name='Task-37' coro=<SharedState.asyncSetUp() running at linkedin-seite\tests\test_token_state.py:160> cb=[_run_until_complete_cb() at python\Lib\asyncio\base_events.py:181] created at python\Lib\asyncio\runners.py:100> took 0.531 seconds
+.Executing <Task pending name='Task-49' coro=<SharedState.asyncSetUp() running at linkedin-seite\tests\test_token_state.py:160> cb=[_run_until_complete_cb() at python\Lib\asyncio\base_events.py:181] created at python\Lib\asyncio\runners.py:100> took 0.359 seconds
+.Executing <Task pending name='Task-68' coro=<SharedState.asyncSetUp() running at linkedin-seite\tests\test_token_state.py:160> cb=[_run_until_complete_cb() at python\Lib\asyncio\base_events.py:181] created at python\Lib\asyncio\runners.py:100> took 0.360 seconds
+.Executing <Task pending name='Task-85' coro=<SharedState.asyncSetUp() running at linkedin-seite\tests\test_token_state.py:160> cb=[_run_until_complete_cb() at python\Lib\asyncio\base_events.py:181] created at python\Lib\asyncio\runners.py:100> took 0.359 seconds
+.Executing <Task pending name='Task-102' coro=<SharedState.asyncSetUp() running at linkedin-seite\tests\test_token_state.py:160> cb=[_run_until_complete_cb() at python\Lib\asyncio\base_events.py:181] created at python\Lib\asyncio\runners.py:100> took 0.344 seconds
+.Executing <Task pending name='Task-125' coro=<SharedState.asyncSetUp() running at linkedin-seite\tests\test_token_state.py:160> cb=[_run_until_complete_cb() at python\Lib\asyncio\base_events.py:181] created at python\Lib\asyncio\runners.py:100> took 0.359 seconds
+FExecuting <Task pending name='Task-137' coro=<SharedState.asyncSetUp() running at linkedin-seite\tests\test_token_state.py:160> cb=[_run_until_complete_cb() at python\Lib\asyncio\base_events.py:181] created at python\Lib\asyncio\runners.py:100> took 0.343 seconds
+EExecuting <Task pending name='Task-151' coro=<SharedState.asyncSetUp() running at linkedin-seite\tests\test_token_state.py:160> cb=[_run_until_complete_cb() at python\Lib\asyncio\base_events.py:181] created at python\Lib\asyncio\runners.py:100> took 0.344 seconds
+.Executing <Task pending name='Task-163' coro=<SharedState.asyncSetUp() running at linkedin-seite\tests\test_token_state.py:160> cb=[_run_until_complete_cb() at python\Lib\asyncio\base_events.py:181] created at python\Lib\asyncio\runners.py:100> took 0.359 seconds
+.Executing <Task pending name='Task-176' coro=<SharedState.asyncSetUp() running at linkedin-seite\tests\test_token_state.py:160> cb=[_run_until_complete_cb() at python\Lib\asyncio\base_events.py:181] created at python\Lib\asyncio\runners.py:100> took 0.390 seconds
+.Executing <Task pending name='Task-193' coro=<SharedState.asyncSetUp() running at linkedin-seite\tests\test_token_state.py:160> cb=[_run_until_complete_cb() at python\Lib\asyncio\base_events.py:181] created at python\Lib\asyncio\runners.py:100> took 0.359 seconds
+.Executing <Task pending name='Task-210' coro=<SharedState.asyncSetUp() running at linkedin-seite\tests\test_token_state.py:160> cb=[_run_until_complete_cb() at python\Lib\asyncio\base_events.py:181] created at python\Lib\asyncio\runners.py:100> took 0.343 seconds
+.Executing <Task pending name='Task-232' coro=<SharedState.asyncSetUp() running at linkedin-seite\tests\test_token_state.py:160> cb=[_run_until_complete_cb() at python\Lib\asyncio\base_events.py:181] created at python\Lib\asyncio\runners.py:100> took 0.344 seconds
+.Executing <Task pending name='Task-252' coro=<SharedState.asyncSetUp() running at linkedin-seite\tests\test_token_state.py:160> cb=[_run_until_complete_cb() at python\Lib\asyncio\base_events.py:181] created at python\Lib\asyncio\runners.py:100> took 0.344 seconds
+.Executing <Task pending name='Task-264' coro=<SharedState.asyncSetUp() running at linkedin-seite\tests\test_token_state.py:160> cb=[_run_until_complete_cb() at python\Lib\asyncio\base_events.py:181] created at python\Lib\asyncio\runners.py:100> took 0.344 seconds
+.
+======================================================================
+ERROR: test_an_unexpected_renewal_error_stays_contained_on_the_write_path (test_token_state.SharedState.test_an_unexpected_renewal_error_stays_contained_on_the_write_path)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "python\Lib\asyncio\tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "linkedin-seite\tests\test_token_state.py", line 187, in post
+    return await self.write_call('create_post', rid)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "linkedin-seite\tests\test_post_server.py", line 81, in write_call
+    reply = await self.client.post('/v1/linkedin-post/' + route, data=json.dumps({'eintrag_id': rid}), headers=headers)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "HOME\AppData\Roaming\Python\Python312\site-packages\aiohttp\test_utils.py", line 347, in _request
+    resp = await self._session.request(method, self.make_url(path), **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "HOME\AppData\Roaming\Python\Python312\site-packages\aiohttp\client.py", line 900, in _request
+    resp = await handler(req)
+           ^^^^^^^^^^^^^^^^^^
+  File "HOME\AppData\Roaming\Python\Python312\site-packages\aiohttp\client.py", line 878, in _connect_and_send_request
+    await resp.start(conn)
+  File "HOME\AppData\Roaming\Python\Python312\site-packages\aiohttp\client_reqrep.py", line 745, in start
+    message, payload = await protocol.read()  # type: ignore[union-attr]
+                       ^^^^^^^^^^^^^^^^^^^^^
+  File "HOME\AppData\Roaming\Python\Python312\site-packages\aiohttp\streams.py", line 716, in read
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "python\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "python\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "linkedin-seite\tests\test_token_state.py", line 266, in test_an_unexpected_renewal_error_stays_contained_on_the_write_path
+    reply = await asyncio.wait_for(self.post(), 8)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "python\Lib\asyncio\tasks.py", line 519, in wait_for
+    async with timeouts.timeout(timeout):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "python\Lib\asyncio\timeouts.py", line 115, in __aexit__
+    raise TimeoutError from exc_val
+TimeoutError
+
+======================================================================
+FAIL: test_an_unexpected_renewal_error_stays_contained_on_the_read_path (test_token_state.SharedState.test_an_unexpected_renewal_error_stays_contained_on_the_read_path)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "python\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "python\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "linkedin-seite\tests\test_token_state.py", line 261, in test_an_unexpected_renewal_error_stays_contained_on_the_read_path
+    self.assertEqual(await self.read(), (502, {'error': 'source_unavailable'}))
+AssertionError: Tuples differ: (503, {'error': 'internal_error'}) != (502, {'error': 'source_unavailable'})
+
+First differing element 0:
+503
+502
+
+- (503, {'error': 'internal_error'})
++ (502, {'error': 'source_unavailable'})
+
+----------------------------------------------------------------------
+Ran 25 tests in 67.936s
+
+FAILED (failures=1, errors=1)

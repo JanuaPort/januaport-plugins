@@ -1,5 +1,6 @@
 """Synthetic HTTP LinkedIn server; production transport with loopback-only test seam."""
 from datetime import datetime, timedelta, timezone
+from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import re
@@ -10,18 +11,24 @@ import urllib.request
 from urllib.parse import urlsplit, parse_qs
 from linkedin_seite import source_contract as s
 from linkedin_seite.domain import Config
-from linkedin_seite.oauth import Transport
+from linkedin_seite.oauth import Tokens, Transport
 from linkedin_seite.linkedin_adapter import LinkedInAdapter
+from linkedin_seite.workers import WorkerPool
 
 ORG = 'urn:li:organization:123456'
 CFG = Config.from_dict({'organization': ORG, 'linkedin_version': '202610'})
+# The one grant (#1237, 0.3.1) as an independent literal: the vault JSON carries it space separated,
+# LinkedIn answers comma separated and in its own order (02.11.2026).
+GRANT_LIST = ('rw_organization_admin', 'r_organization_social', 'w_organization_social', 'w_organization_social_feed')
+GRANT = ' '.join(GRANT_LIST)
+GRANT_COMMA = 'w_organization_social_feed,r_organization_social,rw_organization_admin,w_organization_social'
 
 
 def identity(port=123, days=60, refresh=False):
     now = datetime.now(timezone.utc)
     out = {s.CLIENT_ID: str(port), s.CLIENT_SECRET: secrets.token_urlsafe(32),
            s.ACCESS_TOKEN: secrets.token_urlsafe(32),
-           'access_expires_at': (now + timedelta(days=days)).isoformat()}
+           'access_expires_at': (now + timedelta(days=days)).isoformat(), s.SCOPE: GRANT}
     if refresh:
         out.update({s.REFRESH_TOKEN: secrets.token_urlsafe(32),
                     'refresh_expires_at': (now + timedelta(days=365)).isoformat()})
@@ -40,9 +47,38 @@ class LocalTransport(Transport):
         return super()._open(local)
 
 
+class DirectTokens:
+    """An adapter used without a worker: the real state, renewed on this test's transport."""
+
+    def __init__(self, data, transport):
+        self.state, self.transport = Tokens(data), transport
+
+    @property
+    def data(self):
+        return self.state.data
+
+    def access(self):
+        return self.state.access(self.transport)
+
+
 class LocalAdapter(LinkedInAdapter):
+    """Direct use inside the test process."""
+
     def __init__(self, cfg, data, permit):
-        super().__init__(cfg, data, permit, lambda p: LocalTransport(p, int(data[s.CLIENT_ID])))
+        transport = LocalTransport(permit, int(data[s.CLIENT_ID]))
+        super().__init__(cfg, DirectTokens(data, transport), permit, lambda p: transport)
+
+
+class WorkerAdapter(LinkedInAdapter):
+    """What a spawned worker runs: token over its pipe, only the target is the local fake."""
+
+    def __init__(self, port, cfg, tokens, permit):
+        super().__init__(cfg, tokens, permit, lambda p: LocalTransport(p, port))
+
+
+def read_pool(cfg, tokens, port, **kwargs):
+    return WorkerPool(cfg, tokens, adapter_factory=partial(WorkerAdapter, port),
+                      transport_factory=partial(LocalTransport, port=port), **kwargs)
 
 
 class Fake:
@@ -53,7 +89,7 @@ class Fake:
         self.body = None
         self.delay = 0
         self.location = '/leak'
-        self.token_body = {s.ACCESS_TOKEN: secrets.token_urlsafe(32), s.EXPIRES_IN: 60*86400}
+        self.token_body = {s.ACCESS_TOKEN: secrets.token_urlsafe(32), s.EXPIRES_IN: 60*86400, s.SCOPE: GRANT_COMMA}
         outer = self
 
         class Handler(BaseHTTPRequestHandler):

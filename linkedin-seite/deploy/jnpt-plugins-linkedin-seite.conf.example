@@ -10,14 +10,11 @@
 #   linkedin-seite         runtime-key = der EINE Bridge-Key für LinkedIn
 #                            (Stelle plugin-linkedin-seite; derselbe Wert steht
 #                            in der Connector-Credential linkedin-seite)
-#   linkedin-seite-oauth  runtime-key = das OAuth-JSON
-#                            (Stelle plugin-linkedin-seite-oauth, Zustimmungsskript
-#                            am PO-Rechner, stdout per Pipe in die Betreiber-CLI)
-# Stufe B1 (#1237, 0.2.0), beide optional — ohne sie läuft Stufe A, Schreiben ist aus:
-#   linkedin-seite-post-oauth  runtime-key = das OAuth-JSON des SCHREIB-Grants
-#                            (Stelle plugin-linkedin-seite-post-oauth, genau
-#                            w_organization_social + w_organization_social_feed,
-#                            Zustimmungsskript mit --schreiben)
+#   linkedin-seite-oauth  runtime-key = das OAuth-JSON des EINEN Grants für Lesen und
+#                            Schreiben (Stelle plugin-linkedin-seite-oauth, vier Scopes,
+#                            Zustimmungsskript mit --gesamt am PO-Rechner, stdout per
+#                            Pipe in die Betreiber-CLI)
+# Stufe B1 (#1237), optional — ohne ihn läuft Stufe A, Schreiben ist aus:
 #   linkedin-seite-gateway   runtime-key = der eigene, nur lesende Gateway-Token
 #                            des Beistellers (Stelle plugin-linkedin-seite-gateway)
 # Der Dienst liest alle Dateien nur beim Start; den Neustart nach einem
@@ -25,5 +22,4 @@
 # jnpt-linkedin-seite-key.path/.service aus.
 d /run/jnpt/plugins/linkedin-seite 0750 65532 65532 -
 d /run/jnpt/plugins/linkedin-seite-oauth 0750 65532 65532 -
-d /run/jnpt/plugins/linkedin-seite-post-oauth 0750 65532 65532 -
 d /run/jnpt/plugins/linkedin-seite-gateway 0750 65532 65532 -

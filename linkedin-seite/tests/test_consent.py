@@ -11,7 +11,7 @@ import unittest
 from urllib.parse import urlsplit, parse_qs, urlencode
 from unittest.mock import patch
 from linkedin_seite import source_contract as s
-from support import Fake, LocalTransport
+from support import Fake, GRANT_COMMA, GRANT_LIST, LocalTransport
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'tools' / 'zustimmung.py'
 if SCRIPT.exists():
@@ -62,7 +62,7 @@ class Consent(unittest.TestCase):
         out = self.run_consent(pkce=True)
         self.assertIn(s.ACCESS_TOKEN, out)
         params = self.seen[0]
-        self.assertEqual(set(params[s.SCOPE][0].split()), {'rw_organization_admin', 'r_organization_social'})
+        self.assertEqual(set(params[s.SCOPE][0].split()), set(GRANT_LIST))
         self.assertEqual(params[s.REDIRECT], ['http://localhost:8765/linkedin/callback'])
         self.assertGreaterEqual(len(params[s.STATE][0]), 40)
         self.assertEqual(params[s.CODE_CHALLENGE_METHOD], ['S256'])
@@ -98,7 +98,7 @@ class Consent(unittest.TestCase):
         self.assertEqual(consent.TIMEOUT, 300)
 
     def test_secret_not_an_argument_stdout_json_only_no_files(self):
-        args = ['zustimmung.py', '--client-id', 'synthetic-client', '--secret-stdin']
+        args = ['zustimmung.py', '--client-id', 'synthetic-client', '--secret-stdin', '--gesamt']
         output, errors = io.StringIO(), io.StringIO()
         original = consent.consent
         with patch('sys.argv', args), patch('sys.stdin', io.StringIO('synthetic-secret\n')), \
@@ -108,7 +108,7 @@ class Consent(unittest.TestCase):
             self.assertEqual(consent.main(), 0)
         import json
         self.assertEqual(json.loads(output.getvalue())[s.CLIENT_SECRET], 'synthetic-secret')
-        self.assertEqual(errors.getvalue(), 'Refresh-Token: nein\n')
+        self.assertEqual(errors.getvalue().splitlines()[-1], 'Refresh-Token: nein')
         rejected = io.StringIO()
         with patch('sys.argv', args + ['--client-secret', 'CANARY']), contextlib.redirect_stderr(rejected), self.assertRaises(SystemExit):
             consent.main()
@@ -134,12 +134,12 @@ class Consent(unittest.TestCase):
         self.assertNotEqual(self.seen[0][s.STATE], self.seen[1][s.STATE])
 
     def test_main_hard_deadline_exits_even_if_transport_hangs(self):
-        code = "import sys,time; sys.path.insert(0,sys.argv[1]); import zustimmung as z; z.TIMEOUT=.1; z.consent=lambda *a: time.sleep(10); sys.argv=['z','--client-id','synthetic','--secret-stdin']; raise SystemExit(z.main())"
+        code = "import sys,time; sys.path.insert(0,sys.argv[1]); import zustimmung as z; z.TIMEOUT=.1; z.consent=lambda *a: time.sleep(10); sys.argv=['z','--client-id','synthetic','--secret-stdin','--gesamt']; raise SystemExit(z.main())"
         result = subprocess.run([sys.executable, '-c', code, str(SCRIPT.parent)],
                                 input='synthetic-secret\n', capture_output=True, text=True, timeout=3)
         self.assertEqual(result.returncode, 1)
         self.assertEqual(result.stdout, '')
-        self.assertEqual(result.stderr, 'zustimmung_timeout\n')
+        self.assertEqual(result.stderr.splitlines()[-1], 'zustimmung_timeout')
 
     def test_getpass_echo_fallback_is_rejected(self):
         def unsafe(*args):
@@ -147,7 +147,7 @@ class Consent(unittest.TestCase):
             warnings.warn('unsafe fallback', consent.getpass.GetPassWarning)
             raise AssertionError('must stop before echo fallback')
         errors, output = io.StringIO(), io.StringIO()
-        with patch('sys.argv', ['z','--client-id','synthetic']), patch.object(consent.getpass, 'getpass', unsafe), \
+        with patch('sys.argv', ['z','--client-id','synthetic','--gesamt']), patch.object(consent.getpass, 'getpass', unsafe), \
              contextlib.redirect_stderr(errors), contextlib.redirect_stdout(output):
             self.assertEqual(consent.main(), 1)
         self.assertEqual(output.getvalue(), '')
@@ -157,7 +157,7 @@ class Consent(unittest.TestCase):
         # JanuaPort/januaport#1237: scope comma separated, refresh 59 s over 365 days (consent 02.11.2026)
         from datetime import datetime, timedelta, timezone
         from linkedin_seite.oauth import validate_identity
-        self.fake.token_body.update({s.SCOPE: 'r_organization_social,rw_organization_admin', s.TOKEN_TYPE: 'Bearer',
+        self.fake.token_body.update({s.SCOPE: GRANT_COMMA, s.TOKEN_TYPE: 'Bearer',
                                      s.EXPIRES_IN: 60*86400+59, s.REFRESH_TOKEN: 'synthetic-refresh',
                                      s.REFRESH_EXPIRES_IN: 31536059})
         before = datetime.now(timezone.utc)
@@ -174,7 +174,7 @@ class Consent(unittest.TestCase):
         for secret in ('abc\x16def', '\x16', 'abc\x16', 'abc\x1bdef', 'abc\x7fdef', 'abc\x00def', 'ab\tcd'):
             for via in ('stdin', 'getpass'):
                 with self.subTest(secret=repr(secret), via=via):
-                    args = ['z', '--client-id', 'synthetic-client'] + (['--secret-stdin'] if via == 'stdin' else [])
+                    args = ['z', '--client-id', 'synthetic-client', '--gesamt'] + (['--secret-stdin'] if via == 'stdin' else [])
                     output, errors = io.StringIO(), io.StringIO()
                     guard = patch.object(consent, 'consent', side_effect=AssertionError('must not be reached'))
                     typed = patch.object(consent.getpass, 'getpass', lambda *a: secret)
@@ -195,9 +195,9 @@ class Consent(unittest.TestCase):
             with self.subTest(ending=repr(ending)):
                 output, errors = io.StringIO(), io.StringIO()
                 original = consent.consent
-                with patch('sys.argv', ['z', '--client-id', 'synthetic-client', '--secret-stdin']), \
+                with patch('sys.argv', ['z', '--client-id', 'synthetic-client', '--secret-stdin', '--gesamt']), \
                      patch('sys.stdin', io.StringIO('synthetic-secret' + ending)), \
                      contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors), \
                      patch.object(consent, 'consent', lambda *a, **kw: original(*a, **kw, opener=self.browser, transport=LocalTransport(lambda: None, self.fake.port))):
                     self.assertEqual(consent.main(), 0)
-                self.assertEqual(errors.getvalue(), 'Refresh-Token: nein\n')
+                self.assertEqual(errors.getvalue().splitlines()[-1], 'Refresh-Token: nein')

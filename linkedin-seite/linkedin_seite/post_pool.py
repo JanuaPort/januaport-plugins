@@ -11,9 +11,11 @@ from datetime import datetime, timezone
 import json
 import logging
 import multiprocessing
+import threading
 import time
 from . import redaktion as r
 from .domain import ReportError, encode_response
+from .oauth import TokenClient, Transport
 
 LOG = logging.getLogger('linkedin_seite')
 
@@ -49,18 +51,14 @@ class PipeLink:
     def write_request(self):
         self.ask('write')
 
-    def expiry(self, value):
-        self.conn.send(('expiry', value))
 
-
-def job_main(conn, cfg, identity, gateway_token, req, adapter_factory=None):
+def job_main(conn, cfg, gateway_token, req, adapter_factory=None):
     logging.disable(logging.CRITICAL)  # no library or request logging inside a job
     from .post_adapter import Erledigt, PostAdapter
     factory = adapter_factory or PostAdapter
     link = PipeLink(conn)
-    adapter = None
     try:
-        adapter = factory(cfg, identity, gateway_token, link)
+        adapter = factory(cfg, TokenClient(link.ask), gateway_token, link)
         result = adapter.vorschau(req) if req.vorschau else adapter.run(req)
         message = ('ok', encode_response(result))
     except Erledigt:
@@ -70,9 +68,6 @@ def job_main(conn, cfg, identity, gateway_token, req, adapter_factory=None):
     except Exception:
         message = ('error', 502, 'source_unavailable')
     try:
-        expiry = adapter.tokens.data.get('refresh_expires_at') if adapter else None
-        if expiry:
-            link.expiry(expiry)  # only expiry metadata crosses back, never a token
         conn.send(message)
     except (EOFError, BrokenPipeError, OSError):
         pass
@@ -90,15 +85,18 @@ class Job:
 
 
 class WritePool:
-    def __init__(self, cfg, identity, gateway_token, *, adapter_factory=None, today=None,
-                 hard=JOB_HARD_SECONDS, budget=VORSCHAU_BUDGET):
-        self.cfg, self.identity, self.token = cfg, identity, gateway_token
+    def __init__(self, cfg, tokens, gateway_token, *, adapter_factory=None, today=None,
+                 hard=JOB_HARD_SECONDS, budget=VORSCHAU_BUDGET, transport_factory=Transport):
+        self.cfg, self.tokens, self.gateway_token = cfg, tokens, gateway_token
+        # Own transport: a renewal this path needed counts against this path's HTTP cap.
+        self.transport = transport_factory(self._permit_http)
         self.factory = adapter_factory
         self.context = multiprocessing.get_context('spawn')
         self.today = today or (lambda: datetime.now(timezone.utc).date().isoformat())
         self.hard, self.budget = hard, budget
         self.actions = {}   # UTC day -> counted write actions (SEC Bed. 5)
         self.http = {}      # UTC day -> LinkedIn HTTP attempts of write jobs
+        self.counter_lock = threading.Lock()  # the event loop counts for jobs, a thread for a renewal
         self.done = {}      # (eintrag_id, hash) -> result payload, in-process idempotency
         self.job = None
         self.vorschau_job = None
@@ -106,25 +104,28 @@ class WritePool:
         self.closed = False
 
     def warning(self):
-        from .oauth import warning
-        extra = warning(self.identity)
+        extra = self.tokens.warning()
         return {'warnung_schreiben': extra['warnung'], 'ablaufdatum_schreiben': extra['ablaufdatum']} if extra else {}
 
     # --- counters, in this process only ---------------------------------------------------
 
     def _count(self, store, cap, code):
-        day = self.today()
-        for key in [k for k in store if k != day]:
-            del store[key]
-        if store.get(day, 0) >= cap:
-            raise ReportError(429, code)
-        store[day] = store.get(day, 0) + 1
+        with self.counter_lock:
+            day = self.today()
+            for key in [k for k in store if k != day]:
+                del store[key]
+            if store.get(day, 0) >= cap:
+                raise ReportError(429, code)
+            store[day] = store.get(day, 0) + 1
+
+    def _permit_http(self):
+        self._count(self.http, WRITE_HTTP_PER_DAY, 'schreib_http_tageslimit')
 
     # --- job lifecycle ------------------------------------------------------------------------
 
     def _start(self, req):
         parent, child = self.context.Pipe()
-        proc = self.context.Process(target=job_main, args=(child, self.cfg, self.identity, self.token, req, self.factory),
+        proc = self.context.Process(target=job_main, args=(child, self.cfg, self.gateway_token, req, self.factory),
                                     daemon=True)
         proc.start()
         child.close()
@@ -132,21 +133,27 @@ class WritePool:
         job.task = asyncio.create_task(self._supervise(job))
         return job
 
+    async def _send_token(self, job):
+        # In a thread: a due renewal is HTTP, and the server process must keep serving meanwhile.
+        try:
+            if job.req.vorschau:
+                raise ReportError(500, 'vorschau_schreibt')  # a preview never renews or reaches LinkedIn
+            reply = ('token', await asyncio.to_thread(self.tokens.access, self.transport))
+        except ReportError as exc:
+            reply = ('error', exc.status, exc.code)
+        except Exception:  # the exchange runs here now, not in a job: same containment
+            reply = ('error', 502, 'source_unavailable')
+        job.conn.send(reply)
+
     def _reply(self, job, message):
         kind = message[0]
-        if kind == 'expiry':
-            from .oauth import timestamp
-            current = self.identity.get('refresh_expires_at')
-            if current and timestamp(message[1]) < timestamp(current):
-                self.identity['refresh_expires_at'] = message[1]
-            return None
         if kind not in ('permit', 'aktion', 'hash', 'write'):
             return message  # final message
         try:
             if job.req.vorschau:
                 raise ReportError(500, 'vorschau_schreibt')  # a preview never talks to LinkedIn
             if kind == 'permit':
-                self._count(self.http, WRITE_HTTP_PER_DAY, 'schreib_http_tageslimit')
+                self._permit_http()
                 job.conn.send(('granted',))
             elif kind == 'aktion':
                 self._count(self.actions, WRITE_ACTIONS_PER_DAY, 'schreib_tageslimit')
@@ -175,7 +182,11 @@ class WritePool:
                     if loop.time() > deadline:
                         raise ReportError(504, 'budget_exceeded' if job.req.vorschau else 'schreiben_zeit_ueberschritten')
                     await asyncio.sleep(0.01)
-                outcome = self._reply(job, job.conn.recv())
+                message = job.conn.recv()
+                if message[0] == 'token':
+                    await self._send_token(job)
+                    continue
+                outcome = self._reply(job, message)
             if outcome[0] == 'ok':
                 result = (200, outcome[1])
                 if not job.req.vorschau:

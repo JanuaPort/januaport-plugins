@@ -42,11 +42,21 @@ class Version(unittest.TestCase):
                        'w_organization_social_feed'):
             self.assertIn(phrase, section.group(0))
 
-    def test_f4_ships_consistently_as_0_3_0(self):
-        self.assertEqual(self.versions(), ('0.3.0',)*3)
-        self.assertIn('org.opencontainers.image.version="0.3.0"', self.read('Dockerfile'))
-        self.assertIn("'version': '0.3.0'", self.read('linkedin_seite/gateway.py'))
-        self.assertIn('#1306', self.read('CHANGELOG.md'))
+    def test_f4_ships_from_0_3_0_with_its_changelog_entry(self):
+        self.assertGreaterEqual(triple(self.versions()[2]), (0, 3, 0))
+        section = re.search(r'^## 0\.3\.0 — .*?(?=^## |\Z)', self.read('CHANGELOG.md'), re.M | re.S)
+        self.assertIsNotNone(section)
+        self.assertIn('#1306', section.group(0))
+
+    def test_the_one_grant_ships_consistently_as_0_3_1(self):
+        self.assertEqual(self.versions(), ('0.3.1',)*3)
+        self.assertIn('org.opencontainers.image.version="0.3.1"', self.read('Dockerfile'))
+        self.assertIn("'version': '0.3.1'", self.read('linkedin_seite/gateway.py'))
+        section = re.search(r'^## 0\.3\.1 — .*?(?=^## |\Z)', self.read('CHANGELOG.md'), re.M | re.S)
+        self.assertIsNotNone(section)
+        for phrase in ('JanuaPort/januaport#1237', '--gesamt', 'plugin-linkedin-seite-oauth', 'GRANT_SCOPES',
+                       'plugin-linkedin-seite-post-oauth', 'Serverprozess'):
+            self.assertIn(phrase, section.group(0))
 
 
 if __name__ == '__main__':

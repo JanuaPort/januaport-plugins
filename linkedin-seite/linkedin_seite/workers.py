@@ -1,12 +1,18 @@
-"""Two persistent isolated workers; cancellation terminates actual token/API work."""
+"""Two persistent isolated workers; cancellation terminates actual API work.
+
+A running token renewal is the one exception: it belongs to the server process and finishes there,
+so that its result is not lost. Worker and job processes only ask for the access token.
+"""
 
 import asyncio
 from collections import deque
 import multiprocessing
 import logging
 from datetime import datetime, timezone
+import threading
 import time
 from .domain import ReportError, encode_response
+from .oauth import TokenClient, Transport
 
 BUDGET_SECONDS = 20
 WORKERS = 2
@@ -15,19 +21,23 @@ MAX_QUEUED = 4
 DAILY_CAP = 50
 
 
-def worker_main(conn, cfg, identity, adapter_factory=None):
+def worker_main(conn, cfg, adapter_factory=None):
     logging.disable(logging.CRITICAL)
     # No Python logging or inherited request/server objects in a spawned worker.
     if adapter_factory is None:
         from .linkedin_adapter import LinkedInAdapter
 
         adapter_factory = LinkedInAdapter
-    def permit():
-        conn.send(("permit",))
+    def ask(*message):
+        conn.send(message)
         reply = conn.recv()
         if reply[0] == "error":
             raise ReportError(reply[1], reply[2])
-    adapter = adapter_factory(cfg, identity, permit)
+        return reply
+
+    def permit():
+        ask("permit")
+    adapter = adapter_factory(cfg, TokenClient(ask), permit)
     try:
         while True:
             req = conn.recv()
@@ -38,11 +48,6 @@ def worker_main(conn, cfg, identity, adapter_factory=None):
                 result = ("error", exc.status, exc.code)
             except Exception:
                 result = ("error", 502, "source_unavailable")
-            # Only expiry metadata crosses back; refreshed access/refresh tokens
-            # stay in the worker. Shortened provider expiry advances the warning.
-            expiry = adapter.tokens.data.get('refresh_expires_at')
-            if expiry:
-                conn.send(("expiry", expiry))
             conn.send(result)
     except (EOFError, BrokenPipeError):
         pass
@@ -54,13 +59,16 @@ class WorkerPool:
     def __init__(
         self,
         cfg,
-        identity,
+        tokens,
         *,
         budget=BUDGET_SECONDS,
         adapter_factory=None,
         today=None,
+        transport_factory=Transport,
     ):
-        self.cfg, self.identity = cfg, identity
+        self.cfg, self.tokens = cfg, tokens
+        # Own transport: a renewal this path needed counts against this path's daily cap.
+        self.transport = transport_factory(self._permit)
         self.budget = budget
         self.factory = adapter_factory
         self.context = multiprocessing.get_context("spawn")
@@ -73,24 +81,25 @@ class WorkerPool:
         self.closed = False
         # Count each outbound HTTP attempt in the parent, never in disposable workers.
         self.attempts = {}
+        self.counter_lock = threading.Lock()  # the event loop counts for workers, a thread for a renewal
         self.today = today or (lambda: datetime.now(timezone.utc).date().isoformat())
 
     def warning(self):
-        from .oauth import warning
-        return warning(self.identity)
+        return self.tokens.warning()
 
     def _permit(self):
-        day = self.today()
-        self.attempts = {k: v for k, v in self.attempts.items() if k == day}
-        if self.attempts.get(day, 0) >= DAILY_CAP:
-            raise ReportError(429, "daily_cap_reached")
-        self.attempts[day] = self.attempts.get(day, 0) + 1
+        with self.counter_lock:
+            day = self.today()
+            self.attempts = {k: v for k, v in self.attempts.items() if k == day}
+            if self.attempts.get(day, 0) >= DAILY_CAP:
+                raise ReportError(429, "daily_cap_reached")
+            self.attempts[day] = self.attempts.get(day, 0) + 1
 
     def _start(self, index):
         parent, child = self.context.Pipe()
         proc = self.context.Process(
             target=worker_main,
-            args=(child, self.cfg, self.identity, self.factory),
+            args=(child, self.cfg, self.factory),
             daemon=True,
         )
         proc.start()
@@ -113,6 +122,16 @@ class WorkerPool:
             raise ReportError(503, "worker_unavailable")
         proc.close()
         self.slots[index] = None
+
+    async def _send_token(self, conn):
+        # In a thread: a due renewal is HTTP, and the server process must keep serving meanwhile.
+        try:
+            reply = ("token", await asyncio.to_thread(self.tokens.access, self.transport))
+        except ReportError as exc:
+            reply = ("error", exc.status, exc.code)
+        except Exception:  # the exchange runs here now, not in a worker: same containment
+            reply = ("error", 502, "source_unavailable")
+        conn.send(reply)
 
     async def run(self, req):
         started = time.monotonic()
@@ -139,11 +158,8 @@ class WorkerPool:
                             raise ReportError(502, "worker_failed")
                         await asyncio.sleep(0.01)
                     message = conn.recv()
-                    if message[0] == "expiry":
-                        from .oauth import timestamp
-                        current = self.identity.get('refresh_expires_at')
-                        if current and timestamp(message[1]) < timestamp(current):
-                            self.identity['refresh_expires_at'] = message[1]
+                    if message[0] == "token":
+                        await self._send_token(conn)
                         continue
                     if message[0] != "permit":
                         result = message

@@ -5,7 +5,7 @@ import urllib.request
 from urllib.parse import quote
 from . import source_contract as s
 from .domain import REPORTS, ReportError
-from .oauth import Tokens, Transport
+from .oauth import Transport
 
 
 def shape():
@@ -108,10 +108,10 @@ def minimize(raw, keys):
 
 
 class LinkedInAdapter:
-    def __init__(self, cfg, identity, permit, transport_factory=Transport):
+    def __init__(self, cfg, tokens, permit, transport_factory=Transport):
         self.cfg = cfg
         self.transport = transport_factory(permit)
-        self.tokens = Tokens(identity, self.transport)
+        self.tokens = tokens  # anything with access(): in a worker the pipe to the server process
 
     def get(self, endpoint, params):
         if endpoint not in (s.PAGE, s.FOLLOWERS, s.SHARES, s.POSTS, s.NETWORK):

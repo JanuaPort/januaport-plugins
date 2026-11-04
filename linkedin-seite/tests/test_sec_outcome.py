@@ -15,7 +15,7 @@ class Outcome(Service):
     def definite(self, status, body, code):
         self.assertEqual((status, body), (200, {'error': code, 'nicht_ausgefuehrt': True}))
         self.assertEqual(self.li.writes(), [])
-        for secret in (GATEWAY_TOKEN, self.write[s.ACCESS_TOKEN], self.write[s.CLIENT_SECRET]):
+        for secret in (GATEWAY_TOKEN, self.data[s.ACCESS_TOKEN], self.data[s.CLIENT_SECRET]):
             self.assertNotIn(secret, json.dumps(body))
 
     async def approved_entry(self, action):
@@ -61,7 +61,7 @@ class Outcome(Service):
 
     async def test_expired_token_is_definite_before_any_linkedin_request(self):
         rid = await self.approved_entry('posten')
-        self.writes.identity['access_expires_at'] = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        self.tokens.data['access_expires_at'] = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
         self.definite(*await self.write_call('create_post', rid), 'token_abgelaufen')
         self.assertEqual(self.li.calls, [])
 
@@ -93,7 +93,7 @@ class Outcome(Service):
     async def test_refresh_rejection_is_definite_without_a_business_write(self):
         from support_post import write_identity
         rid = await self.approved_entry('posten')
-        self.writes.identity = write_identity(self.li.port, days=-1, refresh=True)
+        self.tokens.data = write_identity(self.li.port, days=-1, refresh=True)
         self.li.token_body[s.SCOPE] = 'r_organization_social'
         self.definite(*await self.write_call('create_post', rid), 'unexpected_source_shape')
         self.assertEqual([c['path'] for c in self.li.calls], ['/oauth/v2/accessToken'])
