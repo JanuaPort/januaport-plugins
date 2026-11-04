@@ -33,6 +33,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
+	"github.com/januaport/januaport-plugins/desktop-runner/internal/edge"
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/fenster"
 )
 
@@ -845,6 +846,43 @@ func TestWindowsWebViewInlineSkriptBlockiert(t *testing.T) {
 		pump(t, s, time.Second, nil)
 		if b.gw.has("inline ") {
 			t.Fatal("Inline-Skript lief trotz CSP")
+		}
+	})
+}
+
+// SEC Bedingung 3 am echten WebView2: Scheitert der Controller-Start (Elternfenster 0 gibt es nicht), meldet die
+// Kopie den ersten Fehler an den Aufrufer, statt den Prozess zu beenden oder zu hängen. Der Test-Prozess lebt
+// danach, und die Nachrichtenverteilung läuft weiter.
+func TestWindowsEdgeControllerFehlerBleibtFehler(t *testing.T) {
+	b := newProbeBed(t)
+	b.run(t, probeFrist, func(t *testing.T) {
+		dir, err := os.MkdirTemp("", "jnpt-probe-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		b.closers = append(b.closers, func() { removeWhenFree(t, dir) })
+		c := edge.NewChromium()
+		var reported []string
+		c.SetErrorCallback(func(err error) { reported = append(reported, fenster.DiagText(err.Error())) })
+		c.DataPath = filepath.Join(dir, "webview")
+		if err := c.Begin(0); err != nil {
+			t.Logf("Begin meldet sofort: %v (auch ein fester Fehler beim Aufrufer)", err)
+			return
+		}
+		s := &Surface{}
+		start := time.Now()
+		err = WaitFor(startFrist, s.pumpOnce, c.Ready)
+		c.Cancel()
+		t.Logf("Ergebnis nach %v: %v; Fehlerrückrufe: %v", time.Since(start), err, reported)
+		if err == nil {
+			c.Close()
+			t.Fatal("Controller mit Elternfenster 0 wurde angenommen: Die Sonde kann den Fehlerpfad nicht erzwingen")
+		}
+		if errors.Is(err, ErrStartFrist) {
+			t.Fatalf("keine Rückmeldung innerhalb %v: Der Fehler kam nicht als Fehler an", startFrist)
+		}
+		if !pump(t, nil, 200*time.Millisecond, nil) {
+			t.Fatal("Nachrichtenverteilung blockiert nach dem Fehler")
 		}
 	})
 }

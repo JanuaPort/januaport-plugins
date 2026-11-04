@@ -87,7 +87,7 @@ func visitRoot(t *testing.T, graph map[string][]string, root string) (doorUsed b
 					allowed = true
 				}
 			}
-			if !allowed && (dep == "net/http" || dep == guardBase+"internal/client" || dep == guardBase+"internal/fensterio" || (dep == "net" && !throughPipe)) {
+			if !allowed && (dep == "net/http" || dep == guardBase+"internal/client" || dep == guardBase+"internal/fensterio" || dep == guardBase+"internal/edge" || dep == guardBase+"internal/edge/w32" || dep == guardBase+"internal/wv2com" || (dep == "net" && !throughPipe)) {
 				t.Errorf("verbotener Importweg %s -> %s", p, dep)
 			}
 			visit(dep, throughPipe)

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"runtime"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -21,25 +20,8 @@ import (
 type Rect = w32.Rect
 
 func globalErrorHandler(err error) {
-	if err == nil {
-		return
-	}
-
-	fmt.Printf("[WebView2 Error] %v\n", err)
-
-	stackBuf := make([]uintptr, 64)
-	stackSize := runtime.Callers(2, stackBuf)
-	frames := runtime.CallersFrames(stackBuf[:stackSize])
-
-	fmt.Println("\nStack trace:")
-	stackIndex := 1
-	for {
-		frame, more := frames.Next()
-		if !more {
-			break
-		}
-		log.Printf("%d: %s\n\t%s:%d\n", stackIndex, frame.Function, frame.File, frame.Line)
-		stackIndex++
+	if err != nil {
+		log.Printf("[WebView2 Error] %v\n", err)
 	}
 }
 
@@ -310,6 +292,7 @@ func (e *Chromium) EnvironmentCompleted(res uintptr, env *ICoreWebView2Environme
 	err := env.CreateCoreWebView2Controller(e.hwnd, e.controllerCompleted)
 	if err != nil {
 		e.errorCallback(err)
+		return 0
 	}
 	return 0
 }

@@ -43,6 +43,9 @@ WAIT = "internal/fensterio/wait.go"
 WVS = "internal/fensterio/webview_windows.go"
 ECH = "internal/edge/chromium.go"
 BMN = "cmd/bedienfeld/main_windows.go"
+EDD = "internal/edge/doc.go"
+EDW = "internal/edge/corewebview2.go"
+PTW = "internal/pipe/transport_windows.go"
 
 
 def edit(path, old, new):
@@ -198,6 +201,15 @@ CASES = [
     ("adapter-ohne-thread-pruefung", "fensterio", "TestAdapterPruefteThreadUndWartetBegrenzt", [edit(WVS, '"com apartment"', '"com"')]),
     ("adapter-ohne-cancel", "fensterio", "TestAdapterPruefteThreadUndWartetBegrenzt", [edit(WVS, "\t\t\t\ts.chromium.Cancel()\n", "")]),
     ("adapter-ohne-wait", "fensterio", "TestAdapterPruefteThreadUndWartetBegrenzt", [edit(WVS, "err := WaitFor(startFrist, s.pumpOnce,", "err := waitUnbegrenzt(s.pumpOnce,"), edit(WVS, "func (s *Surface) trace(event, detail string) {", "func waitUnbegrenzt(step func(), poll func() (bool, error)) error {\n\tfor {\n\t\tif ok, err := poll(); ok || err != nil {\n\t\t\treturn err\n\t\t}\n\t\tstep()\n\t}\n}\n\nfunc (s *Surface) trace(event, detail string) {")]),
+    # SEC-Bedingungen zur Edge-Kopie
+    ("edge-panic", "fensterio", "TestEdgeKopieOhnePanicEndlosschleifeUndWarten", [edit(ECH, "func globalErrorHandler(err error) {\n\tif err != nil {", "func globalErrorHandler(err error) {\n\tif err != nil {\n\t\tpanic(err)")]),
+    ("edge-endlosschleife", "fensterio", "TestEdgeKopieOhnePanicEndlosschleifeUndWarten", [edit(ECH, "func (e *Chromium) Cancel() { atomic.StoreUintptr(&e.cancelled, 1) }", "func (e *Chromium) Cancel() {\n\tatomic.StoreUintptr(&e.cancelled, 1)\n\tfor {\n\t\tbreak\n\t}\n}")]),
+    ("edge-sleep", "fensterio", "TestEdgeKopieOhnePanicEndlosschleifeUndWarten", [edit(ECH, "func (e *Chromium) Cancel() { atomic.StoreUintptr(&e.cancelled, 1) }", "func (e *Chromium) Cancel() {\n\tatomic.StoreUintptr(&e.cancelled, 1)\n\ttime.Sleep(0)\n}")]),
+    ("edge-umgebung-ohne-return", "fensterio", "TestEdgeRueckrufeKehrenNachFehlerZurueck", [edit(ECH, "\tif err != nil {\n\t\te.errorCallback(err)\n\t\treturn 0\n\t}\n\treturn 0\n}", "\tif err != nil {\n\t\te.errorCallback(err)\n\t}\n\treturn 0\n}")]),
+    ("edge-controller-ohne-return", "fensterio", "TestEdgeRueckrufeKehrenNachFehlerZurueck", [edit(ECH, "syscall.Errno(res)))\n\t\treturn 0\n\t}\n\n\tcontroller.vtbl.AddRef", "syscall.Errno(res)))\n\t}\n\n\tcontroller.vtbl.AddRef")]),
+    ("edge-ohne-upstream-hash", "fensterio", "TestEdgeKopieNenntUpstream", [edit(EDD, "11c6e567b916645d5fe6df006681f988ac52c13d", "unbekannt")]),
+    ("edge-falsche-pruefsumme", "fensterio", "TestEdgeKopieNenntUpstream", [edit(EDD, "h1:7U3QcDj1PrBPaxJNCui2k1SkWml+Q5kvFUFyTImA6NU=", "h1:alt=")]),
+    ("edge-wird-importiert", "panel", "TestEdgeNurVonFensterio", [edit(PTW, '\t"golang.org/x/sys/windows"\n)', '\t"golang.org/x/sys/windows"\n\n\t_ "github.com/januaport/januaport-plugins/desktop-runner/internal/edge"\n)')]),
 ]
 
 
