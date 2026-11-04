@@ -44,14 +44,46 @@ func TestNavigationAllowed(t *testing.T) {
 		name, url string
 		ok        bool
 	}{
-		{"wurzel", "https://" + host + "/", true},
-		{"ohnePfad", "https://" + host, true},
+		// SEC-R4 F2: Nur .html-Seiten tragen die CSP; alles andere (SVG, JS, JSON …) läuft ohne und darf
+		// nie als Seite geladen werden. Der Startpunkt ist /index.html.
+		{"wurzel", "https://" + host + "/", false},
+		{"ohnePfad", "https://" + host, false},
 		{"datei", "https://" + host + "/index.html", true},
-		{"unterpfad", "https://" + host + "/a/b.js", true},
-		{"query", "https://" + host + "/a?x=1&y=2", true},
-		{"fragment", "https://" + host + "/#abschnitt", true},
-		{"queryOhnePfad", "https://" + host + "?x=1", true},
-		{"atImPfad", "https://" + host + "/@evil.example/", true},
+		{"unterpfad", "https://" + host + "/a/b.js", false},
+		{"unterpfadHtml", "https://" + host + "/a/b.html", true},
+		{"queryOhneHtml", "https://" + host + "/a?x=1&y=2", false},
+		{"queryMitHtml", "https://" + host + "/a.html?x=1&y=2", true},
+		{"fragmentOhneHtml", "https://" + host + "/#abschnitt", false},
+		{"fragmentMitHtml", "https://" + host + "/index.html#abschnitt", true},
+		{"queryOhnePfad", "https://" + host + "?x=1", false},
+		{"atImPfadOhneHtml", "https://" + host + "/@evil.example/", false},
+		{"atImPfadMitHtml", "https://" + host + "/@evil.example/x.html", true},
+		{"leereQuery", "https://" + host + "/x.html?", true},
+		{"queryUndFragment", "https://" + host + "/x.html?q=1#f", true},
+		{"svg", "https://" + host + "/a.svg", false},
+		{"svgImUnterordner", "https://" + host + "/img/logo.svg", false},
+		{"map", "https://" + host + "/x.map", false},
+		{"json", "https://" + host + "/x.json", false},
+		{"txt", "https://" + host + "/x.txt", false},
+		{"css", "https://" + host + "/x.css", false},
+		{"js", "https://" + host + "/x.js", false},
+		{"webmanifest", "https://" + host + "/x.webmanifest", false},
+		{"htm", "https://" + host + "/x.htm", false},
+		{"grossHTML", "https://" + host + "/x.HTML", false},
+		{"gemischtHtml", "https://" + host + "/x.Html", false},
+		{"htmlDannSvg", "https://" + host + "/x.html.svg", false},
+		{"htmlMitSlash", "https://" + host + "/x.html/", false},
+		{"svgMitHtmlInQuery", "https://" + host + "/x.svg?a=.html", false},
+		{"svgMitHtmlImFragment", "https://" + host + "/x.svg#.html", false},
+		{"nurEndung", "https://" + host + "/.html", false},
+		{"nurEndungImUnterordner", "https://" + host + "/a/.html", false},
+		{"prozentSlash", "https://" + host + "/x.svg%2f..%2fy.html", false},
+		{"prozentSlashGross", "https://" + host + "/a%2Fb.html", false},
+		{"prozentBackslash", "https://" + host + "/a%5cb.html", false},
+		{"prozentNul", "https://" + host + "/x%00.html", false},
+		{"prozentFrage", "https://" + host + "/a%3f.html", false},
+		{"prozentRaute", "https://" + host + "/a%23.html", false},
+		{"prozentUmlaut", "https://" + host + "/%C3%A4.html", true},
 		{"fremderHost", "https://evil.example/", false},
 		{"andereApp", "https://app-andere-pc.jnpt.invalid/", false},
 		{"subdomain", "https://x." + host + "/", false},
@@ -146,5 +178,28 @@ func TestMessageAllowed(t *testing.T) {
 func TestBefehleGeschlossen(t *testing.T) {
 	if !reflect.DeepEqual(Befehle(), []string{"anhalten", "status", "werkzeug", "werkzeuge"}) {
 		t.Fatal(Befehle())
+	}
+}
+
+func TestStartURL(t *testing.T) {
+	if got := StartURL("demo"); got != "https://app-demo-pc.jnpt.invalid/index.html" {
+		t.Fatal(got)
+	}
+	if !NavigationAllowed("demo", StartURL("demo")) || !SourceAllowed("demo", Source{MainFrame: true, URL: StartURL("demo")}) {
+		t.Fatal("Startpunkt nicht zugelassen")
+	}
+	for _, app := range []string{"", "Demo", "a-b", "../x"} {
+		if StartURL(app) != "" {
+			t.Errorf("StartURL(%q) nicht leer", app)
+		}
+	}
+}
+
+// Eine Nicht-HTML-Datei der eigenen App ist auch als Nachrichtenquelle ungültig.
+func TestMessageAllowedNurVonHTMLSeiten(t *testing.T) {
+	for _, u := range []string{"https://app-demo-pc.jnpt.invalid/x.svg", "https://app-demo-pc.jnpt.invalid/", "https://app-demo-pc.jnpt.invalid/a.js"} {
+		if MessageAllowed("demo", Source{MainFrame: true, URL: u}, "status") {
+			t.Errorf("Nachricht von %s zugelassen", u)
+		}
 	}
 }
