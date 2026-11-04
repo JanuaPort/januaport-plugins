@@ -1,6 +1,93 @@
-# Prüfbericht #1306 F4 — linkedin-seite 0.3.0
+# Prüfbericht linkedin-seite 0.3.1 (#1237) und 0.3.0 (#1306 F4)
 
-## SEC c-6608136792 — Variante a und LF-Fixtures (aktueller Prüfstand)
+## #1237 — ein Grant, ein Token-Zustand (aktueller Prüfstand, 0.3.1)
+
+Befund GATE (#1237, 03.11. 21:28Z): Lesewerkzeuge liefen 03.11. 06:50Z, um 07:49Z stimmte der PO einer
+zweiten Stelle mit nur den Schreib-Scopes zu, ab 10:52Z lieferte jeder Lesezugriff
+`source_access_denied`. **Die Ursache ist nicht live belegt.** Die Herstellerdoku beschreibt genau
+dieses Verhalten: „If you request a different scope than the previously granted scope, all the
+previous access tokens are invalidated.“
+(https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow, Abschnitt
+„Access Token Scopes and Lifetime“, abgerufen 04.11.2026.)
+
+### Vorgehen, test-first in drei Zyklen
+
+| Zyklus | Wächter | Rot | Code |
+|---|---|---|---|
+| Ein Grant, eine Stelle | Scope-Menge, `--gesamt`, Identität, Stelle `post-oauth`, Deploy-Dateien | `pruefung/grant-rot-1.txt`: 52 Tests, 20 Failures, 28 Errors | `source_contract`, `oauth`, `server`, `zustimmung.py`, Compose, Units |
+| Ein Token-Zustand | `tests/test_token_state.py`, `OneTokenOnTheWire`, Log-Kanarienvogel | `pruefung/grant-rot-2.txt`: 21 von 21, die Schnittstelle fehlte | `oauth`, `workers`, `post_pool`, beide Adapter, `server` |
+| Randfälle der Erneuerung | Eindämmung, Job-Tod, Token-Endpunkt-Ausfall, `close()`, Budget | `pruefung/grant-rot-3.txt`: 25 Tests, 2 rot, in einer Wegwerfkopie gegen den Entwurf | `_send_token` in beiden Pools |
+| Doku und Version | `test_version`, `test_setup_guide` | `pruefung/grant-rot-4.txt` | CLAUDE, README, SETUP, CHANGELOG, ARCHITEKTUR, Pins |
+
+Das Rot von Zyklus 2 zeigt nur die fehlende Schnittstelle. Dass die Tests den Defekt selbst treffen,
+belegen die Mutanten `g2-job-own-copy*` und `g2-worker-own-copy*`, die je Prozess wieder eine eigene
+Kopie einführen.
+
+### Entscheidungen
+
+- **`--gesamt` ist Pflicht und der einzige Modus, der Lese-Modus entfällt.** Ein Skript ohne Flag, das
+  still vier Scopes anfordert, hätte eine alte Befehlszeile umgedeutet; ein Lese-Modus wäre die Falle,
+  die den Schreibzugriff entwertet. Die Prüfung läuft vor der Secret-Abfrage.
+- **Die Zustimmung verlangt `scope` in der Antwort, der Refresh nicht.** Das JSON hält die Menge als
+  Beleg fest, eine unbestätigte Menge darf dort nicht stehen. Ein Refresh erweitert keinen Grant, und
+  ein Verbot machte aus einer Auslassung einen Ausfall um Tag 55. Die aktuelle Herstellerdoku zeigt
+  `scope` auch in der Refresh-Antwort; live belegt ist das nicht. Kommt das Feld, gilt die Menge exakt.
+- **Der Serverprozess ist der einzige Erneuerer.** Es gibt echte Prozess-Trennung: zwei persistente
+  Worker und je Auftrag ein Job, alle spawn. Bis 0.3.0 hielt jeder eine eigene Kopie, jeder Job begann
+  beim Tresorstand, ein gekillter Worker verlor eine laufende Erneuerung (aus dem Code gelesen).
+  Verworfen: ein Lease, bei dem ein Kindprozess erneuert. Sein Kill verlöre das Ergebnis, und
+  Refresh-Token und Client-Secret blieben in Kindprozessen.
+- **Thread-Sperre statt asyncio-Sperre.** Ein abgebrochener Request gäbe eine asyncio-Sperre frei,
+  während der Tausch im Thread weiterläuft; der nächste Aufrufer tauschte ein zweites Mal.
+- **Schreibfrist bleibt ungeprüft während einer Erneuerung.** Höchstens 36 Sekunden bei 25 Minuten,
+  der Job schreibt in der Zeit nichts. Mehr Code wäre mehr Risiko als Nutzen.
+
+### Zweitmeinung
+
+Ein Berater-Aufruf vor der Umsetzung. Verdikt: Kern tragfähig. Übernommen: Eindämmung in
+`_send_token` (am Code nachgeprüft; der Berater nannte einen Traceback, tatsächlich fängt die
+Middleware den Lesepfad, aber auf dem Schreibpfad hing der Aufruf für immer, rot in
+`grant-rot-3.txt`), Docstring in `workers.py`, Tests zu Job-Tod, Token-Endpunkt-Ausfall, `close()`
+und Budget-Zeit. Nicht übernommen: `asyncio.timeout_at` um die Erneuerung, siehe oben.
+
+### Ergebnis
+
+- Komplette Suite: **281 Tests OK**, 428 s (`pruefung/grant-baseline.txt`). Ausgangsstand
+  `e5dda65`: 241 Tests OK.
+- **215/215 Mutationen erkannt**, Originalquellen unverändert (`pruefung/grant-mutations.txt`).
+  Ausgangsstand: 186. Entfallen sind neun Anker des früheren Zweit-Grants und der Token-Trennung.
+- Windows, Python 3.12.9, aiohttp 3.14.5 (nicht der Hash-Lock-Stand von CI; CI-Lauf im Abschlussbericht).
+
+### Invariante → Nachweis
+
+| Invariante | Negativer Nachweis |
+|---|---|
+| LinkedIn wird nur nach genau den vier Scopes gefragt | `test_one_authorization_requests_exactly_the_four_scopes`, Mutanten `g1-grant-*`, `g1-write-scope*`, `g1-consent-scope-string` |
+| Kein zweiter Grant erzeugbar | `test_without_gesamt_nothing_happens`, `test_schreiben_is_gone_and_cannot_create_a_second_grant`, `test_the_script_offers_no_scope_choice` |
+| Antwort mit anderer Menge oder ohne `scope` ergibt kein JSON | `test_a_different_set_in_the_answer…`, `test_an_answer_without_scope…` |
+| JSON ohne `scope` oder mit anderer Menge startet nicht | `StoredCredential`, `test_runtime_paths_and_missing_invalid_identity`, `g1-identity-*` |
+| Die Stelle `post-oauth` hat keine Wirkung | `test_a_leftover_file_in_the_old_place_has_no_effect`, `test_the_second_place_is_gone_from_the_service`, `test_the_second_grant_place_is_gone_from_every_deploy_file` |
+| Genau eine Erneuerung, auch über beide Pfade | `test_concurrent_callers_renew_once`, `test_parallel_read_and_write_renew_once`, `g2-lock`, `g2-worker-own-copy-parallel` |
+| Beide Pools teilen den Zustand | `test_serve_wires_one_state_into_both_pools`, `test_the_next_write_job_finds_the_renewed_token`, `test_a_rotated_refresh_token…` |
+| Ein gekillter Prozess verliert keine Erneuerung | `test_a_worker_killed_during_a_renewal…`, `test_a_job_killed_during_a_renewal…` |
+| Quote und Transport bleiben je Pfad getrennt | `test_only_the_path_that_renews_pays…`, `test_a_spent_read_quota…`, `test_a_spent_write_quota…`, `test_each_caller_pays_on_its_own_transport` |
+| Kein Geheimnis in Kindprozessen | `test_no_secret_is_handed_to_a_worker_or_a_job` (echte Spawn-Argumente) |
+| Der Server bleibt bedienbar | `test_the_server_stays_responsive_during_a_renewal` |
+| `nicht_ausgefuehrt` bleibt wahr | `test_a_failing_token_endpoint_before_the_first_write_is_definite`, `test_a_job_killed…`, bestehende `test_sec_outcome` |
+| Kein Token in Antwort oder Log, auch im Serverprozess | `test_a_renewal_in_the_server_process_leaves_no_token_in_response_or_log` |
+| Lese-Routen senden nur GET | `test_the_read_path_still_sends_only_get_to_the_api`, Mutant `outbound-get-only` |
+
+Unverändert und weiter von ihren Mutanten gehalten: Freigabe-Kopf, Hash-Vergleich, Tagesdeckel,
+Gateway-Trennung (`linkedin-seite` / `linkedin-seite-manage` liegen im Kern, nicht in diesem Repo).
+
+### Grenzen
+
+Synthetisch. Nicht belegt sind die Ursache des Befunds, die Rückkehr des Lesezugriffs nach der neuen
+Zustimmung, die Antwortform am echten Refresh und ein Post mit dem Gesamt-Grant. Der Windows-Lauf
+ersetzt keinen Linux-Lauf. Das Access-Token im Lese-Worker trägt jetzt die Schreib-Scopes: SEC Bed. 4
+ist aufgehoben und braucht eine SEC-Entscheidung.
+
+## SEC c-6608136792 — Variante a und LF-Fixtures (Prüfstand 0.3.0)
 
 - `b750de8`: eigener Test-Commit vor Produktionscode; 16 neue Tests zunächst mit
   13 erwarteten Assertion-Fehlschlägen (28.358 s), kein Syntax-/Importfehler.

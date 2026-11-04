@@ -144,8 +144,9 @@ Wer schon getrennt für Lesen und Schreiben zugestimmt hat, stellt in dieser Rei
    und `systemctl daemon-reload`. Bis Schritt 3 endet der Dienst mit `startup_failed`, weil das alte
    JSON kein `scope` trägt. Das ist gewollt.
 3. **Neu zustimmen** (PO): die Zeile mit `--gesamt` von oben. LinkedIn zeigt den Dialog mit allen vier
-   Scopes, stderr meldet `Refresh-Token: ja`. Das JSON geht nach `plugin-linkedin-seite-oauth`, die
-   Path-Unit erzeugt den Container neu, im Log steht `schreiben=an`.
+   Scopes, stderr meldet `Refresh-Token: ja` (bei „nein“ gilt die 60-Tage-Regel unten). Das JSON geht
+   nach `plugin-linkedin-seite-oauth`, die Path-Unit erzeugt den Container neu, im Log steht
+   `schreiben=an`.
 4. **Alte Stelle leeren** (Betreiber): `jnpt credential delete plugin-linkedin-seite-post-oauth`; die
    Datei verschwindet beim nächsten Abgleich (bis 60 Sekunden). Dann die Zeile aus der tmpfiles-Datei
    nehmen und den leeren Ordner `/run/jnpt/plugins/linkedin-seite-post-oauth` entfernen; erst danach

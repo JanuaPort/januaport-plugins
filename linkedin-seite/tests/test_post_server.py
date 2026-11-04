@@ -1,4 +1,4 @@
-"""Stufe B1 (#1237): HTTP boundary, write pool and trace (SEC Bed. 4 and 5, V3 counting)."""
+"""Stufe B1 (#1237): HTTP boundary, write pool and trace (SEC Bed. 5, V3 counting), one grant (0.3.1)."""
 import asyncio
 import json
 from pathlib import Path
