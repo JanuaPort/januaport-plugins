@@ -167,6 +167,16 @@ class SharedState(Service):
         return seen + [parse_qs(call['body'].decode())[s.REFRESH_TOKEN][0]
                        for call in self.li.calls if call['path'] == TOKEN_PATH]
 
+    def boom(self, transport):
+        raise RuntimeError('UNEXPECTED-CANARY')
+
+    async def renewed(self):
+        for _ in range(500):
+            if self.tokens.data[s.ACCESS_TOKEN] == RENEWED:
+                return
+            await asyncio.sleep(.01)
+        self.fail('the renewal never landed in the state')
+
     async def read(self):
         reply = await self.client.get('/v1/linkedin/page_statistics', headers=AUTH)
         return reply.status, await reply.json()
@@ -199,27 +209,73 @@ class SharedState(Service):
     async def test_a_rotated_refresh_token_is_the_one_the_other_path_presents(self):
         first = self.tokens.data[s.REFRESH_TOKEN]
         self.read_fake.token_body.update({s.REFRESH_TOKEN: 'ROTATED', s.REFRESH_EXPIRES_IN: 365 * 86400})
-        self.assertEqual((await self.read())[0], 200)
+        self.assertEqual((await self.read())[0], 200)  # read renews, write must present its result
         self.tokens.data['access_expires_at'] = past()
+        self.li.token_body[s.REFRESH_TOKEN] = 'ROTATED-AGAIN'
         status, body = await self.post()
         self.assertEqual((status, body['ausgefuehrt']), (200, True))
-        self.assertEqual(self.presented(), [first, 'ROTATED'])
+        self.tokens.data['access_expires_at'] = past()  # and back: write renewed, read must present it
+        self.assertEqual((await self.read())[0], 200)
+        self.assertEqual(sorted(self.presented()), sorted([first, 'ROTATED', 'ROTATED-AGAIN']))
 
     async def test_a_worker_killed_during_a_renewal_does_not_lose_the_result(self):
         self.tokens.data['access_expires_at'] = future()
         await asyncio.gather(self.read(), self.read())  # both workers up: the budget measures only the renewal
         self.tokens.data['access_expires_at'] = past()
         self.pool.budget = .3
-        self.read_fake.delay = 1
+        self.read_fake.delay = 1.5
+        started = time.monotonic()
         self.assertEqual(await self.read(), (504, {'error': 'budget_exceeded'}))
-        for _ in range(300):
-            if self.tokens.data[s.ACCESS_TOKEN] == RENEWED:
-                break
-            await asyncio.sleep(.01)
+        self.assertLess(time.monotonic() - started, 1.2)  # the budget ends the request, not the exchange
+        await self.renewed()
         self.read_fake.delay = 0
         self.pool.budget = 10
         self.assertEqual((await self.read())[0], 200)
         self.assertEqual(len(self.presented()), 1)
+
+    async def test_a_job_killed_during_a_renewal_is_definite_and_the_renewal_survives(self):
+        def slow(call):
+            if call['path'] == TOKEN_PATH:
+                time.sleep(1)
+        self.li.override = slow
+        rid = self.plan(post_text='x')
+        await self.approve(rid)
+        request = asyncio.create_task(self.write_call('create_post', rid))
+        while not self.presented():
+            await asyncio.sleep(.01)
+        self.writes.job.proc.kill()
+        self.assertEqual(await request, (200, {'error': 'worker_failed', 'nicht_ausgefuehrt': True}))
+        await self.renewed()
+        self.assertEqual(self.li.writes(), [])
+        status, body = await self.post('danach')
+        self.assertEqual((status, body['ausgefuehrt']), (200, True))
+        self.assertEqual(len(self.presented()), 1)
+
+    async def test_a_failing_token_endpoint_before_the_first_write_is_definite(self):
+        self.li.override = lambda call: (503, {}, b'{}') if call['path'] == TOKEN_PATH else None
+        self.assertEqual(await self.post(), (200, {'error': 'source_unavailable', 'nicht_ausgefuehrt': True}))
+        self.assertEqual(self.li.writes(), [])
+
+    async def test_an_unexpected_renewal_error_stays_contained_on_the_read_path(self):
+        self.tokens.access = self.boom
+        self.assertEqual(await self.read(), (502, {'error': 'source_unavailable'}))
+
+    async def test_an_unexpected_renewal_error_stays_contained_on_the_write_path(self):
+        # Outside the handled exceptions _supervise would die and the request would wait forever.
+        self.tokens.access = self.boom
+        reply = await asyncio.wait_for(self.post(), 8)
+        self.assertEqual(reply, (200, {'error': 'source_unavailable', 'nicht_ausgefuehrt': True}))
+        self.assertEqual(self.li.calls, [])
+
+    async def test_closing_during_a_renewal_ends_cleanly_and_keeps_the_result(self):
+        self.read_fake.delay = 1
+        request = asyncio.create_task(self.read())
+        while not self.presented():
+            await asyncio.sleep(.01)
+        self.read_fake.delay = 0
+        await self.pool.close()
+        self.assertEqual(await asyncio.wait_for(request, 5), (502, {'error': 'worker_failed'}))
+        await self.renewed()
 
     async def test_the_server_stays_responsive_during_a_renewal(self):
         gaps, done = [], asyncio.Event()

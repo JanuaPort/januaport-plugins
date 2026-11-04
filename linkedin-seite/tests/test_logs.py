@@ -62,15 +62,23 @@ class Logs(unittest.TestCase):
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
             request = urllib.request.Request('http://127.0.0.1:%d/v1/linkedin/page_statistics' % port,
                                              headers={'Authorization': 'Bearer '+bridge})
+            good = fake.token_body
+            fake.status, fake.token_body = 500, {'error': data[s.REFRESH_TOKEN]}  # a failed exchange first
+            with self.assertRaises(urllib.error.HTTPError) as failed:
+                opener.open(request, timeout=10)
+            refused = failed.exception.read().decode()
+            failed.exception.close()
+            fake.status, fake.token_body = 200, good
             with opener.open(request, timeout=10) as reply:
-                body = reply.read().decode()
+                body = reply.read().decode() + refused
         finally:
             proc.terminate()
             output, _ = proc.communicate(timeout=10)
+        self.assertIn('code=source_unavailable', output)
         self.assertIn('code=ok', output)
-        self.assertEqual(len([c for c in fake.calls if c[1] == '/oauth/v2/accessToken']), 1)
-        for canary in (data[s.ACCESS_TOKEN], data[s.REFRESH_TOKEN], data[s.CLIENT_SECRET], fake.token_body[s.ACCESS_TOKEN],
-                       fake.token_body[s.REFRESH_TOKEN], bridge):
+        self.assertEqual(len([c for c in fake.calls if c[1] == '/oauth/v2/accessToken']), 2)
+        for canary in (data[s.ACCESS_TOKEN], data[s.REFRESH_TOKEN], data[s.CLIENT_SECRET], good[s.ACCESS_TOKEN],
+                       good[s.REFRESH_TOKEN], bridge):
             self.assertNotIn(canary, output)
             self.assertNotIn(canary, body)
 
