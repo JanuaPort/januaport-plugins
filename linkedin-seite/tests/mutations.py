@@ -43,7 +43,9 @@ SB = 'test_post_server.Boundary.'
 SF = 'test_post_server.Flow.'
 SG = 'test_post_server.Background.'
 ST = 'test_post_server.Tokens.'
-SW = 'test_post_server.TokenSeparationOnTheWire.'
+SW = 'test_post_server.OneTokenOnTheWire.'
+TU = 'test_token_state.OneState.'
+TS = 'test_token_state.SharedState.'
 SL = 'test_post_server.LogCanary.'
 GC = 'test_post_consent.GrantConsent.'
 SC = 'test_oauth_toleranz.StoredCredential.'
@@ -218,7 +220,26 @@ MUTANTS = [
     ('g1-identity-scope-optional', 'oauth.py', "    required = {s.CLIENT_ID, s.CLIENT_SECRET, s.ACCESS_TOKEN, 'access_expires_at', s.SCOPE}\n    optional = {s.REFRESH_TOKEN, 'refresh_expires_at'}\n    if not isinstance(data, dict) or not required <= data.keys() or set(data) - required - optional:\n        raise ValueError('invalid_identity')\n    if scope_set(data[s.SCOPE]) != set(s.GRANT_SCOPES):", "    required = {s.CLIENT_ID, s.CLIENT_SECRET, s.ACCESS_TOKEN, 'access_expires_at'}\n    optional = {s.REFRESH_TOKEN, 'refresh_expires_at', s.SCOPE}\n    if not isinstance(data, dict) or not required <= data.keys() or set(data) - required - optional:\n        raise ValueError('invalid_identity')\n    if s.SCOPE in data and scope_set(data[s.SCOPE]) != set(s.GRANT_SCOPES):", SC+'test_a_grant_from_before_0_3_1_without_scope_fails_closed'),
     ('g1-old-place-back', 'server.py', 'GATEWAY_TOKEN_PATH = "/run/secrets/gateway/runtime-key"', 'GATEWAY_TOKEN_PATH = "/run/secrets/gateway/runtime-key"\nPOST_IDENTITY_PATH = "/run/secrets/post-oauth/runtime-key"', ST+'test_the_second_place_is_gone_from_the_service'),
     ('g1-old-place-opened', 'server.py', '        token = read_gateway_token(token_path)\n', '        Path(token_path).with_name("runtime-key").open("rb").close()\n        token = read_gateway_token(token_path)\n', ST+'test_a_leftover_file_in_the_old_place_has_no_effect'),
-    ('b4-token-exchange', 'post_pool.py', "args=(child, self.cfg, self.identity, self.token, req, self.factory),", "args=(child, self.cfg, dict(self.identity, access_token='READ-TOKEN-SWAPPED'), self.token, req, self.factory),", SW+'test_reads_carry_the_read_token_writes_the_write_token'),
+    # #1237, 0.3.1: ONE token state in the server process; a path keeps its own quota and transport.
+    ('g2-lock', 'oauth.py', '        with self.lock:\n', '        if True:\n', TU+'test_concurrent_callers_renew_once'),
+    ('g2-published-in-one-step', 'oauth.py', 'self.data = {**self.data, **update}', 'self.data.update(update)', TU+'test_a_renewal_is_published_in_one_step'),
+    ('g2-one-state-in-serve', 'server.py', 'WritePool(cfg, tokens, token)', 'WritePool(cfg, Tokens(dict(tokens.data)), token)', TU+'test_serve_wires_one_state_into_both_pools'),
+    ('g2-read-transport-pays', 'workers.py', 'self.transport = transport_factory(self._permit)', 'self.transport = transport_factory(lambda: None)', TS+'test_only_the_path_that_renews_pays_for_the_renewal'),
+    ('g2-write-transport-pays', 'post_pool.py', 'self.transport = transport_factory(self._permit_http)', 'self.transport = transport_factory(lambda: None)', TS+'test_only_the_path_that_renews_pays_for_the_renewal'),
+    ('g2-read-cap-on-renewal', 'workers.py', 'self.transport = transport_factory(self._permit)', 'self.transport = transport_factory(lambda: None)', TS+'test_a_spent_read_quota_stops_only_the_read_path'),
+    ('g2-write-cap-on-renewal', 'post_pool.py', 'self.transport = transport_factory(self._permit_http)', 'self.transport = transport_factory(lambda: None)', TS+'test_a_spent_write_quota_stops_only_the_write_path'),
+    ('g2-loop-free-read', 'workers.py', 'await asyncio.to_thread(self.tokens.access, self.transport)', 'self.tokens.access(self.transport)', TS+'test_the_server_stays_responsive_during_a_renewal'),
+    ('g2-no-secret-to-worker', 'workers.py', 'args=(child, self.cfg, self.factory),', "args=(child, self.cfg, self.factory), kwargs={'leak': self.tokens.data},", TS+'test_no_secret_is_handed_to_a_worker_or_a_job'),
+    ('g2-no-secret-to-job', 'post_pool.py', 'args=(child, self.cfg, self.gateway_token, req, self.factory),', "args=(child, self.cfg, self.gateway_token, req, self.factory), kwargs={'leak': self.tokens.data},", TS+'test_no_secret_is_handed_to_a_worker_or_a_job'),
+    ('g2-preview-refused', 'post_pool.py', "        if job.req.vorschau:\n            raise ReportError(500, 'vorschau_schreibt')  # a preview never renews or reaches LinkedIn\n", '', TS+'test_a_preview_cannot_fetch_a_token'),
+    ('g2-one-token-on-the-wire', 'post_pool.py', "job.conn.send(('token', await asyncio.to_thread(self.tokens.access, self.transport)))", "job.conn.send(('token', 'SWAPPED-' + await asyncio.to_thread(self.tokens.access, self.transport)))", SW+'test_reads_and_writes_carry_the_same_access_token'),
+    # The defect of 0.3.0 itself: a copy per process. Each of these brings one back.
+    ('g2-job-own-copy', 'post_pool.py', "job.conn.send(('token', await asyncio.to_thread(self.tokens.access, self.transport)))", "job.conn.send(('token', await asyncio.to_thread(type(self.tokens)(dict(self.tokens.data)).access, self.transport)))", TS+'test_the_next_write_job_finds_the_renewed_token'),
+    ('g2-job-own-copy-rotation', 'post_pool.py', "job.conn.send(('token', await asyncio.to_thread(self.tokens.access, self.transport)))", "job.conn.send(('token', await asyncio.to_thread(type(self.tokens)(dict(self.tokens.data)).access, self.transport)))", TS+'test_a_rotated_refresh_token_is_the_one_the_other_path_presents'),
+    ('g2-worker-own-copy', 'workers.py', 'await asyncio.to_thread(self.tokens.access, self.transport)', 'await asyncio.to_thread(type(self.tokens)(dict(self.tokens.data)).access, self.transport)', TS+'test_a_worker_killed_during_a_renewal_does_not_lose_the_result'),
+    ('g2-worker-own-copy-parallel', 'workers.py', 'await asyncio.to_thread(self.tokens.access, self.transport)', 'await asyncio.to_thread(type(self.tokens)(dict(self.tokens.data)).access, self.transport)', TS+'test_parallel_read_and_write_renew_once'),
+    ('g2-counter-lock-read', 'workers.py', '        with self.counter_lock:\n', '        if True:\n', TU+'test_read_counter_is_exact_under_concurrent_permits'),
+    ('g2-counter-lock-write', 'post_pool.py', '        with self.counter_lock:\n', '        if True:\n', TU+'test_write_counter_is_exact_under_concurrent_permits'),
     # SEC Bed. 5: 5 write actions per UTC day over all actions, idempotency, trace without text.
     ('b5-daily-cap', 'post_pool.py', "self._count(self.actions, WRITE_ACTIONS_PER_DAY, 'schreib_tageslimit')", "self._count(self.actions, 10**6, 'schreib_tageslimit')", SF+'test_five_write_actions_per_utc_day_over_all_actions'),
     ('b5-count-before-request', 'post_adapter.py', 'self.link.begin_action()  # counts once', 'pass  # counts once', PC+'test_action_is_counted_before_the_first_linkedin_request'),
@@ -278,7 +299,7 @@ def main():
         print(baseline.stdout)
         raise SystemExit('baseline failed; mutation results invalid')
     (ROOT/'pruefung').mkdir(exist_ok=True)
-    (ROOT/'pruefung'/'f4-baseline.txt').write_text(baseline.stdout, encoding='utf-8')
+    (ROOT/'pruefung'/'grant-baseline.txt').write_text(baseline.stdout, encoding='utf-8')
     print('baseline: PASS', flush=True)
     print('\n'.join(baseline.stdout.strip().splitlines()[-4:]), flush=True)
     failed = []

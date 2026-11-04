@@ -1,5 +1,6 @@
 """Real subprocess service for log-canary probes; synthetic secrets arrive over stdin."""
 import asyncio
+from functools import partial
 import json
 import logging
 from pathlib import Path
@@ -7,6 +8,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from aiohttp import web
+from linkedin_seite.oauth import Tokens
 from linkedin_seite.safe_http import SafeAppRunner
 from linkedin_seite.server import create_app
 from linkedin_seite.workers import WorkerPool
@@ -22,12 +24,14 @@ class NoisyTransport(LocalTransport):
 
 
 class NoisyAdapter(LinkedInAdapter):
-    def __init__(self, cfg, data, permit):
-        super().__init__(cfg, data, permit, lambda p: NoisyTransport(p, int(data['client_id'])))
+    def __init__(self, port, cfg, tokens, permit):
+        super().__init__(cfg, tokens, permit, lambda p: NoisyTransport(p, port))
 
 
 async def serve(data):
-    pool = WorkerPool(CFG, data['oauth'], adapter_factory=NoisyAdapter)
+    port = int(data['oauth']['client_id'])
+    pool = WorkerPool(CFG, Tokens(data['oauth']), adapter_factory=partial(NoisyAdapter, port),
+                      transport_factory=partial(LocalTransport, port=port))
     runner = SafeAppRunner(create_app(CFG, data['bridge'].encode(), pool), access_log=None)
     await runner.setup()
     site = web.TCPSite(runner, '127.0.0.1', 0)

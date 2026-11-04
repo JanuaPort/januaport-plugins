@@ -17,12 +17,11 @@ from linkedin_seite import redaktion as r
 from linkedin_seite import server
 from linkedin_seite import source_contract as s
 from linkedin_seite.domain import Config, ReportError
-from linkedin_seite.post_pool import WritePool, WRITE_ACTIONS_PER_DAY
+from linkedin_seite.post_pool import WRITE_ACTIONS_PER_DAY
 from linkedin_seite.safe_http import SafeAppRunner
-from linkedin_seite.workers import WorkerPool
-from support import Fake, GRANT, GRANT_COMMA, GRANT_LIST, LocalAdapter, identity
-from support_post import (FakeGateway, FakeLinkedIn, GATEWAY_TOKEN, LocalPostAdapter, PNG, MiB, config,
-                          mp4, new_id, record, write_identity)
+from support import Fake, GRANT, GRANT_COMMA, GRANT_LIST, identity, read_pool
+from support_post import (FakeGateway, FakeLinkedIn, GATEWAY_TOKEN, PNG, MiB, config,
+                          mp4, new_id, record, write_identity, write_pool)
 
 KEY = 'SYNTHETIC-' + 'b' * 32
 AUTH = {'Authorization': 'Bearer ' + KEY}
@@ -34,24 +33,24 @@ class SafeTestServer(TestServer):
 
 
 class Service(unittest.IsolatedAsyncioTestCase):
+    access_days, with_refresh = 60, False
 
     async def asyncSetUp(self):
         self.read_fake = Fake()
         self.li = FakeLinkedIn()
         self.gw = FakeGateway()
         self.cfg = config(self.gw.port)
-        self.read = identity(self.read_fake.port)
-        self.write = write_identity(self.li.port)
+        self.data = identity(self.read_fake.port, days=self.access_days, refresh=self.with_refresh)
+        self.tokens = oauth.Tokens(self.data)  # one state for both pools, as server.build_pools wires it
         self.day = ['2026-11-02']
         self.approvals = {}
-        self.pool = WorkerPool(self.cfg, self.read, adapter_factory=LocalAdapter, budget=10)
+        self.pool = read_pool(self.cfg, self.tokens, self.read_fake.port, budget=10)
         self.writes = self.write_pool()
         self.client = TestClient(SafeTestServer(server.create_app(self.cfg, KEY.encode(), self.pool, self.writes)))
         await self.client.start_server()
 
     def write_pool(self, **kwargs):
-        return WritePool(self.cfg, self.write, GATEWAY_TOKEN, adapter_factory=LocalPostAdapter,
-                         today=lambda: self.day[0], **kwargs)
+        return write_pool(self.cfg, self.tokens, self.li.port, today=lambda: self.day[0], **kwargs)
 
     async def asyncTearDown(self):
         await self.client.close()
@@ -153,7 +152,7 @@ class Flow(Service):
         self.assertEqual(len(spur), 1)
         self.assertRegex(spur[0], r'spur aktion=posten eintrag_id=%s hash=%s code=ok urn=urn:li:share:7000000000000000001 bytes=%d$'
                          % (rid, digest, len(PNG)))
-        for canary in ('Hallo', 'a.png', 'UPLOADURLCANARY', 'dms-uploads', GATEWAY_TOKEN, self.write[s.ACCESS_TOKEN]):
+        for canary in ('Hallo', 'a.png', 'UPLOADURLCANARY', 'dms-uploads', GATEWAY_TOKEN, self.data[s.ACCESS_TOKEN]):
             self.assertNotIn(canary, '\n'.join(logs.output))
 
     async def test_unknown_outcome_after_the_write_is_returned_to_the_core(self):
@@ -312,28 +311,29 @@ class Tokens(unittest.TestCase):
         li = FakeLinkedIn()
         self.addCleanup(li.close)
         from support_post import LocalWriteTransport
-        data = write_identity(li.port, days=-1, refresh=True)
-        tokens = oauth.Tokens(data, LocalWriteTransport(lambda: None, li.port))
-        self.assertTrue(tokens.access().startswith('WRITE-REFRESHED-'))
+        transport = LocalWriteTransport(lambda: None, li.port)
+        tokens = oauth.Tokens(write_identity(li.port, days=-1, refresh=True))
+        self.assertTrue(tokens.access(transport).startswith('WRITE-REFRESHED-'))
         for answer in ('r_organization_social,rw_organization_admin', 'w_organization_social,w_organization_social_feed'):
             li.token_body[s.SCOPE] = answer
-            tokens = oauth.Tokens(write_identity(li.port, days=-1, refresh=True), LocalWriteTransport(lambda: None, li.port))
+            tokens = oauth.Tokens(write_identity(li.port, days=-1, refresh=True))
             with self.subTest(answer=answer), self.assertRaises(ReportError):
-                tokens.access()
+                tokens.access(transport)
 
 
-class TokenSeparationOnTheWire(Service):
-    async def test_reads_carry_the_read_token_writes_the_write_token(self):
+class OneTokenOnTheWire(Service):
+    async def test_reads_and_writes_carry_the_same_access_token(self):
         await self.client.get('/v1/linkedin/page_statistics', headers=AUTH)
         rid = self.plan(post_text='x')
         await self.approve(rid)
         status, _ = await self.write_call('create_post', rid)
         self.assertEqual(status, 200)
+        bearer = 'Bearer ' + self.data[s.ACCESS_TOKEN]
         self.assertTrue(self.read_fake.calls)
-        self.assertTrue(all(c[3]['Authorization'] == 'Bearer ' + self.read[s.ACCESS_TOKEN] for c in self.read_fake.calls))
+        self.assertTrue(all(c[3]['Authorization'] == bearer for c in self.read_fake.calls))
         api = [c for c in self.li.calls if c['host'] == 'api.linkedin.com']
         self.assertTrue(api)
-        self.assertTrue(all(c['headers']['authorization'] == 'Bearer ' + self.write[s.ACCESS_TOKEN] for c in api))
+        self.assertTrue(all(c['headers']['authorization'] == bearer for c in api))
 
 
 class LogCanary(unittest.TestCase):
@@ -347,11 +347,11 @@ class LogCanary(unittest.TestCase):
         gw.plan[rid] = record(rid, {'post_text': 'TEXTCANARY mit Inhalt', 'medien': '["dateinamecanary.png"]'})
         gw.files['dateinamecanary.png'] = PNG
         bridge = secrets.token_urlsafe(40)
-        read, write = identity(read_fake.port), write_identity(li.port)
+        data = identity(read_fake.port)
         proc = subprocess.Popen([sys.executable, '-u', str(Path(__file__).with_name('wire_server_post.py'))],
                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         try:
-            proc.stdin.write(json.dumps({'oauth': read, 'write': write, 'bridge': bridge, 'gateway_port': gw.port,
+            proc.stdin.write(json.dumps({'oauth': data, 'linkedin_port': li.port, 'bridge': bridge, 'gateway_port': gw.port,
                                          'gateway_token': GATEWAY_TOKEN}) + '\n')
             proc.stdin.flush()
             port = int(proc.stdout.readline())
@@ -381,7 +381,7 @@ class LogCanary(unittest.TestCase):
         self.assertIn('spur aktion=posten eintrag_id=%s' % rid2, output)
         self.assertIn('code=source_unavailable', output)
         for canary in ('TEXTCANARY', 'dateinamecanary', 'UPLOADURLCANARY', 'dms-uploads', 'uploadUrl', GATEWAY_TOKEN,
-                       write[s.ACCESS_TOKEN], write[s.CLIENT_SECRET], read[s.ACCESS_TOKEN], bridge):
+                       data[s.ACCESS_TOKEN], data[s.CLIENT_SECRET], bridge):
             self.assertNotIn(canary, output)
         for line in output.splitlines():
             self.assertRegex(line, r'^(route=\S+ code=\S+ duration_ms=\d+|spur aktion=\S+ eintrag_id=[0-9a-f]{16} hash=(?:freigabe:v2:sha256:[0-9a-f]{64}|-) '

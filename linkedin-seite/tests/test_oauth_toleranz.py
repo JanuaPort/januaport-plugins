@@ -158,8 +158,8 @@ class RealLinkedInShapeThroughRefreshPath(unittest.TestCase):
         data = self.stored(timedelta(days=200))
         original_refresh_expiry = data['refresh_expires_at']
         fixed = datetime.now(timezone.utc)
-        tokens = Tokens(data, LocalTransport(self.permit, self.fake.port), now=lambda: fixed)
-        self.assertEqual(tokens.access(), 'synthetic-new-access')
+        tokens = Tokens(data, now=lambda: fixed)
+        self.assertEqual(tokens.access(LocalTransport(self.permit, self.fake.port)), 'synthetic-new-access')
         self.assertEqual(tokens.data['access_expires_at'], (fixed + timedelta(days=60)).isoformat())
         self.assertEqual(tokens.data[s.REFRESH_TOKEN], 'synthetic-new-refresh')
         self.assertEqual(tokens.data['refresh_expires_at'], original_refresh_expiry)  # never extended
@@ -175,17 +175,17 @@ class RealLinkedInShapeThroughRefreshPath(unittest.TestCase):
 
     def test_wrong_scope_on_the_refresh_path_still_fails_closed_with_one_call(self):
         self.fake.token_body[s.SCOPE] = GRANT_COMMA + ',w_member_social'
-        tokens = Tokens(self.stored(timedelta(days=200)), LocalTransport(self.permit, self.fake.port))
+        tokens = Tokens(self.stored(timedelta(days=200)))
         with self.assertRaises(ReportError) as cm:
-            tokens.access()
+            tokens.access(LocalTransport(self.permit, self.fake.port))
         self.assertEqual(cm.exception.code, 'unexpected_source_shape')
         self.assertEqual(len(self.fake.calls), 1)
 
     def test_overshoot_beyond_tolerance_on_the_refresh_path_fails_closed(self):
         self.fake.token_body[s.REFRESH_EXPIRES_IN] = REFRESH_CAP + TOLERANCE + 1
-        tokens = Tokens(self.stored(timedelta(days=200)), LocalTransport(self.permit, self.fake.port))
+        tokens = Tokens(self.stored(timedelta(days=200)))
         with self.assertRaises(ReportError) as cm:
-            tokens.access()
+            tokens.access(LocalTransport(self.permit, self.fake.port))
         self.assertEqual(cm.exception.code, 'unexpected_source_shape')
         self.assertEqual(len(self.fake.calls), 1)
 
