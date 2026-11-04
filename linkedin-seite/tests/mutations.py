@@ -34,8 +34,8 @@ PW = 'test_post_adapter.WriteToken.'
 DE = 'test_post_domain.Entries.'
 DP = 'test_post_domain.Polls.'
 DF = 'test_post_domain.Formats.'
-DH = 'test_post_domain.Hash.'
-DA = 'test_post_domain.Approval.'
+FH = 'test_f4.HashV2.'
+F4 = 'test_f4.F4.'
 DC = 'test_post_domain.WriteConfiguration.'
 DR = 'test_post_domain.Requests.'
 G = 'test_post_gateway.Gateway.'
@@ -43,9 +43,12 @@ SB = 'test_post_server.Boundary.'
 SF = 'test_post_server.Flow.'
 SG = 'test_post_server.Background.'
 ST = 'test_post_server.Tokens.'
-SW = 'test_post_server.TokenSeparationOnTheWire.'
+SW = 'test_post_server.OneTokenOnTheWire.'
+TU = 'test_token_state.OneState.'
+TS = 'test_token_state.SharedState.'
 SL = 'test_post_server.LogCanary.'
-WC = 'test_post_consent.WriteConsent.'
+GC = 'test_post_consent.GrantConsent.'
+SC = 'test_oauth_toleranz.StoredCredential.'
 MUTANTS = [
     ('bridge-key', 'server.py', 'if not authorized:', 'if False:', B+'test_bridge_missing_wrong_duplicate_never_reach_adapter'),
     ('duplicate-auth', 'server.py', 'if len(header) != 1:', 'if not header:', B+'test_bridge_missing_wrong_duplicate_never_reach_adapter'),
@@ -58,7 +61,7 @@ MUTANTS = [
     ('future-date', 'domain.py', 'if end.date() > latest:', 'if False:', B+'test_org_paths_parameters_duplicates_dates_rejected'),
     ('post-input-cap', 'domain.py', 'int(limit) <= 10', 'int(limit) <= 99', D+'test_post_limit_and_unknown_parameters'),
     ('scope-set', 'source_contract.py', "SCOPES = ('rw_organization_admin', 'r_organization_social')", "SCOPES = ('r_organization_social',)", A+'test_scopes_pinned_and_expanded_grant_rejected_on_wire'),
-    ('expanded-grant', 'oauth.py', 'scope_set(raw[s.SCOPE]) != set(scopes)', 'False', A+'test_scopes_pinned_and_expanded_grant_rejected_on_wire'),
+    ('expanded-grant', 'oauth.py', 'scope_set(raw[s.SCOPE]) != set(s.GRANT_SCOPES)', 'False', A+'test_scopes_pinned_and_expanded_grant_rejected_on_wire'),
     ('daily-cap', 'workers.py', '>= DAILY_CAP:', '>= 1000000:', W+'test_daily_cap_counts_individual_gets_and_failures_parent_utc'),
     ('count-before-http', 'oauth.py', 'self.permit()  # server-process grant', 'pass  # server-process grant', W+'test_cap_stops_partway_posts_and_counts_token_exchange'),
     ('minute-throttle', 'workers.py', '>= RATE_PER_MINUTE:', '>= 1000000:', W+'test_minute_throttle_and_closed_pool'),
@@ -130,7 +133,7 @@ MUTANTS = [
     ('scope-comma-separator', 'oauth.py', "re.compile(r'[\\s,]+')", "re.compile(r'\\s+')", T+'ScopeSeparators.test_comma_separated_as_sent_by_linkedin'),
     ('scope-only-comma-and-whitespace', 'oauth.py', "re.compile(r'[\\s,]+')", "re.compile(r'[\\s,;|+]+')", T+'ScopeSeparators.test_only_comma_and_whitespace_separate'),
     ('scope-empty-parts', 'oauth.py', 'for part in SCOPE_SEPARATORS.split(value) if part}', 'for part in SCOPE_SEPARATORS.split(value)}', T+'ScopeSeparators.test_comma_with_spaces_and_mixed_separators'),
-    ('scope-exact-set-wire', 'oauth.py', 'scope_set(raw[s.SCOPE]) != set(scopes)', 'not scope_set(raw[s.SCOPE]) >= set(scopes)', T+'RealLinkedInShapeThroughRefreshPath.test_wrong_scope_on_the_refresh_path_still_fails_closed_with_one_call'),
+    ('scope-exact-set-wire', 'oauth.py', 'scope_set(raw[s.SCOPE]) != set(s.GRANT_SCOPES)', 'not scope_set(raw[s.SCOPE]) >= set(s.GRANT_SCOPES)', T+'RealLinkedInShapeThroughRefreshPath.test_wrong_scope_on_the_refresh_path_still_fails_closed_with_one_call'),
     ('lifetime-cap', 'oauth.py', 'return min(seconds, cap)', 'return seconds', T+'LifetimeTolerance.test_observed_linkedin_overshoot_is_capped_at_exactly_365_days'),
     ('lifetime-no-overshoot-tolerance', 'oauth.py', 'seconds <= cap + OVERSHOOT_TOLERANCE_SECONDS:', 'seconds <= cap:', T+'LifetimeTolerance.test_observed_linkedin_overshoot_is_capped_at_exactly_365_days'),
     ('lifetime-unbounded-overshoot', 'oauth.py', 'seconds <= cap + OVERSHOOT_TOLERANCE_SECONDS:', 'seconds <= cap + 10**9:', T+'LifetimeTolerance.test_refresh_boundary_cap_plus_one_day_capped_beyond_rejected'),
@@ -149,43 +152,105 @@ MUTANTS = [
     ('b1-closed-list-check', 'post_adapter.py', 'if op not in s.WRITE_ENDPOINTS:', 'if False:', PC+'test_comment_get_reactions_and_foreign_operations_refused_before_http'),
     ('b1-endpoint-table', 'source_contract.py', "'post_update': ('POST', 'posts/{urn}'),", "'post_update': ('PATCH', 'posts/{urn}'),", PC+'test_endpoint_table_is_exactly_the_reviewed_one'),
     ('b1-partial-update-header', 'source_contract.py', "RESTLI_METHODS = {'post_update': 'PARTIAL_UPDATE', 'post_delete': 'DELETE'}", "RESTLI_METHODS = {'post_delete': 'DELETE'}", PF+'test_edit_partial_update_commentary_only'),
-    # SEC Bed. 2: approval from the second Kartei, bound to content and bytes, all four actions.
-    ('b2-hash-mismatch', 'post_adapter.py', 'if not ok:', 'if False:', PA+'test_hash_mismatch_nothing_reaches_linkedin'),
-    ('b2-hash-over-bytes', 'redaktion.py', "'medien': [{'datei': name, 'bytes': size, 'sha256': digest} for name, size, digest in media],", "'medien': [{'datei': name} for name, size, digest in media],", PA+'test_media_bytes_exchanged_after_the_preview'),
-    ('b2-approval-field-in-plan', 'post_adapter.py', '        ok = r.freigegeben(saetze, req.eintrag_id, req.aktion, digest)', "        ok = r.freigegeben(saetze, req.eintrag_id, req.aktion, digest) or self.gateway.eintrag(req.eintrag_id)['fields'].get('freigabe') == digest", PA+'test_approval_field_inside_the_plan_is_worthless'),
-    ('b2-delete-without-record', 'redaktion.py', '            return True\n    return False', "            return True\n    return aktion == 'loeschen'", PA+'test_delete_without_approval_record_and_with_a_foreign_action'),
-    ('b2-sso-only', 'redaktion.py', "\n                and rec.get('via') == SSO and rec.get('updated_via') == SSO):", '):', PA+'test_only_sso_written_approvals_count'),
-    ('b2-updated-via-sso', 'redaktion.py', " and rec.get('updated_via') == SSO):", '):', DA+'test_only_an_exact_sso_written_record_approves'),
-    ('b2-action-in-hash', 'redaktion.py', "        obj = {'aktion': aktion, 'post_urn': entry.post_urn}", "        obj = {'post_urn': entry.post_urn}", DH+'test_table_of_frozen_vectors'),
-    ('b2-poll-order-in-hash', 'redaktion.py', "'antworten': list(umfrage.antworten),", "'antworten': sorted(umfrage.antworten),", DH+'test_every_relevant_change_changes_the_hash_irrelevant_ones_do_not'),
-    ('b2-text-in-hash', 'redaktion.py', "        obj = {'aktion': aktion, 'post_urn': entry.post_urn, 'post_text': entry.post_text}", "        obj = {'aktion': aktion, 'post_urn': entry.post_urn}", DH+'test_table_of_frozen_vectors'),
-    # SEC Bed. 3: back channel only reading, only the three tools, only /mcp, no path.
+    # #1306 F4: exact header/hash, each frozen field and golden fixture, A1/H3.
+    ('f4-hash-equality', 'post_adapter.py', 'if req.freigabe != digest:', 'if False:', F4+'test_header_exact_equality_before_any_linkedin_write_for_every_action'),
+    ('f4-409-without-header', 'post_adapter.py', 'if req.freigabe != digest:', 'if req.freigabe is not None and req.freigabe != digest:', PA+'test_missing_header_rejected_at_the_actual_adapter'),
+    ('f4-header-duplicate', 'redaktion.py', 'len(headers) != 1', 'not headers', F4+'test_duplicate_header_rejected'),
+    ('f4-hash-aktion', 'redaktion.py', "obj = {'aktion': effect['aktion'],", "obj = {'aktion': '',", F4+'test_action_cannot_be_exchanged_even_with_identical_target_and_text'),
+    ('f4-hash-medien', 'redaktion.py', "for m in effect.get('medien') or []", "for m in []", FH+'test_every_core_golden_vector'),
+    ('f4-hash-name', 'redaktion.py', "'name': m['name'], 'sha256': m['sha256']", "'name': '', 'sha256': m['sha256']", F4+'test_stale_hash_for_text_target_comment_media_title_bytes_order_and_poll'),
+    ('f4-hash-sha256', 'redaktion.py', "'name': m['name'], 'sha256': m['sha256']", "'name': m['name'], 'sha256': ''", PA+'test_media_bytes_exchanged_after_the_preview'),
+    ('f4-hash-text', 'redaktion.py', "'text': effect['text'],", "'text': '',", F4+'test_stale_hash_for_text_target_comment_media_title_bytes_order_and_poll'),
+    ('f4-hash-umfrage', 'redaktion.py', "poll = effect.get('umfrage')", "poll = None", F4+'test_stale_hash_for_text_target_comment_media_title_bytes_order_and_poll'),
+    ('f4-hash-antworten', 'redaktion.py', "'antworten': poll.get('antworten') or []", "'antworten': []", F4+'test_stale_hash_for_text_target_comment_media_title_bytes_order_and_poll'),
+    ('f4-hash-dauer', 'redaktion.py', "'dauer': poll.get('dauer', 0)", "'dauer': 0", F4+'test_stale_hash_for_text_target_comment_media_title_bytes_order_and_poll'),
+    ('f4-hash-frage', 'redaktion.py', "'frage': poll.get('frage', '')", "'frage': ''", F4+'test_stale_hash_for_text_target_comment_media_title_bytes_order_and_poll'),
+    ('f4-hash-ziel-urn', 'redaktion.py', "'ziel_urn': effect['ziel_urn']", "'ziel_urn': ''", F4+'test_stale_hash_for_text_target_comment_media_title_bytes_order_and_poll'),
+    ('f4-hash-medien-order', 'redaktion.py', "for m in effect.get('medien') or []", "for m in sorted(effect.get('medien') or [], key=lambda m: m['name'])", F4+'test_stale_hash_for_text_target_comment_media_title_bytes_order_and_poll'),
+    ('f4-hash-antworten-order', 'redaktion.py', "'antworten': poll.get('antworten') or []", "'antworten': sorted(poll.get('antworten') or [])", F4+'test_stale_hash_for_text_target_comment_media_title_bytes_order_and_poll'),
+    ('f4-golden-changed', 'tests/data/hash_golden.json', 'd1de1b1a79e55d2211ce868c00423efa9fab6e2e0c18f96614eca7fe58a1d45b', '01de1b1a79e55d2211ce868c00423efa9fab6e2e0c18f96614eca7fe58a1d45b', FH+'test_every_core_golden_vector'),
+    ('f4-success-flag', 'post_adapter.py', "result['ausgefuehrt'] = True", "pass", F4+'test_success_for_every_action_and_only_two_gateway_tools'),
+    ('f4-false-nonexecution', 'post_pool.py', 'exc.nicht_ausgefuehrt = not job.write_started', 'exc.nicht_ausgefuehrt = True', F4+'test_errors_after_first_write_have_no_definitive_flags'),
+    ('f4-missing-nonexecution', 'post_pool.py', 'exc.nicht_ausgefuehrt = not job.write_started', 'exc.nicht_ausgefuehrt = False', F4+'test_validation_and_media_errors_are_definitely_not_executed'),
+    ('f4-first-write-marker', 'post_adapter.py', 'self.link.write_request()', 'pass', F4+'test_upload_initialization_already_makes_failure_unclear'),
+    ('f4-unconfirmed-success', 'post_adapter.py', 'if status != expected:', 'if False:', F4+'test_accepted_but_unconfirmed_response_is_unclear'),
+    # SEC c-6608136792: 2xx definite outcomes, gate separation and exact LF bytes.
+    ('sec-200-daily-cap', 'server.py', "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=200)\n            return web.json_response(payload, status=exc.status)", "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=exc.status)\n            return web.json_response(payload, status=exc.status)", 'test_sec_outcome.Outcome.test_action_daily_cap_is_200_with_nonexecution_for_every_write'),
+    ('sec-200-disabled', 'server.py', "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=200)\n            return web.json_response(payload, status=exc.status)", "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=exc.status)\n            return web.json_response(payload, status=exc.status)", 'test_sec_outcome.Outcome.test_disabled_write_service_is_200_only_after_header_check'),
+    ('sec-200-validation', 'server.py', "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=200)\n            return web.json_response(payload, status=exc.status)", "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=exc.status)\n            return web.json_response(payload, status=exc.status)", 'test_sec_outcome.Outcome.test_request_validation_with_valid_header_is_definite_for_every_write'),
+    ('sec-200-media', 'server.py', "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=200)\n            return web.json_response(payload, status=exc.status)", "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=exc.status)\n            return web.json_response(payload, status=exc.status)", 'test_sec_outcome.Outcome.test_entry_validation_and_media_format_and_size_are_definite'),
+    ('sec-200-gateway', 'server.py', "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=200)\n            return web.json_response(payload, status=exc.status)", "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=exc.status)\n            return web.json_response(payload, status=exc.status)", 'test_sec_outcome.Outcome.test_gateway_rejection_before_sending_is_definite'),
+    ('sec-200-token', 'server.py', "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=200)\n            return web.json_response(payload, status=exc.status)", "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=exc.status)\n            return web.json_response(payload, status=exc.status)", 'test_sec_outcome.Outcome.test_expired_token_is_definite_before_any_linkedin_request'),
+    ('sec-200-refresh', 'server.py', "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=200)\n            return web.json_response(payload, status=exc.status)", "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=exc.status)\n            return web.json_response(payload, status=exc.status)", 'test_sec_outcome.Outcome.test_refresh_rejection_is_definite_without_a_business_write'),
+    ('sec-gate-no-result', 'server.py', "header_checked and code != 'nicht_freigegeben'", 'header_checked', 'test_sec_outcome.Outcome.test_invalid_header_and_hash_are_409_without_either_outcome_field'),
+    ('sec-bridge-before-result', 'server.py', "write_route and header_checked and code != 'nicht_freigegeben'", "write_route and code != 'nicht_freigegeben'", 'test_sec_outcome.Outcome.test_bridge_failure_never_becomes_a_200_nonexecution_result'),
+    ('sec-marker-after-permit', 'post_adapter.py', '        self.permit()  # server-process grant before every LinkedIn attempt, failures included\n        self.timeout = timeout\n        if before_send is not None:\n            before_send()  # after local quota checks, immediately before possible provider effect', '        if before_send is not None:\n            before_send()\n        self.permit()\n        self.timeout = timeout', 'test_sec_outcome.Outcome.test_http_daily_cap_before_first_attempt_is_definite_for_every_write'),
+    ('sec-fixture-preview-crlf', 'tests/data/linkedin_vorschau_beispiel.json', '{\n  "eintrag_id"', '{\r\n  "eintrag_id"', 'test_fixture_bytes.FixtureBytes.test_json_fixtures_use_lf'),
+    ('sec-fixture-golden-crlf', 'tests/data/hash_golden.json', '[\n  {', '[\r\n  {', 'test_fixture_bytes.FixtureBytes.test_json_fixtures_use_lf'),
+    ('sec-fixture-preview-sha', 'tests/data/linkedin_vorschau_beispiel.json', '"format": "dokument"', '"format": "text"', 'test_fixture_bytes.FixtureBytes.test_frozen_sha256_and_optional_local_core_bytes'),
+    ('sec-fixture-golden-sha', 'tests/data/hash_golden.json', '"name": "ohne_beides"', '"name": "ohne_beide"', 'test_fixture_bytes.FixtureBytes.test_frozen_sha256_and_optional_local_core_bytes'),
+    # LEAD F2 preview contract: direct fields only, visible name, confirmed cached success.
+    ('f2-preview-extra-field', 'post_adapter.py', "'hash': digest}\n        finally:", "'hash': digest, 'wirkung': effect}\n        finally:", 'test_f2_preview.F2Preview.test_exact_f2_example_shape_types_and_effect_hash'),
+    ('f2-preview-direct-fields', 'post_adapter.py', "'ziel_urn': effect['ziel_urn'], 'text': effect['text'],", "'wirkung': effect,", 'test_f2_preview.F2Preview.test_all_actions_have_only_f2_keys_and_direct_effect_fields'),
+    ('f2-preview-media-name', 'post_adapter.py', "'name': m.name, 'sha256': m.sha256, 'datei': m.name,", "'sha256': m.sha256, 'datei': m.name,", 'test_f2_preview.F2Preview.test_exact_f2_example_shape_types_and_effect_hash'),
+    ('f2-repeat-confirmed', 'post_pool.py', "stored['wiederholt'] = True", "stored['wiederholt'] = True; stored.pop('ausgefuehrt', None)", SF+'test_post_then_idempotent_repeat_returns_the_same_urn'),
+    ('f4-single-entry', 'post_adapter.py', 'effect = r.wirkung(req.aktion, entry, media, self.cfg.organization)', 'effect = r.wirkung(req.aktion, r.entry_from_record(self.gateway.eintrag(req.eintrag_id), req.eintrag_id, req.aktion), media, self.cfg.organization)', F4+'test_preview_and_effect_use_one_entry_read'),
+    # SEC Bed. 3: back channel only reading, only the two tools, only /mcp, no path.
     ('b3-closed-tools', 'gateway.py', 'if tool not in self.tools:', 'if False:', G+'test_any_other_tool_is_refused_before_http'),
     ('b3-path-before-call', 'gateway.py', "        r.check_datei(name)  # no path", "        pass  # no path", G+'test_paths_rejected_before_any_call'),
     ('b3-mcp-only', 'redaktion.py', "r'):(?P<port>[1-9][0-9]{0,4})/mcp')", "r'):(?P<port>[1-9][0-9]{0,4})/(?:admin/)?mcp(?:/.*)?')", DC+'test_gateway_url_only_mcp_on_internal_host_with_port'),
     ('b3-plan-path-guard', 'redaktion.py', "    return tuple(check_datei(v) for v in value)", "    return tuple(value)", DE+'test_fields_are_strings_json_lists_and_objects_fail_closed'),
     ('b3-pseudonym-guard', 'redaktion.py', "if any(mark in fields.get(name, '') for mark in PSEUDONYM):", 'if False:', DE+'test_pseudonymised_fields_are_never_posted'),
-    # SEC Bed. 4: own write credential, exactly w_organization_social, never exchanged.
-    ('b4-write-scope', 'source_contract.py', "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed')", "WRITE_SCOPES = ('w_organization_social',)", WC+'test_write_mode_requests_exactly_w_organization_social'),
-    ('b4-write-scope-extra', 'source_contract.py', "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed')", "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed', 'r_organization_social')", WC+'test_write_mode_requests_exactly_w_organization_social'),
-    ('b4-write-scope-table', 'source_contract.py', "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed')", "WRITE_SCOPES = ('w_organization_social_feed',)", PC+'test_endpoint_table_is_exactly_the_reviewed_one'),
-    ('b4-consent-scope-string', 'tools/zustimmung.py', "s.STATE: state, s.SCOPE: ' '.join(scopes)}", "s.STATE: state, s.SCOPE: ' '.join(s.SCOPES)}", WC+'test_write_mode_requests_exactly_w_organization_social'),
-    ('b4-write-identity-marker', 'oauth.py', "if not isinstance(data, dict) or not isinstance(data.get(s.SCOPE), str) or scope_set(data[s.SCOPE]) != set(s.WRITE_SCOPES):", 'if not isinstance(data, dict):', ST+'test_write_identity_requires_exactly_the_write_scope_read_identity_refuses_it'),
-    ('b4-write-loader', 'server.py', '    from .oauth import load_write_identity\n', '    from .oauth import load_identity as load_write_identity\n', ST+'test_loading_the_write_side_fail_closed_with_fixed_reasons'),
-    ('b4-write-place', 'server.py', 'POST_IDENTITY_PATH = "/run/secrets/post-oauth/runtime-key"', 'POST_IDENTITY_PATH = "/run/secrets/oauth/runtime-key"', ST+'test_write_identity_requires_exactly_the_write_scope_read_identity_refuses_it'),
-    ('b4-write-refresh-scope', 'post_adapter.py', 'self.tokens = Tokens(identity, self.transport, scopes=s.WRITE_SCOPES)', 'self.tokens = Tokens(identity, self.transport)', PW+'test_expired_write_token_is_refreshed_with_exactly_the_write_scope'),
-    ('b4-token-exchange', 'post_pool.py', "args=(child, self.cfg, self.identity, self.token, req, self.factory),", "args=(child, self.cfg, dict(self.identity, access_token='READ-TOKEN-SWAPPED'), self.token, req, self.factory),", SW+'test_reads_carry_the_read_token_writes_the_write_token'),
+    # #1237, 0.3.1: ONE grant in ONE place. LinkedIn voids earlier tokens on a different scope set.
+    ('g1-grant-without-read', 'source_contract.py', 'GRANT_SCOPES = SCOPES + WRITE_SCOPES', 'GRANT_SCOPES = WRITE_SCOPES', D+'test_grant_is_exactly_the_read_and_the_write_scopes'),
+    ('g1-grant-without-write', 'source_contract.py', 'GRANT_SCOPES = SCOPES + WRITE_SCOPES', 'GRANT_SCOPES = SCOPES', GC+'test_one_authorization_requests_exactly_the_four_scopes'),
+    ('g1-write-scope', 'source_contract.py', "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed')", "WRITE_SCOPES = ('w_organization_social',)", GC+'test_one_authorization_requests_exactly_the_four_scopes'),
+    ('g1-write-scope-extra', 'source_contract.py', "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed')", "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed', 'r_ads')", GC+'test_one_authorization_requests_exactly_the_four_scopes'),
+    ('g1-write-scope-table', 'source_contract.py', "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed')", "WRITE_SCOPES = ('w_organization_social_feed',)", PC+'test_endpoint_table_is_exactly_the_reviewed_one'),
+    ('g1-consent-scope-string', 'tools/zustimmung.py', "s.STATE: state, s.SCOPE: ' '.join(s.GRANT_SCOPES)}", "s.STATE: state, s.SCOPE: ' '.join(s.SCOPES)}", GC+'test_one_authorization_requests_exactly_the_four_scopes'),
+    ('g1-consent-answer-required', 'tools/zustimmung.py', 'scope_required=True)', 'scope_required=False)', GC+'test_an_answer_without_scope_ends_the_consent_without_a_vault_json'),
+    ('g1-answer-scope-check', 'oauth.py', 'if scope_required and s.SCOPE not in raw:', 'if False:', T+'ScopeSeparators.test_consent_answer_must_name_the_scopes_it_grants'),
+    ('g1-consent-json-scope', 'tools/zustimmung.py', "result.update({s.CLIENT_ID: client_id, s.CLIENT_SECRET: client_secret, s.SCOPE: ' '.join(s.GRANT_SCOPES)})", 'result.update({s.CLIENT_ID: client_id, s.CLIENT_SECRET: client_secret})', GC+'test_vault_json_is_what_the_service_loads'),
+    ('g1-consent-json-normalised', 'tools/zustimmung.py', "result.update({s.CLIENT_ID: client_id, s.CLIENT_SECRET: client_secret, s.SCOPE: ' '.join(s.GRANT_SCOPES)})", 'result.update({s.CLIENT_ID: client_id, s.CLIENT_SECRET: client_secret, s.SCOPE: raw[s.SCOPE]})', GC+'test_separator_and_order_of_the_answer_are_tolerated_the_json_is_normalised'),
+    ('g1-gesamt-required', 'tools/zustimmung.py', "parser.add_argument('--gesamt', action='store_true', required=True,", "parser.add_argument('--gesamt', action='store_true',", GC+'test_without_gesamt_nothing_happens'),
+    ('g1-schreiben-back', 'tools/zustimmung.py', "    parser.add_argument('--gesamt',", "    parser.add_argument('--schreiben', action='store_true')\n    parser.add_argument('--gesamt',", GC+'test_schreiben_is_gone_and_cannot_create_a_second_grant'),
+    ('g1-identity-any-set', 'oauth.py', 'if scope_set(data[s.SCOPE]) != set(s.GRANT_SCOPES):', 'if False:', SC+'test_any_other_scope_set_fails_closed'),
+    ('g1-identity-superset', 'oauth.py', 'if scope_set(data[s.SCOPE]) != set(s.GRANT_SCOPES):', 'if not scope_set(data[s.SCOPE]) >= set(s.GRANT_SCOPES):', SC+'test_any_other_scope_set_fails_closed'),
+    ('g1-identity-read-half', 'oauth.py', 'if scope_set(data[s.SCOPE]) != set(s.GRANT_SCOPES):', 'if not scope_set(data[s.SCOPE]) >= set(s.SCOPES):', ST+'test_identity_requires_exactly_the_four_scopes'),
+    ('g1-identity-scope-optional', 'oauth.py', "    required = {s.CLIENT_ID, s.CLIENT_SECRET, s.ACCESS_TOKEN, 'access_expires_at', s.SCOPE}\n    optional = {s.REFRESH_TOKEN, 'refresh_expires_at'}\n    if not isinstance(data, dict) or not required <= data.keys() or set(data) - required - optional:\n        raise ValueError('invalid_identity')\n    if scope_set(data[s.SCOPE]) != set(s.GRANT_SCOPES):", "    required = {s.CLIENT_ID, s.CLIENT_SECRET, s.ACCESS_TOKEN, 'access_expires_at'}\n    optional = {s.REFRESH_TOKEN, 'refresh_expires_at', s.SCOPE}\n    if not isinstance(data, dict) or not required <= data.keys() or set(data) - required - optional:\n        raise ValueError('invalid_identity')\n    if s.SCOPE in data and scope_set(data[s.SCOPE]) != set(s.GRANT_SCOPES):", SC+'test_a_grant_from_before_0_3_1_without_scope_fails_closed'),
+    ('g1-old-place-back', 'server.py', 'GATEWAY_TOKEN_PATH = "/run/secrets/gateway/runtime-key"', 'GATEWAY_TOKEN_PATH = "/run/secrets/gateway/runtime-key"\nPOST_IDENTITY_PATH = "/run/secrets/post-oauth/runtime-key"', ST+'test_the_second_place_is_gone_from_the_service'),
+    ('g1-old-place-opened', 'server.py', '        token = read_gateway_token(token_path)\n', '        Path(token_path).with_name("runtime-key").open("rb").close()\n        token = read_gateway_token(token_path)\n', ST+'test_a_leftover_file_in_the_old_place_has_no_effect'),
+    # #1237, 0.3.1: ONE token state in the server process; a path keeps its own quota and transport.
+    ('g2-lock', 'oauth.py', '        with self.lock:\n', '        if True:\n', TU+'test_concurrent_callers_renew_once'),
+    ('g2-published-in-one-step', 'oauth.py', 'self.data = {**self.data, **update}', 'self.data.update(update)', TU+'test_a_renewal_is_published_in_one_step'),
+    ('g2-one-state-in-serve', 'server.py', 'WritePool(cfg, tokens, token)', 'WritePool(cfg, Tokens(dict(tokens.data)), token)', TU+'test_serve_wires_one_state_into_both_pools'),
+    ('g2-read-transport-pays', 'workers.py', 'self.transport = transport_factory(self._permit)', 'self.transport = transport_factory(lambda: None)', TS+'test_only_the_path_that_renews_pays_for_the_renewal'),
+    ('g2-write-transport-pays', 'post_pool.py', 'self.transport = transport_factory(self._permit_http)', 'self.transport = transport_factory(lambda: None)', TS+'test_only_the_path_that_renews_pays_for_the_renewal'),
+    ('g2-read-cap-on-renewal', 'workers.py', 'self.transport = transport_factory(self._permit)', 'self.transport = transport_factory(lambda: None)', TS+'test_a_spent_read_quota_stops_only_the_read_path'),
+    ('g2-write-cap-on-renewal', 'post_pool.py', 'self.transport = transport_factory(self._permit_http)', 'self.transport = transport_factory(lambda: None)', TS+'test_a_spent_write_quota_stops_only_the_write_path'),
+    ('g2-loop-free-read', 'workers.py', 'await asyncio.to_thread(self.tokens.access, self.transport)', 'self.tokens.access(self.transport)', TS+'test_the_server_stays_responsive_during_a_renewal'),
+    ('g2-no-secret-to-worker', 'workers.py', 'args=(child, self.cfg, self.factory),', "args=(child, self.cfg, self.factory), kwargs={'leak': self.tokens.data},", TS+'test_no_secret_is_handed_to_a_worker_or_a_job'),
+    ('g2-no-secret-to-job', 'post_pool.py', 'args=(child, self.cfg, self.gateway_token, req, self.factory),', "args=(child, self.cfg, self.gateway_token, req, self.factory), kwargs={'leak': self.tokens.data},", TS+'test_no_secret_is_handed_to_a_worker_or_a_job'),
+    ('g2-preview-refused', 'post_pool.py', "            if job.req.vorschau:\n                raise ReportError(500, 'vorschau_schreibt')  # a preview never renews or reaches LinkedIn\n", '', TS+'test_a_preview_cannot_fetch_a_token'),
+    ('g2-one-token-on-the-wire', 'post_pool.py', "reply = ('token', await asyncio.to_thread(self.tokens.access, self.transport))", "reply = ('token', 'SWAPPED-' + await asyncio.to_thread(self.tokens.access, self.transport))", SW+'test_reads_and_writes_carry_the_same_access_token'),
+    # The defect of 0.3.0 itself: a copy per process. Each of these brings one back.
+    ('g2-job-own-copy', 'post_pool.py', "reply = ('token', await asyncio.to_thread(self.tokens.access, self.transport))", "reply = ('token', await asyncio.to_thread(type(self.tokens)(dict(self.tokens.data)).access, self.transport))", TS+'test_the_next_write_job_finds_the_renewed_token'),
+    ('g2-job-own-copy-rotation', 'post_pool.py', "reply = ('token', await asyncio.to_thread(self.tokens.access, self.transport))", "reply = ('token', await asyncio.to_thread(type(self.tokens)(dict(self.tokens.data)).access, self.transport))", TS+'test_a_rotated_refresh_token_is_the_one_the_other_path_presents'),
+    ('g2-worker-own-copy', 'workers.py', 'await asyncio.to_thread(self.tokens.access, self.transport)', 'await asyncio.to_thread(type(self.tokens)(dict(self.tokens.data)).access, self.transport)', TS+'test_a_worker_killed_during_a_renewal_does_not_lose_the_result'),
+    ('g2-worker-own-copy-parallel', 'workers.py', 'await asyncio.to_thread(self.tokens.access, self.transport)', 'await asyncio.to_thread(type(self.tokens)(dict(self.tokens.data)).access, self.transport)', TS+'test_parallel_read_and_write_renew_once'),
+    ('g2-contained-read', 'workers.py', '        except Exception:  # the exchange runs here now, not in a worker: same containment\n            reply = ("error", 502, "source_unavailable")\n', '', TS+'test_an_unexpected_renewal_error_stays_contained_on_the_read_path'),
+    ('g2-contained-write', 'post_pool.py', "        except Exception:  # the exchange runs here now, not in a job: same containment\n            reply = ('error', 502, 'source_unavailable')\n", '', TS+'test_an_unexpected_renewal_error_stays_contained_on_the_write_path'),
+    ('g2-counter-lock-read', 'workers.py', '        with self.counter_lock:\n', '        if True:\n', TU+'test_read_counter_is_exact_under_concurrent_permits'),
+    ('g2-counter-lock-write', 'post_pool.py', '        with self.counter_lock:\n', '        if True:\n', TU+'test_write_counter_is_exact_under_concurrent_permits'),
     # SEC Bed. 5: 5 write actions per UTC day over all actions, idempotency, trace without text.
     ('b5-daily-cap', 'post_pool.py', "self._count(self.actions, WRITE_ACTIONS_PER_DAY, 'schreib_tageslimit')", "self._count(self.actions, 10**6, 'schreib_tageslimit')", SF+'test_five_write_actions_per_utc_day_over_all_actions'),
     ('b5-count-before-request', 'post_adapter.py', 'self.link.begin_action()  # counts once', 'pass  # counts once', PC+'test_action_is_counted_before_the_first_linkedin_request'),
     ('b5-video-counts-once', 'post_adapter.py', 'self.link.begin_action()  # counts once', 'pass  # counts once', SF+'test_aborted_video_counts_as_one_action'),
     ('b5-idempotency', 'post_pool.py', "job.conn.send(('fertig',) if (job.req.eintrag_id, job.digest) in self.done else ('weiter',))", "job.conn.send(('weiter',))", SF+'test_post_then_idempotent_repeat_returns_the_same_urn'),
     ('b5-job-log-silence', 'post_pool.py', 'logging.disable(logging.CRITICAL)  # no library', 'logging.disable(logging.NOTSET)  # no library', SL+'test_real_service_log_has_no_text_file_name_upload_url_or_secret'),
-    ('b5-trace-text', 'post_pool.py', "LOG.info('spur aktion=%s eintrag_id=%s hash=%s code=%s urn=%s bytes=%d', job.req.aktion, job.req.eintrag_id,", "LOG.info('spur aktion=%s eintrag_id=%s hash=%s code=%s urn=%s bytes=%d %s', job.req.aktion, job.req.eintrag_id, str(job.req) + str(payload),", SF+'test_post_then_idempotent_repeat_returns_the_same_urn'),
-    ('b5-unknown-outcome', 'post_pool.py', 'if (job.req.eintrag_id, job.digest) in self.unbekannt:', 'if False:', SF+'test_unknown_outcome_after_the_final_request_is_never_sent_again'),
-    ('b5-final-marker', 'post_adapter.py', 'self.link.final_request()  # from here', 'pass  # from here', SF+'test_unknown_outcome_after_the_final_request_is_never_sent_again'),
-    ('b5-one-job', 'post_pool.py', "            raise ReportError(429, 'schreiben_belegt')", '            pass', SG+'test_slow_job_answers_202_then_the_result'),
-    ('b5-write-auth', 'server.py', '                check_bridge(request, key)\n                if write_pool is None:', '                pass\n                if write_pool is None:', SB+'test_auth_method_route_and_body_checked_before_any_call'),
+    ('b5-trace-text', 'post_pool.py', "LOG.info('spur aktion=%s eintrag_id=%s hash=%s code=%s urn=%s bytes=%d', job.req.aktion, job.req.eintrag_id,", "LOG.info('spur aktion=%s eintrag_id=%s %s hash=%s code=%s urn=%s bytes=%d', job.req.aktion, job.req.eintrag_id, str(job.req) + str(payload),", SF+'test_post_then_idempotent_repeat_returns_the_same_urn'),
+    ('b5-one-job', 'post_pool.py', 'if self.job is not None and not self.job.future.done():', 'if False:', SG+'test_slow_job_waits_for_result_and_rejects_concurrent_requests'),
+    ('b5-write-auth', 'server.py', '                check_bridge(request, key)\n                if parts[3] == VORSCHAU:', '                pass\n                if parts[3] == VORSCHAU:', SB+'test_auth_method_route_and_body_checked_before_any_call'),
     ('b5-only-the-id', 'redaktion.py', "if not isinstance(body, dict) or set(body) != {'eintrag_id'}:", "if not isinstance(body, dict) or 'eintrag_id' not in body:", DR+'test_write_routes_take_only_the_kartei_id'),
     # SEC V1: upload target fixed host, https, no userinfo/port, no redirect, token only where needed.
     ('v1-host', 'redaktion.py', ' or host not in s.UPLOAD_HOSTS', '', PU+'test_foreign_host_http_userinfo_and_port_never_get_a_byte'),
@@ -196,7 +261,7 @@ MUTANTS = [
     ('v1-video-without-token', 'source_contract.py', "UPLOAD_TOKEN = {'bild': True, 'dokument': True, 'video': False}", "UPLOAD_TOKEN = {'bild': True, 'dokument': True, 'video': True}", PF+'test_video_parts_without_token_finalize_status_then_post'),
     ('v1-check-before-put', 'post_adapter.py', '        ziel = r.upload_ziel(url)  # SEC V1', '        ziel = url  # SEC V1', PU+'test_foreign_host_http_userinfo_and_port_never_get_a_byte'),
     # SEC V2: approval before initializeUpload, one read, gap-free parts, size before reading.
-    ('v2-approval-before-upload', 'post_adapter.py', 'if not ok:', 'if False:', PA+'test_hash_mismatch_nothing_reaches_linkedin'),
+    ('v2-approval-before-upload', 'post_adapter.py', 'if req.freigabe != digest:', 'if False:', PA+'test_hash_mismatch_nothing_reaches_linkedin'),
     ('v2-read-once', 'post_adapter.py', 'memoryview(medium.daten)[first:last + 1]', 'self.gateway.datei(medium.name, self.w.max_medium_bytes).daten[first:last + 1]', PB+'test_file_exchanged_between_hash_and_upload_is_not_read_again'),
     ('v2-parts-gap-overlap', 'redaktion.py', 'or first != expected or ', 'or ', PB+'test_part_list_gaps_overlaps_counts_and_types_abort_without_finalize'),
     ('v2-parts-count', 'redaktion.py', ' or len(instructions) > math.ceil(size / s.VIDEO_PART_BYTES)', '', PB+'test_part_list_gaps_overlaps_counts_and_types_abort_without_finalize'),
@@ -225,7 +290,7 @@ MUTANTS = [
 
 def fingerprint():
     return {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
-            for directory in ('linkedin_seite', 'tools') for p in (ROOT/directory).glob('*.py')}
+            for directory in ('linkedin_seite', 'tools', 'tests') for p in (ROOT/directory).rglob('*') if p.is_file() and p.suffix in ('.py', '.json')}
 
 
 def main():
@@ -235,21 +300,29 @@ def main():
     if baseline.returncode:
         print(baseline.stdout)
         raise SystemExit('baseline failed; mutation results invalid')
+    (ROOT/'pruefung').mkdir(exist_ok=True)
+    (ROOT/'pruefung'/'grant-baseline.txt').write_text(baseline.stdout, encoding='utf-8')
     print('baseline: PASS', flush=True)
+    print('\n'.join(baseline.stdout.strip().splitlines()[-4:]), flush=True)
     failed = []
     for name, module, before, after, test in MUTANTS:
         with tempfile.TemporaryDirectory(prefix='.mutation-', dir=ROOT) as temporary:
             probe = Path(temporary)
             for directory in ('linkedin_seite', 'tests', 'tools'):
                 shutil.copytree(ROOT/directory, probe/directory, ignore=shutil.ignore_patterns('__pycache__'))
-            path = probe/module if module.startswith('tools/') else probe/'linkedin_seite'/module
+            path = probe/module if module.startswith(('tools/', 'tests/')) else probe/'linkedin_seite'/module
             text = path.read_text(encoding='utf-8')
-            if text.count(before) != 1:
+            if text.count(before) != (2 if name == 'f4-golden-changed' else 1):
                 raise RuntimeError('mutation anchor changed: '+name)
             changed = text.replace(before, after, 1)
-            ast.parse(changed)
-            path.write_text(changed, encoding='utf-8')
+            if path.suffix == '.py':
+                ast.parse(changed)
+            if path.suffix == '.json':
+                path.write_bytes(changed.encode('utf-8'))
+            else:
+                path.write_text(changed, encoding='utf-8')
             env = dict(os.environ, PYTHONPATH=str(probe)+os.pathsep+str(probe/'tests'), PYTHONDONTWRITEBYTECODE='1')
+            run = None
             try:
                 run = subprocess.run([sys.executable, '-m', 'unittest', test], cwd=probe, env=env,
                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=25)
@@ -260,7 +333,7 @@ def main():
             print(name+': '+('DETECTED' if detected else 'SURVIVED/INVALID'), flush=True)
             if not detected:
                 failed.append(name)
-                if 'run' in locals():
+                if run is not None:
                     print(run.stdout)
     if fingerprint() != original:
         raise SystemExit('original sources changed')

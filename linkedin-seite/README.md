@@ -1,9 +1,10 @@
-# LinkedIn-Seite 0.2.0 — #1237, Stufe A und Stufe B1
+# LinkedIn-Seite 0.3.1 — #1237, Stufe A und Stufe B1
 
 Privater Python-REST-Beisteller für Kennzahlen einer fest konfigurierten LinkedIn-Seite.
 PO-Entscheid vom 29.10.2026: Option (a), Stufe A. Seit 0.2.0 zusätzlich Stufe B1: Posten,
-Bearbeiten, Löschen und eigener Kommentar, nur nach Freigabe in der Kartei `redaktion_freigabe`
-(Abschnitt unten). Synthetisch geprüft; Herstellervertrag und produktive Freigabe sind **noch nicht
+Bearbeiten, Löschen und eigener Kommentar. Seit 0.3.0 erfolgt die Freigabe im Kern (#1306 F4),
+gebunden an den vollständigen Wirkungs-Hash v2 (Abschnitt unten). Seit 0.3.1 trägt **ein** Grant mit
+vier Scopes beide Pfade, gehalten von einem Token-Zustand im Serverprozess. Synthetisch geprüft; Herstellervertrag und produktive Freigabe sind **noch nicht
 live belegt**. Apache 2.0.
 
 ## Werkzeuge und Messvertrag
@@ -73,30 +74,45 @@ HTTP-Parserfehler vor der Middleware behalten das feste Fehler-JSON ohne Tokenme
 
 ## SEC-Prüfpunkte (A2)
 
-- **Scopes:** genau `rw_organization_admin r_organization_social`, als Konstante und im
-  Test gepinnt. LinkedIn bietet für die erforderliche Administration keinen Read-only-Scope;
-  deshalb ausschließlich feste GET-Fachrouten. Der einzige ausgehende POST dient dem
-  festen OAuth-Tokenendpunkt. Der Grant hat mehr Möglichkeiten als dieser Dienst;
-  Gatewayrechte allein begrenzen einen entwendeten Token nicht. Die Tokenantwort meldet
-  `scope` kommagetrennt (beobachtet 02.11.2026); Trenner sind Komma und/oder Leerraum
-  (`oauth.scope_set`), die Menge muss weiter **exakt** die zwei Scopes sein, nichts Zusätzliches,
-  nichts Fehlendes, kein anderer Trenner, Nicht-Strings fail-closed.
+- **Scopes:** ein Grant, genau `rw_organization_admin r_organization_social
+  w_organization_social w_organization_social_feed` (`GRANT_SCOPES`), als Konstante und im Test
+  gepinnt. `SCOPES` und `WRITE_SCOPES` bleiben als Bedeutung stehen: was der Lese- und was der
+  Schreibpfad braucht. Getrennte Grants tragen nicht: LinkedIn entwertet frühere Access-Tokens,
+  sobald ein anderer Scope-Satz angefordert wird (Herstellerdoku, ein Grant je Mitglied und App
+  ist die Folge). LinkedIn bietet für die erforderliche Administration keinen Read-only-Scope;
+  deshalb ausschließlich feste GET-Fachrouten auf dem Lesepfad. Dessen einziger ausgehender POST
+  dient dem festen OAuth-Tokenendpunkt. Der Grant hat mehr Möglichkeiten als dieser Dienst, und
+  seit 0.3.1 trägt das Access-Token auch im Lese-Worker die Schreib-Scopes: Gatewayrechte und die
+  festen Routen begrenzen den Dienst, einen entwendeten Token begrenzen sie nicht. Die Tokenantwort
+  meldet `scope` kommagetrennt (beobachtet 02.11.2026); Trenner sind Komma und/oder Leerraum
+  (`oauth.scope_set`), die Menge muss **exakt** die vier Scopes sein, nichts Zusätzliches, nichts
+  Fehlendes, kein anderer Trenner, Nicht-Strings fail-closed. Die Zustimmung verlangt das Feld
+  (`scope_required`), beim Refresh darf es fehlen und ist exakt, wenn es kommt.
 - **Token-Lebensdauer/Erneuerung:** Access höchstens 60 Tage. Optionales Refresh nur, wenn
   LinkedIn es beim Code-Tausch liefert; höchstens 365 Tage ab Erstzustimmung. LinkedIn
   überschreitet die Höchstwerte gelegentlich knapp (`refresh_token_expires_in` 31536059 =
   59 s zu viel): `oauth.lifetime` deckelt die Frist auf genau 60 bzw. 365 Tage, nie darüber;
   Toleranz höchstens ein Tag (`OVERSHOOT_TOLERANCE_SECONDS`), darüber, nicht ganzzahlig oder
   nicht positiv ergibt `unexpected_source_shape`. Gilt auch für die Erneuerung. Fünf Minuten
-  vor Access-Ablauf erneuert ein nächster Abruf im Worker. Neue Tokens bleiben im RAM;
+  vor Access-Ablauf erneuert ein nächster Abruf im Serverprozess, einmal für beide Pfade.
+  Neue Tokens bleiben im RAM;
   die ursprüngliche Refresh-Frist wird niemals verlängert. Kein Tresor-Rückschreiben.
   Ohne Refresh ab 14 Tagen vor Access-Ablauf die Warnung, danach `token_abgelaufen`.
   Mit Refresh gilt die Warnschwelle für Refresh-Ablauf (verkürzte Frist wird übernommen).
   Ein gültiger Access-Token funktioniert bis zu seinem eigenen Ablauf weiter.
-  Worker-Kill/Neustart verliert RAM-Tokens; neu gestartete Worker benutzen den Tresorstand.
-  Rotiert der Hersteller Refresh-Tokens mit Widerruf des alten, ist erneute Zustimmung nötig.
+  Ein Worker-Kill verliert nichts: Der Zustand liegt im Serverprozess, eine laufende Erneuerung
+  läuft dort zu Ende. Ein Neustart des Dienstes verliert RAM-Tokens und beginnt beim Tresorstand.
+  Rotiert der Hersteller Refresh-Tokens mit Widerruf des alten, ist danach erneute Zustimmung nötig.
+- **Ein Token-Zustand:** `oauth.Tokens` lebt nur im Serverprozess. Lese-Worker und Schreibjobs sind
+  eigene Prozesse und fragen über ihre Pipe (`oauth.TokenClient`); es kreuzt nur das Access-Token,
+  je Aufruf und ungecacht. Refresh-Token und Client-Secret erreichen keinen Worker und keinen Job.
+  Eine Thread-Sperre umfasst Prüfung, Tausch und Übernahme, deshalb erneuert genau einer. Der Tausch
+  läuft im Thread, der Server bleibt bedienbar. Jeder Pfad gibt seinen eigenen Transport mit: eine
+  Erneuerung zählt auf den Deckel des Pfads, der sie brauchte.
 - **Ablage:** Hausmuster #887: `plugin-linkedin-seite` für den Bridge-Key und
   `plugin-linkedin-seite-oauth` für OAuth-JSON mit `client_id`, `client_secret`,
-  `access_token`, `access_expires_at`, optional gemeinsam `refresh_token` und
+  `access_token`, `access_expires_at`, `scope` (exakt die vier Werte, sonst startet der Dienst
+  nicht), optional gemeinsam `refresh_token` und
   `refresh_expires_at`. Ablaufwerte als ISO-8601-Zeitstempel mit Zeitzone.
   Secrets ausschließlich Tresor → `/run` → read-only Ordner-Mounts; kein Klartext unter
   `/etc` oder `/opt`, keine Secrets in Envs, Repo, Logs oder Fehlerantworten.
@@ -148,12 +164,12 @@ Andere Bindefehler brechen ebenfalls ab; unter Windows werden Sockets exklusiv g
    Laufzeitschlüssel; fehlende Dateien bedeuten `unprovisioned`. Compose hängt die Ordner
    `/run/jnpt/plugins/linkedin-seite` nach `/run/secrets/jnpt` und
    `/run/jnpt/plugins/linkedin-seite-oauth` nach `/run/secrets/oauth`, seit 0.2.0 zusätzlich
-   `…-post-oauth` nach `/run/secrets/post-oauth` und `…-gateway` nach `/run/secrets/gateway`,
-   alle read-only. REQUIRE verlangt nur die zwei Stufe-A-Schlüssel.
+   `…-gateway` nach `/run/secrets/gateway`, alle read-only. REQUIRE verlangt nur die zwei
+   Schlüssel für Bridge und Grant.
 5. `jnpt-linkedin-seite-key.path` und `.service` nach `/etc/systemd/system/` legen;
    `systemctl daemon-reload`, dann `systemctl enable --now jnpt-linkedin-seite-key.path`.
-   Nur die Path-Unit aktivieren. Zwei `PathChanged` beobachten atomare Schlüsselwechsel;
-   `up -d --force-recreate` liest beide Werte neu. Das deckt auch Boot ab. Die generische
+   Nur die Path-Unit aktivieren. Drei `PathChanged` beobachten atomare Schlüsselwechsel;
+   `up -d --force-recreate` liest alle Werte neu. Das deckt auch Boot ab. Die generische
    Produktvorlage `jnpt-plugin-key@` kennt nur eine Stelle und genügt hier nicht.
 6. Eine freie IP im bestehenden **internal** Netz `jnpt_plugins` reservieren und als
    `LINKEDIN_SEITE_PLUGIN_IP` setzen. Listener ausschließlich dort, Port 8092, kein Hostport.
@@ -169,17 +185,22 @@ Rotation: Bridge-Key gleichzeitig in Stelle und Connector-Credential ersetzen. O
 Zustimmung erneut ausführen und JSON ersetzen; Path-Unit erzeugt Container neu (Gateway-
 Auslieferung bis 60 Sekunden plus Recreate). Ohne Refresh spätestens alle 60 Tage,
 mit Refresh jährlich vor dessen ursprünglichem Ablauf. Nach Boot/Restore Zugriff prüfen.
-Entfernen aus dem Tresor ist kein Widerruf: LinkedIn-Grants beim Anbieter widerrufen.
-Rückbau: Connectorrechte/Instanzen entfernen, Grants widerrufen, beide Stellen/Ordner und
+Entfernen aus dem Tresor ist kein Widerruf: den LinkedIn-Grant beim Anbieter widerrufen.
+Rückbau: Connectorrechte/Instanzen entfernen, Grant widerrufen, alle Stellen/Ordner und
 Units entfernen. Kein eigener Datenspeicher, keine geplanten Abfragen.
+
+Umstieg von 0.3.0 mit zwei Grants: Reihenfolge in SETUP.md, Abschnitt „Umstieg auf den einen
+Grant“. Die alte Stelle `plugin-linkedin-seite-post-oauth` wird geleert und ihr Ordner entfernt;
+0.3.1 hängt sie nicht ein und liest sie nicht.
 
 ## Grenzen, Prüfung und Release
 
 512 KiB Quell-/Antwortdaten, 8 KiB Anfrage/Parserheader, Pfad 512 Zeichen.
 Zwei persistente spawn-Worker, vier Queueplätze, 30 Berichte pro rollender Minute.
 20 Sekunden einschließlich Queue/Token/API; Timeout und Client-Abbruch töten den wirklichen
-Prozess und warten auf Reap. Kein weiterlaufender Arbeitsthread. Höchstens zwei RAM-
-Tokenstände. `safe_http.py` ist die gepinnte aiohttp-Naht aus google-reporting; Upgrades
+Prozess und warten auf Reap. Kein weiterlaufender Arbeitsthread, mit einer Ausnahme: eine laufende
+Token-Erneuerung läuft im Serverprozess zu Ende (höchstens 18 Sekunden), damit ihr Ergebnis nicht
+verloren geht. Genau ein RAM-Tokenstand. `safe_http.py` ist die gepinnte aiohttp-Naht aus google-reporting; Upgrades
 brauchen erneut Parser-Canarys. Log enthält nur feste Route, festen Code und Dauer.
 
 Python 3.12: `pip-compile --generate-hashes --output-file=requirements.lock requirements.in`,
@@ -200,16 +221,18 @@ Offene Live-Gates: Follower-Gesamtsummenform, Zugangssemantik, Reaktionssemantik
 Freigaben, Scope-Negativprobe, PKCE-Unterstützung, Refresh-Verfügbarkeit/-Rotation und
 Netz-/Auditprüfung am Zielhost. Vollständige Namensliste und Negativnachweis: `PRUEFBERICHT.md`.
 
-## Stufe B1 — Posten nach Freigabe (0.2.0)
+## Stufe B1 — Posten nach Kern-Freigabe (0.3.0)
 
 PO-Zuruf 02.11.2026 („Ihr sollt Beiträge erstellen können“, „voll einsatzbereit“), SEC-PASS
-c-6575359082 (Bedingungen 1–5) und c-6575837332 (Umfrage, Video V1–V3). Synthetisch geprüft,
+c-6575359082 (Bedingungen 1–5) und c-6575837332 (Umfrage, Video V1–V3).
+Freigabevertrag seit #1306: Plan v2/v2.1, SEC c-6602359446 A1/A3 und c-6604738594 H1–H3. Synthetisch geprüft,
 **nicht live belegt**. Der Beisteller postet, bearbeitet, löscht und kommentiert auf der eigenen
-Unternehmensseite — **ausschließlich** für Einträge des Redaktionsplans, die ein Mensch in der
-Kartei `redaktion_freigabe` mit passendem Hash freigegeben hat. Formate: Text (mit Link), ein
-Bild, mehrere Bilder (2–20), PDF-Dokument, Umfrage, Video. Stufe A bleibt in Verhalten und
-Scopes unverändert; ohne Schreib-Konfiguration antworten die Schreibrouten
-`503 schreiben_nicht_eingerichtet`.
+Unternehmensseite — **ausschließlich** für Einträge des Redaktionsplans, die ein Mensch im
+Kern mit passendem Wirkungs-Hash freigegeben hat. Formate: Text (mit Link), ein
+Bild, mehrere Bilder (2–20), PDF-Dokument, Umfrage, Video. Stufe A bleibt im Verhalten unverändert,
+verlangt seit 0.3.1 aber wie jeder Betrieb den Grant mit allen vier Scopes; ohne Schreib-Konfiguration liefern die Schreibrouten nach gültiger
+Bridge-/Headerprüfung HTTP 200 mit `nicht_ausgefuehrt: true` und
+`error: schreiben_nicht_eingerichtet`. Die Vorschau behält dafür HTTP 503.
 
 ### Werkzeuge
 
@@ -219,24 +242,41 @@ keinen Text, keine Datei, keine URN. Text, Umfrage und Medien liest der Beistell
 
 | Werkzeug (Vorschlag Katalog) | Route | Wirkung |
 |---|---|---|
-| `linkedin_seite_vorschau` | `GET vorschau?eintrag_id=…&aktion=posten\|bearbeiten\|loeschen\|kommentar` | lesend: Text, Format, Umfrage, Ziel-URN, Medienliste mit Ablage-Dateiname, Größe und sha256 je Datei, `hash`, `freigegeben`. Kein LinkedIn-Aufruf. |
+| `linkedin_seite_vorschau` | `GET vorschau?eintrag_id=…&aktion=posten\|bearbeiten\|loeschen\|kommentar` | lesend: Text, Format, Umfrage, Ziel-URN, Medienliste mit Ablage-Dateiname, Größe und sha256 je Datei, `hash`; direkte Wirkungsfelder `aktion`, `ziel_urn`, `text`, `medien[{name, sha256, datei, art, bytes}]`, `umfrage`. Kein LinkedIn-Aufruf. |
 | `linkedin_seite_create_post` | `POST create_post` | Post anlegen (`posten`) |
 | `linkedin_seite_edit_post` | `POST edit_post` | Text eines eigenen Posts ändern (`bearbeiten`, nur `commentary`) |
 | `linkedin_seite_delete_post` | `POST delete_post` | Post löschen (`loeschen`) |
 | `linkedin_seite_create_comment` | `POST create_comment` | eigener Kommentar als Organisation unter `post_urn` (`kommentar`) |
 
-Antwort bei Erfolg: `aktion`, `eintrag_id`, `hash`, `format`, `state` (`veroeffentlicht`,
-`bearbeitet`, `geloescht`, `kommentiert`), `post_urn`, bei Video `video_urn`, bei Kommentar
-`kommentar_id`, `bytes`. Ein Auftrag, der länger als 20 Sekunden läuft (Video), antwortet
-`202 {"state":"in_arbeit"}` und läuft weiter; derselbe Aufruf liefert später den Zustand bzw. das
-Ergebnis. Feste Fehlercodes: `nicht_freigegeben` (403), `schreib_tageslimit` (429),
-`schreiben_belegt` (429, es läuft schon ein Auftrag), `bereits_veroeffentlicht` (409, `posten` mit
-gesetzter `post_urn`), `umfrage_ungueltig`, `umfrage_mit_medien`, `medien_ungueltig`,
-`medium_name_ungueltig`, `medien_kombination_ungueltig`, `medium_format_ungueltig`,
-`pseudonym_im_feld`, `kommentar_erwaehnung`, `post_text_fehlt`, `post_urn_fehlt`,
-`post_urn_ungueltig`, `kommentar_text_fehlt` (422), `ergebnis_unbekannt` (409), `medium_zu_gross` (413),
-`eintrag_nicht_gefunden` (404), `gateway_*`, `upload_ziel_abgewiesen`, `upload_teile_ungueltig`,
-`source_umleitung_abgewiesen`, `video_nicht_verfuegbar`, `video_verarbeitung_fehlgeschlagen` (502).
+Alle vier POST-Routen verlangen zusätzlich genau einen Header:
+`X-Jnpt-Freigabe: hash=<freigabe:v2:sha256:…>` (ohne Auftrags-ID, keine zweite Form).
+Fehlend, doppelt, falsche Form oder keine Gleichheit mit dem selbst berechneten Hash:
+`409 nicht_freigegeben`, vor jedem LinkedIn-Schreibaufruf, ohne eines der Ergebnisfelder.
+
+Bestätigter Erfolg: `ausgefuehrt: true`, `aktion`, `eintrag_id`, `hash`, `format`,
+`state` (`veroeffentlicht`, `bearbeitet`, `geloescht`, `kommentiert`), `post_urn`,
+bei Video `video_urn`, bei Kommentar `kommentar_id`, `bytes`.
+Nach gültiger Bridge- und Headerform-Prüfung wird ein nachweislicher Abbruch vor dem
+ersten LinkedIn-Schreibversuch mit **HTTP 200** und `nicht_ausgefuehrt: true` samt festem
+`error`-Code gemeldet (SEC c-6608136792, LEAD Variante a). Dazu zählen Tages-/HTTP-Kappe,
+belegter/geschlossener/nicht eingerichteter Dienst, Validierung, Medienprüfung sowie
+Gateway-/Token-/Quellenfehler vor dem Senden. Der Kern liest das Feld nur aus 2xx-Körpern.
+Die Headerform wird vor diesen lokalen Prüfungen geprüft; die Hash-Gleichheit nach dem Laden.
+Header-/Hash-Abweichung bleibt 409 ohne Ergebnisindikator. Vorschauen sowie Bridge-/Header-
+Fehler erhalten ihre Fehlerstatus und keine Ergebnisfelder. Fehler nach einem möglichen Schreibversuch
+tragen keines der beiden Felder: der Kern behandelt sie als unklar. Das beginnt bereits
+bei initializeUpload und gilt auch für Bearbeiten und Löschen. Ein 2xx mit unbrauchbarer
+Antwort ist unklar. Keine automatische Wiederholung durch den Kern bei unklarem Ergebnis.
+
+HTTP wartet auf das Endergebnis (harte Grenze 25 Minuten), ohne Zwischenantwort.
+F2 hat derzeit 25 Sekunden Call-Frist und eine Runtime-Decke von 120 Sekunden.
+Lange Videojobs können im Kern früher unklar werden; eine Spec-Anhebung auf 25 Minuten
+reicht wegen der Runtime-Decke nicht aus. Weitere feste Fehlercodes: `schreib_tageslimit`,
+`schreib_http_tageslimit`, `schreiben_belegt`, `bereits_veroeffentlicht`, Eingabe-/Medien-/
+Umfrage- und Gateway-/Tokenfehler werden bei bewiesener Nichtausführung wie oben als 200
+transportiert. Nach einem Schreibversuch bleiben etwa 429/502/503/504 ohne Ergebnisfelder;
+Vorschaufehler behalten etwa 413/422/502/503/504.
+Stufe-A-Fehler behalten ihren bisherigen Vertrag.
 
 ### Kartei-Schema (VENDOR setzt es auf der Anlage)
 
@@ -256,34 +296,46 @@ Kern höchstens 4 KiB groß.
 | `post_urn` | `urn:li:share:<n>` oder `urn:li:ugcPost:<n>`: Ziel für `bearbeiten`, `loeschen`, `kommentar`. Für `posten` muss es leer sein. INB-REDAKTION trägt die URN aus der Werkzeug-Antwort ein. |
 | `kommentar_text` | Text des eigenen Kommentars (Pflicht für `kommentar`). Ohne Escaping gesendet (die Comments-API dokumentiert Little-Text nicht); enthält er eine URN (`urn:li:`), wird er mit `kommentar_erwaehnung` abgewiesen. |
 
-`redaktion_freigabe` (neue Kartei, **Ebene `team`, Owner = das Redaktions-Team der Menschen**):
-`eintrag_id` (string, Pflicht, `filter: true`), `aktion` (string, Pflicht, `enum: [posten,
-bearbeiten, loeschen, kommentar]`), `hash` (string, Pflicht). Der Team-Token der KI bekommt auf
-diese Kartei **keinen** Scope. Die Freigabe-Seite schreibt mit der **SSO-Identität** des Menschen,
-nie mit einem hinterlegten Token.
+### Freigabe und Hash v2 (#1306, A3/H3)
 
-### Freigabe und Hash (SEC Bed. 2)
+Freigeben, Starten und dauerhafte Sperrvermerke liegen im Kern. Der Beisteller liest
+keine Freigabesätze; alte Herkunftslabels sind keine Berechtigungsquelle.
+Die Vorschau und ihre direkten Wirkungsfelder entstehen aus genau einem gelesenen
+Eintrag und denselben geprüften Medienkopien. Die Antwort enthält genau `eintrag_id`,
+`aktion`, `format`, `ziel_urn`, `text`, `medien`, `umfrage`, `post_text`, `post_urn`,
+`kommentar_text`, `dokument_titel`, `hash`. Jedes Medium enthält genau `name`, `sha256`,
+`datei`, `art`, `bytes`; `name` ist der sichtbare Name/Dokumenttitel. Kein zusätzliches
+verschachteltes Wirkungsobjekt. Referenz ist die unveränderte F2-Datei
+`tests/data/linkedin_vorschau_beispiel.json`. F2 erlaubt bei nahendem Tokenablauf zusätzlich
+`warnung`, `ablaufdatum`, `warnung_schreiben`, `ablaufdatum_schreiben`.
+Der Kern liest die Vorschau serverseitig und berechnet seinen Hash daraus selbst neu. Für die Ausführung wird der aktuelle
+Stand neu geladen und sein Hash mit dem Header des Kerns verglichen.
 
-`hash` = SHA-256 über `jnpt-linkedin-seite-freigabe/v1\n` + kanonisches JSON (Schlüssel sortiert,
-UTF-8, ohne Leerraum) genau der gepostet-relevanten Felder:
-`posten` {aktion, post_text, medien: [{datei, bytes, sha256}], umfrage | null} ·
-`bearbeiten` {aktion, post_urn, post_text} · `loeschen` {aktion, post_urn} ·
-`kommentar` {aktion, post_urn, kommentar_text}. Jede Mediendatei geht mit Name, Größe und dem
-SHA-256 ihrer **Bytes** ein (gleichwertig zur Bindung an die Bytes selbst, aber nicht wortgleich mit
-SEC Bed. 2 „Bytes jeder Mediendatei“). Antwortreihenfolge der Umfrage zählt; Schlüsselreihenfolge
-und Leerraum im JSON-Feld zählen nicht. Die eingefrorenen Vektoren stehen in
-`tests/test_post_domain.py`. Freigegeben ist ein Aufruf nur, wenn `redaktion_freigabe` einen Satz
-mit gleicher `eintrag_id`, gleicher `aktion` und gleichem `hash` enthält, **der per SSO angelegt
-und zuletzt per SSO geändert wurde** (`via == "SSO"` und `updated_via == "SSO"` in der
-Kartei-Antwort, `cmd/jnpt/principal_teams.go`). Ein Freigabesatz in einem Feld des Redaktionsplans
-zählt nicht. Widerruf = den Freigabesatz löschen, bevor die Aktion läuft. Restlücke: Token-Labels
-vergibt der Admin frei, der Kern reserviert `SSO` nicht — **kein Token darf das Label `SSO`
-tragen** (Betreiberregel).
+`hash` = `freigabe:v2:sha256:` + SHA-256 über die UTF-8-Bytes `freigabe:v2`, ein LF,
+danach kompaktes kanonisches JSON in Feldfolge `aktion, medien, text, umfrage, ziel_urn`.
+Medien geordnet als `[{name, sha256}]`, ohne Sortieren; `name` ist der sichtbare Name,
+bei PDF der Dokumenttitel (= Dateiname). Umfrage `null` oder `{antworten, dauer, frage}`;
+Antwortreihenfolge zählt, Dauer als Ganzzahl in Tagen. Fehlende/null Listen werden `[]`,
+fehlende/null Umfrage wird `null`; ein vorhandenes leeres Umfrageobjekt bleibt verschieden.
+UTF-8 ohne Normalisierung, kein HTML- oder JavaScript-Escaping, JSON-Kontrollzeichen,
+keine Leerzeichen. Verbindliche unveränderte Kern-Vektoren: `tests/data/hash_golden.json`.
+Kein v1-Fallback.
+Die gemeinsamen JSON-Dateien in `tests/data` haben LF-Zeilenenden; Root-.gitattributes
+setzt dafür `text eol=lf`. Tests pinnen Datei-SHA-256 und vergleichen bei vorhandenem
+Kern-Worktree mit dessen kanonischen Git-Bytes, einschließlich kontrollierter Windows-
+Checkout-Konvertierung. Ohne Kern-Worktree gelten die gleichen SHA-256-Pins in CI.
 
-Ablauf je Auftrag in einem eigenen Prozess: Eintrag lesen → jede Datei **einmal** in eine private
-RAM-Kopie lesen (Größe geprüft) → Hash → Freigabe suchen → erst dann zählen und LinkedIn aufrufen,
-aus der Kopie → Kopien überschreiben und verwerfen, auf jedem Weg. `DRAFT` gibt es nicht: die Doku
-202610 sagt „PUBLISHED is the only accepted field during creation“.
+| Aktion | text | ziel_urn | medien / umfrage |
+|---|---|---|---|
+| posten | exakter post_text | Organisation aus config.json | geprüfte Dateien / Eintragsumfrage |
+| bearbeiten | exakter post_text | post_urn | [] / null |
+| loeschen | leerer String | post_urn | [] / null |
+| kommentar | exakter kommentar_text | post_urn | [] / null |
+
+Little-Text-Escaping ist die verlustfreie Transportdarstellung des Texts. Autor/owner/actor
+sind immer die konfigurierte Organisation; übrige Post-Felder feste Konstanten.
+Ablauf: Eintrag einmal lesen → Dateien einmal in private RAM-Kopien → Prüfung/Wirkung/Hash →
+Header-Gleichheit → report_hash → Zählen/LinkedIn → Kopien überschreiben und verwerfen.
 
 ### Rückverbindung zum Gateway (W2, SEC Bed. 3)
 
@@ -296,31 +348,29 @@ Dienst `jnpt` und lauscht auf Port **8484** (Kern `docker/docker-compose.prod.ym
 `notifications/initialized`, `tools/call`), Bearer = eigener Gateway-Token des Beistellers, keine
 Umleitung, kein Proxy.
 
-**Token-Umfang des Gateway-Tokens (genau diese drei Werkzeuge, nichts sonst):**
+**Token-Umfang des Gateway-Tokens (genau diese zwei Werkzeuge, nichts sonst):**
 
 - `redaktionsplan_get` (Eintrag per ID),
-- `redaktion_freigabe_search` (aufgerufen nur mit `eintrag_id` und `limit: 100`),
 - `redaktion_medien_get_file` (Ablage-Integration `redaktion-medien`, Bytes als eingebettete Ressource).
 
 Die Namen folgen der Kern-Bildung `<name>_<werkzeug>` (Bindestrich → Unterstrich) aus
-`schreiben.redaktionsplan`, `schreiben.freigabe` und `schreiben.medien_ablage`. Nicht dabei: kein
-`_add`, `_update`, `_delete`, kein `redaktionsplan_search`, kein `redaktion_freigabe_get`, kein
+`schreiben.redaktionsplan` und `schreiben.medien_ablage`. Nicht dabei: kein
+`_add`, `_update`, `_delete`, kein `redaktionsplan_search`, kein
 `list_files`/`read_file`/`write_file`/`move_file`, kein integrationsweiter Scope, kein Werkzeug auf
 `/admin/mcp`. Der Client verweigert jeden anderen Namen schon vor dem HTTP-Aufruf. Token-Art:
-**Team-Token** des Teams, in dem die Sätze beider Karteien liegen (Row-Level: der Token sieht nur
+**Team-Token** des Teams, in dem die Sätze des Redaktionsplans liegen (Row-Level: der Token sieht nur
 Sätze seines Teams, außer eine Kartei steht auf Ebene `unternehmen`); kein persönlicher Token mit
 Erben-Bit. Die Medien-Ablage darf **nicht** pseudonymisiert sein (sonst verweigert `get_file`), ihr
 `max_file_bytes` höchstens 32 MiB.
 
 ### Credentials, Bremse und Spur
 
-- **Schreib-Grant (SEC Bed. 4):** eigene Stelle `plugin-linkedin-seite-post-oauth`, Zustimmung mit
-  `tools/zustimmung.py --schreiben`, angefordert wird **genau** `w_organization_social
-  w_organization_social_feed`, nichts sonst. Das JSON trägt zusätzlich
-  `"scope": "w_organization_social w_organization_social_feed"`: die unveränderte Stufe-A-Prüfung weist
-  JSON mit `scope` ab, die Schreib-Prüfung verlangt genau diese Menge — ein Tausch fällt beim Laden auf.
-  Lese- und Schreib-Token verlassen nie ihren Prozess; jede Erneuerung des Schreib-Tokens muss wieder
-  genau diese zwei Scopes liefern (Trenner Komma oder Leerraum, Reihenfolge egal, Menge exakt).
+- **Ein Grant (#1237, 0.3.1, ersetzt SEC Bed. 4):** Die Stelle `plugin-linkedin-seite-oauth` trägt
+  Lesen und Schreiben, Zustimmung mit `tools/zustimmung.py --gesamt`, angefordert werden **genau** die
+  vier Scopes (`GRANT_SCOPES`). Das JSON trägt sie im Feld `scope`, der Dienst prüft sie beim Start
+  exakt und weist ein JSON ohne `scope` oder mit anderer Menge fail-closed ab. Die Trennung von Lesen
+  und Schreiben liegt im Gateway (Vorlagen `linkedin-seite` und `linkedin-seite-manage`, je eigene
+  Werkzeugrechte), im Freigabe-Kopf und in den getrennten Routen, nicht mehr im Token.
   Posten, Bearbeiten, Löschen sowie Bild-, Dokument- und Video-Upload stehen unter
   `w_organization_social` (Posts-, Images-, Documents-, Videos-API 202610). Kommentieren als
   Organisation steht unter `w_organization_social_feed`, belegt in der Comments API 202610, Tabelle
@@ -333,16 +383,11 @@ Erben-Bit. Die Medien-Ablage darf **nicht** pseudonymisiert sein (sonst verweige
   `initializeUpload`, auch wenn es danach abbricht). Zusätzlich 45 LinkedIn-HTTP-Versuche je UTC-Tag
   für Schreibaufträge (Development Tier: 100 je Mitglied; Stufe A hat eigene 50). Höchstens ein
   Schreibauftrag gleichzeitig, harte Grenze 25 Minuten; Vorschau 20 Sekunden, 10 je Minute.
-- **Idempotenz:** `eintrag_id` + `hash` → Ergebnis, nur im RAM des Serverprozesses. Ein zweiter
-  Aufruf postet nicht erneut und liefert dieselbe URN mit `wiederholt: true`. Scheitert ein Auftrag,
-  nachdem der nicht wiederholbare Schlussaufruf (Post bzw. Kommentar anlegen) schon gesendet war,
-  ist der Ausgang unbekannt: dieselbe Freigabe wird danach mit `409 ergebnis_unbekannt` abgewiesen,
-  bis ein Mensch auf der Seite nachsieht und gegebenenfalls einen geänderten Eintrag neu freigibt.
-  Ein Fehler davor (etwa beim Upload) darf wiederholt werden. **Grenzen:** ein Neustart löscht
-  Zähler, Idempotenz und diese Sperre. Gegen Doppelposts über einen Neustart hinweg hilft nur die
-  gesetzte `post_urn` — die schreibt die KI, sie ist also kein Schutz gegen die KI, sondern ein
-  Komfort. Ein Auftrag kann LinkedIn nur mit Erlaubnis über seine Leitung zum Serverprozess
-  aufrufen; ohne Serverprozess endet er vor dem nächsten Aufruf.
+- **Idempotenz:** `eintrag_id` + `hash` → bestätigtes Ergebnis, nur im RAM. Wiederholung
+  liefert dieselbe URN mit `wiederholt: true` und `ausgefuehrt: true`, ohne zweiten Post. `report_hash` ist ein Komfort gegen doppelte
+  erfolgreiche Aufrufe und kein Sperrvermerk. Der Kern hält den dauerhaften Ausführungs-
+  und Unklar-Sperrvermerk. Ein Neustart leert Zähler und Cache. `post_urn` pflegt die KI;
+  es ist Komfort. Ohne IPC-Permit des Serverprozesses erfolgt kein LinkedIn-Aufruf.
 - **Spur:** je beendetem Schreibauftrag genau eine Zeile `spur aktion= eintrag_id= hash= code= urn=
   bytes=`; nie Text, nie Dateiname, nie Upload-Adresse (sie ist vorsigniert), nie Token.
 
@@ -378,28 +423,27 @@ https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares
 
 ### Betreiberhandgriffe Stufe B1
 
-1. tmpfiles: die zwei neuen Zeilen aus `deploy/jnpt-plugins-linkedin-seite.conf.example`
-   (`linkedin-seite-post-oauth`, `linkedin-seite-gateway`) übernehmen und `systemd-tmpfiles --create`
-   ausführen — **vor** dem Image-Wechsel auf 0.2.0, sonst startet Compose nicht (Ordner-Mounts mit
-   `create_host_path: false`).
-2. Path-Unit aus `deploy/` neu ablegen (vier `PathChanged`), `systemctl daemon-reload`.
+1. tmpfiles: die Zeile `linkedin-seite-gateway` aus `deploy/jnpt-plugins-linkedin-seite.conf.example`
+   übernehmen und `systemd-tmpfiles --create` ausführen — **vor** dem Image-Wechsel, sonst startet
+   Compose nicht (Ordner-Mounts mit `create_host_path: false`).
+2. Path-Unit aus `deploy/` neu ablegen (drei `PathChanged`), `systemctl daemon-reload`.
 3. `config.json` um den Block `schreiben` ergänzen (`config.example.json`).
-4. Karteien anlegen bzw. erweitern (Schema oben), Medien-Ablage `redaktion-medien` als
+4. Redaktionsplan erweitern (Schema oben), Medien-Ablage `redaktion-medien` als
    Ablage-Integration ohne Pseudonymisierung.
-5. Gateway-Token erzeugen (Team-Token, genau die drei Werkzeuge oben) und per stdin setzen:
-   `… | jnpt credential set --name plugin-linkedin-seite-gateway`. Dem KI-Team-Token auf
-   `redaktion_freigabe` nichts geben.
-6. Schreib-Zustimmung des PO (SETUP.md) in `plugin-linkedin-seite-post-oauth`.
-7. Connector-Vorlage um die fünf Werkzeuge ergänzen, Timeout 25 Sekunden genügt (Video antwortet
-   202). Audit für SSO und Token auf Metadaten; die Vorschau-Antwort enthält den Post-Text.
+5. Gateway-Token erzeugen (Team-Token, genau die zwei Werkzeuge oben) und per stdin setzen:
+   `… | jnpt credential set --name plugin-linkedin-seite-gateway`. Alte Freigabe-Suchrechte aus dem Beisteller-Token entfernen;
+   den alten Konfigurationsschlüssel `schreiben.freigabe` entfernen.
+6. Zustimmung des PO mit `--gesamt` (SETUP.md) in `plugin-linkedin-seite-oauth`; sie trägt auch das
+   Schreiben, eine zweite gibt es nicht.
+7. Connector-Vorlage um die fünf Werkzeuge ergänzen, F2-Call-Frist derzeit 25 Sekunden (Runtime-Decke 120 Sekunden),
+   unabhängig von der Jobgrenze des Beistellers von 25 Minuten; lange Jobs können unklar werden. Audit für SSO und Token auf Metadaten; die Vorschau-Antwort enthält den Post-Text.
 
 ### Live-Gates Stufe B1
 
 Gateway-Netzweg Beisteller → `jnpt:8484` im Netz `jnpt_plugins` (Aufruf aus dem Container) ·
-`team_token_list`: Beisteller-Token mit genau den drei Werkzeugen, KI-Team-Token ohne Scope auf
-`redaktion_freigabe` (SEC Bed. 3, GATE) · Row-Level-Sicht des Team-Tokens auf beide Karteien ·
-Antwortform von `redaktionsplan_get`/`redaktion_freigabe_search`/`get_file` am echten Kern ·
-`via`/`updated_via` = `SSO` bei einem Satz der Freigabe-Seite · Upload-Host `www.linkedin.com` und Token-Pflicht je Upload-Art · ETag-Form der
+`team_token_list`: Beisteller-Token mit genau den zwei Lesewerkzeugen · Row-Level-Sicht
+auf den Redaktionsplan · Antwortform von `redaktionsplan_get`/`get_file` am echten Kern ·
+Hash/Header/Ergebnisfelder gemeinsam mit F2/F3 prüfen (GATE, außerhalb F4) · Upload-Host `www.linkedin.com` und Token-Pflicht je Upload-Art · ETag-Form der
 Video-Teile · `x-restli-id` von Post und Kommentar · Little-Text bei Kommentaren · Testvideo
 hochladen und abschließen ohne Post · Größe der echten Clips (≤ 32 MiB) und ihr Weg in die Ablage
 (`write_file` trägt nur rund 6 MiB) · PID-/Speichergrenzen des Containers mit laufendem Video und

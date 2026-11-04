@@ -1,6 +1,6 @@
-# jnpt-linkedin-seite-key.path — beobachtet ALLE VIER Laufzeit-Schlüssel des
+# jnpt-linkedin-seite-key.path — beobachtet ALLE DREI Laufzeit-Schlüssel des
 # LinkedIn-Seite-Beistellers und weckt dessen Neustart (#1237; seit 0.2.0 auch
-# Schreib-Grant und Gateway-Token der Stufe B1).
+# den Gateway-Token der Stufe B1).
 #
 # Warum ein eigenes Paar und nicht jnpt-plugin-key@: Die Vorlage des Produkts
 # beobachtet nur /run/jnpt/plugins/%i/runtime-key und startet
@@ -33,8 +33,7 @@ Documentation=https://github.com/JanuaPort/januaport/blob/main/deploy/tunnel/CLA
 # temporäre Datei plus `rename`; nur PathChanged sieht den Inode-Tausch.
 PathChanged=/run/jnpt/plugins/linkedin-seite/runtime-key
 PathChanged=/run/jnpt/plugins/linkedin-seite-oauth/runtime-key
-# Stufe B1 (#1237): Schreib-Grant und eigener Gateway-Token des Beistellers.
-PathChanged=/run/jnpt/plugins/linkedin-seite-post-oauth/runtime-key
+# Stufe B1 (#1237): eigener Gateway-Token des Beistellers.
 PathChanged=/run/jnpt/plugins/linkedin-seite-gateway/runtime-key
 
 # ⚠️ Bewusst KEIN MakeDirectory=: Die Ordner gehören der Gateway-UID (65532) und

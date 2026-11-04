@@ -4,8 +4,8 @@ import json
 import unittest
 from linkedin_seite.domain import ReportError
 from linkedin_seite.gateway import GatewayClient
-from support_post import (FakeGateway, GATEWAY_TOKEN, TOOL_GET, TOOL_SEARCH, TOOL_FILE, PNG, config, record,
-                          freigabe, new_id)
+from support_post import (FakeGateway, GATEWAY_TOKEN, TOOL_GET, TOOL_FILE, PNG, config, record,
+                          new_id)
 
 
 class Gateway(unittest.TestCase):
@@ -22,29 +22,27 @@ class Gateway(unittest.TestCase):
             fn(*args)
         return cm.exception.code
 
-    def test_handshake_then_exactly_the_three_closed_tools(self):
+    def test_handshake_then_exactly_the_two_closed_tools(self):
         rid = new_id()
         self.gw.plan[rid] = record(rid, {'post_text': 'Hallo'})
-        self.gw.freigaben.append(freigabe(rid, 'posten', 'a'*64))
         self.gw.files['a.png'] = PNG
         self.assertEqual(self.client.eintrag(rid)['fields'], {'post_text': 'Hallo'})
-        self.assertEqual(len(self.client.freigaben(rid)), 1)
         medium = self.client.datei('a.png', 1024)
         self.assertEqual((bytes(medium.daten), medium.groesse, medium.art), (PNG, len(PNG), 'bild'))
         methods = [c[0] for c in self.gw.calls]
         self.assertEqual(methods[:2], ['initialize', 'notifications/initialized'])
         self.assertEqual(methods.count('initialize'), 1)
         self.assertEqual([(c[1], c[2]) for c in self.gw.tool_calls()],
-                         [(TOOL_GET, {'id': rid}), (TOOL_SEARCH, {'eintrag_id': rid, 'limit': 100}),
+                         [(TOOL_GET, {'id': rid}),
                           (TOOL_FILE, {'file': 'a.png'})])
         for call in self.gw.calls:
             self.assertEqual(call[3]['Authorization'], 'Bearer ' + GATEWAY_TOKEN)
             self.assertIn('text/event-stream', call[3]['Accept'])
         self.assertTrue(all(path == ('POST', '/mcp') for path in self.gw.paths))
-        self.assertEqual(self.client.tools, frozenset({TOOL_GET, TOOL_SEARCH, TOOL_FILE}))
+        self.assertEqual(self.client.tools, frozenset({TOOL_GET, TOOL_FILE}))
 
     def test_any_other_tool_is_refused_before_http(self):
-        for tool in ('redaktionsplan_add', 'redaktionsplan_update', 'redaktion_freigabe_add', 'redaktionsplan_search',
+        for tool in ('redaktion_freigabe_search', 'redaktionsplan_add', 'redaktionsplan_update', 'redaktion_freigabe_add', 'redaktionsplan_search',
                      'redaktion_medien_read_file', 'redaktion_medien_write_file', 'team_token_create', 'catalog'):
             with self.subTest(tool=tool):
                 self.assertEqual(self.code(self.client.call, tool, {}, 1024), 'gateway_werkzeug_nicht_erlaubt')
@@ -81,9 +79,9 @@ class Gateway(unittest.TestCase):
     def test_errors_map_to_fixed_codes_without_gateway_text(self):
         rid = new_id()
         self.assertEqual(self.code(self.client.eintrag, rid), 'eintrag_nicht_gefunden')
-        self.gw.tool_errors.add(TOOL_SEARCH)
+        self.gw.tool_errors.add(TOOL_FILE)
         with self.assertRaises(ReportError) as cm:
-            self.client.freigaben(rid)
+            self.client.datei('a.png', 1024)
         self.assertEqual(cm.exception.code, 'gateway_werkzeug_fehler')
         self.assertNotIn('TOOLERRORCANARY', str(cm.exception))
         self.gw.status = 401

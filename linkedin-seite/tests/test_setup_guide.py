@@ -19,8 +19,8 @@ class SetupGuide(unittest.TestCase):
             self.assertRegex(link, r'^https://')
 
     def test_admin_scopes_role_callback_and_pipe(self):
-        for phrase in ('rw_organization_admin r_organization_social', 'Seiten-Admin-Rolle',
-                       'http://localhost:8765/linkedin/callback', '127.0.0.1',
+        for phrase in ('rw_organization_admin r_organization_social w_organization_social w_organization_social_feed',
+                       'Seiten-Admin-Rolle', 'http://localhost:8765/linkedin/callback', '127.0.0.1',
                        'jnpt credential set --name plugin-linkedin-seite-oauth',
                        'nicht im Container', 'Passwortmanager', '--secret-stdin', '--pkce'):
             self.assertIn(phrase, self.guide())
@@ -39,23 +39,42 @@ class SetupGuide(unittest.TestCase):
         for phrase in ('Windows', 'PowerShell 7', 'Read-Host -MaskInput', 'cmd', 'Steuerzeichen', '--secret-stdin'):
             self.assertIn(phrase, guide)
         self.assertRegex(guide, r'Read-Host -MaskInput [^\n]*\| python [^\n]*zustimmung\.py --client-id APP_CLIENT_ID '
-                                r'--secret-stdin \| jnpt credential set --name plugin-linkedin-seite-oauth')
+                                r'--secret-stdin --gesamt \| jnpt credential set --name plugin-linkedin-seite-oauth')
         self.assertNotRegex(guide, r'--client-secret|\$env:|-AsPlainText|ConvertFrom-SecureString')
 
     def test_stage_b1_write_consent_and_approval_handgriffe(self):
         guide = self.guide()
-        for phrase in ('w_organization_social', 'w_organization_social_feed', '--schreiben', 'jnpt credential set --name plugin-linkedin-seite-post-oauth',
-                       'redaktion_freigabe', 'linkedin_seite_vorschau', 'SSO', 'hash', '5 schreibende Aktionen',
-                       'Lese- und Schreib-Token', 'http://jnpt:8484/mcp', 'jnpt_plugins', '/admin/mcp',
-                       'redaktionsplan_get', 'redaktion_freigabe_search', 'redaktion_medien_get_file',
+        for phrase in ('w_organization_social', 'w_organization_social_feed',
+                       'X-Jnpt-Freigabe', 'linkedin_seite_vorschau', 'Kern', 'hash', '5 schreibende Aktionen',
+                       'http://jnpt:8484/mcp', 'jnpt_plugins', '/admin/mcp',
+                       'redaktionsplan_get', 'redaktion_medien_get_file',
                        'plugin-linkedin-seite-gateway'):
             self.assertIn(phrase, guide)
-        self.assertRegex(guide, r'Read-Host -MaskInput [^\n]*\| python [^\n]*zustimmung\.py --client-id APP_CLIENT_ID '
-                                r'--secret-stdin --schreiben \| jnpt credential set --name plugin-linkedin-seite-post-oauth')
+
+    def test_one_consent_only_no_way_back_to_a_second_grant(self):
+        # #1237, 0.3.1: a second consent with another scope set voids the older token.
+        guide = self.guide()
+        self.assertNotIn('--schreiben', guide)
+        self.assertNotRegex(guide, r'zustimmung\.py --client-id APP_CLIENT_ID( --secret-stdin)? \|')
+        self.assertNotIn('jnpt credential set --name plugin-linkedin-seite-post-oauth', guide)
+        self.assertIn('https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow', guide)
+
+    def test_move_to_the_one_grant_revokes_first_then_consents_then_empties_the_old_place(self):
+        guide = self.guide()
+        start = guide.index('## Umstieg auf den einen Grant')
+        section = guide[start:guide.index('\n## ', start + 1)]
+        steps = [section.index(phrase) for phrase in (
+            'Autorisierung bei LinkedIn widerrufen', '--gesamt', 'jnpt credential delete plugin-linkedin-seite-post-oauth')]
+        self.assertEqual(steps, sorted(steps))
+        for phrase in ('startup_failed', 'schreiben=an', 'Refresh-Token: ja', '/run/jnpt/plugins/linkedin-seite-post-oauth',
+                       'tmpfiles'):
+            self.assertIn(phrase, section)
 
     def test_readme_names_gateway_route_token_tools_and_live_gates(self):
         readme = (ROOT/'README.md').read_text(encoding='utf-8')
         for phrase in ('http://jnpt:8484/mcp', 'jnpt_plugins', '/admin/mcp', 'redaktionsplan_get',
-                       'redaktion_freigabe_search', 'redaktion_medien_get_file', 'plugin-linkedin-seite-gateway',
-                       'plugin-linkedin-seite-post-oauth', 'Live-Gate', 'www.linkedin.com', 'updated_via'):
+                       'redaktion_medien_get_file', 'plugin-linkedin-seite-gateway',
+                       'plugin-linkedin-seite-post-oauth', 'Live-Gate', 'www.linkedin.com', 'freigabe:v2:sha256:',
+                       '--gesamt', 'Serverprozess'):
             self.assertIn(phrase, readme)
+        self.assertNotIn('--schreiben', readme)

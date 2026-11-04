@@ -1,0 +1,11 @@
+test_all_actions_have_only_f2_keys_and_direct_effect_fields (test_f2_preview.F2Preview.test_all_actions_have_only_f2_keys_and_direct_effect_fields) ... ok
+test_exact_f2_example_shape_types_and_effect_hash (test_f2_preview.F2Preview.test_exact_f2_example_shape_types_and_effect_hash) ... ok
+test_only_the_four_optional_warning_fields_from_f2_are_added (test_f2_preview.F2Preview.test_only_the_four_optional_warning_fields_from_f2_are_added) ... ok
+test_poll_shape_and_hash_are_direct_and_keep_integer_days (test_f2_preview.F2Preview.test_poll_shape_and_hash_are_direct_and_keep_integer_days) ... ok
+test_preview_and_effect_use_one_entry_read (test_f4.F4.test_preview_and_effect_use_one_entry_read) ... ok
+test_post_then_idempotent_repeat_returns_the_same_urn (test_post_server.Flow.test_post_then_idempotent_repeat_returns_the_same_urn) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 12.418s
+
+OK

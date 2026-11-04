@@ -10,7 +10,7 @@ from pathlib import Path
 import time
 from aiohttp import web
 from .domain import Config, ReportError, parse_request, encode_response, strict_json, REPORTS
-from .redaktion import ROUTES as POST_ROUTES, VORSCHAU, parse_vorschau, parse_write
+from .redaktion import ROUTES as POST_ROUTES, VORSCHAU, FREIGABE_HEADER, parse_freigabe, parse_vorschau, parse_write
 from .workers import WorkerPool
 
 LOG = logging.getLogger("linkedin_seite")
@@ -21,8 +21,7 @@ LOG = logging.getLogger("linkedin_seite")
 CONFIG_PATH = "/etc/linkedin-seite/config.json"
 BRIDGE_KEY_PATH = "/run/secrets/jnpt/runtime-key"
 IDENTITY_PATH = "/run/secrets/oauth/runtime-key"
-# Stufe B1 (#1237): own places for the write grant and the Beisteller's own gateway token.
-POST_IDENTITY_PATH = "/run/secrets/post-oauth/runtime-key"
+# Stufe B1 (#1237): the Beisteller's own gateway token. Reading and writing share the one grant above.
 GATEWAY_TOKEN_PATH = "/run/secrets/gateway/runtime-key"
 POST_PREFIX = ["v1", "linkedin-post"]
 MAX_POST_BODY = 1024
@@ -49,25 +48,28 @@ def read_gateway_token(path):
     return value.decode("ascii")
 
 
-def load_write_side(cfg, identity_path=POST_IDENTITY_PATH, token_path=GATEWAY_TOKEN_PATH):
-    """((write identity, gateway token), "an") or (None, fixed reason). Never breaks Stufe A."""
-    from .oauth import load_write_identity
-
+def load_write_side(cfg, token_path=GATEWAY_TOKEN_PATH):
+    """(gateway token, "an") or (None, fixed reason). Never breaks Stufe A."""
     if cfg.schreiben is None:
         return None, "nicht_konfiguriert"
-    try:
-        identity = load_write_identity(identity_path)
-    except FileNotFoundError:
-        return None, "schreib_identitaet_fehlt"
-    except (OSError, ValueError):
-        return None, "schreib_identitaet_ungueltig"
     try:
         token = read_gateway_token(token_path)
     except FileNotFoundError:
         return None, "gateway_token_fehlt"
     except (OSError, ValueError):
         return None, "gateway_token_ungueltig"
-    return (identity, token), "an"
+    return token, "an"
+
+
+def build_pools(cfg, identity_path=IDENTITY_PATH, token_path=GATEWAY_TOKEN_PATH):
+    """Both pools on ONE Tokens object (#1237): two on one refresh token would race."""
+    from .oauth import Tokens, load_identity
+    from .post_pool import WritePool
+
+    tokens = Tokens(load_identity(identity_path))
+    token, reason = load_write_side(cfg, token_path)
+    LOG.info("schreiben=%s", reason)
+    return WorkerPool(cfg, tokens), WritePool(cfg, tokens, token) if token else None
 
 
 def check_bridge(request, key):
@@ -110,6 +112,9 @@ def create_app(cfg, key, pool, write_pool=None):
         started = time.monotonic()
         code = "ok"
         route = "unknown"
+        write_route = request.path.startswith("/v1/linkedin-post/") and request.method == "POST"
+        dispatched = False
+        header_checked = False
         try:
             if len(request.raw_path.encode()) > 8192:
                 raise ReportError(400, "request_too_large")
@@ -129,20 +134,22 @@ def create_app(cfg, key, pool, write_pool=None):
                 if request.method != ("GET" if parts[3] == VORSCHAU else "POST"):
                     raise ReportError(405, "method_not_allowed")
                 check_bridge(request, key)
-                if write_pool is None:
-                    raise ReportError(503, "schreiben_nicht_eingerichtet")
                 if parts[3] == VORSCHAU:
                     if request.body_exists:
                         raise ReportError(400, "unexpected_body")
                     req = parse_vorschau(list(request.query.items()))
                 else:
-                    req = parse_write(parts[3], await bounded_body(request))
+                    # A valid bridge and header form precede definite local rejections.
+                    parse_freigabe(request.headers.getall(FREIGABE_HEADER, []))
+                    header_checked = True
+                    req = parse_write(parts[3], await bounded_body(request), request.headers.getall(FREIGABE_HEADER, []))
+                if write_pool is None:
+                    raise ReportError(503, "schreiben_nicht_eingerichtet")
+                dispatched = True
                 status, payload = await write_pool.run(req)
                 extra = write_pool.warning()
                 if extra:
                     payload = encode_response({**json.loads(payload), **extra})
-                if status == 202:
-                    code = "in_arbeit"
                 return web.Response(status=status, body=payload, content_type="application/json")
             if len(parts) != 4 or parts[1:3] != ["v1", "linkedin"] or parts[3] not in REPORTS:
                 raise ReportError(404, "route_not_found")
@@ -172,13 +179,22 @@ def create_app(cfg, key, pool, write_pool=None):
             return web.Response(body=payload, content_type="application/json")
         except ReportError as exc:
             code = exc.code
-            return web.json_response({"error": code}, status=exc.status)
+            payload = {"error": code}
+            if (write_route and header_checked and code != 'nicht_freigegeben'
+                    and (not dispatched or getattr(exc, 'nicht_ausgefuehrt', False))):
+                payload['nicht_ausgefuehrt'] = True
+                return web.json_response(payload, status=200)
+            return web.json_response(payload, status=exc.status)
         except asyncio.CancelledError:
             code = "client_cancelled"
             raise
         except Exception:
             code = "internal_error"
-            return web.json_response({"error": code}, status=503)
+            payload = {"error": code}
+            if write_route and header_checked and not dispatched:
+                payload['nicht_ausgefuehrt'] = True
+                return web.json_response(payload, status=200)
+            return web.json_response(payload, status=503)
         finally:
             LOG.info(
                 "route=%s code=%s duration_ms=%d",
@@ -219,12 +235,7 @@ def serve():
     key = load_runtime_files()
     # Exact plugin-network IPv4 is provisioned by the operator, never 0.0.0.0.
     bind = bind_ip(os.environ.get("LINKEDIN_SEITE_BIND_IP", ""))
-    from .oauth import load_identity
-    pool = WorkerPool(cfg, load_identity(IDENTITY_PATH))
-    from .post_pool import WritePool
-    side, reason = load_write_side(cfg)
-    LOG.info("schreiben=%s", reason)
-    write_pool = WritePool(cfg, side[0], side[1]) if side else None
+    pool, write_pool = build_pools(cfg)
     from .safe_http import serve_app
 
     asyncio.run(serve_app(create_app(cfg, key, pool, write_pool), bind))

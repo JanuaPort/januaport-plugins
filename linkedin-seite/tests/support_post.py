@@ -7,6 +7,7 @@ count requests per host (SEC V1: "Stub zählt die Anfragen").
 """
 import base64
 from datetime import datetime, timedelta, timezone
+from functools import partial
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -17,12 +18,13 @@ from urllib.parse import quote, unquote, urlsplit
 from linkedin_seite import source_contract as s
 from linkedin_seite.domain import Config
 from linkedin_seite.post_adapter import PostAdapter, WriteTransport
+from linkedin_seite.post_pool import WritePool
+from support import DirectTokens, GRANT, GRANT_COMMA
 
 ORG = 'urn:li:organization:123456'
 PLAN = 'redaktionsplan'
-FREIGABE = 'redaktion_freigabe'
 ABLAGE = 'redaktion-medien'
-TOOL_GET, TOOL_SEARCH, TOOL_FILE = 'redaktionsplan_get', 'redaktion_freigabe_search', 'redaktion_medien_get_file'
+TOOL_GET, TOOL_FILE = 'redaktionsplan_get', 'redaktion_medien_get_file'
 GATEWAY_TOKEN = 'jnpt_' + 'a1b2c3d4' + '_' + 'GATEWAYCANARY' + 'x' * 24
 MiB = 1024 * 1024
 
@@ -41,11 +43,11 @@ def mp4(size):
 
 
 def write_identity(port, days=60, refresh=False):
-    """The validated write identity as the adapter receives it (scope field already checked)."""
+    """The one grant, marked so a test can tell which requests carried which access token."""
     now = datetime.now(timezone.utc)
     out = {s.CLIENT_ID: str(port), s.CLIENT_SECRET: secrets.token_urlsafe(32),
            s.ACCESS_TOKEN: 'WRITE-' + secrets.token_urlsafe(32),
-           'access_expires_at': (now + timedelta(days=days)).isoformat()}
+           'access_expires_at': (now + timedelta(days=days)).isoformat(), s.SCOPE: GRANT}
     if refresh:
         out.update({s.REFRESH_TOKEN: secrets.token_urlsafe(32),
                     'refresh_expires_at': (now + timedelta(days=365)).isoformat()})
@@ -54,7 +56,7 @@ def write_identity(port, days=60, refresh=False):
 
 def config(gateway_port, **extra):
     schreiben = {'gateway_url': 'http://127.0.0.1:%d/mcp' % gateway_port, 'redaktionsplan': PLAN,
-                 'freigabe': FREIGABE, 'medien_ablage': ABLAGE, **extra}
+                 'medien_ablage': ABLAGE, **extra}
     return Config.from_dict({'organization': ORG, 'linkedin_version': '202610', 'schreiben': schreiben})
 
 
@@ -65,15 +67,8 @@ def new_id():
     return '%016x' % next(_ids)
 
 
-def record(rid, fields, via='inb-redaktion', updated_via=None):
-    return {'id': rid, 'fields': fields, 'source': 'redaktion', 'as_of': '2026-11-02', 'team': 'Redaktion',
-            'author': 'INB', 'via': via, 'created_at': '2026-11-02T10:00:00Z',
-            'updated_at': '2026-11-02T10:00:00Z', 'updated_by': 'INB',
-            'updated_via': via if updated_via is None else updated_via}
-
-
-def freigabe(eintrag_id, aktion, digest, via='SSO', updated_via=None):
-    return record(new_id(), {'eintrag_id': eintrag_id, 'aktion': aktion, 'hash': digest}, via, updated_via)
+def record(rid, fields):
+    return {'id': rid, 'fields': fields}
 
 
 class _Server:
@@ -95,7 +90,7 @@ class FakeGateway(_Server):
 
     def __init__(self, token=GATEWAY_TOKEN, sse=False):
         self.token, self.sse = token, sse
-        self.plan, self.freigaben, self.files, self.after_read = {}, [], {}, {}
+        self.plan, self.files, self.after_read = {}, {}, {}
         self.calls, self.paths = [], []
         self.status = 200
         self.tool_errors = set()
@@ -171,9 +166,6 @@ class FakeGateway(_Server):
             if rec is None:
                 return {'content': [{'type': 'text', 'text': 'Satz nicht gefunden'}], 'isError': True}
             return self.text({'notice': notice, 'record': rec})
-        if name == TOOL_SEARCH:
-            hits = [r for r in self.freigaben if r['fields'].get('eintrag_id') == args.get('eintrag_id')]
-            return self.text({'notice': notice, 'records': hits[:args.get('limit', 20)]})
         if name == TOOL_FILE:
             data = self.files.get(args.get('file'))
             if data is None:
@@ -202,7 +194,7 @@ class FakeLinkedIn(_Server):
         self.override = None
         self.posts = 0
         self.token_body = {s.ACCESS_TOKEN: 'WRITE-REFRESHED-' + secrets.token_urlsafe(16), s.EXPIRES_IN: 60*86400,
-                           s.SCOPE: 'w_organization_social,w_organization_social_feed'}
+                           s.SCOPE: GRANT_COMMA}
         self.upload_host = 'www.linkedin.com'
         self.lock = threading.Lock()
         outer = self
@@ -319,13 +311,38 @@ class VirtualClock:
 
 
 class LocalPostAdapter(PostAdapter):
-    """Top-level so the spawned job process can import it; LinkedIn port travels as client_id."""
+    """Direct use inside the test process; the port travels as client_id."""
 
     def __init__(self, cfg, data, gateway_token, link):
         clock = VirtualClock()
-        port = int(data[s.CLIENT_ID])
-        super().__init__(cfg, data, gateway_token, link, transport_factory=lambda p: LocalWriteTransport(p, port),
+        transport = LocalWriteTransport(link.permit_http, int(data[s.CLIENT_ID]))
+        super().__init__(cfg, DirectTokens(data, transport), gateway_token, link, transport_factory=lambda p: transport,
                          sleep=clock.sleep, monotonic=clock.monotonic)
+
+
+class JobPostAdapter(PostAdapter):
+    """What a spawned job runs: token over its pipe, only the target is the local fake."""
+
+    def __init__(self, port, cfg, tokens, gateway_token, link):
+        clock = VirtualClock()
+        super().__init__(cfg, tokens, gateway_token, link, transport_factory=lambda p: LocalWriteTransport(p, port),
+                         sleep=clock.sleep, monotonic=clock.monotonic)
+
+
+class PreviewAsksForToken(PostAdapter):
+    """A preview that tries to reach LinkedIn anyway: the server process has to refuse it."""
+
+    def __init__(self, port, cfg, tokens, gateway_token, link):
+        super().__init__(cfg, tokens, gateway_token, link, transport_factory=lambda p: LocalWriteTransport(p, port))
+
+    def vorschau(self, req):
+        self.tokens.access()
+        raise AssertionError('a preview got a token')
+
+
+def write_pool(cfg, tokens, port, gateway_token=GATEWAY_TOKEN, adapter=JobPostAdapter, **kwargs):
+    return WritePool(cfg, tokens, gateway_token, adapter_factory=partial(adapter, port),
+                     transport_factory=partial(LocalWriteTransport, port=port), **kwargs)
 
 
 class NoisyWriteTransport(LocalWriteTransport):
@@ -338,9 +355,8 @@ class NoisyWriteTransport(LocalWriteTransport):
 
 
 class NoisyPostAdapter(PostAdapter):
-    def __init__(self, cfg, data, gateway_token, link):
-        port = int(data[s.CLIENT_ID])
-        super().__init__(cfg, data, gateway_token, link, transport_factory=lambda p: NoisyWriteTransport(p, port))
+    def __init__(self, port, cfg, tokens, gateway_token, link):
+        super().__init__(cfg, tokens, gateway_token, link, transport_factory=lambda p: NoisyWriteTransport(p, port))
 
 
 class Link:
@@ -366,11 +382,8 @@ class Link:
         self.hashes.append(digest)
         return digest not in self.repeat
 
-    def final_request(self):
+    def write_request(self):
         self.finals = getattr(self, 'finals', 0) + 1
-
-    def expiry(self, value):
-        pass
 
 
 def sha(data):

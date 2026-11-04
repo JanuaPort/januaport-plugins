@@ -10,7 +10,7 @@ import unittest
 from linkedin_seite import source_contract as s
 from linkedin_seite.domain import ReportError
 from linkedin_seite.oauth import ACCESS_DAYS, REFRESH_DAYS, Tokens, token_result, validate_identity
-from support import CFG, Fake, LocalAdapter, LocalTransport, identity
+from support import CFG, Fake, GRANT, GRANT_COMMA, GRANT_LIST, LocalAdapter, LocalTransport, identity
 from linkedin_seite.domain import parse_request
 
 DAY = 86400
@@ -37,45 +37,47 @@ class ScopeSeparators(unittest.TestCase):
         self.assertEqual((cm.exception.status, cm.exception.code), (502, 'unexpected_source_shape'))
 
     def test_comma_separated_as_sent_by_linkedin(self):
-        self.accepted('r_organization_social,rw_organization_admin')
-        self.accepted('rw_organization_admin,r_organization_social')
+        self.accepted(GRANT_COMMA)
+        self.accepted(','.join(GRANT_LIST))
 
     def test_comma_with_spaces_and_mixed_separators(self):
-        for scope in ('rw_organization_admin, r_organization_social',
-                      'rw_organization_admin ,r_organization_social',
-                      ' rw_organization_admin , r_organization_social ',
-                      ',rw_organization_admin,,r_organization_social,',
-                      'rw_organization_admin r_organization_social',
-                      'rw_organization_admin\tr_organization_social',
-                      'rw_organization_admin,\nr_organization_social'):
+        for scope in (', '.join(GRANT_LIST), ' ,'.join(GRANT_LIST), ' ' + ' , '.join(GRANT_LIST) + ' ',
+                      ',' + ',,'.join(GRANT_LIST) + ',', ' '.join(GRANT_LIST), '\t'.join(GRANT_LIST),
+                      ',\n'.join(GRANT_LIST)):
             with self.subTest(scope=scope):
                 self.accepted(scope)
 
     def test_exact_set_missing_extra_or_unrelated_still_rejected(self):
-        for scope in ('r_organization_social', 'rw_organization_admin', '',  ',', ' , ',
-                      'rw_organization_admin,r_organization_social,w_member_social',
-                      'rw_organization_admin,r_organization_social,unexpected',
-                      'rw_organization_admin r_organization_social,w_member_social',
-                      'rw_organization_admin,r_organization_socialx',
-                      'rw_organization_adminr_organization_social',
-                      'R_ORGANIZATION_SOCIAL,RW_ORGANIZATION_ADMIN'):
+        read, write = GRANT_LIST[:2], GRANT_LIST[2:]
+        for scope in (read[0], read[1], write[0], write[1], '', ',', ' , ', ','.join(read), ','.join(write),
+                      ','.join(GRANT_LIST[:3]), ','.join(GRANT_LIST[1:]),
+                      GRANT_COMMA + ',w_member_social', GRANT_COMMA + ',unexpected',
+                      ' '.join(GRANT_LIST) + ',w_member_social', GRANT_COMMA + 'x',
+                      ''.join(GRANT_LIST), GRANT_COMMA.upper()):
             with self.subTest(scope=scope):
                 self.rejected(scope)
 
     def test_only_comma_and_whitespace_separate(self):
-        for scope in ('rw_organization_admin;r_organization_social', 'rw_organization_admin|r_organization_social',
-                      'rw_organization_admin+r_organization_social', 'rw_organization_admin%20r_organization_social'):
-            with self.subTest(scope=scope):
-                self.rejected(scope)
+        for separator in (';', '|', '+', '%20'):
+            with self.subTest(separator=separator):
+                self.rejected(separator.join(GRANT_LIST))
 
     def test_non_string_fail_closed(self):
-        for scope in (None, 5, True, ['rw_organization_admin', 'r_organization_social'],
-                      b'rw_organization_admin,r_organization_social', {'rw_organization_admin': 1}):
+        for scope in (None, 5, True, list(GRANT_LIST), GRANT_COMMA.encode(), {GRANT_LIST[0]: 1}):
             with self.subTest(scope=scope):
                 self.rejected(scope)
 
-    def test_absent_scope_unchanged(self):
+    def test_absent_scope_unchanged_on_the_refresh_path(self):
+        # A refresh cannot widen a grant; demanding the field would turn an undocumented omission
+        # into an outage on day 55. The set is still exact whenever LinkedIn sends one.
         self.assertIn(s.ACCESS_TOKEN, token_result(response(), NOW))
+
+    def test_consent_answer_must_name_the_scopes_it_grants(self):
+        # The consent writes this set into the vault JSON: it has to be answered, not assumed.
+        with self.assertRaises(ReportError) as cm:
+            token_result(response(), NOW, scope_required=True)
+        self.assertEqual(cm.exception.code, 'unexpected_source_shape')
+        self.assertIn(s.ACCESS_TOKEN, token_result(response(**{s.SCOPE: GRANT_COMMA}), NOW, scope_required=True))
 
 
 class LifetimeTolerance(unittest.TestCase):
@@ -141,7 +143,7 @@ class RealLinkedInShapeThroughRefreshPath(unittest.TestCase):
         self.attempts = 0
         self.fake.token_body = {s.ACCESS_TOKEN: 'synthetic-new-access', s.EXPIRES_IN: ACCESS_CAP + 59,
                                 s.REFRESH_TOKEN: 'synthetic-new-refresh', s.REFRESH_EXPIRES_IN: 31536059,
-                                s.SCOPE: 'r_organization_social,rw_organization_admin', s.TOKEN_TYPE: 'Bearer'}
+                                s.SCOPE: GRANT_COMMA, s.TOKEN_TYPE: 'Bearer'}
 
     def permit(self):
         self.attempts += 1
@@ -156,8 +158,8 @@ class RealLinkedInShapeThroughRefreshPath(unittest.TestCase):
         data = self.stored(timedelta(days=200))
         original_refresh_expiry = data['refresh_expires_at']
         fixed = datetime.now(timezone.utc)
-        tokens = Tokens(data, LocalTransport(self.permit, self.fake.port), now=lambda: fixed)
-        self.assertEqual(tokens.access(), 'synthetic-new-access')
+        tokens = Tokens(data, now=lambda: fixed)
+        self.assertEqual(tokens.access(LocalTransport(self.permit, self.fake.port)), 'synthetic-new-access')
         self.assertEqual(tokens.data['access_expires_at'], (fixed + timedelta(days=60)).isoformat())
         self.assertEqual(tokens.data[s.REFRESH_TOKEN], 'synthetic-new-refresh')
         self.assertEqual(tokens.data['refresh_expires_at'], original_refresh_expiry)  # never extended
@@ -172,27 +174,27 @@ class RealLinkedInShapeThroughRefreshPath(unittest.TestCase):
         self.assertEqual(adapter.tokens.data[s.ACCESS_TOKEN], 'synthetic-new-access')
 
     def test_wrong_scope_on_the_refresh_path_still_fails_closed_with_one_call(self):
-        self.fake.token_body[s.SCOPE] = 'r_organization_social,rw_organization_admin,w_member_social'
-        tokens = Tokens(self.stored(timedelta(days=200)), LocalTransport(self.permit, self.fake.port))
+        self.fake.token_body[s.SCOPE] = GRANT_COMMA + ',w_member_social'
+        tokens = Tokens(self.stored(timedelta(days=200)))
         with self.assertRaises(ReportError) as cm:
-            tokens.access()
+            tokens.access(LocalTransport(self.permit, self.fake.port))
         self.assertEqual(cm.exception.code, 'unexpected_source_shape')
         self.assertEqual(len(self.fake.calls), 1)
 
     def test_overshoot_beyond_tolerance_on_the_refresh_path_fails_closed(self):
         self.fake.token_body[s.REFRESH_EXPIRES_IN] = REFRESH_CAP + TOLERANCE + 1
-        tokens = Tokens(self.stored(timedelta(days=200)), LocalTransport(self.permit, self.fake.port))
+        tokens = Tokens(self.stored(timedelta(days=200)))
         with self.assertRaises(ReportError) as cm:
-            tokens.access()
+            tokens.access(LocalTransport(self.permit, self.fake.port))
         self.assertEqual(cm.exception.code, 'unexpected_source_shape')
         self.assertEqual(len(self.fake.calls), 1)
 
 
-class StoredCredentialStaysReadable(unittest.TestCase):
-    """Version 1 credentials (written via a wrapper: scope normalised, refresh capped at 365 d)."""
+class StoredCredential(unittest.TestCase):
+    """The vault JSON of the one grant (#1237, 0.3.1): its `scope` field is the proof, read at start."""
 
     def shape(self, now, *, refresh_days=365, access_days=60):
-        out = {s.CLIENT_ID: 'synthetic-client', s.CLIENT_SECRET: 'synthetic-secret',
+        out = {s.CLIENT_ID: 'synthetic-client', s.CLIENT_SECRET: 'synthetic-secret', s.SCOPE: GRANT,
                s.ACCESS_TOKEN: 'synthetic-access', 'access_expires_at': (now + timedelta(days=access_days)).isoformat()}
         if refresh_days is not None:
             out.update({s.REFRESH_TOKEN: 'synthetic-refresh',
@@ -208,13 +210,31 @@ class StoredCredentialStaysReadable(unittest.TestCase):
                 # read later (a restart days after the consent) it is still within the windows
                 self.assertEqual(validate_identity(dict(data), now + timedelta(days=3)), data)
 
-    def test_no_scope_field_in_the_stored_shape_and_extra_keys_stay_rejected(self):
+    def test_separator_and_order_tolerant_like_the_token_answer(self):
+        now = datetime.now(timezone.utc)
+        for scope in (GRANT, GRANT_COMMA, ', '.join(reversed(GRANT_LIST))):
+            with self.subTest(scope=scope):
+                validate_identity(dict(self.shape(now), **{s.SCOPE: scope}), now)
+
+    def test_a_grant_from_before_0_3_1_without_scope_fails_closed(self):
         now = datetime.now(timezone.utc)
         data = self.shape(now)
-        self.assertNotIn(s.SCOPE, data)
-        data[s.SCOPE] = 'rw_organization_admin r_organization_social'
-        with self.assertRaises(ValueError):  # unchanged strict shape, same as 0.1.0
+        del data[s.SCOPE]
+        with self.assertRaises(ValueError):
             validate_identity(data, now)
+
+    def test_any_other_scope_set_fails_closed(self):
+        now = datetime.now(timezone.utc)
+        read, write = GRANT_LIST[:2], GRANT_LIST[2:]
+        for scope in (' '.join(read), ' '.join(write), ' '.join(GRANT_LIST[:3]), GRANT + ' w_member_social', GRANT.upper(),
+                      GRANT.replace(' ', ';'), '', ',', None, 5, True, list(GRANT_LIST)):
+            with self.subTest(scope=scope), self.assertRaises(ValueError):
+                validate_identity(dict(self.shape(now), **{s.SCOPE: scope}), now)
+
+    def test_extra_keys_stay_rejected(self):
+        now = datetime.now(timezone.utc)
+        with self.assertRaises(ValueError):
+            validate_identity(dict(self.shape(now), token_uri='http://example.test'), now)
 
 
 if __name__ == '__main__':

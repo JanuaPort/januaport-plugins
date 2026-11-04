@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1.7
 FROM python:3.12-slim@sha256:2259debdc6af85626058a15a7bf44ad6a68b8c98c9ae82a02cf5cdb92f096d47
+LABEL org.opencontainers.image.version="0.3.1"
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY requirements.lock ./

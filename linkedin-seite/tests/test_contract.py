@@ -3,10 +3,11 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from linkedin_seite import source_contract as s
 from linkedin_seite.domain import Config, ReportError, parse_request, strict_json
 from linkedin_seite.oauth import load_identity
 from linkedin_seite import server
-from support import identity
+from support import GRANT_LIST, identity
 
 
 class Contract(unittest.TestCase):
@@ -37,6 +38,12 @@ class Contract(unittest.TestCase):
                 parse_request('posts', pairs)
         self.assertEqual(parse_request('posts', [('limit', '1')]).limit, 1)
 
+    def test_grant_is_exactly_the_read_and_the_write_scopes(self):
+        # #1237: both meanings stay named; what LinkedIn is asked for is their union, nothing else.
+        self.assertEqual(s.SCOPES, ('rw_organization_admin', 'r_organization_social'))
+        self.assertEqual(s.WRITE_SCOPES, ('w_organization_social', 'w_organization_social_feed'))
+        self.assertEqual(s.GRANT_SCOPES, GRANT_LIST)
+
     def test_runtime_paths_and_missing_invalid_identity(self):
         self.assertEqual(server.load_runtime_files.__defaults__, (server.BRIDGE_KEY_PATH, server.IDENTITY_PATH))
         self.assertEqual(server.IDENTITY_PATH, '/run/secrets/oauth/runtime-key')
@@ -55,7 +62,9 @@ class Contract(unittest.TestCase):
             for bad in ({}, {'token_uri': 'http://example.test'}, {**identity(), 'refresh_token': 'synthetic'},
                         {**identity(), 'access_expires_at': '2999-01-01T00:00:00+00:00'},
                         {**identity(), 'access_expires_at': '2026-10-29'},
-                        {**identity(), 'access_token': 'line\nbreak'}):
+                        {**identity(), 'access_token': 'line\nbreak'},
+                        {k: v for k, v in identity().items() if k != s.SCOPE},  # the grant before 0.3.1
+                        {**identity(), s.SCOPE: 'rw_organization_admin r_organization_social'}):
                 oauth.write_text(json.dumps(bad), encoding='utf-8')
                 with self.assertRaises(ValueError):
                     server.load_runtime_files(key, oauth)

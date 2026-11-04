@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import re
+import threading
 import urllib.request
 import urllib.error
 from urllib.parse import urlencode
@@ -71,10 +72,17 @@ def secret(value):
 
 
 def validate_identity(data, now=None):
+    """The vault JSON of the one grant (#1237, 0.3.1): `scope` is exactly GRANT_SCOPES.
+
+    A JSON without `scope` is a grant from before 0.3.1, any other set is not this grant.
+    Both fail closed: the token could not serve both paths, and nothing would say why.
+    """
     now = now or datetime.now(timezone.utc)
-    required = {s.CLIENT_ID, s.CLIENT_SECRET, s.ACCESS_TOKEN, 'access_expires_at'}
+    required = {s.CLIENT_ID, s.CLIENT_SECRET, s.ACCESS_TOKEN, 'access_expires_at', s.SCOPE}
     optional = {s.REFRESH_TOKEN, 'refresh_expires_at'}
     if not isinstance(data, dict) or not required <= data.keys() or set(data) - required - optional:
+        raise ValueError('invalid_identity')
+    if scope_set(data[s.SCOPE]) != set(s.GRANT_SCOPES):
         raise ValueError('invalid_identity')
     for field in (s.CLIENT_ID, s.CLIENT_SECRET, s.ACCESS_TOKEN):
         secret(data[field])
@@ -99,22 +107,6 @@ def read_identity_file(path):
 
 def load_identity(path):
     return validate_identity(read_identity_file(path))
-
-
-def validate_write_identity(data, now=None):
-    """Stufe B1 (#1237, SEC Bed. 4): the write identity carries `scope` = exactly the write scope.
-
-    The unchanged Stufe-A check rejects any `scope` field, so a write JSON in the read place fails
-    there, and a read JSON (no `scope`) fails here: the two tokens cannot be exchanged unnoticed.
-    Returns the identity without the marker, in the shape `Tokens` expects.
-    """
-    if not isinstance(data, dict) or not isinstance(data.get(s.SCOPE), str) or scope_set(data[s.SCOPE]) != set(s.WRITE_SCOPES):
-        raise ValueError('invalid_identity')
-    return validate_identity({k: v for k, v in data.items() if k != s.SCOPE}, now)
-
-
-def load_write_identity(path):
-    return validate_write_identity(read_identity_file(path))
 
 
 def warning(data, now=None):
@@ -151,11 +143,19 @@ def lifetime(seconds, days):
     return min(seconds, cap)
 
 
-def token_result(raw, now, original_refresh_expiry=None, scopes=s.SCOPES):
+def token_result(raw, now, original_refresh_expiry=None, scope_required=False):
+    """Validated token fields. The scope set is exact whenever LinkedIn names one.
+
+    The consent demands it (scope_required): it writes the set into the vault JSON, so the set has
+    to be answered, not assumed. A refresh only tolerates its absence: it cannot widen a grant, and
+    a refusal here would turn an omission into an outage around day 55.
+    """
     try:
         if not isinstance(raw, dict):
             raise ValueError()
-        if s.SCOPE in raw and scope_set(raw[s.SCOPE]) != set(scopes):
+        if scope_required and s.SCOPE not in raw:
+            raise ValueError()
+        if s.SCOPE in raw and scope_set(raw[s.SCOPE]) != set(s.GRANT_SCOPES):
             raise ValueError()
         if raw.get(s.TOKEN_TYPE, 'Bearer').lower() != 'bearer':
             raise ValueError()
@@ -174,23 +174,51 @@ def token_result(raw, now, original_refresh_expiry=None, scopes=s.SCOPES):
 
 
 class Tokens:
-    def __init__(self, data, transport, now=None, scopes=s.SCOPES):
+    """THE token state of the service (#1237, 0.3.1). Lives in the server process, nowhere else.
+
+    Reading and writing share this one object: two on one refresh token would race. The caller
+    passes its own transport, so quota and HTTP limits stay with the path that needed the renewal.
+    The lock spans check, exchange and update: whoever waited finds the renewed token and does not
+    exchange again. It is a thread lock on purpose. access() runs in a thread (asyncio.to_thread),
+    so a cancelled request neither releases it nor stops the exchange, and the result lands here
+    even if the worker that asked was killed. Never call access() on the event loop.
+    """
+
+    def __init__(self, data, now=None):
         self.data = validate_identity(data)
-        self.transport = transport
         self.now = now or (lambda: datetime.now(timezone.utc))
-        self.scopes = scopes  # the read grant, or for Stufe B1 the separate write grant
+        self.lock = threading.Lock()
+
+    def warning(self):
+        return warning(self.data)
+
+    def access(self, transport):
+        with self.lock:
+            now = self.now()
+            expiry = timestamp(self.data['access_expires_at'])
+            refresh = self.data.get(s.REFRESH_TOKEN)
+            refresh_expiry = timestamp(self.data['refresh_expires_at']) if refresh else None
+            if refresh and now >= expiry - timedelta(minutes=5) and now < refresh_expiry:
+                raw = transport.token({s.GRANT_TYPE: s.REFRESH_TOKEN, s.REFRESH_TOKEN: refresh,
+                                       s.CLIENT_ID: self.data[s.CLIENT_ID], s.CLIENT_SECRET: self.data[s.CLIENT_SECRET]})
+                update = token_result(raw, now, refresh_expiry)
+                # RAM only, source file untouched. One step: warning() reads without the lock.
+                self.data = {**self.data, **update}
+                expiry = timestamp(self.data['access_expires_at'])
+            if now >= expiry:
+                raise ReportError(503, 'token_abgelaufen')
+            return self.data[s.ACCESS_TOKEN]
+
+
+class TokenClient:
+    """What a worker or job process holds instead of a token: it asks the server process.
+
+    Only the access token crosses the pipe, per request and never cached. Refresh token and client
+    secret stay in the server process, and a renewed token reaches every process at once.
+    """
+
+    def __init__(self, ask):
+        self.ask = ask
 
     def access(self):
-        now = self.now()
-        expiry = timestamp(self.data['access_expires_at'])
-        refresh = self.data.get(s.REFRESH_TOKEN)
-        refresh_expiry = timestamp(self.data['refresh_expires_at']) if refresh else None
-        if refresh and now >= expiry - timedelta(minutes=5) and now < refresh_expiry:
-            raw = self.transport.token({s.GRANT_TYPE: s.REFRESH_TOKEN, s.REFRESH_TOKEN: refresh,
-                                       s.CLIENT_ID: self.data[s.CLIENT_ID], s.CLIENT_SECRET: self.data[s.CLIENT_SECRET]})
-            update = token_result(raw, now, refresh_expiry, self.scopes)
-            self.data.update(update)  # RAM only; source file remains untouched
-            expiry = timestamp(self.data['access_expires_at'])
-        if now >= expiry:
-            raise ReportError(503, 'token_abgelaufen')
-        return self.data[s.ACCESS_TOKEN]
+        return self.ask('token')[1]

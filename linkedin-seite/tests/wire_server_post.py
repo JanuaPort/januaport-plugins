@@ -10,18 +10,18 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from aiohttp import web
+from linkedin_seite.oauth import Tokens
 from linkedin_seite.safe_http import SafeAppRunner
 from linkedin_seite.server import create_app
-from linkedin_seite.workers import WorkerPool
-from linkedin_seite.post_pool import WritePool
-from support import LocalAdapter
-from support_post import NoisyPostAdapter, config
+from support import read_pool
+from support_post import NoisyPostAdapter, config, write_pool
 
 
 async def serve(data):
     cfg = config(data['gateway_port'])
-    pool = WorkerPool(cfg, data['oauth'], adapter_factory=LocalAdapter)
-    writes = WritePool(cfg, data['write'], data['gateway_token'], adapter_factory=NoisyPostAdapter)
+    tokens = Tokens(data['oauth'])  # one state, as in production; the read fake's port travels as client_id
+    pool = read_pool(cfg, tokens, int(data['oauth']['client_id']))
+    writes = write_pool(cfg, tokens, data['linkedin_port'], data['gateway_token'], adapter=NoisyPostAdapter)
     runner = SafeAppRunner(create_app(cfg, data['bridge'].encode(), pool, writes), access_log=None)
     await runner.setup()
     site = web.TCPSite(runner, '127.0.0.1', 0)

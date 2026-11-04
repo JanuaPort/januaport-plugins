@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.3.1 — 2026-11-04
+
+- JanuaPort/januaport#1237, Befund GATE 03.11.: Nach der zweiten Zustimmung (nur Schreib-Scopes)
+  lieferte jeder Lesezugriff `source_access_denied`. Die Herstellerdoku nennt das Verhalten; live
+  ist die Ursache nicht belegt. Zwei getrennte Grants tragen deshalb nicht.
+- **Ein Grant:** `GRANT_SCOPES` = `rw_organization_admin`, `r_organization_social`,
+  `w_organization_social`, `w_organization_social_feed`; `SCOPES` und `WRITE_SCOPES` bleiben als
+  Bedeutung. `tools/zustimmung.py --gesamt` ist Pflicht und der einzige Modus, `--schreiben` und der
+  Lese-Modus entfallen. Die Antwort muss die vier Scopes nennen (Trenner tolerant, Menge exakt), das
+  JSON trägt sie im Feld `scope`.
+- **Eine Stelle:** `plugin-linkedin-seite-oauth` trägt den Grant, der Dienst prüft die Menge beim
+  Start; JSON ohne `scope` oder mit anderer Menge startet nicht. `plugin-linkedin-seite-post-oauth`
+  wird nicht mehr gelesen; Mount, Pfad, tmpfiles-Zeile und Path-Beobachtung sind entfallen.
+- **Ein Token-Zustand:** `oauth.Tokens` lebt nur im Serverprozess, beide Pools teilen ihn.
+  Worker und Jobs fragen über ihre Pipe nach dem Access-Token; Refresh-Token und Client-Secret
+  erreichen sie nicht mehr. Eine Thread-Sperre lässt genau einen erneuern, auch über beide Pfade.
+  Ein gekillter Worker verliert keine laufende Erneuerung mehr, Folgejobs erneuern nicht erneut.
+  Der Tausch läuft im Thread, der Server bleibt bedienbar. Permit und Transport bleiben je Pfad getrennt.
+- Unverändert: SEC-Trennung im Gateway, `X-Jnpt-Freigabe`, Hash-Vergleich, Tagesdeckel, Lese-Routen
+  nur GET, kein neues Werkzeug. SEC Bed. 4 (eigener Schreib-Grant) ist aufgehoben und braucht eine
+  SEC-Entscheidung. Umstieg in SETUP.md: Widerruf, Einspielen, eine Zustimmung, alte Stelle leeren.
+- CI: Zeitgrenze des Jobs `unit` von 10 auf 15 Minuten. Suite und Mutationen brauchen jetzt rund
+  10:50 (gemessen: 281 Tests zweimal je 190 Sekunden, 194 von 215 Mutanten in 3:45).
+- Synthetisch verifiziert; Live-Abnahme offen.
+
+## 0.3.0 — 2026-11-03
+
+- SEC c-6608136792 / LEAD Variante a: Nach gültiger Headerform und bewiesener Nichtausführung
+  HTTP 200 mit nicht_ausgefuehrt: true, damit der Kern den Indikator aus 2xx lesen kann.
+  Gate-Abweichungen bleiben 409 ohne Ergebnisfelder; Fehler nach erstem Schreibversuch
+  bleiben unklar ohne beide Felder. Schreibmarkierung erst nach lokalem HTTP-Permit.
+- Beide gemeinsamen JSON-Fixtures durch text eol=lf gesichert; Vorschau-Beispiel von CRLF
+  auf LF normalisiert. Datei-SHA-256 gegen Kern-Git-Fassung lokal und feste Pins in CI,
+  samt CRLF-/Dateidrift-Mutanten. Kern-Checkout bleibt unverändert.
+
+- LEAD-Nachtrag F2-Anschluss: Vorschau mit direkten ziel_urn/text und medien[].name,
+  zusätzliches Wirkungsobjekt entfernt. Exakte Schlüssel/Typen nach der unverändert kopierten
+  Kern-Beispieldatei, Hash separat aus direkten Wirkungsfeldern geprüft; H3 bleibt erhalten.
+  Wiederholung bestätigt ausgefuehrt UND wiederholt ohne zweiten Post. F2-Fristen dokumentiert.
+
+- JanuaPort/januaport#1306 F4, Plan v2/v2.1, SEC c-6602359446 A1/A3 und c-6604738594 H1–H3.
+- Freigabeprüfung über genau `X-Jnpt-Freigabe: hash=<freigabe:v2:sha256:…>` für alle vier
+  Schreibaktionen. 409 vor LinkedIn bei fehlendem/abweichendem Header. Kartei-Freigabeprüfung
+  und Herkunftslabels entfernt; Gateway-Token nur noch zwei Lesewerkzeuge, alter Config-Key entfällt.
+- Vollständige Wirkung aus demselben Eintragsstand wie die Vorschau; Kern-Hash v2 samt
+  unveränderten Golden-Vektoren, Bindung sichtbarer Medientitel und Umfrage.
+- Eindeutige Ergebnisfelder: ausgefuehrt bei bestätigtem Erfolg, nicht_ausgefuehrt nur bei
+  bewiesenem Abbruch vor erstem Schreibversuch, danach unklar ohne beide Felder.
+- Dauerhafter Sperrvermerk im Kern; report_hash bleibt RAM-Komfort. HTTP liefert das Endergebnis,
+  Zwischenzustand und Nachfrage-Fenster entfallen. Migration/Timeout in README und SETUP.
+- Echte Adapter-/HTTP-/Prozesstests und Pflichtmutanten. Synthetisch verifiziert; Live-Abnahme offen.
+
 ## 0.2.0 — 2026-11-02
 
 - Stufe B1, Posten nach Freigabe (JanuaPort/januaport#1237; PO-Zuruf 02.11., SEC-PASS c-6575359082

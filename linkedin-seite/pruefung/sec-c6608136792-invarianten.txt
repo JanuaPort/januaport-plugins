@@ -1,0 +1,111 @@
+rg --hidden -n nicht_ausgefuehrt|schreiben_nicht_eingerichtet|schreiben_belegt|schreib_http_tageslimit|schreib_tageslimit|header_checked|before_send . (ohne Prüfartefakte und Mutationskopien)
+.\ARCHITEKTUR.md:18:| [linkedin-seite](linkedin-seite/CLAUDE.md) | #1237, Stufe A: drei feste GET-Werkzeuge, fünf Hersteller-Endpunkte einschließlich networkSizes für Follower-Gesamtzahl; Organisation nur aus Betreiberkonfiguration. Follower-Zeitraum bis heute−2 UTC; maximal zehn Beiträge, Nullinteraktion nur bei gültiger leerer Einzelantwort mit gültigem Paging ohne next-Link; nur negative Like-Summe markiert gekappt, andere negative Zähler sind Fehler; Personenbezug im gesamten Objekt unterdrückt Text. Zwei gepinnte Scopes; OAuth aus Tresorstellen `plugin-linkedin-seite` / `plugin-linkedin-seite-oauth`, RAM-Refresh und 14-Tage-Warnung. **0.1.1:** Tokenantwort toleriert Komma-Scope und knappe Laufzeit-Überschreitung (gedeckelt auf 60/365 Tage), Scope-Menge bleibt exakt; Steuerzeichen im Client-Secret werden abgewiesen. Lokales Zustimmungsskript auf 127.0.0.1/::1, gemeinsam genau eine Anfrage einschließlich fehlerhafter, IPv4-Fallback nur bei fehlendem IPv6, belegter IPv6-Port bricht ab; stdout direkt in Tresor-Pipe. Zwei killbare Worker, 50 HTTP-Versuche/UTC-Tag im Serverprozess, 30 Berichte/Minute; keine Personenlisten oder Fach-Schreibwege. Safe-HTTP-/Deploy-/Release-Muster aus google-reporting, setup_guide und Mutationsproben. Herstellervertrag zentral als live zu belegen markiert; synthetische Abnahme, Live/Katalog offen. **0.3.0 Stufe B1 / #1306 F4:** Posten/Bearbeiten/Löschen/eigener Kommentar (Text, Bild, 2–20 Bilder, PDF, Umfrage, Video) unter `/v1/linkedin-post/`, Werkzeuge nehmen nur die Kartei-ID; Freigabe im Kern, alle vier Aktionen prüfen exakt X-Jnpt-Freigabe: hash=freigabe:v2:sha256:… gegen die gesamte Wirkung (identischer Eintragsstand wie Vorschau; direkte Wirkungsfelder ziel_urn/text, medien mit name/sha256/datei/art/bytes nach F2-Beispiel, keine zusätzliche Wirkungshülle; gemeinsame JSON-Fixtures LF, Datei-SHA-256 gegen Kern-Git-Fassung/CI-Pins geprüft); eigener MCP-Client an `http://jnpt:8484/mcp` mit zwei Lesewerkzeugen (redaktionsplan_get, redaktion_medien_get_file) (Stelle `plugin-linkedin-seite-gateway`); eigener Schreib-Grant `w_organization_social` + `w_organization_social_feed` (`plugin-linkedin-seite-post-oauth`); geschlossene Endpunkt-/Upload-Host-Liste, Video-Teile/Status begrenzt; je Aktion eigener Prozess mit RAM-Kopie; 5 Aktionen/UTC-Tag, RAM-Ergebniscache im Serverprozess (kein Sperrvermerk), dauerhafte Sperren im Kern; ausgefuehrt nur bei bestätigtem Erfolg, nach Bridge-/Headerform-Prüfung nicht_ausgefuehrt nur vor erstem Schreibversuch als HTTP 200, Header-/Hash-Abweichung 409 ohne Ergebnisfeld, spätere Fehler unklar; HTTP-Endergebnis im Beisteller bis 25 Minuten, F2-Call derzeit 25 Sekunden (Runtime-Decke 120 Sekunden), danach im Kern unklar. Synthetisch geprüft, Live offen. |
+.\linkedin-seite\tests\mutations.py:170:    ('f4-false-nonexecution', 'post_pool.py', 'exc.nicht_ausgefuehrt = not job.write_started', 'exc.nicht_ausgefuehrt = True', F4+'test_errors_after_first_write_have_no_definitive_flags'),
+.\linkedin-seite\tests\mutations.py:171:    ('f4-missing-nonexecution', 'post_pool.py', 'exc.nicht_ausgefuehrt = not job.write_started', 'exc.nicht_ausgefuehrt = False', F4+'test_validation_and_media_errors_are_definitely_not_executed'),
+.\linkedin-seite\tests\mutations.py:175:    ('sec-200-daily-cap', 'server.py', "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=200)\n            return web.json_response(payload, status=exc.status)", "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=exc.status)\n            return web.json_response(payload, status=exc.status)", 'test_sec_outcome.Outcome.test_action_daily_cap_is_200_with_nonexecution_for_every_write'),
+.\linkedin-seite\tests\mutations.py:176:    ('sec-200-disabled', 'server.py', "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=200)\n            return web.json_response(payload, status=exc.status)", "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=exc.status)\n            return web.json_response(payload, status=exc.status)", 'test_sec_outcome.Outcome.test_disabled_write_service_is_200_only_after_header_check'),
+.\linkedin-seite\tests\mutations.py:177:    ('sec-200-validation', 'server.py', "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=200)\n            return web.json_response(payload, status=exc.status)", "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=exc.status)\n            return web.json_response(payload, status=exc.status)", 'test_sec_outcome.Outcome.test_request_validation_with_valid_header_is_definite_for_every_write'),
+.\linkedin-seite\tests\mutations.py:178:    ('sec-200-media', 'server.py', "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=200)\n            return web.json_response(payload, status=exc.status)", "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=exc.status)\n            return web.json_response(payload, status=exc.status)", 'test_sec_outcome.Outcome.test_entry_validation_and_media_format_and_size_are_definite'),
+.\linkedin-seite\tests\mutations.py:179:    ('sec-200-gateway', 'server.py', "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=200)\n            return web.json_response(payload, status=exc.status)", "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=exc.status)\n            return web.json_response(payload, status=exc.status)", 'test_sec_outcome.Outcome.test_gateway_rejection_before_sending_is_definite'),
+.\linkedin-seite\tests\mutations.py:180:    ('sec-200-token', 'server.py', "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=200)\n            return web.json_response(payload, status=exc.status)", "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=exc.status)\n            return web.json_response(payload, status=exc.status)", 'test_sec_outcome.Outcome.test_expired_token_is_definite_before_any_linkedin_request'),
+.\linkedin-seite\tests\mutations.py:181:    ('sec-200-refresh', 'server.py', "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=200)\n            return web.json_response(payload, status=exc.status)", "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=exc.status)\n            return web.json_response(payload, status=exc.status)", 'test_sec_outcome.Outcome.test_refresh_rejection_is_definite_without_a_business_write'),
+.\linkedin-seite\tests\mutations.py:182:    ('sec-gate-no-result', 'server.py', "header_checked and code != 'nicht_freigegeben'", 'header_checked', 'test_sec_outcome.Outcome.test_invalid_header_and_hash_are_409_without_either_outcome_field'),
+.\linkedin-seite\tests\mutations.py:183:    ('sec-bridge-before-result', 'server.py', "write_route and header_checked and code != 'nicht_freigegeben'", "write_route and code != 'nicht_freigegeben'", 'test_sec_outcome.Outcome.test_bridge_failure_never_becomes_a_200_nonexecution_result'),
+.\linkedin-seite\tests\mutations.py:184:    ('sec-marker-after-permit', 'post_adapter.py', '        self.permit()  # server-process grant before every LinkedIn attempt, failures included\n        self.timeout = timeout\n        if before_send is not None:\n            before_send()  # after local quota checks, immediately before possible provider effect', '        if before_send is not None:\n            before_send()\n        self.permit()\n        self.timeout = timeout', 'test_sec_outcome.Outcome.test_http_daily_cap_before_first_attempt_is_definite_for_every_write'),
+.\linkedin-seite\tests\mutations.py:212:    ('b5-daily-cap', 'post_pool.py', "self._count(self.actions, WRITE_ACTIONS_PER_DAY, 'schreib_tageslimit')", "self._count(self.actions, 10**6, 'schreib_tageslimit')", SF+'test_five_write_actions_per_utc_day_over_all_actions'),
+.\linkedin-seite\tests\mutations.py:243:    ('poll-question-length', 'redaktion.py', 'not 1 <= len(frage) <= s.POLL_QUESTION_MAX', 'not 1 <= len(frage)', DP+'test_limits_checked_before_sending_nothing_is_shortened'),
+.\linkedin-seite\tests\mutations.py:244:    ('poll-option-count', 'redaktion.py', 'not s.POLL_OPTIONS_MIN <= len(antworten) <= s.POLL_OPTIONS_MAX', 'not 1 <= len(antworten)', DP+'test_limits_checked_before_sending_nothing_is_shortened'),
+.\linkedin-seite\tests\mutations.py:245:    ('poll-duration', 'redaktion.py', 'dauer not in s.POLL_DURATIONS', 'dauer not in (1, 2, 3, 7, 14, 30)', DP+'test_limits_checked_before_sending_nothing_is_shortened'),
+.\linkedin-seite\SETUP.md:155:Lese-Stelle) bzw. das Schreiben bleibt aus (`schreiben_nicht_eingerichtet`). Die Ausgabe nie in eine
+.\linkedin-seite\SETUP.md:190:   mit `nicht_ausgefuehrt: true` und festem `error`-Code: etwa Tageskappe, Dienst nicht bereit,
+.\linkedin-seite\README.md:213:Bridge-/Headerprüfung HTTP 200 mit `nicht_ausgefuehrt: true` und
+.\linkedin-seite\README.md:214:`error: schreiben_nicht_eingerichtet`. Die Vorschau behält dafür HTTP 503.
+.\linkedin-seite\README.md:239:ersten LinkedIn-Schreibversuch mit **HTTP 200** und `nicht_ausgefuehrt: true` samt festem
+.\linkedin-seite\README.md:253:reicht wegen der Runtime-Decke nicht aus. Weitere feste Fehlercodes: `schreib_tageslimit`,
+.\linkedin-seite\README.md:254:`schreib_http_tageslimit`, `schreiben_belegt`, `bereits_veroeffentlicht`, Eingabe-/Medien-/
+.\linkedin-seite\tests\test_sec_outcome.py:16:        self.assertEqual((status, body), (200, {'error': code, 'nicht_ausgefuehrt': True}))
+.\linkedin-seite\tests\test_sec_outcome.py:31:            self.definite(*await self.write_call(route, rid), 'schreib_tageslimit')
+.\linkedin-seite\tests\test_sec_outcome.py:38:            self.definite(*await self.write_call(route, rid), 'schreib_http_tageslimit')
+.\linkedin-seite\tests\test_sec_outcome.py:48:                self.definite(reply.status, await reply.json(), 'schreiben_nicht_eingerichtet')
+.\linkedin-seite\tests\test_sec_outcome.py:87:    async def test_gateway_rejection_before_sending_is_definite(self):
+.\linkedin-seite\tests\test_sec_outcome.py:113:            self.assertNotIn('nicht_ausgefuehrt', body)
+.\linkedin-seite\tests\test_sec_outcome.py:130:        self.assertEqual((status, body), (429, {'error': 'schreib_http_tageslimit'}))
+.\linkedin-seite\tests\test_post_server.py:102:            self.assertIs((await reply.json())['nicht_ausgefuehrt'], True)
+.\linkedin-seite\tests\test_post_server.py:126:                self.assertEqual((reply.status, await reply.json()), (200 if method == 'POST' else 503, {'error': 'schreiben_nicht_eingerichtet', **({'nicht_ausgefuehrt': True} if method == 'POST' else {})}))
+.\linkedin-seite\tests\test_post_server.py:142:        self.assertNotIn('nicht_ausgefuehrt', first)
+.\linkedin-seite\tests\test_post_server.py:146:        self.assertNotIn('nicht_ausgefuehrt', again)
+.\linkedin-seite\tests\test_post_server.py:205:        self.assertEqual((status, body), (200, {'error': 'schreib_tageslimit', 'nicht_ausgefuehrt': True}))
+.\linkedin-seite\tests\test_post_server.py:249:        self.assertEqual((status, body), (200, {'error': 'schreiben_belegt', 'nicht_ausgefuehrt': True}))
+.\linkedin-seite\tests\test_post_domain.py:174:    def test_limits_checked_before_sending_nothing_is_shortened(self):
+.\linkedin-seite\tests\test_post_adapter.py:260:        self.assertEqual(self.fails(rid, link=Link(cap=0)), 'schreib_tageslimit')
+.\linkedin-seite\tests\test_post_adapter.py:274:            self.assertTrue(cm.exception.nicht_ausgefuehrt)
+.\linkedin-seite\tests\test_f4.py:66:        self.assertEqual(body.get('nicht_ausgefuehrt'), True if before else None, body)
+.\linkedin-seite\tests\test_f4.py:70:            self.assertNotIn('nicht_ausgefuehrt', body)
+.\linkedin-seite\linkedin_seite\server.py:115:        header_checked = False
+.\linkedin-seite\linkedin_seite\server.py:142:                    header_checked = True
+.\linkedin-seite\linkedin_seite\server.py:145:                    raise ReportError(503, "schreiben_nicht_eingerichtet")
+.\linkedin-seite\linkedin_seite\server.py:181:            if (write_route and header_checked and code != 'nicht_freigegeben'
+.\linkedin-seite\linkedin_seite\server.py:182:                    and (not dispatched or getattr(exc, 'nicht_ausgefuehrt', False))):
+.\linkedin-seite\linkedin_seite\server.py:183:                payload['nicht_ausgefuehrt'] = True
+.\linkedin-seite\linkedin_seite\server.py:192:            if write_route and header_checked and not dispatched:
+.\linkedin-seite\linkedin_seite\server.py:193:                payload['nicht_ausgefuehrt'] = True
+.\linkedin-seite\tests\support_post.py:351:            raise ReportError(429, 'schreib_tageslimit')
+.\linkedin-seite\linkedin_seite\post_pool.py:149:                self._count(self.http, WRITE_HTTP_PER_DAY, 'schreib_http_tageslimit')
+.\linkedin-seite\linkedin_seite\post_pool.py:152:                self._count(self.actions, WRITE_ACTIONS_PER_DAY, 'schreib_tageslimit')
+.\linkedin-seite\linkedin_seite\post_pool.py:202:        exc.nicht_ausgefuehrt = not job.write_started
+.\linkedin-seite\linkedin_seite\post_pool.py:233:            exc.nicht_ausgefuehrt = True
+.\linkedin-seite\linkedin_seite\post_pool.py:238:            exc = ReportError(429, 'schreiben_belegt')
+.\linkedin-seite\linkedin_seite\post_pool.py:239:            exc.nicht_ausgefuehrt = True  # this request never started a job
+.\linkedin-seite\linkedin_seite\post_adapter.py:33:    def exchange(self, request, expect_json=True, timeout=API_TIMEOUT, *, before_send=None):
+.\linkedin-seite\linkedin_seite\post_adapter.py:36:        if before_send is not None:
+.\linkedin-seite\linkedin_seite\post_adapter.py:37:            before_send()  # after local quota checks, immediately before possible provider effect
+.\linkedin-seite\linkedin_seite\post_adapter.py:143:            exc.nicht_ausgefuehrt = not self.schreibversuch
+.\linkedin-seite\linkedin_seite\post_adapter.py:175:            request, expect_json=expect_json, before_send=self._schreiben if method != 'GET' else None)
+.\linkedin-seite\linkedin_seite\post_adapter.py:189:            request, expect_json=False, timeout=UPLOAD_TIMEOUT, before_send=self._schreiben)
+.\linkedin-seite\linkedin_seite\domain.py:33:    # Stufe B1 (#1237): optional write block; absent = write routes answer schreiben_nicht_eingerichtet.
+.\linkedin-seite\CHANGELOG.md:6:  HTTP 200 mit nicht_ausgefuehrt: true, damit der Kern den Indikator aus 2xx lesen kann.
+.\linkedin-seite\CHANGELOG.md:24:- Eindeutige Ergebnisfelder: ausgefuehrt bei bestätigtem Erfolg, nicht_ausgefuehrt nur bei
+.\linkedin-seite\CLAUDE.md:106:  Diese Gate-Antwort trägt weder nicht_ausgefuehrt noch ausgefuehrt.
+.\linkedin-seite\CLAUDE.md:140:  nur nachweislicher Abbruch vor dem ersten Schreibversuch HTTP 200 mit nicht_ausgefuehrt: true
+.\linkedin-seite\CLAUDE.md:146:- Ein Schreibauftrag gleichzeitig; parallele Anfrage HTTP 200, schreiben_belegt und
+.\linkedin-seite\CLAUDE.md:147:  nicht_ausgefuehrt: true vor eigenem Start.
+.\linkedin-seite\CLAUDE.md:156:  dürfen eindeutige Frühfehler als HTTP 200 mit nicht_ausgefuehrt: true zurückkommen,
+
+rg --hidden -n hash_golden\.json|linkedin_vorschau_beispiel\.json|eol=lf|-text|frozen_sha256 . (ohne Prüfartefakte und Mutationskopien)
+.\.gitattributes:1:linkedin-seite/tests/data/*.json text eol=lf
+.\script-runner\.gitattributes:3:* text=auto eol=lf
+.\agent-runner\.gitattributes:1:* text=auto eol=lf
+.\agent-runner\.gitattributes:2:contract/golden/* -text
+.\bing-webmaster\tests\mutations.py:111:        "exception-text-in-code",
+.\bing-webmaster\tests\mutations.py:125:        "exception-text-logged",
+.\linkedin-seite\CHANGELOG.md:9:- Beide gemeinsamen JSON-Fixtures durch text eol=lf gesichert; Vorschau-Beispiel von CRLF
+.\linkedin-seite\CLAUDE.md:115:  tests/data/linkedin_vorschau_beispiel.json. Optionale Ablaufhinweise erlaubt F2 ausdrücklich:
+.\linkedin-seite\CLAUDE.md:126:  Unveränderte Kern-Vektoren: tests/data/hash_golden.json; kein v1-Fallback.
+.\linkedin-seite\CLAUDE.md:177:`linkedin-seite/tests/data/*.json text eol=lf`; untergeordnete -text-Ausnahmen entfallen.
+.\linkedin-seite\README.md:288:`tests/data/linkedin_vorschau_beispiel.json`. F2 erlaubt bei nahendem Tokenablauf zusätzlich
+.\linkedin-seite\README.md:300:keine Leerzeichen. Verbindliche unveränderte Kern-Vektoren: `tests/data/hash_golden.json`.
+.\linkedin-seite\README.md:303:setzt dafür `text eol=lf`. Tests pinnen Datei-SHA-256 und vergleichen bei vorhandenem
+.\linkedin-seite\README.md:402:https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/little-text-format
+.\google-reporting\tests\mutations.py:155:        "change-line-prints-free-text",
+.\bing-webmaster\CLAUDE.md:29:  `KeyNeverInExceptions` und `KeyCanary` und die Mutanten `exception-text-in-code`,
+.\linkedin-seite\tests\mutations.py:75:    ('member-urn-in-text', 'linkedin_adapter.py', 'None if mentioned(row) else text', 'text', 'test_logs.Logs.test_real_service_mentions_never_in_response_or_log'),
+.\linkedin-seite\tests\mutations.py:160:    ('f4-hash-text', 'redaktion.py', "'text': effect['text'],", "'text': '',", F4+'test_stale_hash_for_text_target_comment_media_title_bytes_order_and_poll'),
+.\linkedin-seite\tests\mutations.py:168:    ('f4-golden-changed', 'tests/data/hash_golden.json', 'd1de1b1a79e55d2211ce868c00423efa9fab6e2e0c18f96614eca7fe58a1d45b', '01de1b1a79e55d2211ce868c00423efa9fab6e2e0c18f96614eca7fe58a1d45b', FH+'test_every_core_golden_vector'),
+.\linkedin-seite\tests\mutations.py:185:    ('sec-fixture-preview-crlf', 'tests/data/linkedin_vorschau_beispiel.json', '{\n  "eintrag_id"', '{\r\n  "eintrag_id"', 'test_fixture_bytes.FixtureBytes.test_json_fixtures_use_lf'),
+.\linkedin-seite\tests\mutations.py:186:    ('sec-fixture-golden-crlf', 'tests/data/hash_golden.json', '[\n  {', '[\r\n  {', 'test_fixture_bytes.FixtureBytes.test_json_fixtures_use_lf'),
+.\linkedin-seite\tests\mutations.py:187:    ('sec-fixture-preview-sha', 'tests/data/linkedin_vorschau_beispiel.json', '"format": "dokument"', '"format": "text"', 'test_fixture_bytes.FixtureBytes.test_frozen_sha256_and_optional_local_core_bytes'),
+.\linkedin-seite\tests\mutations.py:188:    ('sec-fixture-golden-sha', 'tests/data/hash_golden.json', '"name": "ohne_beides"', '"name": "ohne_beide"', 'test_fixture_bytes.FixtureBytes.test_frozen_sha256_and_optional_local_core_bytes'),
+.\linkedin-seite\tests\mutations.py:217:    ('b5-trace-text', 'post_pool.py', "LOG.info('spur aktion=%s eintrag_id=%s hash=%s code=%s urn=%s bytes=%d', job.req.aktion, job.req.eintrag_id,", "LOG.info('spur aktion=%s eintrag_id=%s %s hash=%s code=%s urn=%s bytes=%d', job.req.aktion, job.req.eintrag_id, str(job.req) + str(payload),", SF+'test_post_then_idempotent_repeat_returns_the_same_urn'),
+.\linkedin-seite\linkedin_seite\source_contract.py:96:#   D_LITTLE = .../shares/little-text-format?view=li-lms-2026-10 (reserved characters, backslash escape)
+.\linkedin-seite\tests\test_f2_preview.py:12:EXAMPLE = Path(__file__).with_name('data') / 'linkedin_vorschau_beispiel.json'
+.\linkedin-seite\tests\test_f4.py:14:GOLDEN = Path(__file__).with_name('data') / 'hash_golden.json'
+.\linkedin-seite\tests\test_fixture_bytes.py:9:    ('linkedin_vorschau_beispiel.json', 'internal/connector/testdata/linkedin_vorschau_beispiel.json',
+.\linkedin-seite\tests\test_fixture_bytes.py:11:    ('hash_golden.json', 'internal/freigabe/testdata/hash_golden.json',
+.\linkedin-seite\tests\test_fixture_bytes.py:24:    def test_frozen_sha256_and_optional_local_core_bytes(self):
+.\desktop-runner\.gitattributes:1:* text=auto eol=lf
+.\desktop-runner\.gitattributes:2:contract/golden/* -text
+.\desktop-runner\CLAUDE.md:387:nur feste Operationsnamen und OS-Fehlernummer/-text, keine Pfade oder Konten.
+.\desktop-runner\probe\l3_mutations.py:45:    ("question-text", "pipe", "TestPipeServerSchema", [p("schema.go", 'bounded(m.Text, 500)', 'bounded(m.Text, 501)')]),
+.\desktop-runner\probe\l3_mutations.py:47:    ("question-option-text", "pipe", "TestPipeServerSchema", [p("schema.go", 'bounded(s, 40)', 'bounded(s, 41)')]),
+.\desktop-runner\probe\l4_mutations.py:37:    ("fault-text", "internal/panel", "TestPanelStoerungBleibtBisNeuGeprueftemZustand", [edit(MODEL, "Störung. Anhalten: abmelden oder über den Admin halten lassen.", "Störung.")]),
+.\desktop-runner\probe\l4_mutations.py:64:    ("raw-question-text", "internal/client", "TestH4RoheFrageGrenzen", [edit(SCHEMA, "bounded(m.Text, 500)", "bounded(m.Text, 501)")]),

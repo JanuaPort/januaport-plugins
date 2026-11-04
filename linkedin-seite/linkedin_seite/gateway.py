@@ -4,7 +4,7 @@ JSON-RPC over Streamable HTTP, the legacy chain initialize -> notifications/init
 tools/call, like kartei-rpa/JanuaPort.Kartei.psm1 (Mcp-Protocol-Version is not set; the
 gateway derives it from the handshake). The token is the Beisteller's own credential
 (Hausmuster #887) and only ever goes to the configured gateway URL. The client calls
-EXACTLY three tools (SEC c-6575359082 Bed. 3); any other name is refused before HTTP.
+EXACTLY two tools (SEC c-6575359082 Bed. 3); any other name is refused before HTTP.
 """
 import base64
 import binascii
@@ -18,12 +18,11 @@ from .domain import ReportError, strict_json
 from .oauth import NoRedirect
 
 PROTOCOL_VERSION = '2025-11-25'
-CLIENT_INFO = {'name': 'januaport-linkedin-seite', 'version': '0.2.0'}
+CLIENT_INFO = {'name': 'januaport-linkedin-seite', 'version': '0.3.1'}
 SESSION_HEADER = 'Mcp-Session-Id'
 SMALL_ANSWER = 1024 * 1024
 TIMEOUT = 15
 FILE_TIMEOUT = 60
-SEARCH_LIMIT = 100  # internal/kartei MaxSearchLimit
 
 
 def fail(status, code):
@@ -57,7 +56,7 @@ class GatewayClient:
         self.wcfg = wcfg
         self.token = token
         names = wcfg.tools
-        self.tool_eintrag, self.tool_freigabe, self.tool_datei = names['eintrag'], names['freigabe'], names['datei']
+        self.tool_eintrag, self.tool_datei = names['eintrag'], names['datei']
         self.tools = frozenset(names.values())
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
         self.session = None
@@ -146,15 +145,6 @@ class GatewayClient:
         if record is None:
             fail(404, 'eintrag_nicht_gefunden')
         return record
-
-    def freigaben(self, rid):
-        records = self._structured(self.call(self.tool_freigabe, {'eintrag_id': rid, 'limit': SEARCH_LIMIT}, SMALL_ANSWER),
-                                   'records')
-        if records is None:
-            fail(502, 'gateway_werkzeug_fehler')
-        if not isinstance(records, list):
-            fail(502, 'gateway_antwort_ungueltig')
-        return records
 
     def datei(self, name, max_bytes):
         r.check_datei(name)  # no path, no '..', nothing absolute: rejected before any call

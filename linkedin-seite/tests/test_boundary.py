@@ -4,10 +4,11 @@ import json
 import unittest
 from aiohttp.test_utils import TestClient, TestServer
 from linkedin_seite.domain import ReportError, parse_request, encode_response
+from linkedin_seite.oauth import Tokens
 from linkedin_seite.safe_http import SafeAppRunner
 from linkedin_seite.server import create_app
-from linkedin_seite.workers import WorkerPool, DAILY_CAP
-from support import Fake, LocalAdapter, CFG, identity
+from linkedin_seite.workers import DAILY_CAP
+from support import Fake, CFG, identity, read_pool
 
 
 class SafeTestServer(TestServer):
@@ -19,7 +20,8 @@ class Boundary(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.fake = Fake()
         self.data = identity(self.fake.port)
-        self.pool = WorkerPool(CFG, self.data, adapter_factory=LocalAdapter, budget=5)
+        self.tokens = Tokens(self.data)
+        self.pool = read_pool(CFG, self.tokens, self.fake.port, budget=5)
         self.key = 'SYNTHETIC-' + 'a'*32
         self.auth = {'Authorization': 'Bearer ' + self.key}
         self.client = TestClient(SafeTestServer(create_app(CFG, self.key.encode(), self.pool)))
@@ -104,7 +106,7 @@ class Boundary(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(self.key, str(logs.output))
 
     async def test_warning_on_success_error_and_health_expiry_code(self):
-        self.data['access_expires_at'] = (datetime.now(timezone.utc)+timedelta(days=10)).isoformat()
+        self.tokens.data['access_expires_at'] = (datetime.now(timezone.utc)+timedelta(days=10)).isoformat()
         for url in ('/v1/linkedin/page_statistics', '/healthz', '/unknown'):
             response = await self.client.get(url, headers=self.auth)
             body = await response.json()
@@ -112,7 +114,7 @@ class Boundary(unittest.IsolatedAsyncioTestCase):
             self.assertRegex(body['ablaufdatum'], r'^\d{4}-\d\d-\d\d$')
         await self.pool.close()
         self.pool.closed = False
-        self.data['access_expires_at'] = (datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat()
+        self.tokens.data['access_expires_at'] = (datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat()
         response = await self.get()
         self.assertEqual(await response.json(), {'error': 'token_abgelaufen'})
 
@@ -143,8 +145,7 @@ class Workers(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.fake = Fake()
         self.day = ['2026-10-29']
-        self.pool = WorkerPool(CFG, identity(self.fake.port), adapter_factory=LocalAdapter,
-                               budget=3, today=lambda: self.day[0])
+        self.pool = read_pool(CFG, Tokens(identity(self.fake.port)), self.fake.port, budget=3, today=lambda: self.day[0])
         self.req = parse_request('page_statistics', [])
 
     async def asyncTearDown(self):
@@ -179,7 +180,7 @@ class Workers(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(cm.exception.code, 'daily_cap_reached')
         self.assertEqual(len(self.fake.calls), 1)
         await self.pool.close()
-        self.pool = WorkerPool(CFG, identity(self.fake.port, days=-1, refresh=True), adapter_factory=LocalAdapter)
+        self.pool = read_pool(CFG, Tokens(identity(self.fake.port, days=-1, refresh=True)), self.fake.port)
         await self.pool.run(self.req)
         self.assertEqual(sum(self.pool.attempts.values()), 3)
 
