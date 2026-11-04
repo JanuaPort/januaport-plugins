@@ -89,7 +89,7 @@ func TestStriktesJSONAmAdapter(t *testing.T) {
 			io.WriteString(w, raw)
 		}))
 		a, _ := NewAPI(Trust{URL: srv.URL}, "token", nil)
-		_, e := a.Heartbeat(context.Background(), Heartbeat{4, true, "test", 0})
+		_, e := a.Heartbeat(context.Background(), Heartbeat{5, true, "test", 0})
 		a.Close()
 		srv.Close()
 		if e == nil {
@@ -169,14 +169,14 @@ func TestWiderrufAnAllenHTTPWegen(t *testing.T) {
 }
 func TestManifestSyncAtomarUndOfflineAmAdapter(t *testing.T) {
 	pub, key, _ := ed25519.GenerateKey(nil)
-	m := Manifest{Contract: 4, DeviceID: "own", Seq: 1, IssuedAt: "2026-10-23T10:00:00Z", GraceHours: 1, Pins: []Pin{}}
+	m := Manifest{Contract: WindowsContract, DeviceID: "own", Seq: 1, IssuedAt: "2026-10-23T10:00:00Z", GraceHours: 1, Pins: []Pin{}}
 	signed := func(m Manifest) SignedManifest {
 		raw := encode(m)
 		can, _ := canonical(raw)
 		return SignedManifest{raw, base64.StdEncoding.EncodeToString(ed25519.Sign(key, can))}
 	}
 	response := signed(m)
-	cfg := Config{Contract: 4, ExpectedAccount: "own", HeartbeatS: 60, PollHoldS: 25}
+	cfg := Config{Contract: WindowsContract, ExpectedAccount: "own", HeartbeatS: 60, PollHoldS: 25}
 	cfg.Device.ID = "own"
 	cfg.Device.Kind = "workstation"
 	cfg.StartPolicy.Mode = "always"

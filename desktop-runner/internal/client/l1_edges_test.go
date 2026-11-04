@@ -285,7 +285,7 @@ func TestVertrag4ClaimUndErgebnisOhneServerfelder(t *testing.T) {
 }
 
 func TestTestgeraetUpgradeSynchronisiertVertrag4(t *testing.T) {
-	for _, oldContract := range []int{1, 3} {
+	for _, oldContract := range []int{1, 3, 4} {
 		t.Run(fmt.Sprint(oldContract), func(t *testing.T) {
 			old := l1Manifest()
 			old.Contract = oldContract
@@ -296,7 +296,7 @@ func TestTestgeraetUpgradeSynchronisiertVertrag4(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			cfg := Config{Contract: 4, ExpectedAccount: "synthetic", HeartbeatS: 60, PollHoldS: 25}
+			cfg := Config{Contract: WindowsContract, ExpectedAccount: "synthetic", HeartbeatS: 60, PollHoldS: 25}
 			cfg.Device.ID = c.DeviceID
 			cfg.Device.Kind = "workstation"
 			cfg.StartPolicy.Mode = "always"
@@ -318,7 +318,7 @@ func TestTestgeraetUpgradeSynchronisiertVertrag4(t *testing.T) {
 				t.Fatal(err)
 			}
 			a := l1API(t, func(w http.ResponseWriter, r *http.Request) {
-				if r.Header.Get("X-Jnpt-Desktop-Contract") != "4" {
+				if r.Header.Get("X-Jnpt-Desktop-Contract") != "5" {
 					t.Error("Upgrade mit altem Header")
 				}
 				switch r.URL.Path {
@@ -341,7 +341,7 @@ func TestTestgeraetUpgradeSynchronisiertVertrag4(t *testing.T) {
 			ticker := time.NewTicker(5 * time.Millisecond)
 			defer ticker.Stop()
 			for {
-				if e.view().Config.Contract == 4 {
+				if e.view().Config.Contract == WindowsContract {
 					cancel()
 					break
 				}
@@ -357,7 +357,7 @@ func TestTestgeraetUpgradeSynchronisiertVertrag4(t *testing.T) {
 				t.Fatal(err)
 			}
 			m, err := ParseManifest(e.view().Manifest.Envelope.Manifest)
-			if err != nil || m.Contract != 4 || !m.TestDevice || m.Seq != 43 {
+			if err != nil || m.Contract != WindowsContract || !m.TestDevice || m.Seq != 43 {
 				t.Fatal("Testgerät bleibt auf altem Stand", m, err)
 			}
 		})

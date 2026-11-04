@@ -45,7 +45,7 @@ func l1JSONEqual(a, b []byte) bool {
 }
 
 func l1Manifest() Manifest {
-	return Manifest{Contract: 4, DeviceID: "aaaaaaaaaaaaaaaa", Seq: 42, IssuedAt: "2026-11-01T12:00:00Z", GraceHours: 24,
+	return Manifest{Contract: WindowsContract, DeviceID: "aaaaaaaaaaaaaaaa", Seq: 42, IssuedAt: "2026-11-01T12:00:00Z", GraceHours: 24,
 		Pins: []Pin{{Pin: "test_aaaaaaaa", Algo: "sha1", Commit: strings.Repeat("a", 40), Path: "demo", DeclaredTools: []string{}, Schedules: []Schedule{}}}}
 }
 
@@ -65,7 +65,7 @@ func l1Sign(t *testing.T, raw []byte, device string) (SignedManifest, Credential
 func TestVertragJeGeraeteart(t *testing.T) {
 	for _, server := range []bool{false, true} {
 		t.Run(fmt.Sprint(server), func(t *testing.T) {
-			want := 4
+			want := 5
 			if server {
 				want = 2
 			}
@@ -402,7 +402,7 @@ func TestSetupUndHaltAmHTTPAdapter(t *testing.T) {
 		if json.NewDecoder(r.Body).Decode(&body) != nil {
 			t.Error("JSON")
 		}
-		if r.Method != "POST" || r.Header.Get("X-Jnpt-Desktop-Contract") != "4" {
+		if r.Method != "POST" || r.Header.Get("X-Jnpt-Desktop-Contract") != "5" {
 			t.Error("Vertrag/Verb")
 		}
 		if strings.HasSuffix(r.URL.Path, "runs/start") {
@@ -425,7 +425,7 @@ func TestSetupUndHaltAmHTTPAdapter(t *testing.T) {
 			out["expires_at"] = encode("2027-01-01T00:00:00Z")
 			json.NewEncoder(w).Encode(out)
 		} else {
-			if r.URL.Path != "/api/device/v1/halt" || string(body["contract"]) != "4" || len(body) != 3 {
+			if r.URL.Path != "/api/device/v1/halt" || string(body["contract"]) != "5" || len(body) != 3 {
 				t.Error("Halt-Draht")
 			}
 			for _, key := range []string{"state", "until"} {
