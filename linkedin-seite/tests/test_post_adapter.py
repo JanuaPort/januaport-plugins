@@ -212,7 +212,7 @@ class Formats(Base):
 
 
 class WriteToken(Base):
-    def test_expired_write_token_is_refreshed_with_exactly_the_write_scope(self):
+    def test_expired_token_is_refreshed_with_exactly_the_one_grant(self):
         self.data = write_identity(self.li.port, days=-1, refresh=True)
         rid = self.plan(post_text='x')
         self.approve(rid)
@@ -220,7 +220,7 @@ class WriteToken(Base):
         token, post = self.li.calls[0], self.li.calls[-1]
         self.assertEqual(token['path'], '/oauth/v2/accessToken')
         self.assertTrue(post['headers']['authorization'].startswith('Bearer WRITE-REFRESHED-'))
-        self.li.token_body[s.SCOPE] = 'r_organization_social,rw_organization_admin'  # a read grant answer
+        self.li.token_body[s.SCOPE] = 'r_organization_social,rw_organization_admin'  # only the read half of the grant
         rid = self.plan(post_text='y')
         self.approve(rid)
         self.assertEqual(self.fails(rid), 'unexpected_source_shape')

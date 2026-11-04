@@ -45,7 +45,8 @@ SG = 'test_post_server.Background.'
 ST = 'test_post_server.Tokens.'
 SW = 'test_post_server.TokenSeparationOnTheWire.'
 SL = 'test_post_server.LogCanary.'
-WC = 'test_post_consent.WriteConsent.'
+GC = 'test_post_consent.GrantConsent.'
+SC = 'test_oauth_toleranz.StoredCredential.'
 MUTANTS = [
     ('bridge-key', 'server.py', 'if not authorized:', 'if False:', B+'test_bridge_missing_wrong_duplicate_never_reach_adapter'),
     ('duplicate-auth', 'server.py', 'if len(header) != 1:', 'if not header:', B+'test_bridge_missing_wrong_duplicate_never_reach_adapter'),
@@ -58,7 +59,7 @@ MUTANTS = [
     ('future-date', 'domain.py', 'if end.date() > latest:', 'if False:', B+'test_org_paths_parameters_duplicates_dates_rejected'),
     ('post-input-cap', 'domain.py', 'int(limit) <= 10', 'int(limit) <= 99', D+'test_post_limit_and_unknown_parameters'),
     ('scope-set', 'source_contract.py', "SCOPES = ('rw_organization_admin', 'r_organization_social')", "SCOPES = ('r_organization_social',)", A+'test_scopes_pinned_and_expanded_grant_rejected_on_wire'),
-    ('expanded-grant', 'oauth.py', 'scope_set(raw[s.SCOPE]) != set(scopes)', 'False', A+'test_scopes_pinned_and_expanded_grant_rejected_on_wire'),
+    ('expanded-grant', 'oauth.py', 'scope_set(raw[s.SCOPE]) != set(s.GRANT_SCOPES)', 'False', A+'test_scopes_pinned_and_expanded_grant_rejected_on_wire'),
     ('daily-cap', 'workers.py', '>= DAILY_CAP:', '>= 1000000:', W+'test_daily_cap_counts_individual_gets_and_failures_parent_utc'),
     ('count-before-http', 'oauth.py', 'self.permit()  # server-process grant', 'pass  # server-process grant', W+'test_cap_stops_partway_posts_and_counts_token_exchange'),
     ('minute-throttle', 'workers.py', '>= RATE_PER_MINUTE:', '>= 1000000:', W+'test_minute_throttle_and_closed_pool'),
@@ -130,7 +131,7 @@ MUTANTS = [
     ('scope-comma-separator', 'oauth.py', "re.compile(r'[\\s,]+')", "re.compile(r'\\s+')", T+'ScopeSeparators.test_comma_separated_as_sent_by_linkedin'),
     ('scope-only-comma-and-whitespace', 'oauth.py', "re.compile(r'[\\s,]+')", "re.compile(r'[\\s,;|+]+')", T+'ScopeSeparators.test_only_comma_and_whitespace_separate'),
     ('scope-empty-parts', 'oauth.py', 'for part in SCOPE_SEPARATORS.split(value) if part}', 'for part in SCOPE_SEPARATORS.split(value)}', T+'ScopeSeparators.test_comma_with_spaces_and_mixed_separators'),
-    ('scope-exact-set-wire', 'oauth.py', 'scope_set(raw[s.SCOPE]) != set(scopes)', 'not scope_set(raw[s.SCOPE]) >= set(scopes)', T+'RealLinkedInShapeThroughRefreshPath.test_wrong_scope_on_the_refresh_path_still_fails_closed_with_one_call'),
+    ('scope-exact-set-wire', 'oauth.py', 'scope_set(raw[s.SCOPE]) != set(s.GRANT_SCOPES)', 'not scope_set(raw[s.SCOPE]) >= set(s.GRANT_SCOPES)', T+'RealLinkedInShapeThroughRefreshPath.test_wrong_scope_on_the_refresh_path_still_fails_closed_with_one_call'),
     ('lifetime-cap', 'oauth.py', 'return min(seconds, cap)', 'return seconds', T+'LifetimeTolerance.test_observed_linkedin_overshoot_is_capped_at_exactly_365_days'),
     ('lifetime-no-overshoot-tolerance', 'oauth.py', 'seconds <= cap + OVERSHOOT_TOLERANCE_SECONDS:', 'seconds <= cap:', T+'LifetimeTolerance.test_observed_linkedin_overshoot_is_capped_at_exactly_365_days'),
     ('lifetime-unbounded-overshoot', 'oauth.py', 'seconds <= cap + OVERSHOOT_TOLERANCE_SECONDS:', 'seconds <= cap + 10**9:', T+'LifetimeTolerance.test_refresh_boundary_cap_plus_one_day_capped_beyond_rejected'),
@@ -198,15 +199,25 @@ MUTANTS = [
     ('b3-mcp-only', 'redaktion.py', "r'):(?P<port>[1-9][0-9]{0,4})/mcp')", "r'):(?P<port>[1-9][0-9]{0,4})/(?:admin/)?mcp(?:/.*)?')", DC+'test_gateway_url_only_mcp_on_internal_host_with_port'),
     ('b3-plan-path-guard', 'redaktion.py', "    return tuple(check_datei(v) for v in value)", "    return tuple(value)", DE+'test_fields_are_strings_json_lists_and_objects_fail_closed'),
     ('b3-pseudonym-guard', 'redaktion.py', "if any(mark in fields.get(name, '') for mark in PSEUDONYM):", 'if False:', DE+'test_pseudonymised_fields_are_never_posted'),
-    # SEC Bed. 4: own write credential, exactly w_organization_social, never exchanged.
-    ('b4-write-scope', 'source_contract.py', "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed')", "WRITE_SCOPES = ('w_organization_social',)", WC+'test_write_mode_requests_exactly_w_organization_social'),
-    ('b4-write-scope-extra', 'source_contract.py', "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed')", "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed', 'r_organization_social')", WC+'test_write_mode_requests_exactly_w_organization_social'),
-    ('b4-write-scope-table', 'source_contract.py', "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed')", "WRITE_SCOPES = ('w_organization_social_feed',)", PC+'test_endpoint_table_is_exactly_the_reviewed_one'),
-    ('b4-consent-scope-string', 'tools/zustimmung.py', "s.STATE: state, s.SCOPE: ' '.join(scopes)}", "s.STATE: state, s.SCOPE: ' '.join(s.SCOPES)}", WC+'test_write_mode_requests_exactly_w_organization_social'),
-    ('b4-write-identity-marker', 'oauth.py', "if not isinstance(data, dict) or not isinstance(data.get(s.SCOPE), str) or scope_set(data[s.SCOPE]) != set(s.WRITE_SCOPES):", 'if not isinstance(data, dict):', ST+'test_write_identity_requires_exactly_the_write_scope_read_identity_refuses_it'),
-    ('b4-write-loader', 'server.py', '    from .oauth import load_write_identity\n', '    from .oauth import load_identity as load_write_identity\n', ST+'test_loading_the_write_side_fail_closed_with_fixed_reasons'),
-    ('b4-write-place', 'server.py', 'POST_IDENTITY_PATH = "/run/secrets/post-oauth/runtime-key"', 'POST_IDENTITY_PATH = "/run/secrets/oauth/runtime-key"', ST+'test_write_identity_requires_exactly_the_write_scope_read_identity_refuses_it'),
-    ('b4-write-refresh-scope', 'post_adapter.py', 'self.tokens = Tokens(identity, self.transport, scopes=s.WRITE_SCOPES)', 'self.tokens = Tokens(identity, self.transport)', PW+'test_expired_write_token_is_refreshed_with_exactly_the_write_scope'),
+    # #1237, 0.3.1: ONE grant in ONE place. LinkedIn voids earlier tokens on a different scope set.
+    ('g1-grant-without-read', 'source_contract.py', 'GRANT_SCOPES = SCOPES + WRITE_SCOPES', 'GRANT_SCOPES = WRITE_SCOPES', D+'test_grant_is_exactly_the_read_and_the_write_scopes'),
+    ('g1-grant-without-write', 'source_contract.py', 'GRANT_SCOPES = SCOPES + WRITE_SCOPES', 'GRANT_SCOPES = SCOPES', GC+'test_one_authorization_requests_exactly_the_four_scopes'),
+    ('g1-write-scope', 'source_contract.py', "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed')", "WRITE_SCOPES = ('w_organization_social',)", GC+'test_one_authorization_requests_exactly_the_four_scopes'),
+    ('g1-write-scope-extra', 'source_contract.py', "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed')", "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed', 'r_ads')", GC+'test_one_authorization_requests_exactly_the_four_scopes'),
+    ('g1-write-scope-table', 'source_contract.py', "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed')", "WRITE_SCOPES = ('w_organization_social_feed',)", PC+'test_endpoint_table_is_exactly_the_reviewed_one'),
+    ('g1-consent-scope-string', 'tools/zustimmung.py', "s.STATE: state, s.SCOPE: ' '.join(s.GRANT_SCOPES)}", "s.STATE: state, s.SCOPE: ' '.join(s.SCOPES)}", GC+'test_one_authorization_requests_exactly_the_four_scopes'),
+    ('g1-consent-answer-required', 'tools/zustimmung.py', 'scope_required=True)', 'scope_required=False)', GC+'test_an_answer_without_scope_ends_the_consent_without_a_vault_json'),
+    ('g1-answer-scope-check', 'oauth.py', 'if scope_required and s.SCOPE not in raw:', 'if False:', T+'ScopeSeparators.test_consent_answer_must_name_the_scopes_it_grants'),
+    ('g1-consent-json-scope', 'tools/zustimmung.py', "result.update({s.CLIENT_ID: client_id, s.CLIENT_SECRET: client_secret, s.SCOPE: ' '.join(s.GRANT_SCOPES)})", 'result.update({s.CLIENT_ID: client_id, s.CLIENT_SECRET: client_secret})', GC+'test_vault_json_is_what_the_service_loads'),
+    ('g1-consent-json-normalised', 'tools/zustimmung.py', "result.update({s.CLIENT_ID: client_id, s.CLIENT_SECRET: client_secret, s.SCOPE: ' '.join(s.GRANT_SCOPES)})", 'result.update({s.CLIENT_ID: client_id, s.CLIENT_SECRET: client_secret, s.SCOPE: raw[s.SCOPE]})', GC+'test_separator_and_order_of_the_answer_are_tolerated_the_json_is_normalised'),
+    ('g1-gesamt-required', 'tools/zustimmung.py', "parser.add_argument('--gesamt', action='store_true', required=True,", "parser.add_argument('--gesamt', action='store_true',", GC+'test_without_gesamt_nothing_happens'),
+    ('g1-schreiben-back', 'tools/zustimmung.py', "    parser.add_argument('--gesamt',", "    parser.add_argument('--schreiben', action='store_true')\n    parser.add_argument('--gesamt',", GC+'test_schreiben_is_gone_and_cannot_create_a_second_grant'),
+    ('g1-identity-any-set', 'oauth.py', 'if scope_set(data[s.SCOPE]) != set(s.GRANT_SCOPES):', 'if False:', SC+'test_any_other_scope_set_fails_closed'),
+    ('g1-identity-superset', 'oauth.py', 'if scope_set(data[s.SCOPE]) != set(s.GRANT_SCOPES):', 'if not scope_set(data[s.SCOPE]) >= set(s.GRANT_SCOPES):', SC+'test_any_other_scope_set_fails_closed'),
+    ('g1-identity-read-half', 'oauth.py', 'if scope_set(data[s.SCOPE]) != set(s.GRANT_SCOPES):', 'if not scope_set(data[s.SCOPE]) >= set(s.SCOPES):', ST+'test_identity_requires_exactly_the_four_scopes'),
+    ('g1-identity-scope-optional', 'oauth.py', "    required = {s.CLIENT_ID, s.CLIENT_SECRET, s.ACCESS_TOKEN, 'access_expires_at', s.SCOPE}\n    optional = {s.REFRESH_TOKEN, 'refresh_expires_at'}\n    if not isinstance(data, dict) or not required <= data.keys() or set(data) - required - optional:\n        raise ValueError('invalid_identity')\n    if scope_set(data[s.SCOPE]) != set(s.GRANT_SCOPES):", "    required = {s.CLIENT_ID, s.CLIENT_SECRET, s.ACCESS_TOKEN, 'access_expires_at'}\n    optional = {s.REFRESH_TOKEN, 'refresh_expires_at', s.SCOPE}\n    if not isinstance(data, dict) or not required <= data.keys() or set(data) - required - optional:\n        raise ValueError('invalid_identity')\n    if s.SCOPE in data and scope_set(data[s.SCOPE]) != set(s.GRANT_SCOPES):", SC+'test_a_grant_from_before_0_3_1_without_scope_fails_closed'),
+    ('g1-old-place-back', 'server.py', 'GATEWAY_TOKEN_PATH = "/run/secrets/gateway/runtime-key"', 'GATEWAY_TOKEN_PATH = "/run/secrets/gateway/runtime-key"\nPOST_IDENTITY_PATH = "/run/secrets/post-oauth/runtime-key"', ST+'test_the_second_place_is_gone_from_the_service'),
+    ('g1-old-place-opened', 'server.py', '        token = read_gateway_token(token_path)\n', '        Path(token_path).with_name("runtime-key").open("rb").close()\n        token = read_gateway_token(token_path)\n', ST+'test_a_leftover_file_in_the_old_place_has_no_effect'),
     ('b4-token-exchange', 'post_pool.py', "args=(child, self.cfg, self.identity, self.token, req, self.factory),", "args=(child, self.cfg, dict(self.identity, access_token='READ-TOKEN-SWAPPED'), self.token, req, self.factory),", SW+'test_reads_carry_the_read_token_writes_the_write_token'),
     # SEC Bed. 5: 5 write actions per UTC day over all actions, idempotency, trace without text.
     ('b5-daily-cap', 'post_pool.py', "self._count(self.actions, WRITE_ACTIONS_PER_DAY, 'schreib_tageslimit')", "self._count(self.actions, 10**6, 'schreib_tageslimit')", SF+'test_five_write_actions_per_utc_day_over_all_actions'),

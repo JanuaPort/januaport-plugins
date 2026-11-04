@@ -15,13 +15,18 @@ from linkedin_seite.linkedin_adapter import LinkedInAdapter
 
 ORG = 'urn:li:organization:123456'
 CFG = Config.from_dict({'organization': ORG, 'linkedin_version': '202610'})
+# The one grant (#1237, 0.3.1) as an independent literal: the vault JSON carries it space separated,
+# LinkedIn answers comma separated and in its own order (02.11.2026).
+GRANT_LIST = ('rw_organization_admin', 'r_organization_social', 'w_organization_social', 'w_organization_social_feed')
+GRANT = ' '.join(GRANT_LIST)
+GRANT_COMMA = 'w_organization_social_feed,r_organization_social,rw_organization_admin,w_organization_social'
 
 
 def identity(port=123, days=60, refresh=False):
     now = datetime.now(timezone.utc)
     out = {s.CLIENT_ID: str(port), s.CLIENT_SECRET: secrets.token_urlsafe(32),
            s.ACCESS_TOKEN: secrets.token_urlsafe(32),
-           'access_expires_at': (now + timedelta(days=days)).isoformat()}
+           'access_expires_at': (now + timedelta(days=days)).isoformat(), s.SCOPE: GRANT}
     if refresh:
         out.update({s.REFRESH_TOKEN: secrets.token_urlsafe(32),
                     'refresh_expires_at': (now + timedelta(days=365)).isoformat()})

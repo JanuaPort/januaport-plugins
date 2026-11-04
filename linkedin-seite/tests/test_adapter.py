@@ -7,7 +7,7 @@ from linkedin_seite import source_contract as s
 from linkedin_seite.domain import parse_request, ReportError
 from linkedin_seite.linkedin_adapter import minimize
 from linkedin_seite.oauth import token_result, warning
-from support import Fake, LocalAdapter, CFG, ORG, identity
+from support import Fake, GRANT, LocalAdapter, CFG, ORG, identity
 
 
 class Adapter(unittest.TestCase):
@@ -204,7 +204,7 @@ class Adapter(unittest.TestCase):
     def test_scopes_pinned_and_expanded_grant_rejected_on_wire(self):
         self.assertEqual(set(s.SCOPES), {'rw_organization_admin', 'r_organization_social'})
         self.adapter = LocalAdapter(CFG, identity(self.fake.port, days=-1, refresh=True), self.permit)
-        self.fake.token_body[s.SCOPE] = ' '.join(s.SCOPES) + ' unexpected'
+        self.fake.token_body[s.SCOPE] = GRANT + ' unexpected'
         with self.assertRaises(ReportError) as cm:
             self.run_report()
         self.assertEqual(cm.exception.code, 'unexpected_source_shape')

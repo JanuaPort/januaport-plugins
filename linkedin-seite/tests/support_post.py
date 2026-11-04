@@ -17,6 +17,7 @@ from urllib.parse import quote, unquote, urlsplit
 from linkedin_seite import source_contract as s
 from linkedin_seite.domain import Config
 from linkedin_seite.post_adapter import PostAdapter, WriteTransport
+from support import GRANT, GRANT_COMMA
 
 ORG = 'urn:li:organization:123456'
 PLAN = 'redaktionsplan'
@@ -40,11 +41,11 @@ def mp4(size):
 
 
 def write_identity(port, days=60, refresh=False):
-    """The validated write identity as the adapter receives it (scope field already checked)."""
+    """The one grant, marked so a test can tell which requests carried which access token."""
     now = datetime.now(timezone.utc)
     out = {s.CLIENT_ID: str(port), s.CLIENT_SECRET: secrets.token_urlsafe(32),
            s.ACCESS_TOKEN: 'WRITE-' + secrets.token_urlsafe(32),
-           'access_expires_at': (now + timedelta(days=days)).isoformat()}
+           'access_expires_at': (now + timedelta(days=days)).isoformat(), s.SCOPE: GRANT}
     if refresh:
         out.update({s.REFRESH_TOKEN: secrets.token_urlsafe(32),
                     'refresh_expires_at': (now + timedelta(days=365)).isoformat()})
@@ -191,7 +192,7 @@ class FakeLinkedIn(_Server):
         self.override = None
         self.posts = 0
         self.token_body = {s.ACCESS_TOKEN: 'WRITE-REFRESHED-' + secrets.token_urlsafe(16), s.EXPIRES_IN: 60*86400,
-                           s.SCOPE: 'w_organization_social,w_organization_social_feed'}
+                           s.SCOPE: GRANT_COMMA}
         self.upload_host = 'www.linkedin.com'
         self.lock = threading.Lock()
         outer = self

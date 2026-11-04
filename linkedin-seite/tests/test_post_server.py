@@ -10,6 +10,7 @@ import tempfile
 import unittest
 import urllib.error
 import urllib.request
+from unittest.mock import patch
 from aiohttp.test_utils import TestClient, TestServer
 from linkedin_seite import oauth
 from linkedin_seite import redaktion as r
@@ -19,7 +20,7 @@ from linkedin_seite.domain import Config, ReportError
 from linkedin_seite.post_pool import WritePool, WRITE_ACTIONS_PER_DAY
 from linkedin_seite.safe_http import SafeAppRunner
 from linkedin_seite.workers import WorkerPool
-from support import Fake, LocalAdapter, identity
+from support import Fake, GRANT, GRANT_COMMA, GRANT_LIST, LocalAdapter, identity
 from support_post import (FakeGateway, FakeLinkedIn, GATEWAY_TOKEN, LocalPostAdapter, PNG, MiB, config,
                           mp4, new_id, record, write_identity)
 
@@ -253,57 +254,72 @@ class Background(Service):
 
 
 class Tokens(unittest.TestCase):
-    """SEC Bed. 4: read and write token never exchanged."""
+    """#1237, 0.3.1: one grant in one place; the old second place has no effect any more."""
 
-    def test_write_identity_requires_exactly_the_write_scope_read_identity_refuses_it(self):
-        read = identity()
-        write = dict(read, scope='w_organization_social w_organization_social_feed')
-        self.assertEqual(oauth.validate_write_identity(write), read)
-        for bad in (read, dict(read, scope='rw_organization_admin r_organization_social'),
-                    dict(read, scope='w_organization_social rw_organization_admin'), dict(read, scope='w_organization_social'),
-                    dict(read, scope='w_organization_social w_organization_social_feed r_organization_social'),
-                    dict(read, scope=['w_organization_social', 'w_organization_social_feed'])):
-            with self.subTest(bad=bad), self.assertRaises(ValueError):
-                oauth.validate_write_identity(bad)
-        with self.assertRaises(ValueError):
-            oauth.validate_identity(write)  # a write JSON in the read place fails the unchanged Stufe-A check
-        self.assertEqual(server.POST_IDENTITY_PATH, '/run/secrets/post-oauth/runtime-key')
+    def test_identity_requires_exactly_the_four_scopes(self):
+        good = identity()
+        self.assertEqual(oauth.validate_identity(dict(good)), good)
+        self.assertEqual(oauth.validate_identity(dict(good, scope=GRANT_COMMA))[s.SCOPE], GRANT_COMMA)
+        without = {key: value for key, value in good.items() if key != s.SCOPE}
+        for bad in (without, dict(good, scope='rw_organization_admin r_organization_social'),
+                    dict(good, scope='w_organization_social w_organization_social_feed'),
+                    dict(good, scope=' '.join(GRANT_LIST[:3])), dict(good, scope=GRANT + ' r_ads'),
+                    dict(good, scope=''), dict(good, scope=list(GRANT_LIST))):
+            with self.subTest(bad=bad.get(s.SCOPE)), self.assertRaises(ValueError):
+                oauth.validate_identity(bad)
         self.assertEqual(server.GATEWAY_TOKEN_PATH, '/run/secrets/gateway/runtime-key')
         self.assertEqual(server.IDENTITY_PATH, '/run/secrets/oauth/runtime-key')
+
+    def test_the_second_place_is_gone_from_the_service(self):
+        self.assertFalse(hasattr(server, 'POST_IDENTITY_PATH'))
+        self.assertFalse(hasattr(oauth, 'load_write_identity'))
+        self.assertFalse(hasattr(oauth, 'validate_write_identity'))
+        for path in Path(oauth.__file__).parent.glob('*.py'):
+            self.assertNotIn('post-oauth', path.read_text(encoding='utf-8'), path.name)
+
+    def test_a_leftover_file_in_the_old_place_has_no_effect(self):
+        # A grant still lying in plugin-linkedin-seite-post-oauth: the write side opens the gateway
+        # token and nothing else, whether that file is valid, broken or a second grant.
+        real, opened = Path.open, []
+
+        def spy(path, *args, **kwargs):
+            opened.append(str(path))
+            return real(path, *args, **kwargs)
+        with tempfile.TemporaryDirectory() as temp:
+            token = Path(temp, 'token')
+            token.write_bytes(GATEWAY_TOKEN.encode())
+            leftover = Path(temp, 'post-oauth', 'runtime-key')
+            leftover.parent.mkdir()
+            leftover.write_text(json.dumps(write_identity(1)), encoding='utf-8')
+            with patch.object(Path, 'open', spy):
+                self.assertEqual(server.load_write_side(config(1), token), (GATEWAY_TOKEN, 'an'))
+        self.assertEqual(opened, [str(token)])
 
     def test_loading_the_write_side_fail_closed_with_fixed_reasons(self):
         cfg = config(1)
         with tempfile.TemporaryDirectory() as temp:
-            ident, token = Path(temp, 'ident'), Path(temp, 'token')
-            self.assertEqual(server.load_write_side(cfg, ident, token), (None, 'schreib_identitaet_fehlt'))
-            ident.write_text(json.dumps(identity()), encoding='utf-8')  # the read JSON in the write place
-            self.assertEqual(server.load_write_side(cfg, ident, token), (None, 'schreib_identitaet_ungueltig'))
-            ident.write_text(json.dumps(dict(identity(), scope='w_organization_social w_organization_social_feed')),
-                             encoding='utf-8')
-            self.assertEqual(server.load_write_side(cfg, ident, token), (None, 'gateway_token_fehlt'))
+            token = Path(temp, 'token')
+            self.assertEqual(server.load_write_side(cfg, token), (None, 'gateway_token_fehlt'))
             for raw in (b'short', b'with space ' * 4, b'x' * 2000):
                 token.write_bytes(raw)
-                self.assertEqual(server.load_write_side(cfg, ident, token)[1], 'gateway_token_ungueltig')
+                self.assertEqual(server.load_write_side(cfg, token), (None, 'gateway_token_ungueltig'))
             token.write_bytes(GATEWAY_TOKEN.encode() + b'\n')
-            side, reason = server.load_write_side(cfg, ident, token)
-            self.assertEqual(reason, 'an')
-            self.assertEqual(side[1], GATEWAY_TOKEN)
-            self.assertNotIn('scope', side[0])
+            self.assertEqual(server.load_write_side(cfg, token), (GATEWAY_TOKEN, 'an'))
         plain = Config.from_dict({'organization': '123'})
-        self.assertEqual(server.load_write_side(plain, ident, token), (None, 'nicht_konfiguriert'))
+        self.assertEqual(server.load_write_side(plain, token), (None, 'nicht_konfiguriert'))
 
-    def test_refresh_of_the_write_token_must_return_the_write_scope(self):
+    def test_refresh_must_return_the_one_grant(self):
         li = FakeLinkedIn()
         self.addCleanup(li.close)
         from support_post import LocalWriteTransport
         data = write_identity(li.port, days=-1, refresh=True)
-        tokens = oauth.Tokens(data, LocalWriteTransport(lambda: None, li.port), scopes=s.WRITE_SCOPES)
+        tokens = oauth.Tokens(data, LocalWriteTransport(lambda: None, li.port))
         self.assertTrue(tokens.access().startswith('WRITE-REFRESHED-'))
-        li.token_body[s.SCOPE] = 'r_organization_social,rw_organization_admin'
-        tokens = oauth.Tokens(write_identity(li.port, days=-1, refresh=True), LocalWriteTransport(lambda: None, li.port),
-                              scopes=s.WRITE_SCOPES)
-        with self.assertRaises(ReportError):
-            tokens.access()
+        for answer in ('r_organization_social,rw_organization_admin', 'w_organization_social,w_organization_social_feed'):
+            li.token_body[s.SCOPE] = answer
+            tokens = oauth.Tokens(write_identity(li.port, days=-1, refresh=True), LocalWriteTransport(lambda: None, li.port))
+            with self.subTest(answer=answer), self.assertRaises(ReportError):
+                tokens.access()
 
 
 class TokenSeparationOnTheWire(Service):
