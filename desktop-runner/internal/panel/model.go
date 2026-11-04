@@ -3,6 +3,8 @@
 package panel
 
 import (
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/pipe"
@@ -36,11 +38,14 @@ type Display struct {
 type Effects struct {
 	Commands        []pipe.Message
 	Reconnect, Quit bool
+	// OpenApp nennt die App, die der Mensch im Menü gewählt hat. Das Modell kennt nur den Namen.
+	OpenApp string
 }
 type Model struct {
 	connected, checked, ready, fault bool
 	status                           pipe.Message
 	dialog                           *Dialog
+	apps                             []string
 }
 
 func New() *Model { return &Model{fault: true} }
@@ -173,6 +178,9 @@ func (m *Model) View() Display {
 		v.Dialog = &d
 		v.Menu = append(v.Menu, Item{"frage", "Rückfrage anzeigen", available})
 	}
+	for _, n := range m.apps {
+		v.Menu = append(v.Menu, Item{"app:" + n, "App öffnen: " + n, true})
+	}
 	v.Menu = append(v.Menu, Item{"exit", "Beenden des Bedienfelds", true})
 	return v
 }
@@ -181,6 +189,14 @@ func (m *Model) Choose(id string, now time.Time) Effects {
 	m.Tick(now)
 	if id == "exit" {
 		return Effects{Quit: true}
+	}
+	if name, ok := strings.CutPrefix(id, "app:"); ok {
+		for _, n := range m.apps {
+			if n == name {
+				return Effects{OpenApp: n}
+			}
+		}
+		return Effects{}
 	}
 	allowed := false
 	for _, i := range m.View().Menu {
@@ -230,5 +246,20 @@ func (m *Model) Answer(choice int, now time.Time) Effects {
 func (m *Model) HideDialog() {
 	if m.dialog != nil {
 		m.dialog.Visible = false
+	}
+}
+
+var appName = regexp.MustCompile(`^[a-z0-9_]{1,48}$`)
+
+// SetApps ersetzt die Liste der öffnenden Apps. Ungültige und doppelte Namen werden verworfen; das
+// Modell hält keinen Pfad, kein Token und keinen Netzweg.
+func (m *Model) SetApps(names []string) {
+	m.apps = m.apps[:0:0]
+	seen := map[string]bool{}
+	for _, n := range names {
+		if appName.MatchString(n) && !seen[n] {
+			seen[n] = true
+			m.apps = append(m.apps, n)
+		}
 	}
 }

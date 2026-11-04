@@ -20,6 +20,7 @@ const (
 	LogOfflineExpired // K8: Offline-Start verweigert (Frist oder Werkzeugbindung)
 	LogHaltFault      // L2-2: Halt-Datei unlesbar/ungültig oder Speicherung fehlgeschlagen
 	LogPipeFault      // L3 B2: Pipe fehlt/besetzt; Läufer läuft weiter ohne Ausweichnamen
+	LogAppFault       // K6b-2: App-Paket konnte nicht abgelegt oder geprüft werden (Sync läuft weiter)
 )
 
 type Logger struct {
@@ -28,7 +29,7 @@ type Logger struct {
 }
 
 func (l *Logger) Write(code LogCode, n uint64) error {
-	if code < LogStarted || code > LogPipeFault {
+	if code < LogStarted || code > LogAppFault {
 		return ErrProtocol
 	}
 	l.mu.Lock()
