@@ -342,7 +342,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     ein** (LEAD c-6637272308): nach der Paketprüfung als erstes Element hinter dem `<head>`-Starttag jeder
     HTML-Datei (`injectCSP`), danach erst versiegeln. HTML mit eigener CSP-Meta oder ohne sauberes `<head>`
     (genau ein Starttag, davor nur Doctype/Kommentar/Leerraum/`<html>`) wird abgewiesen; `Open` prüft zusätzlich
-    pro HTML-Datei, dass genau dieses Literal an erster Stelle steht (`leadingCSP`). Grund: `connect-src
+    pro HTML-Datei, dass genau dieses Literal an erster Stelle steht (`leadingCSP`). Der Tokenizer ist nur der Vorfilter (davor weder Text noch End-Tags); die eigentliche Prüfung ist `html.Parse` auf dem fertigen Dokument: erstes Element-Kind von `head` ist die Meta mit genau `fenster.CSP`, genau eine CSP-Meta (SEC-R4 F1: Text oder `</br>` vor `<head>` schiebt die Meta für den Parser in den Body). Grund: `connect-src
     'none'` im Paket bräche `fetch` im Browser bei `fenster=beide`. Abgelegt wird privat im Staging und mit einem Umbenennen unter
     `<Zustand>\apps\<name>\<commit>\`; das Siegel (Pfad, Größe, SHA-256, auch gegen zusätzliche Dateien
     und Verweise) liegt im verschlüsselten Zustand und wird vor **jedem** `Open` geprüft. Nie

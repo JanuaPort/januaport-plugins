@@ -79,11 +79,16 @@ CASES = [
     ("app-csp-literal", "client", "TestAppCSPWirdEingesetzt", [edit(LOA, "out = append(out, meta...)", "out = append(out, strings.Replace(meta, \"connect-src 'none'\", \"connect-src *\", 1)...)")]),
     ("app-csp-reihenfolge", "client", "TestAppCSPWirdEingesetzt", [edit(LOA, "s.headEnd = pos", "s.headEnd = len(b)")]),
     ("app-csp-pflicht", "client", "TestAppCSPJedeHTMLDatei", [edit(COP, "if path.Ext(file) == \".html\" {\n\t\t\t\tvar err error", "if path.Ext(file) == \"index.html\" {\n\t\t\t\tvar err error")]),
-    ("app-csp-eigene-meta", "client", "TestAppCSPAbweisungen", [edit(LOA, "if !ok || s.cspMetas != 0 {", "if !ok {")]),
+    ("app-csp-eigene-meta", "client", "TestAppCSPAbweisungen", [edit(LOA, "if !ok || s.cspMetas != 0 {", "if !ok {"), edit(LOA, "if !parserSiehtLiteral(out) {", "if false {")]),  # zwei Schichten: Vorfilter und Parserprüfung
     ("app-csp-head-pflicht", "client", "TestAppCSPAbweisungen", [edit(LOA, "z.Err() == io.EOF && heads == 1", "z.Err() == io.EOF")]),
-    ("app-csp-unsauberes-head", "client", "TestAppCSPAbweisungen", [edit(LOA, "case heads == 0 && t.Data != \"html\":", "case false:")]),
+    ("app-csp-unsauberes-head", "client", "TestAppCSPAbweisungen", [edit(LOA, "case heads == 0 && t.Data != \"html\":", "case false:"), edit(LOA, "if !parserSiehtLiteral(out) {", "if false {")]),  # zwei Schichten
     ("app-csp-open-pruefung", "client", "TestAppOpenPrueftFuehrendesLiteralTrotzNeuemSiegel", [edit(STO, "if err != nil || !leadingCSP(b) {", "if err != nil || !leadingCSP(b) && false {")]),
-    ("app-csp-open-genau-eine", "client", "TestLeadingCSP", [edit(LOA, "s.cspMetas == 1 &&", "s.cspMetas >= 1 &&")]),
+    ("app-csp-open-genau-eine", "client", "TestLeadingCSP", [edit(LOA, "s.cspMetas == 1 &&", "s.cspMetas >= 1 &&"), edit(LOA, "&& parserSiehtLiteral(b)", "")]),  # zwei Schichten
+    # SEC-R4 F1: Tokenizer-Vorfilter und Parserprüfung sind zwei Schichten; die Einzelmutanten für Text und End-Tag
+    # überleben absichtlich, weil die jeweils andere Schicht greift. Rot werden sie nur gemeinsam.
+    ("app-csp-parserpruefung", "client", "TestAppCSPParserPruefungIstDieEigentlichePruefung", [edit(LOA, "if !parserSiehtLiteral(out) {", "if false {"), edit(LOA, "&& parserSiehtLiteral(b)", "")]),
+    ("app-csp-text-vor-head", "client", "TestAppCSPAbweisungen", [edit(LOA, "if heads == 0 && len(bytes.TrimSpace(raw)) != 0 {", "if false && len(bytes.TrimSpace(raw)) != 0 {"), edit(LOA, "if !parserSiehtLiteral(out) {", "if false {")]),
+    ("app-csp-endtag-vor-head", "client", "TestAppCSPAbweisungen", [edit(LOA, "case html.EndTagToken:\n\t\t\tif heads == 0 {", "case html.EndTagToken:\n\t\t\tif false {"), edit(LOA, "if !parserSiehtLiteral(out) {", "if false {")]),
     ("app-modus", "client", "TestAppPaketAblehnungenLegenNichtsAb", [edit(COP, "if mode != \"100644\" {", "if false {")]),
     ("app-geheimnis", "client", "TestAppPaketAblehnungenLegenNichtsAb", [edit(COP, "if secretPattern.Match(content) {", "if false {")]),
     ("app-ueberschreiben", "client", "TestEnsureHoltPaketUeberHTTPNurEinmal", [edit(STO, "if _, err := os.Lstat(s.dir(app)); err == nil {\n\t\treturn ErrHash\n\t}\n\traw, err", "raw, err")]),
