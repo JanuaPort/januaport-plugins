@@ -195,7 +195,7 @@ func TestSurfaceGibtDerSeiteDenFokus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var onSetFocus, onShow bool
+	var onSetFocus, onShow, onShowForeground bool
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch x := n.(type) {
 		case *ast.FuncDecl:
@@ -224,6 +224,9 @@ func TestSurfaceGibtDerSeiteDenFokus(t *testing.T) {
 						if c, ok := k.(*ast.CallExpr); ok && callName(c.Fun) == "s.chromium.Focus" {
 							onShow = true
 						}
+						if c, ok := k.(*ast.CallExpr); ok && callName(c.Fun) == "pForeground.Call" {
+							onShowForeground = true
+						}
 						return true
 					})
 				}
@@ -236,5 +239,8 @@ func TestSurfaceGibtDerSeiteDenFokus(t *testing.T) {
 	}
 	if !onShow {
 		t.Error("der Schritt show gibt der WebView den Fokus nicht")
+	}
+	if !onShowForeground {
+		t.Error("der Schritt show holt das neue Fenster nicht in den Vordergrund (SetForegroundWindow): Ohne aktives Fenster hat die Seite keinen Fokus")
 	}
 }

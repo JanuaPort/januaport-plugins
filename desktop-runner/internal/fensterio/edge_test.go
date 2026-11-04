@@ -2,6 +2,7 @@ package fensterio
 
 import (
 	"go/ast"
+	"go/token"
 	"os"
 	"regexp"
 	"strings"
@@ -124,5 +125,58 @@ func TestEdgeKopieNenntUpstream(t *testing.T) {
 	}
 	if _, err := os.Stat("../edge/upstream-diff.sh"); err != nil {
 		t.Errorf("upstream-diff.sh fehlt: %v", err)
+	}
+}
+
+// Lauf 11: WM_SETFOCUS kam während Close und traf den schon geleerten Controller; das beendete den Prozess. Jede
+// Methode der Kopie, die e.controller oder e.webview aufruft, prüft das Feld vorher auf nil (Close leert den
+// Controller, Ereignisse und Fensternachrichten kommen trotzdem noch). Methoden ohne Prüfung gibt es nicht.
+func TestEdgeMethodenPruefenControllerUndWebviewAufNil(t *testing.T) {
+	checked := 0
+	for _, sf := range productive(t, "../edge") {
+		for _, d := range sf.file.Decls {
+			fn, ok := d.(*ast.FuncDecl)
+			if !ok || fn.Recv == nil || fn.Body == nil || len(fn.Recv.List) != 1 {
+				continue
+			}
+			switch fn.Name.Name {
+			case "EnvironmentCompleted", "CreateCoreWebView2ControllerCompleted", "Close":
+				continue // Start und Ende des Controllers; dort gelten die Tests der Rückrufe
+			}
+			uses := map[string]bool{}
+			guarded := map[string]bool{}
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				switch x := n.(type) {
+				case *ast.CallExpr:
+					if sel, ok := x.Fun.(*ast.SelectorExpr); ok {
+						if inner, ok := sel.X.(*ast.SelectorExpr); ok {
+							if id, ok := inner.X.(*ast.Ident); ok && id.Name == "e" && (inner.Sel.Name == "controller" || inner.Sel.Name == "webview") {
+								uses[inner.Sel.Name] = true
+							}
+						}
+					}
+				case *ast.BinaryExpr:
+					if x.Op == token.EQL {
+						if sel, ok := x.X.(*ast.SelectorExpr); ok {
+							if id, ok := sel.X.(*ast.Ident); ok && id.Name == "e" {
+								if nilID, ok := x.Y.(*ast.Ident); ok && nilID.Name == "nil" {
+									guarded[sel.Sel.Name] = true
+								}
+							}
+						}
+					}
+				}
+				return true
+			})
+			for field := range uses {
+				checked++
+				if !guarded[field] {
+					t.Errorf("%s: %s ruft e.%s auf, ohne es auf nil zu prüfen", sf.path, fn.Name.Name, field)
+				}
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("keine Methode gefunden, Wächter blind")
 	}
 }
