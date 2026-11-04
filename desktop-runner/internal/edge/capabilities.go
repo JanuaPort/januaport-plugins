@@ -1,3 +1,5 @@
+//go:build windows
+
 package edge
 
 import "github.com/wailsapp/go-webview2/webviewloader"

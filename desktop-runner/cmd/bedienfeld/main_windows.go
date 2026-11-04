@@ -133,6 +133,9 @@ func wide(s string) *uint16 { return syscall.StringToUTF16Ptr(s) }
 func main() {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	// WebView2 verlangt ein COM-STA auf genau diesem Thread; ohne COM öffnet kein App-Fenster (fester Fehler), das Bedienfeld läuft weiter.
+	leave, _ := fensterio.EnterUI()
+	defer leave()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	a := &application{model: panel.New(), icons: map[string]uintptr{}, events: make(chan panelio.Event, 64), requests: make(chan panelio.Request, 32), cancel: cancel}

@@ -21,7 +21,7 @@ func TestWaitForBegrenzt(t *testing.T) {
 	t.Run("fehlerBrichtSofortAb", func(t *testing.T) {
 		cause := errors.New("CoInitialize wurde nicht aufgerufen")
 		start := time.Now()
-		err := WaitFor(time.Minute, func() {}, func() (bool, error) { return false, cause })
+		err := WaitFor(3*time.Second, func() {}, func() (bool, error) { return false, cause })
 		if !errors.Is(err, cause) || time.Since(start) > time.Second {
 			t.Fatal(err, time.Since(start))
 		}
@@ -46,7 +46,7 @@ func TestWaitForBegrenzt(t *testing.T) {
 		}
 	})
 	t.Run("abbruchDurchBeenden", func(t *testing.T) {
-		err := WaitFor(time.Minute, func() {}, func() (bool, error) { return false, ErrBeendet })
+		err := WaitFor(3*time.Second, func() {}, func() (bool, error) { return false, ErrBeendet })
 		if !errors.Is(err, ErrBeendet) {
 			t.Fatal(err)
 		}
@@ -99,4 +99,11 @@ func callName(e ast.Expr) string {
 		return callName(x.X) + "." + x.Sel.Name
 	}
 	return ""
+}
+
+// Die Frist des Starts ist kurz genug, dass kein Hänger das Bedienfeld lange einfriert.
+func TestStartFristBegrenzt(t *testing.T) {
+	if startFrist <= 0 || startFrist > 30*time.Second {
+		t.Fatalf("startFrist = %v", startFrist)
+	}
 }

@@ -5,7 +5,6 @@ package edge
 import (
 	"errors"
 	"fmt"
-	"net/http"
 	"syscall"
 	"unsafe"
 
@@ -61,32 +60,6 @@ func (i *ICoreWebView2WebResourceResponse) GetHeaders() (*ICoreWebView2HttpRespo
 		return nil, fmt.Errorf("unknown error")
 	}
 	return headers, nil
-}
-
-func (i *ICoreWebView2WebResourceResponse) PutStatusCode(statusCode int) error {
-	hr, _, _ := i.vtbl.PutStatusCode.Call(
-		uintptr(unsafe.Pointer(i)),
-		uintptr(statusCode),
-	)
-
-	if windows.Handle(hr) != windows.S_OK {
-		return syscall.Errno(hr)
-	}
-
-	// Convert string 'reasonPhrase' to *uint16
-	_reasonPhrase, err := UTF16PtrFromString(http.StatusText(statusCode))
-	if err != nil {
-		return err
-	}
-
-	hr, _, _ = i.vtbl.PutReasonPhrase.Call(
-		uintptr(unsafe.Pointer(i)),
-		uintptr(unsafe.Pointer(_reasonPhrase)),
-	)
-	if windows.Handle(hr) != windows.S_OK {
-		return syscall.Errno(hr)
-	}
-	return nil
 }
 
 func (i *ICoreWebView2WebResourceResponse) PutContent(content *IStream) error {

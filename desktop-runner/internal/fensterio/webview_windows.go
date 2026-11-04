@@ -8,10 +8,10 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/wailsapp/go-webview2/pkg/edge"
 	"github.com/wailsapp/go-webview2/webviewloader"
 	"golang.org/x/sys/windows"
 
+	"github.com/januaport/januaport-plugins/desktop-runner/internal/edge"
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/fenster"
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/platform"
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/wv2com"
@@ -25,6 +25,10 @@ type SurfaceConfig struct {
 	OnClosed func()
 	// Probe meldet jedes native Ereignis mit Einzelheit; nur die nativen Sonden setzen es.
 	Probe func(event, detail string)
+
+	// noThreadCheck schaltet die Prüfung des COM-Threads ab; nur die nativen Sonden erzwingen damit den
+	// Fehlstart der Umgebung. Unexportiert: das Bedienfeld kann es nicht setzen.
+	noThreadCheck bool
 }
 
 // Surface ist ein natives Fenster mit WebView. Alle Methoden laufen auf dem UI-Thread, der es angelegt hat.
@@ -41,6 +45,7 @@ type Surface struct {
 	chromium *edge.Chromium
 	view     *edge.ICoreWebView2
 	closed   bool
+	quit     bool // WM_QUIT kam während des Starts und wurde weitergereicht
 }
 
 var (
@@ -91,6 +96,12 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 	steps := []Step{
 		{"webview2 runtime", func() error { _, err := webviewloader.GetAvailableCoreWebView2BrowserVersionString(""); return err }},
 		{"win32", s.findProcs},
+		{"com apartment", func() error {
+			if cfg.noThreadCheck {
+				return nil
+			}
+			return checkThread()
+		}},
 		{"window class", func() error { classOnce.Do(registerClass); return classErr }},
 		{"window", s.createWindow},
 		// Das Benutzerdatenverzeichnis liegt unter der Zustandswurzel (der Widerruf des Läufers löscht es mit) und
@@ -109,10 +120,22 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 			s.chromium.SetErrorCallback(func(error) {})
 			return nil
 		}},
-		{"embed", func() error {
+		{"embed begin", func() error {
 			s.chromium.DataPath = o.UserDataDir
-			if !s.chromium.Embed(s.hwnd) {
-				return ErrWebView
+			return s.chromium.Begin(s.hwnd)
+		}},
+		{"embed wait", func() error {
+			// Begrenzt (startFrist): Die Rückrufe der Umgebung kommen als Nachrichten auf diesem Thread. Bei Fehler,
+			// Frist oder Beenden werden spätere Rückrufe wirkungslos und das Fenster bleibt zu.
+			err := WaitFor(startFrist, s.pumpOnce, func() (bool, error) {
+				if s.quit {
+					return false, ErrBeendet
+				}
+				return s.chromium.Ready()
+			})
+			if err != nil {
+				s.chromium.Cancel()
+				return err
 			}
 			controller := s.chromium.GetController()
 			if controller == nil {
@@ -205,6 +228,49 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+const (
+	pmRemove   = 1
+	wmQuit     = 0x0012
+	qsAllInput = 0x04FF
+)
+
+var (
+	pMsgWait     = user32.NewProc("MsgWaitForMultipleObjects")
+	pPeekMsg     = user32.NewProc("PeekMessageW")
+	pTranslate   = user32.NewProc("TranslateMessage")
+	pDispatchMsg = user32.NewProc("DispatchMessageW")
+	pPostQuit    = user32.NewProc("PostQuitMessage")
+)
+
+type pumpMsg struct {
+	Window         uintptr
+	Message        uint32
+	WParam, LParam uintptr
+	Time           uint32
+	X, Y           int32
+	Private        uint32
+}
+
+// pumpOnce wartet höchstens 50 ms auf Nachrichten und verteilt alle anstehenden. Kommt WM_QUIT, wird es für
+// die Hauptschleife erneut eingestellt und der Start abgebrochen.
+func (s *Surface) pumpOnce() {
+	pMsgWait.Call(0, 0, 0, 50, qsAllInput)
+	var m pumpMsg
+	for {
+		r, _, _ := pPeekMsg.Call(uintptr(unsafe.Pointer(&m)), 0, 0, 0, pmRemove)
+		if r == 0 {
+			return
+		}
+		if m.Message == wmQuit {
+			pPostQuit.Call(m.WParam)
+			s.quit = true
+			return
+		}
+		pTranslate.Call(uintptr(unsafe.Pointer(&m)))
+		pDispatchMsg.Call(uintptr(unsafe.Pointer(&m)))
+	}
 }
 
 func (s *Surface) trace(event, detail string) {
@@ -375,6 +441,7 @@ func (s *Surface) requestClose() {
 }
 
 func (s *Surface) destroy() {
+	s.chromium.Close()
 	if s.hwnd != 0 && !s.closed {
 		pDestroy.Call(s.hwnd)
 	}

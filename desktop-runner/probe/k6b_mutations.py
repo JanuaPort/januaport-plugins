@@ -39,6 +39,10 @@ ENG = "internal/client/engine.go"
 LOGF = "internal/client/log.go"
 APW = "cmd/bedienfeld/apps_windows.go"
 MDL = "internal/panel/model.go"
+WAIT = "internal/fensterio/wait.go"
+WVS = "internal/fensterio/webview_windows.go"
+ECH = "internal/edge/chromium.go"
+BMN = "cmd/bedienfeld/main_windows.go"
 
 
 def edit(path, old, new):
@@ -180,6 +184,20 @@ CASES = [
     ("layout-leiste", "fenster", "TestLayout", [edit(EXT, "view = Rect{0, bh, w, h - bh}", "view = Rect{0, 0, w, h}")]),
     ("panel-app-unbekannt", "panel", "TestPanelAppNurBekannteNamen", [edit(MDL, "\t\t\tif n == name {", "\t\t\tif n == name || true {")]),
     ("panel-app-validierung", "panel", "TestPanelAppNurBekannteNamen", [edit(MDL, "if appName.MatchString(n) && !seen[n] {", "if !seen[n] {")]),
+    # VM-Befund: begrenzter Start, kein Prozessende, COM-Thread
+    ("wait-fehler-ignoriert", "fensterio", "TestWaitForBegrenzt", [edit(WAIT, "if err != nil {\n\t\t\treturn err\n\t\t}", "if err != nil && false {\n\t\t\treturn err\n\t\t}")]),
+    ("wait-ohne-grenze", "fensterio", "TestWaitForBegrenzt", [edit(WAIT, "deadline := time.Now().Add(timeout)", "deadline := time.Now().Add(timeout + 3*time.Second)")]),
+    ("wait-beendet-nicht", "fensterio", "TestWaitForBegrenzt", [edit(WAIT, "\t\tstep()\n", "")]),
+    ("start-frist-lang", "fensterio", "TestStartFristBegrenzt", [edit(WAIT, "const startFrist = 20 * time.Second", "const startFrist = 20 * time.Hour")]),
+    ("edge-exit", "fensterio", "TestEdgeKopieOhneProzessendeUndOhneUnbegrenzteWartezeit", [edit(ECH, "\te.failure.CompareAndSwap(nil, &err)\n}\n\n// fail", "\te.failure.CompareAndSwap(nil, &err)\n\tos.Exit(1)\n}\n\n// fail"), edit(ECH, '\t"fmt"\n', '\t"fmt"\n\t"os"\n')]),
+    ("edge-getmessage", "fensterio", "TestEdgeKopieOhneProzessendeUndOhneUnbegrenzteWartezeit", [edit(ECH, "\te.hwnd = hwnd\n\tbrowserArgs", "\te.hwnd = hwnd\n\t_ = w32.User32GetMessageW\n\tbrowserArgs")]),
+    ("edge-echo", "fensterio", "TestEdgeKopieOhneProzessendeUndOhneUnbegrenzteWartezeit", [edit(ECH, "\tif err = e.webview.AddProcessFailed(", "\t_ = e.webview.AddWebMessageReceived(e.webMessageReceived, &token)\n\tif err = e.webview.AddProcessFailed(")]),
+    ("edge-fatal", "fensterio", "TestEdgeKopieOhneProzessendeUndOhneUnbegrenzteWartezeit", [edit(ECH, "\t\te.errorCallback(err)\n\t\treturn 0\n\t}\n\tdefer req.Release()", "\t\tlog.Fatal(err)\n\t}\n\tdefer req.Release()")]),
+    ("bedienfeld-ohne-com", "fensterio", "TestBedienfeldInitialisiertCOMAufDemUIThread", [edit(BMN, "\tleave, _ := fensterio.EnterUI()\n\tdefer leave()\n", "")]),
+    ("bedienfeld-com-im-thread", "fensterio", "TestBedienfeldInitialisiertCOMAufDemUIThread", [edit(BMN, "\tleave, _ := fensterio.EnterUI()\n\tdefer leave()\n", "\tgo func() { _, _ = fensterio.EnterUI() }()\n")]),
+    ("adapter-ohne-thread-pruefung", "fensterio", "TestAdapterPruefteThreadUndWartetBegrenzt", [edit(WVS, '"com apartment"', '"com"')]),
+    ("adapter-ohne-cancel", "fensterio", "TestAdapterPruefteThreadUndWartetBegrenzt", [edit(WVS, "\t\t\t\ts.chromium.Cancel()\n", "")]),
+    ("adapter-ohne-wait", "fensterio", "TestAdapterPruefteThreadUndWartetBegrenzt", [edit(WVS, "err := WaitFor(startFrist, s.pumpOnce,", "err := waitUnbegrenzt(s.pumpOnce,"), edit(WVS, "func (s *Surface) trace(event, detail string) {", "func waitUnbegrenzt(step func(), poll func() (bool, error)) error {\n\tfor {\n\t\tif ok, err := poll(); ok || err != nil {\n\t\t\treturn err\n\t\t}\n\t\tstep()\n\t}\n}\n\nfunc (s *Surface) trace(event, detail string) {")]),
 ]
 
 
