@@ -49,6 +49,7 @@ PTW = "internal/pipe/transport_windows.go"
 RSR = "internal/fenster/resource.go"
 DGN = "internal/fenster/diag.go"
 ENVF = "internal/fensterio/env.go"
+ESN = "internal/envsnap/envsnap.go"
 APL = "internal/client/appload.go"
 
 
@@ -232,9 +233,9 @@ CASES = [
     ("spekulationsargumente-fehlen", "fensterio", "TestAdapterSperrtRessourcenUndNetz", [edit(WVS, "args = append(args, fenster.SpeculationArgs()...)", "_ = fenster.SpeculationArgs")]),
     ("browserpruefung-fehlt", "fensterio", "TestAdapterPruefteThreadUndWartetBegrenzt", [edit(WVS, '{"browser pruefen", func() error {', '{"browser", func() error {')]),
     ("browserpruefung-ohne-kommandozeile", "fensterio", "TestAdapterSperrtRessourcenUndNetz", [edit(WVS, "problems := fenster.BrowserCommandLineProblems(line)", "problems := []string(nil)\n\t\t\t_ = line")]),
-    ("webview2-variablen-ignoriert", "fensterio", "TestAdapterSperrtRessourcenUndNetz", [edit(WVS, "if names := webview2Names(os.Environ()); len(names) > 0 {", "if names := jnptNames(nil); len(names) > 0 {")]),
-    ("webview2-gross-klein", "fensterio", "TestWebView2Namen", [edit(ENVF, 'strings.EqualFold(name[:9], "webview2_")', 'name[:9] == "WEBVIEW2_"')]),
-    ("webview2-ohne-unterstrich", "fensterio", "TestWebView2Namen", [edit(ENVF, "len(name) >= 9 && strings.EqualFold(name[:9], \"webview2_\")", "len(name) >= 8 && strings.EqualFold(name[:8], \"webview2\")")]),
+    ("webview2-variablen-ignoriert", "fensterio", "TestAdapterSperrtRessourcenUndNetz", [edit(WVS, "if findings := webview2Findings(envsnap.Start(), os.Environ()); len(findings) > 0 {", "if findings := jnptNames(nil); len(findings) > 0 {"), edit(WVS, '\t"github.com/januaport/januaport-plugins/desktop-runner/internal/envsnap"\n', '')]),
+    ("webview2-gross-klein", "fensterio", "TestWebView2Eingriffe", [edit(ENVF, 'len(name) >= 9 && strings.EqualFold(name[:9], "webview2_")', 'len(name) >= 9 && name[:9] == "WEBVIEW2_"')]),
+    ("webview2-ohne-unterstrich", "fensterio", "TestWebView2Eingriffe", [edit(ENVF, "len(name) >= 9 && strings.EqualFold(name[:9], \"webview2_\")", "len(name) >= 8 && strings.EqualFold(name[:8], \"webview2\")")]),
     ("cmdline-doppelt", "fenster", "TestBrowserCommandLineProblems", [edit(RSR, "case len(got) > 1:", "case false:")]),
     ("cmdline-abweichend", "fenster", "TestBrowserCommandLineProblems", [edit(RSR, "case got[0] != w.value:", "case false:")]),
     ("cmdline-erstes-features", "fenster", "TestBrowserCommandLineProblems", [edit(RSR, "strings.Split(got[len(got)-1], \",\")", "strings.Split(got[0], \",\")")]),
@@ -247,6 +248,13 @@ CASES = [
     ("lader-grossschreibung", "client", "TestInjectCSPLehntSpekulativesLadenAb", [edit(APL, "strings.Fields(strings.ToLower(a.Val))", "strings.Fields(a.Val)")]),
     ("lader-speculationrules", "client", "TestInjectCSPLehntSpekulativesLadenAb", [edit(APL, 'strings.EqualFold(strings.TrimSpace(a.Val), "speculationrules")', 'false')]),
     ("lader-template", "client", "TestInjectCSPLehntSpekulativesLadenAb", [edit(APL, "\t\tfor c := n.FirstChild; c != nil; c = c.NextSibling {\n\t\t\twalk(c)\n\t\t}\n\t}\n\twalk(doc)\n\treturn found", "\t\tfor c := n.FirstChild; c != nil && n.Data != \"template\"; c = c.NextSibling {\n\t\t\twalk(c)\n\t\t}\n\t}\n\twalk(doc)\n\treturn found")]),
+    # Lauf 6: Eingriffe vor und nach dem Lader-Init unterscheiden
+    ("eingriff-start-ignoriert", "fensterio", "TestWebView2Eingriffe", [edit(ENVF, "for _, kv := range start {", "for _, kv := range []string(nil) {")]),
+    ("eingriff-laufend-ignoriert", "fensterio", "TestWebView2Eingriffe", [edit(ENVF, "for _, kv := range current {", "for _, kv := range []string(nil) {")]),
+    ("eingriff-neutral-alles", "fensterio", "TestWebView2Eingriffe", [edit(ENVF, "ok && value == want {", "ok {")]),
+    ("eingriff-wert-in-meldung", "fensterio", "TestWebView2Eingriffe", [edit(ENVF, 'out = append(out, fmt.Sprintf("%s(laenge=%d,laufend)", name, len(value)))', 'out = append(out, fmt.Sprintf("%s(laenge=%d,laufend)", name, len(value))+value)')]),
+    ("eingriff-kanal-neutral", "fensterio", "TestWebView2Eingriffe", [edit(ENVF, '"WEBVIEW2_RELEASE_CHANNEL_PREFERENCE":   "0",', '"WEBVIEW2_RELEASE_CHANNEL_PREFERENCE":   "1",')]),
+    ("envsnap-importiert-mehr", "fensterio", "TestEnvsnapLaeuftVorDemLader", [edit(ESN, 'import "os"', 'import (\n\t"os"\n\t"strings"\n)\n\nvar _ = strings.ToUpper')]),
 ]
 
 

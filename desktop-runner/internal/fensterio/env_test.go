@@ -25,24 +25,6 @@ func TestEnvNamenZumEntfernen(t *testing.T) {
 	}
 }
 
-// SEC Lauf 5: Jede gesetzte WEBVIEW2_*-Umgebungsvariable gilt als Eingriff (Browserordner, Argumente, Datenordner
-// ...); das Fenster öffnet dann nicht. Nur Namen, nie Werte.
-func TestWebView2Namen(t *testing.T) {
-	got := webview2Names([]string{
-		"PATH=/bin",
-		"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--x",
-		"webview2_user_data_folder=/x",
-		"WEBVIEW2=1",
-		"MY_WEBVIEW2_X=1",
-		"WEBVIEW2_RELEASE_CHANNEL_PREFERENCE=1",
-		"=C:=C:/Users",
-	})
-	want := []string{"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "webview2_user_data_folder", "WEBVIEW2_RELEASE_CHANNEL_PREFERENCE"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("%v, erwartet %v", got, want)
-	}
-}
-
 // VM-Befund Lauf 6: Der Go-Lader (webviewloader, Paket-Init) setzt WEBVIEW2_PIPE_FOR_SCRIPT_DEBUGGER,
 // ..._ADDITIONAL_BROWSER_ARGUMENTS, ..._BROWSER_EXECUTABLE_FOLDER und ..._USER_DATA_FOLDER auf leer und
 // ..._RELEASE_CHANNEL_PREFERENCE auf 0, damit weder Umgebung noch Registry etwas überschreiben. Das ist der
@@ -65,11 +47,13 @@ func TestWebView2Eingriffe(t *testing.T) {
 	}{
 		{"nurLaderZustand", []string{"PATH=/bin"}, neutral, nil},
 		{"laufendFremderWert", []string{"PATH=/bin"}, append(append([]string(nil), neutral...), "WEBVIEW2_X=1"), []string{"WEBVIEW2_X(laenge=1,laufend)"}},
-		{"argumenteGesetzt", []string{}, []string{"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--geheim-wert"}, []string{"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS(laenge=14,laufend)"}},
+		{"argumenteGesetzt", []string{}, []string{"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--geheim-wert"}, []string{"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS(laenge=13,laufend)"}},
 		{"kanalAbweichend", []string{}, []string{"WEBVIEW2_RELEASE_CHANNEL_PREFERENCE=1"}, []string{"WEBVIEW2_RELEASE_CHANNEL_PREFERENCE(laenge=1,laufend)"}},
 		{"neutralerWertBeimStart", []string{"WEBVIEW2_USER_DATA_FOLDER="}, neutral, []string{"WEBVIEW2_USER_DATA_FOLDER(laenge=0,start)"}},
 		{"startUndLaufend", []string{"webview2_browser_executable_folder=C:/x"}, neutral, []string{"webview2_browser_executable_folder(laenge=4,start)"}},
 		{"keineWebview2Namen", []string{"MY_WEBVIEW2_X=1", "PATH=/bin"}, []string{"MY_WEBVIEW2_X=1"}, nil},
+		{"webview2OhneUnterstrich", []string{"WEBVIEW2=1"}, []string{"WEBVIEW2=1"}, nil},
+		{"kleinschreibungLaufend", []string{}, []string{"webview2_additional_browser_arguments=--x"}, []string{"webview2_additional_browser_arguments(laenge=3,laufend)"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := webview2Findings(tc.start, tc.current)

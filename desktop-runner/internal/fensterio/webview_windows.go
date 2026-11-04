@@ -15,6 +15,7 @@ import (
 	"golang.org/x/sys/windows"
 
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/edge"
+	"github.com/januaport/januaport-plugins/desktop-runner/internal/envsnap"
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/fenster"
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/platform"
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/wv2com"
@@ -137,8 +138,10 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 			// Opt-ins, vielleicht Träger) werden vorher entfernt; das Bedienfeld liest keine davon.
 			// Jede WEBVIEW2_*-Variable ist ein Eingriff in den Start des Browsers (Ordner, Argumente): Das Fenster
 			// öffnet nicht. Das kommt vor allem anderen, auch vor dem Entfernen der JNPT*-Variablen.
-			if names := webview2Names(os.Environ()); len(names) > 0 {
-				s.trace("Eingriff", "WEBVIEW2-Variablen gesetzt: "+strings.Join(names, ","))
+			// Verglichen wird die Momentaufnahme vor dem Lader-Init (envsnap) mit der Umgebung jetzt: Der Go-Lader
+			// setzt fünf Variablen im Paket-Init auf leer, das ist erwartet; alles andere ist ein Eingriff.
+			if findings := webview2Findings(envsnap.Start(), os.Environ()); len(findings) > 0 {
+				s.trace("Eingriff", "WEBVIEW2-Variablen: "+strings.Join(findings, ","))
 				return ErrWebView
 			}
 			for _, name := range jnptNames(os.Environ()) {

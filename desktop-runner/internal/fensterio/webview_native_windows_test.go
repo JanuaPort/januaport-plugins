@@ -35,6 +35,7 @@ import (
 	"golang.org/x/sys/windows"
 
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/edge"
+	"github.com/januaport/januaport-plugins/desktop-runner/internal/envsnap"
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/fenster"
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/platform"
 )
@@ -954,6 +955,10 @@ func TestWindowsWebViewOhneCOMOeffnetNicht(t *testing.T) {
 		if !errors.Is(err, ErrWebView) {
 			t.Fatalf("erwartet den festen Fehler, bekam %v", err)
 		}
+		var se *StepError
+		if !errors.As(err, &se) || se.Step != "com apartment" {
+			t.Fatalf("scheitert am falschen Schritt: %v", se)
+		}
 	case <-time.After(probeFrist):
 		t.Fatal("Sonde hängt")
 	}
@@ -985,6 +990,10 @@ func TestWindowsWebViewFehlstartHaengtNicht(t *testing.T) {
 	case r := <-done:
 		if !errors.Is(r.err, ErrWebView) {
 			t.Fatalf("erwartet den festen Fehler, bekam %v", r.err)
+		}
+		var se *StepError
+		if !errors.As(r.err, &se) || se.Step != "embed wait" {
+			t.Fatalf("Die Umgebung ist nicht im Schritt embed wait gescheitert (der Fehlstart wurde nicht erzwungen): %v", se)
 		}
 		if r.elapsed > startFrist+5*time.Second {
 			t.Fatalf("Fehlstart dauerte %v (Grenze %v)", r.elapsed, startFrist)
@@ -1096,4 +1105,33 @@ func TestWindowsEdgeControllerFehlerBleibtFehler(t *testing.T) {
 			t.Fatal("Nachrichtenverteilung blockiert nach dem Fehler")
 		}
 	})
+}
+
+// Belegt am Prozess, dass die Momentaufnahme vor dem Paket-Init des Go-Laders läuft: Sie enthält keine
+// WEBVIEW2_*-Variable (Sondenlauf 6: im Gast ist keine gesetzt), die Umgebung jetzt aber schon die fünf neutralen
+// Werte, die der Lader setzt. Steht beim Start etwas drin, ist das ein Eingriff oder die Reihenfolge ist verletzt;
+// die Ausgabe nennt nur Namen und Wertlängen.
+func TestWindowsEnvMomentaufnahmeVorLader(t *testing.T) {
+	if !probeOptIn {
+		t.Skip("opt-in: JNPT_NATIVE_WEBVIEW_PROBE=1")
+	}
+	if findings := webview2Findings(envsnap.Start(), nil); len(findings) != 0 {
+		t.Fatalf("beim Start gesetzt (Eingriff, oder die Momentaufnahme lief nach dem Lader-Init): %v", findings)
+	}
+	have := map[string]string{}
+	for _, kv := range os.Environ() {
+		name, value, _ := strings.Cut(kv, "=")
+		if isWebView2(name) {
+			have[strings.ToUpper(name)] = value
+		}
+	}
+	for name, want := range loaderNeutral {
+		got, ok := have[name]
+		if !ok || got != want {
+			t.Errorf("Der Lader-Init hat %s nicht neutral gesetzt (vorhanden=%v, laenge=%d)", name, ok, len(got))
+		}
+	}
+	if findings := webview2Findings(envsnap.Start(), os.Environ()); len(findings) != 0 {
+		t.Errorf("Eingriffe jetzt: %v", findings)
+	}
 }

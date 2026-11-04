@@ -365,16 +365,25 @@ func TestWindowsWebViewBrowserpruefungFailClosed(t *testing.T) {
 	t.Run("webview2Variable", func(t *testing.T) {
 		b.t = t
 		b.run(t, probeFrist, func(t *testing.T) {
+			// Der Lader hat die Variable auf leer gesetzt; ein echter Wert danach ist der Eingriff. Danach zurück auf den
+			// Zustand des Laders, damit spätere Sonden ihn wiederfinden.
+			old, had := os.LookupEnv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS")
 			os.Setenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--disable-features=Prerender2")
-			defer os.Unsetenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS")
+			defer func() {
+				if had {
+					os.Setenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", old)
+				} else {
+					os.Unsetenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS")
+				}
+			}()
 			err, trace := try(t, func(*SurfaceConfig) {})
 			if !errors.Is(err, ErrWebView) {
 				t.Fatalf("erwartet den festen Fehler, bekam %v (Spur %v)", err, trace)
 			}
 			found := false
 			for _, e := range trace {
-				if strings.HasPrefix(e, "Eingriff ") && strings.Contains(e, "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS") {
-					found = true
+				if strings.HasPrefix(e, "Eingriff ") && strings.Contains(e, "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS(laenge=29,laufend)") && !strings.Contains(e, "Prerender2") {
+					found = true // Name und Länge, nie der Wert
 				}
 			}
 			if !found {
