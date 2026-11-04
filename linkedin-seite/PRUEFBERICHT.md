@@ -57,6 +57,9 @@ und Budget-Zeit. Nicht übernommen: `asyncio.timeout_at` um die Erneuerung, sieh
 - **215/215 Mutationen erkannt**, Originalquellen unverändert (`pruefung/grant-mutations.txt`).
   Ausgangsstand: 186. Entfallen sind neun Anker des früheren Zweit-Grants und der Token-Trennung.
 - Windows, Python 3.12.9, aiohttp 3.14.5 (nicht der Hash-Lock-Stand von CI; CI-Lauf im Abschlussbericht).
+- Erster CI-Lauf (41814900871) brach an `timeout-minutes: 10` ab, nicht an einem Test: 281 Tests OK in
+  189,9 s, Baseline gleich, 194 von 215 Mutanten erkannt, keiner überlebt. Deshalb Zeitgrenze 15 Minuten
+  für den Job `unit`; Tests oder Mutanten zu kürzen hieße, die Wächter zu schwächen.
 
 ### Invariante → Nachweis
 

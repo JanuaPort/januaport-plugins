@@ -21,6 +21,8 @@
 - Unverändert: SEC-Trennung im Gateway, `X-Jnpt-Freigabe`, Hash-Vergleich, Tagesdeckel, Lese-Routen
   nur GET, kein neues Werkzeug. SEC Bed. 4 (eigener Schreib-Grant) ist aufgehoben und braucht eine
   SEC-Entscheidung. Umstieg in SETUP.md: Widerruf, Einspielen, eine Zustimmung, alte Stelle leeren.
+- CI: Zeitgrenze des Jobs `unit` von 10 auf 15 Minuten. Suite und Mutationen brauchen jetzt rund
+  10:50 (gemessen: 281 Tests zweimal je 190 Sekunden, 194 von 215 Mutanten in 3:45).
 - Synthetisch verifiziert; Live-Abnahme offen.
 
 ## 0.3.0 — 2026-11-03
