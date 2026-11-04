@@ -336,7 +336,7 @@ func TestAppCSPJedeHTMLDatei(t *testing.T) {
 	}
 	assertNichtsAbgelegt(t, st, app)
 	files["seite2.html"] = appHTML("")
-	files["unter/seite3.html"] = appHTML("")
+	files["unter/seite3.html"] = appHTML("<p>drei</p>")
 	app, raw = buildApp(t, files, "")
 	if err := store.Prepare(raw, app); err != nil {
 		t.Fatal(err)

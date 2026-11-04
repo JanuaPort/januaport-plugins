@@ -4,6 +4,7 @@ import (
 	"context"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/fenster"
@@ -49,6 +50,16 @@ func (s *AppStore) Open(app App) (string, error) {
 	}
 	if err := VerifyEnvironment(dir, seal.Files); err != nil {
 		return "", ErrHash
+	}
+	// Auch ein in sich stimmiges Siegel genügt nicht: Das Literal muss in jeder HTML-Datei vorn stehen.
+	for _, f := range seal.Files {
+		if path.Ext(f.Path) != ".html" {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(f.Path)))
+		if err != nil || !leadingCSP(b) {
+			return "", ErrHash
+		}
 	}
 	return dir, nil
 }

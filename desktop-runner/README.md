@@ -55,9 +55,9 @@ prüfbare Grundlage, die K6b-2 an das Fenster hängt. Es gibt keinen lokalen Fen
 - **App-Paket:** `AppStore` holt das Paket (`packages/{commit}?path=apps/<name>`, Quelle
   Speicher), prüft es vollständig (Git-IDs, SHA-1DC/SHA-256, Objektmenge, Namen, Modus
   100644) und danach die apphost-Regeln als markierte Kopie (`copied_apphost.go`:
-  MIME-Liste, Geheimnismuster, keine aktive Markup). Jede HTML-Datei braucht **genau ein**
-  `<meta http-equiv="Content-Security-Policy">` mit dem Literal `fenster.CSP`, vor jedem
-  ressourcenladenden Element (der virtuelle Host setzt keine Header). Die apphost-CSP wird
+  MIME-Liste, Geheimnismuster, keine aktive Markup). Das CSP-Literal `fenster.CSP` setzt der Läufer
+  selbst als erstes Element in jedes `<head>` ein und versiegelt danach; HTML mit eigener CSP-Meta oder
+  ohne sauberes `<head>` wird abgewiesen, `Open` prüft das führende Literal erneut. Die apphost-CSP wird
   nicht übernommen. Ablage privat unter `<Zustand>\apps\<name>\<commit>\`, Siegel (Pfad,
   Größe, SHA-256) im verschlüsselten Zustand, Prüfung vor **jedem** Öffnen, nie stilles
   Reparieren. Widerruf löscht Ablage und Siegel mit dem Zustand.

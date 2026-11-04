@@ -1,8 +1,9 @@
 // Kopie aus script-runner/internal/apphost/package.go (JanuaPort/januaport#1048 K6b-1): MIME-Liste,
 // Geheimnismuster und Markupprüfung sind wortgleich; loadAppPackage ist die Anpassung von loadPackage
 // an die Läufer-Pakete (Vertrag 5, decodePackage statt gitobjects.Objects, rohe Bytes statt Assets).
-// Die CSP der apphost (HTTP-Header) wird nicht übernommen; stattdessen verlangt der Läufer in jeder
-// HTML-Datei das Meta-Literal fenster.CSP (appload.go). Wächter: TestCopiedApphostFunctions.
+// Die CSP der apphost (HTTP-Header) wird nicht übernommen; stattdessen setzt der Läufer nach der
+// Paketprüfung das Meta-Literal fenster.CSP als erstes Element in jedes <head> (appload.go).
+// Wächter: TestCopiedApphostFunctions.
 package client
 
 import (
@@ -88,8 +89,11 @@ func loadAppPackage(b []byte, app App) (map[string][]byte, error) {
 					return fmt.Errorf("%s: active_markup", file)
 				}
 			}
-			if path.Ext(file) == ".html" && !hasExactCSPMeta(content) {
-				return fmt.Errorf("%s: csp", file)
+			if path.Ext(file) == ".html" {
+				var err error
+				if content, err = injectCSP(content); err != nil {
+					return fmt.Errorf("%s: csp", file)
+				}
 			}
 			if path.Base(file) != "jnpt.app.json" {
 				files[file] = content

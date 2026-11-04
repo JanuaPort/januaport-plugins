@@ -10,8 +10,9 @@
   `contract/golden-v5/` gespiegelt, alle bestehenden Goldens bytegleich.
 - App-Paket: `AppStore` holt, prüft (Git-IDs, SHA-1DC/SHA-256, apphost-Regeln als markierte Kopie
   `copied_apphost.go`), legt privat unter `apps\<name>\<commit>\` ab und versiegelt; das Siegel
-  wird vor jedem Öffnen geprüft. Jede HTML-Datei braucht das CSP-Literal als
-  `<meta http-equiv>` vor allen ladenden Elementen; die apphost-CSP wird nicht übernommen.
+  wird vor jedem Öffnen geprüft. Das CSP-Literal setzt der Läufer beim Ablegen selbst als erstes
+  Element in jedes `<head>` ein (vor dem Siegel); eigene CSP-Meta oder kein sauberes `<head>` wird
+  abgewiesen, `Open` prüft das führende Literal. Die apphost-CSP wird nicht übernommen.
 - App-Token (`POST apps/{name}/token`) nur im RAM, bei 401 einmal neu geholt; gedruckt wird es nie.
 - `internal/fenster` (reines Go, Import-Wächter): exaktes CSP-Literal, `NavigationAllowed`,
   `MessageAllowed`, `Settings()`-Sollliste, strikter Umschlag (256 KiB) und die Brücke mit
