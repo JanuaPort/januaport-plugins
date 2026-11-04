@@ -9,7 +9,7 @@ import (
 // Argumente werden exakt verlangt. Geprüft wird die Wirkung (was der Browser wirklich bekam), nicht eine Liste.
 const goodLine = `"C:/Programme/Edge/msedgewebview2.exe" --type=browser --disable-features=msWebOOUI,Foo ` +
 	`--proxy-server=http://0.0.0.0:0 --proxy-bypass-list=<-loopback> "--host-resolver-rules=MAP * ~NOTFOUND" ` +
-	`--disable-features=Prerender2,NoStatePrefetch --disable-background-networking --dns-prefetch-disable --embedded-browser-webview=1`
+	`--embedded-browser-webview=1`
 
 func TestBrowserCommandLineProblems(t *testing.T) {
 	if p := BrowserCommandLineProblems(goodLine); len(p) != 0 {
@@ -34,12 +34,6 @@ func TestBrowserCommandLineProblems(t *testing.T) {
 		{"pacUrl", goodLine + ` --proxy-pac-url=http://x/pac`, "verboten --proxy-pac-url"},
 		{"keinProxy", goodLine + ` --no-proxy-server`, "verboten --no-proxy-server"},
 		{"autoErkennung", goodLine + ` --proxy-auto-detect`, "verboten --proxy-auto-detect"},
-		{"featuresLetzteOhnePrerender", goodLine + ` --disable-features=Foo`, "fehlt Prerender2 in --disable-features"},
-		{"featuresOhneNoState", strings.Replace(goodLine, "Prerender2,NoStatePrefetch", "Prerender2", 1), "fehlt NoStatePrefetch in --disable-features"},
-		{"featuresFehlenGanz", strings.Replace(goodLine, "--disable-features=Prerender2,NoStatePrefetch ", "", 1), "fehlt Prerender2 in --disable-features"},
-		{"featuresEinschalten", goodLine + ` --enable-features=Prerender2`, "verboten Prerender2 in --enable-features"},
-		{"netzwerkHintergrund", strings.Replace(goodLine, "--disable-background-networking ", "", 1), "fehlt --disable-background-networking"},
-		{"dnsPrefetch", strings.Replace(goodLine, "--dns-prefetch-disable ", "", 1), "fehlt --dns-prefetch-disable"},
 		{"leer", ``, "fehlt --proxy-server"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -60,14 +54,17 @@ func TestBrowserCommandLineProblems(t *testing.T) {
 	}
 }
 
-// Die Browserargumente sind in zwei Teile geteilt: das Netz aus und das spekulative Laden aus.
-func TestBrowserArgumentsTeile(t *testing.T) {
+// Die Browserargumente sind genau die Netzsperre. Feature-Schalter gegen spekulatives Laden (Prerender2,
+// NoStatePrefetch) wirkten in Runtime 156 nachweislich nicht (Sondenlauf 7) und sind entfernt, ebenso Schalter, die
+// keine Messung trägt.
+func TestBrowserArgumentsNurNetzsperre(t *testing.T) {
 	const net = `--proxy-server=http://0.0.0.0:0 --proxy-bypass-list=<-loopback> --host-resolver-rules="MAP * ~NOTFOUND"`
-	const spec = `--disable-features=Prerender2,NoStatePrefetch --disable-background-networking --dns-prefetch-disable`
-	if strings.Join(NetworkLockArgs(), " ") != net || strings.Join(SpeculationArgs(), " ") != spec {
-		t.Fatalf("Teile: %q / %q", NetworkLockArgs(), SpeculationArgs())
-	}
-	if BrowserArguments != net+" "+spec || strings.Join(BrowserArgs(), " ") != BrowserArguments {
+	if strings.Join(NetworkLockArgs(), " ") != net || BrowserArguments != net || strings.Join(BrowserArgs(), " ") != net {
 		t.Fatalf("BrowserArguments = %q", BrowserArguments)
+	}
+	for _, bad := range []string{"disable-features", "enable-features", "Prerender", "NoStatePrefetch", "disable-background-networking", "dns-prefetch-disable"} {
+		if strings.Contains(BrowserArguments, bad) {
+			t.Fatalf("Browserargumente tragen %q, das keine Messung belegt", bad)
+		}
 	}
 }
