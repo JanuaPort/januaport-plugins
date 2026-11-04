@@ -10,35 +10,27 @@ import (
 // (<-loopback), und DNS ist aus.
 const NetworkLockArguments = `--proxy-server=http://0.0.0.0:0 --proxy-bypass-list=<-loopback> --host-resolver-rules="MAP * ~NOTFOUND"`
 
-// SpeculationArguments schalten das spekulative Laden des Browsers aus (SEC Lauf 5: Prerender holte ein
-// echtes GET): Prerender und No-State-Prefetch, das Hintergrundnetz und das DNS-Vorabholen. Ob ein Name in der
-// eingesetzten Runtime wirkt, belegt die native Sonde, nicht diese Liste.
-const SpeculationArguments = `--disable-features=Prerender2,NoStatePrefetch --disable-background-networking --dns-prefetch-disable`
-
-// BrowserArguments sind alle zusätzlichen Argumente des Browserprozesses. Der Kommandozeilenwert ist keine
-// harte Grenze: Umgebungsvariablen und Richtlinien können ihn übersteuern. Darum liest der Adapter nach dem
-// Start die Kommandozeile des Browserprozesses und verlangt diese Argumente exakt (BrowserCommandLineProblems),
-// jede WEBVIEW2_*-Variable ist ein Eingriff, und Schicht 1 (ResourceAllowed im Ereignis WebResourceRequested)
-// ist Pflicht daneben. Kein Träger und kein Pfad gehören hierher.
-const BrowserArguments = NetworkLockArguments + " " + SpeculationArguments
+// BrowserArguments sind alle zusätzlichen Argumente des Browserprozesses: die Netzsperre, sonst nichts. Der
+// Kommandozeilenwert ist keine harte Grenze: Umgebungsvariablen und Richtlinien können ihn übersteuern. Darum liest der
+// Adapter nach dem Start die Kommandozeile des Browserprozesses und verlangt diese Argumente exakt
+// (BrowserCommandLineProblems), und Schicht 1 (ResourceAllowed im Ereignis WebResourceRequested) ist Pflicht daneben.
+// Feature-Schalter gegen spekulatives Laden (Prerender2, NoStatePrefetch) wirkten in Runtime 156 nachweislich nicht
+// (Sondenlauf 7: prerender holte ein GET), und für --disable-background-networking und --dns-prefetch-disable trägt keine
+// Messung; beides ist entfernt. Eine Übersteuerung, die nicht in der Kommandozeile sichtbar wird (Richtlinie,
+// Registry), erkennt die Prüfung nicht. Kein Träger und kein Pfad gehören hierher.
+const BrowserArguments = NetworkLockArguments
 
 // NetworkLockArgs liefert NetworkLockArguments als einzelne Argumente.
 func NetworkLockArgs() []string {
 	return []string{`--proxy-server=http://0.0.0.0:0`, `--proxy-bypass-list=<-loopback>`, `--host-resolver-rules="MAP * ~NOTFOUND"`}
 }
 
-// SpeculationArgs liefert SpeculationArguments als einzelne Argumente.
-func SpeculationArgs() []string {
-	return []string{`--disable-features=Prerender2,NoStatePrefetch`, `--disable-background-networking`, `--dns-prefetch-disable`}
-}
-
 // BrowserArgs liefert BrowserArguments als einzelne Argumente.
-func BrowserArgs() []string { return append(NetworkLockArgs(), SpeculationArgs()...) }
+func BrowserArgs() []string { return NetworkLockArgs() }
 
-// BrowserCommandLineProblems prüft die Kommandozeile des Browserprozesses nach Wirkung: Die Proxy-, Umleitungs- und
-// Resolver-Argumente müssen genau einmal und mit genau unserem Wert vorkommen, die Schalter für Hintergrundnetz und
-// DNS-Vorabholen müssen da sein, das letzte --disable-features muss Prerender2 und NoStatePrefetch enthalten, und
-// widersprechende Argumente sind verboten. Die Meldungen nennen nur feste Argumentnamen, nie Inhalt der Zeile.
+// BrowserCommandLineProblems prüft die Kommandozeile des Browserprozesses nach Wirkung: Die Proxy-, Umgehungslisten- und
+// Resolver-Argumente müssen genau einmal und mit genau unserem Wert vorkommen, widersprechende Proxy-Argumente sind
+// verboten. Die Meldungen nennen nur feste Argumentnamen, nie Inhalt der Zeile.
 func BrowserCommandLineProblems(line string) []string {
 	values := map[string][]string{}
 	args := splitCommandLine(line)
@@ -67,33 +59,9 @@ func BrowserCommandLineProblems(line string) []string {
 			problems = append(problems, "abweichend "+w.key)
 		}
 	}
-	for _, key := range []string{"--disable-background-networking", "--dns-prefetch-disable"} {
-		if len(values[key]) == 0 {
-			problems = append(problems, "fehlt "+key)
-		}
-	}
 	for _, key := range []string{"--proxy-pac-url", "--no-proxy-server", "--proxy-auto-detect"} {
 		if len(values[key]) != 0 {
 			problems = append(problems, "verboten "+key)
-		}
-	}
-	have := map[string]bool{}
-	if got := values["--disable-features"]; len(got) > 0 {
-		for _, f := range strings.Split(got[len(got)-1], ",") {
-			have[strings.TrimSpace(f)] = true // der letzte Wert gewinnt im Browser
-		}
-	}
-	for _, f := range []string{"Prerender2", "NoStatePrefetch"} {
-		if !have[f] {
-			problems = append(problems, "fehlt "+f+" in --disable-features")
-		}
-	}
-	for _, v := range values["--enable-features"] {
-		for _, f := range strings.Split(v, ",") {
-			name, _, _ := strings.Cut(strings.TrimSpace(f), ":")
-			if name == "Prerender2" || name == "NoStatePrefetch" {
-				problems = append(problems, "verboten "+name+" in --enable-features")
-			}
 		}
 	}
 	return problems

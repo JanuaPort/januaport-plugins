@@ -36,7 +36,9 @@ type SurfaceConfig struct {
 	// noResourceFilter und noNetLock schalten Schicht 1 und 2 für die Ursachensonde ab (nur in-package).
 	noResourceFilter bool
 	noNetLock        bool
-	noSpeculation    bool
+	// allowPermissions erlaubt in der Sonde alle Berechtigungen (nur als sehende Kontrolle, dass die Seite sonst
+	// etwas bekäme); im Betrieb ist es immer aus.
+	allowPermissions bool
 	// extraBrowserArgs erzwingt in der Sonde einen widersprechenden Eingriff (das Fenster darf dann nicht öffnen).
 	extraBrowserArgs []string
 }
@@ -118,7 +120,11 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 		// bekommt dieselbe private DACL wie der Läufer-Ordner.
 		{"userdata", func() error { return platform.MkdirPrivate(o.UserDataDir, false) }},
 		{"bind PermissionRequested", func() error {
-			s.chromium.SetGlobalPermission(edge.CoreWebView2PermissionStateDeny)
+			state := edge.CoreWebView2PermissionStateDeny
+			if cfg.allowPermissions {
+				state = edge.CoreWebView2PermissionStateAllow
+			}
+			s.chromium.SetGlobalPermission(state)
 			s.chromium.PermissionCallback = func(kind edge.CoreWebView2PermissionKind, state edge.CoreWebView2PermissionState) {
 				s.trace("PermissionRequested", fmt.Sprintf("art=%d antwort=%d", kind, state))
 			}
@@ -158,9 +164,6 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 			var args []string
 			if !cfg.noNetLock {
 				args = append(args, fenster.NetworkLockArgs()...)
-			}
-			if !cfg.noSpeculation {
-				args = append(args, fenster.SpeculationArgs()...)
 			}
 			s.chromium.AdditionalBrowserArgs = append(args, cfg.extraBrowserArgs...)
 			return s.chromium.Begin(s.hwnd)
@@ -207,7 +210,7 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 			for _, p := range problems {
 				s.trace("BrowserArgument", p)
 			}
-			if len(problems) > 0 && !cfg.noNetLock && !cfg.noSpeculation {
+			if len(problems) > 0 && !cfg.noNetLock {
 				return ErrWebView
 			}
 			return nil
@@ -533,6 +536,9 @@ func (s *Surface) Focus() {
 	if !s.closed {
 		pShow.Call(s.hwnd, swRestore)
 		pForeground.Call(s.hwnd)
+		if s.view != nil {
+			s.chromium.Focus() // der Fokus gehört der Seite, sonst fragen Zwischenablage und Standort gar nicht erst
+		}
 	}
 }
 
