@@ -244,3 +244,78 @@ func TestSurfaceGibtDerSeiteDenFokus(t *testing.T) {
 		t.Error("der Schritt show holt das neue Fenster nicht in den Vordergrund (SetForegroundWindow): Ohne aktives Fenster hat die Seite keinen Fokus")
 	}
 }
+
+// Lauf 12: Die WebView wurde nie sichtbar geschaltet (document.visibilityState "hidden", Klicks erreichten die Seite
+// nicht, das Fenster blieb weiß). Der Schritt show schaltet sie vor dem Fokus sichtbar; scheitert das, öffnet das Fenster
+// nicht. Beim Minimieren wird sie unsichtbar, beim Wiederherstellen wieder sichtbar.
+func TestSurfaceSchaltetDieWebViewSichtbar(t *testing.T) {
+	f, err := parser.ParseFile(token.NewFileSet(), "webview_windows.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var visiblePos, focusPos token.Pos
+	var visibleFailsClosed, sizeHandlesVisibility bool
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.CompositeLit:
+			if len(x.Elts) == 2 {
+				if lit, ok := x.Elts[0].(*ast.BasicLit); ok && lit.Value == `"show"` {
+					ast.Inspect(x.Elts[1], func(k ast.Node) bool {
+						switch y := k.(type) {
+						case *ast.CallExpr:
+							switch callName(y.Fun) {
+							case "s.chromium.SetVisible":
+								visiblePos = y.Pos()
+							case "s.chromium.Focus":
+								focusPos = y.Pos()
+							}
+						case *ast.IfStmt:
+							if as, ok := y.Init.(*ast.AssignStmt); ok && len(as.Rhs) == 1 {
+								if c, ok := as.Rhs[0].(*ast.CallExpr); ok && callName(c.Fun) == "s.chromium.SetVisible" {
+									ast.Inspect(y.Body, func(m ast.Node) bool {
+										if id, ok := m.(*ast.Ident); ok && id.Name == "ErrWebView" {
+											visibleFailsClosed = true
+										}
+										return true
+									})
+								}
+							}
+						}
+						return true
+					})
+				}
+			}
+		case *ast.FuncDecl:
+			if x.Name.Name == "surfaceProc" {
+				ast.Inspect(x.Body, func(m ast.Node) bool {
+					if cc, ok := m.(*ast.CaseClause); ok {
+						for _, e := range cc.List {
+							if id, ok := e.(*ast.Ident); ok && id.Name == "wmSize" {
+								ast.Inspect(&ast.BlockStmt{List: cc.Body}, func(k ast.Node) bool {
+									if c, ok := k.(*ast.CallExpr); ok && callName(c.Fun) == "s.chromium.SetVisible" {
+										sizeHandlesVisibility = true
+									}
+									return true
+								})
+							}
+						}
+					}
+					return true
+				})
+			}
+		}
+		return true
+	})
+	if visiblePos == token.NoPos {
+		t.Fatal("der Schritt show schaltet die WebView nicht sichtbar (s.chromium.SetVisible)")
+	}
+	if focusPos != token.NoPos && visiblePos > focusPos {
+		t.Error("SetVisible muss vor dem Fokus kommen")
+	}
+	if !visibleFailsClosed {
+		t.Error("scheitert SetVisible, muss der Schritt mit ErrWebView enden (Fenster zu)")
+	}
+	if !sizeHandlesVisibility {
+		t.Error("WM_SIZE schaltet die Sichtbarkeit beim Minimieren und Wiederherstellen nicht um")
+	}
+}
