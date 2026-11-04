@@ -94,7 +94,7 @@ func TestSetupStartNurAusManifest(t *testing.T) {
 				if which == "frei" {
 					m.Pins[0].Setups[0].Frei = []FreeField{{Name: "titel", Typ: "text", MaxLaenge: 40}}
 				} else {
-					m.Contract = 3
+					setContract(&m, 3)
 				}
 				signed, cred := l1Sign(t, encode(m), m.DeviceID)
 				b.engine.Credential = cred

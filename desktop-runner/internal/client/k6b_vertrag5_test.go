@@ -135,6 +135,14 @@ func TestManifestV5StriktAmAdapter(t *testing.T) {
 		{"appsKeineListe", rep(`[{"commit":"`+commit+`","name":"demo","path":"apps/demo"}]`, `{}`), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if strings.HasPrefix(tc.name, "doppel") {
+				// Doppelte Schlüssel lassen sich nicht kanonisieren und damit nicht gültig signieren;
+				// der Parser selbst muss sie trotzdem ablehnen.
+				if _, err := ParseManifest([]byte(tc.raw)); err == nil {
+					t.Fatal("doppelter Schlüssel akzeptiert")
+				}
+				return
+			}
 			signed, c := l1Sign(t, []byte(tc.raw), "aaaaaaaaaaaaaaaa")
 			a := l1API(t, func(w http.ResponseWriter, r *http.Request) { json.NewEncoder(w).Encode(signed) })
 			got, err := a.Manifest(context.Background())

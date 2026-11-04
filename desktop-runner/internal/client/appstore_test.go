@@ -88,27 +88,27 @@ func TestAppPaketGuterFallLegtPrivatAbUndVersiegelt(t *testing.T) {
 func TestAppSiegelVorJedemOeffnen(t *testing.T) {
 	tamper := map[string]func(t *testing.T, st *State, dir string){
 		"dateiGeaendert": func(t *testing.T, st *State, dir string) {
-			os.WriteFile(filepath.Join(dir, "app.js"), []byte("alert(1)"), 0o600)
+			_ = os.WriteFile(filepath.Join(dir, "app.js"), []byte("alert(1)"), 0o600)
 		},
 		"dateiGleicheLaengeGeaendert": func(t *testing.T, st *State, dir string) {
-			os.WriteFile(filepath.Join(dir, "app.js"), []byte("console.log(2)"), 0o600)
+			_ = os.WriteFile(filepath.Join(dir, "app.js"), []byte("console.log(2)"), 0o600)
 		},
-		"dateiGeloescht": func(t *testing.T, st *State, dir string) { os.Remove(filepath.Join(dir, "app.js")) },
+		"dateiGeloescht": func(t *testing.T, st *State, dir string) { _ = os.Remove(filepath.Join(dir, "app.js")) },
 		"dateiZusaetzlich": func(t *testing.T, st *State, dir string) {
-			os.WriteFile(filepath.Join(dir, "evil.js"), []byte("1"), 0o600)
+			_ = os.WriteFile(filepath.Join(dir, "evil.js"), []byte("1"), 0o600)
 		},
 		"unterordnerZusaetzlich": func(t *testing.T, st *State, dir string) {
-			os.MkdirAll(filepath.Join(dir, "x"), 0o700)
-			os.WriteFile(filepath.Join(dir, "x", "evil.js"), []byte("1"), 0o600)
+			_ = os.MkdirAll(filepath.Join(dir, "x"), 0o700)
+			_ = os.WriteFile(filepath.Join(dir, "x", "evil.js"), []byte("1"), 0o600)
 		},
 		"indexAustausch": func(t *testing.T, st *State, dir string) {
-			os.WriteFile(filepath.Join(dir, "index.html"), []byte("<script>1</script>"), 0o600)
+			_ = os.WriteFile(filepath.Join(dir, "index.html"), []byte("<script>1</script>"), 0o600)
 		},
 		"siegelGeloescht": func(t *testing.T, st *State, dir string) {
-			os.Remove(filepath.Join(st.Root, "app-demo-"+filepath.Base(dir)))
+			_ = os.Remove(filepath.Join(st.Root, "app-demo-"+filepath.Base(dir)))
 		},
 		"verweis": func(t *testing.T, st *State, dir string) {
-			os.Remove(filepath.Join(dir, "app.js"))
+			_ = os.Remove(filepath.Join(dir, "app.js"))
 			if err := os.Symlink(filepath.Join(dir, "style.css"), filepath.Join(dir, "app.js")); err != nil {
 				t.Skip("Symlink nicht möglich:", err)
 			}
@@ -321,7 +321,7 @@ func TestEnsureHoltPaketUeberHTTPNurEinmal(t *testing.T) {
 	}
 	// Eine manipulierte Ablage wird nie stillschweigend repariert.
 	dir, _ := store.Open(app)
-	os.WriteFile(filepath.Join(dir, "app.js"), []byte("evil"), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, "app.js"), []byte("evil"), 0o600)
 	if err := store.Ensure(context.Background(), api, app); err == nil {
 		t.Fatal("manipulierte Ablage durch Ensure überdeckt")
 	}

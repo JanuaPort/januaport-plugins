@@ -132,6 +132,11 @@ func NewAPI(trust Trust, token string, onRevoke func() error) (*API, error) {
 }
 func (a *API) Close() { a.http.CloseIdleConnections() }
 func (a *API) request(ctx context.Context, method, endpoint string, body any, seq uint64, runToken string, max int) ([]byte, int, error) {
+	return a.requestApp(ctx, method, endpoint, body, seq, runToken, "", max)
+}
+
+// requestApp trägt höchstens einen zweiten Träger: Lauf-Token oder App-Token, nie beide.
+func (a *API) requestApp(ctx context.Context, method, endpoint string, body any, seq uint64, runToken, appToken string, max int) ([]byte, int, error) {
 	if a.revoked.Load() {
 		return nil, 0, ErrRevoked
 	}
@@ -168,10 +173,16 @@ func (a *API) request(ctx context.Context, method, endpoint string, body any, se
 		req.Header.Set("X-Jnpt-Manifest-Seq", strconv.FormatUint(seq, 10))
 	}
 	if runToken != "" {
-		if endpoint != "mcp" || strings.ContainsAny(runToken, "\r\n") {
+		if endpoint != "mcp" || appToken != "" || strings.ContainsAny(runToken, "\r\n") {
 			return nil, 0, ErrProtocol
 		}
 		req.Header.Set("X-Jnpt-Run-Token", runToken)
+	}
+	if appToken != "" {
+		if endpoint != "mcp" || !strings.HasPrefix(appToken, appTokenPrefix) || strings.ContainsAny(appToken, "\r\n") {
+			return nil, 0, ErrProtocol
+		}
+		req.Header.Set(appTokenHeader, appToken)
 	}
 	res, e := a.http.Do(req)
 	if e != nil {
@@ -417,7 +428,7 @@ func (a *API) Contract() int {
 	if a.contract == 2 {
 		return 2
 	}
-	return 4
+	return WindowsContract
 }
 func (a *API) validDeviceConfig(c Config) bool {
 	if a.Contract() == 2 {
@@ -440,7 +451,7 @@ type SetupStartReply struct {
 func (a *API) StartSetup(ctx context.Context, signed SignedManifest, c Credential, pin, setup string, frei json.RawMessage) (SetupStartReply, error) {
 	var out SetupStartReply
 	m, err := VerifyManifest(signed, c.Pubkey, c.DeviceID, 0)
-	if err != nil || a.Contract() != 4 || m.Contract != 4 {
+	if err != nil || a.Contract() != WindowsContract || m.Contract != WindowsContract {
 		return out, ErrManifest
 	}
 	found := false
@@ -485,7 +496,7 @@ func (a *API) StartSetup(ctx context.Context, signed SignedManifest, c Credentia
 
 // Halt reports local state; it never changes engine state or starts a run.
 func (a *API) Halt(ctx context.Context, state, until string) error {
-	if a.Contract() != 4 || (state != "arbeitet" && state != "pausiert" && state != "angehalten") || (until != "" && (state != "pausiert" || !utc(until))) {
+	if a.Contract() != WindowsContract || (state != "arbeitet" && state != "pausiert" && state != "angehalten") || (until != "" && (state != "pausiert" || !utc(until))) {
 		return ErrProtocol
 	}
 	body := struct {
@@ -537,7 +548,7 @@ func (o TestOrder) verified(c Credential) bool {
 // ReportTest is the only result-bearing report path. Ordinary Report refuses
 // result, including journal replay without a verified historical TestOrder.
 func (a *API) ReportTest(ctx context.Context, r Result, c Credential, o TestOrder) error {
-	if a.Contract() != 4 || !o.verified(c) || r.JobID != o.JobID || r.RunKey != "" || r.ManifestSeq != o.ManifestSeq || r.Commit != o.Commit || r.RanOffline || len(r.Result) > 64<<10 {
+	if a.Contract() != WindowsContract || !o.verified(c) || r.JobID != o.JobID || r.RunKey != "" || r.ManifestSeq != o.ManifestSeq || r.Commit != o.Commit || r.RanOffline || len(r.Result) > 64<<10 {
 		return ErrProtocol
 	}
 	return a.report(ctx, r)
@@ -546,7 +557,7 @@ func (a *API) ReportTest(ctx context.Context, r Result, c Credential, o TestOrde
 // Screenshot uploads existing bytes. Capture and the per-run count belong to
 // L5; the core also enforces the five-image limit and its two-minute deadline.
 func (a *API) Screenshot(ctx context.Context, c Credential, o TestOrder, png []byte) error {
-	if a.Contract() != 4 || !o.verified(c) || len(png) > 4<<20 || !bytes.HasPrefix(png, []byte{137, 80, 78, 71, 13, 10, 26, 10}) {
+	if a.Contract() != WindowsContract || !o.verified(c) || len(png) > 4<<20 || !bytes.HasPrefix(png, []byte{137, 80, 78, 71, 13, 10, 26, 10}) {
 		return ErrProtocol
 	}
 	_, status, err := a.request(ctx, "POST", "jobs/"+o.JobID+"/screenshot", png, 0, "", 16<<10)

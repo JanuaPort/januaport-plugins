@@ -118,7 +118,7 @@ func TestFesteCodes(t *testing.T) {
 	}
 	for _, c := range got {
 		for _, r := range string(c) {
-			if !(r >= 'a' && r <= 'z' || r == '_') {
+			if (r < 'a' || r > 'z') && r != '_' {
 				t.Fatalf("Code %q enthält freie Zeichen", c)
 			}
 		}

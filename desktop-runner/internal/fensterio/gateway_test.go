@@ -43,7 +43,7 @@ func (k *kern) handler(t *testing.T) http.Handler {
 		k.bodies = append(k.bodies, string(raw))
 		fail := func(status int, class, msg string) {
 			w.WriteHeader(status)
-			fmt.Fprintf(w, `{"error":{"class":%q,"message":%q}}`, class, msg)
+			_, _ = fmt.Fprintf(w, `{"error":{"class":%q,"message":%q}}`, class, msg)
 		}
 		switch r.URL.Path {
 		case "/api/device/v1/apps/demo/token":
@@ -62,7 +62,7 @@ func (k *kern) handler(t *testing.T) http.Handler {
 			}
 			tok := fmt.Sprintf("jnptpc_ID%02dABCDEFGHIJKLMNOPQRSTU.SECRET%02dABCDEFGHIJKLMNOPQRS", k.tokenFetch, k.tokenFetch)
 			k.issued = append(k.issued, tok)
-			fmt.Fprintf(w, `{"app_token":%q,"expires_at":"2099-01-01T00:00:00Z","mcp_path":"/api/device/v1/mcp"}`, tok)
+			_, _ = fmt.Fprintf(w, `{"app_token":%q,"expires_at":"2099-01-01T00:00:00Z","mcp_path":"/api/device/v1/mcp"}`, tok)
 		case "/api/device/v1/mcp":
 			k.mcpCalls++
 			if len(k.mcpStatus) > 0 {
@@ -96,10 +96,10 @@ func (k *kern) handler(t *testing.T) http.Handler {
 				body = k.mcpBody(req.Method, req.Params, r.Header.Get("X-Jnpt-App-Token"))
 			}
 			if strings.HasPrefix(body, "ERROR:") {
-				fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%d,"error":{"code":-32602,"message":%q}}`, req.ID, strings.TrimPrefix(body, "ERROR:"))
+				_, _ = fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%d,"error":{"code":-32602,"message":%q}}`, req.ID, strings.TrimPrefix(body, "ERROR:"))
 				return
 			}
-			fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%d,"result":%s}`, req.ID, body)
+			_, _ = fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%d,"result":%s}`, req.ID, body)
 		default:
 			fail(404, "not_found", "Der Auftrag oder das Paket wurde nicht gefunden.")
 		}

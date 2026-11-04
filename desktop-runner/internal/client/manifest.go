@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/januaport/januaport-plugins/desktop-runner/internal/fenster"
 	"github.com/robfig/cron/v3"
 	"strings"
 	"time"
@@ -30,7 +31,7 @@ func parseSchedule(s Schedule) (cron.Schedule, error) {
 }
 func ParseManifest(b []byte) (Manifest, error) {
 	var m Manifest
-	if strict(b, &m) != nil || (m.Contract != 1 && m.Contract != 2 && m.Contract != 3 && m.Contract != 4) || m.DeviceID == "" || m.Seq == 0 || !utc(m.IssuedAt) || m.GraceHours < 1 || m.GraceHours > 72 || m.Pins == nil {
+	if strict(b, &m) != nil || (m.Contract < 1 || m.Contract > 5) || m.DeviceID == "" || m.Seq == 0 || !utc(m.IssuedAt) || m.GraceHours < 1 || m.GraceHours > 72 || m.Pins == nil {
 		return m, ErrManifest
 	}
 	names := map[string]bool{}
@@ -38,7 +39,7 @@ func ParseManifest(b []byte) (Manifest, error) {
 		if !safeName(p.Pin) || names[p.Pin] || !validID(p.Algo, p.Commit) || (m.Contract != 2 && (!safePath(p.Path) || p.Container != nil)) || (m.Contract == 2 && !validContainerPin(p)) || p.DeclaredTools == nil || p.Schedules == nil {
 			return m, ErrManifest
 		}
-		if (p.GraceHours != nil && (m.Contract != 4 || *p.GraceHours < 1 || *p.GraceHours > 72)) || (p.Setups != nil && m.Contract != 3 && m.Contract != 4) {
+		if (p.GraceHours != nil && (m.Contract < 4 || *p.GraceHours < 1 || *p.GraceHours > 72)) || (p.Setups != nil && m.Contract < 3) {
 			return m, ErrManifest
 		}
 		setups := map[string]bool{}
@@ -66,6 +67,9 @@ func ParseManifest(b []byte) (Manifest, error) {
 				return m, err
 			}
 		}
+	}
+	if (m.Apps != nil) != (m.Contract == appsContract) || (m.Apps != nil && !validApps(*m.Apps)) {
+		return m, ErrManifest
 	}
 	return m, nil
 }
@@ -100,7 +104,7 @@ func (m Manifest) RetainUntil() (time.Time, error) {
 		hours = 0
 		for _, p := range m.Pins {
 			grace := m.GraceHours
-			if m.Contract == 4 && p.GraceHours != nil {
+			if m.Contract >= 4 && p.GraceHours != nil {
 				grace = *p.GraceHours
 			}
 			hours = max(hours, grace)
@@ -167,4 +171,15 @@ func inputOK(b json.RawMessage) bool {
 }
 func RunKey(p Pin, s Schedule, slot time.Time) string {
 	return p.Pin + "/" + s.Name + "/" + slot.UTC().Format("2006-01-02T15:04:00Z")
+}
+
+// validApps prüft Vertrag 5 streng: gültiger Name, SHA-256-Commit, fester Pfad
+// apps/<name>, nach Name streng aufsteigend (damit auch eindeutig).
+func validApps(apps []App) bool {
+	for i, a := range apps {
+		if !fenster.ValidAppName(a.Name) || !validID("sha256", a.Commit) || a.Path != "apps/"+a.Name || (i > 0 && apps[i-1].Name >= a.Name) {
+			return false
+		}
+	}
+	return true
 }

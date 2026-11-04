@@ -45,7 +45,7 @@ func l1JSONEqual(a, b []byte) bool {
 }
 
 func l1Manifest() Manifest {
-	return Manifest{Contract: WindowsContract, DeviceID: "aaaaaaaaaaaaaaaa", Seq: 42, IssuedAt: "2026-11-01T12:00:00Z", GraceHours: 24,
+	return Manifest{Apps: &[]App{}, Contract: WindowsContract, DeviceID: "aaaaaaaaaaaaaaaa", Seq: 42, IssuedAt: "2026-11-01T12:00:00Z", GraceHours: 24,
 		Pins: []Pin{{Pin: "test_aaaaaaaa", Algo: "sha1", Commit: strings.Repeat("a", 40), Path: "demo", DeclaredTools: []string{}, Schedules: []Schedule{}}}}
 }
 
@@ -209,10 +209,10 @@ func TestManifestV4StriktAmAdapter(t *testing.T) {
 }
 
 func TestTestgeraeteSynchronisieren1298(t *testing.T) {
-	for _, version := range []int{1, 2, 3, 4} {
+	for _, version := range []int{1, 2, 3, 4, 5} {
 		t.Run(fmt.Sprint(version), func(t *testing.T) {
 			m := l1Manifest()
-			m.Contract = version
+			setContract(&m, version)
 			m.TestDevice = true
 			if version == 2 {
 				m.Pins = []Pin{}
@@ -551,5 +551,14 @@ func TestOfflineNachmeldungAmAdapter(t *testing.T) {
 	e.deliverOne(context.Background())
 	if hits != 1 || len(st.Journal().Results) != 0 {
 		t.Fatal("Nachmeldung nicht bestätigt", hits)
+	}
+}
+
+// setContract stellt eine zum Vertrag passende Manifestform her: apps gibt es nur unter Vertrag 5.
+func setContract(m *Manifest, contract int) {
+	m.Contract = contract
+	m.Apps = nil
+	if contract == appsContract {
+		m.Apps = &[]App{}
 	}
 }

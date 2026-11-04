@@ -16,7 +16,7 @@ import (
 func haltBed(t *testing.T) *bed {
 	t.Helper()
 	b := newBed(t)
-	b.engine.Config.Contract = 4
+	b.engine.Config.Contract = WindowsContract
 	b.engine.Config.Device.ID = "aaaaaaaaaaaaaaaa"
 	b.engine.Config.Device.Kind = "workstation"
 	b.engine.Config.HeartbeatS, b.engine.Config.PollHoldS = 60, 25

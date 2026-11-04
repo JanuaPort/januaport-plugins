@@ -18,7 +18,7 @@ type runHelpers struct {
 
 func (e *Engine) newRunHelpers(r Result, pin Pin) *runHelpers {
 	h := &runHelpers{engine: e}
-	if r.RunKey != "" || r.RanOffline || !uuidRE.MatchString(r.JobID) || e.Container != nil || e.API == nil || e.API.Contract() != 4 {
+	if r.RunKey != "" || r.RanOffline || !uuidRE.MatchString(r.JobID) || e.Container != nil || e.API == nil || e.API.Contract() != WindowsContract {
 		return h
 	}
 	if e.State.Load("test-"+r.JobID, &h.order) != nil {

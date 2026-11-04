@@ -169,7 +169,7 @@ func TestWiderrufAnAllenHTTPWegen(t *testing.T) {
 }
 func TestManifestSyncAtomarUndOfflineAmAdapter(t *testing.T) {
 	pub, key, _ := ed25519.GenerateKey(nil)
-	m := Manifest{Contract: WindowsContract, DeviceID: "own", Seq: 1, IssuedAt: "2026-10-23T10:00:00Z", GraceHours: 1, Pins: []Pin{}}
+	m := Manifest{Apps: &[]App{}, Contract: WindowsContract, DeviceID: "own", Seq: 1, IssuedAt: "2026-10-23T10:00:00Z", GraceHours: 1, Pins: []Pin{}}
 	signed := func(m Manifest) SignedManifest {
 		raw := encode(m)
 		can, _ := canonical(raw)

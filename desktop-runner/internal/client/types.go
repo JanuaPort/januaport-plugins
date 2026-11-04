@@ -120,7 +120,24 @@ type Schedule struct {
 	TZ    string          `json:"tz"`
 	Input json.RawMessage `json:"input"`
 }
+
+// WindowsContract ist der Vertrag der Windows-Geräte (#1048 K6b, Vertrag 5:
+// Vertrag 4 plus die zugewiesenen PC-Apps). Linux-Server bleiben auf Vertrag 2.
+const WindowsContract = 5
+
+// appsContract ist der erste Vertrag mit dem Manifestfeld apps.
+const appsContract = 5
+
+// App ist ein dem Gerät zugewiesener Manifesteintrag (Vertrag 5): Name,
+// SHA-256-Speichercommit und der feste Pfad apps/<name>. Keine Identity, keine Person.
+type App struct {
+	Name   string `json:"name"`
+	Commit string `json:"commit"`
+	Path   string `json:"path"`
+}
+
 type Manifest struct {
+	Apps       *[]App `json:"apps,omitempty"`
 	TestDevice bool   `json:"test_device,omitempty"`
 	Contract   int    `json:"contract"`
 	DeviceID   string `json:"device_id"`
