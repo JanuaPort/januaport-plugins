@@ -638,13 +638,18 @@ func TestWindowsWebViewBerechtigungenAbgelehnt(t *testing.T) {
 		}
 		return
 	}
-	// waitFocus lässt die Seite warten, bis sie den Fokus hat (Zwischenablage und Standort fragen sonst nicht).
-	const waitFocus = `
-var fokusStart = Date.now();
-function mitFokus(start) { if (document.hasFocus() || Date.now() - fokusStart > 5000) { send("fokus", {hat: document.hasFocus()}); start(); } else { setTimeout(function(){ mitFokus(start); }, 100); } }
+	// Zwischenablage und Standort verlangen eine Nutzeraktivierung und den Fokus der Seite. Die Seite führt die Abfrage
+	// deshalb erst im click-Handler aus und meldet document.hasFocus() dort. Den Klick liefert der Host (Maus auf die
+	// Fläche, im Sekundentakt); kommt keiner, ist der Fall rot ("kein Klick, unbelegt"), nie grün.
+	const clickJS = `
+var geklickt = false;
+function beiKlick(start) {
+  document.addEventListener("click", function(){ if (geklickt) { return; } geklickt = true; send("klick", {hat: document.hasFocus()}); start(); }, true);
+  setTimeout(function(){ if (!geklickt) { send("kein_klick", {}); } }, 25000);
+}
 `
 	marker := fmt.Sprintf("synthetisch-zwischenablage-%x", time.Now().UnixNano())
-	clipJS := waitFocus + `mitFokus(function(){
+	clipJS := clickJS + `beiKlick(function(){
   navigator.clipboard.readText()
     .then(function(t){ send("clip", {ok: true, gleich: t === window.MARKER, laenge: t.length}); })
     .catch(function(e){ send("clip", {ok: false, name: e.name}); });
@@ -692,13 +697,13 @@ function mitFokus(start) { if (document.hasFocus() || Date.now() - fokusStart > 
 					t.Fatalf("Kontrolle blind: Bei erlaubter Berechtigung liest die Seite den synthetischen Wert nicht (Fokus: %v): %v", b.gw.has(`"hat":true`), b.gw.snapshot())
 				}
 			}},
-		{"geolocation", waitFocus + `
+		{"geolocation", clickJS + `
 function status(name){ navigator.permissions.query({name: "geolocation"}).then(function(p){ send(name, {state: p.state}); }).catch(function(e){ send(name, {fehler: e.name}); }); }
 status("geo_status");
-mitFokus(function(){
+beiKlick(function(){
   navigator.geolocation.getCurrentPosition(function(){ send("geo", {code: 0}); status("geo_status2"); }, function(e){ send("geo", {code: e.code}); status("geo_status2"); }, {timeout: 6000});
+  setTimeout(function(){ send("geo_frist", {}); }, 10000);
 });
-setTimeout(function(){ send("geo_frist", {}); }, 13000);
 `, "geo ", 3, false, false,
 			func(t *testing.T, n, denied int, trace []string) {
 				if b.gw.has(`"code":0`) || b.gw.has(`"state":"granted"`) {
@@ -735,10 +740,21 @@ setTimeout(function(){ send("geo_frist", {}); }, 13000);
 				}, func(c *SurfaceConfig) { c.allowPermissions = tc.allow })
 				forceForeground(t, s.hwnd) // der Fokus gehört der Seite; ohne Vordergrund fragen Zwischenablage und Standort nicht
 				s.Focus()
-				answered := func() bool { return b.gw.has(tc.ready) || (tc.name == "geolocation" && b.gw.has("geo_frist")) }
-				if !pump(t, s, 20*time.Second, answered) {
+				answered := func() bool {
+					return b.gw.has(tc.ready) || b.gw.has("kein_klick") || (tc.name == "geolocation" && b.gw.has("geo_frist"))
+				}
+				frist := 20 * time.Second
+				if tc.clip || tc.name == "geolocation" {
+					frist = 40 * time.Second // der Host klickt im Sekundentakt auf die Fläche
+					t.Logf("%s: Die Sonde wartet bis zu 25 s auf einen Klick des Hosts auf die Fläche des Fensters", tc.name)
+				}
+				if !pump(t, s, frist, answered) {
 					t.Fatalf("%s: keine Antwort der Seite innerhalb der Frist", tc.name)
 				}
+				if b.gw.has("kein_klick") {
+					t.Fatalf("%s: kein Klick, unbelegt (die Seite wartete 25 s auf einen Klick in die Fläche; Vordergrund und Fokus siehe Protokoll). Seite meldet: %v", tc.name, b.gw.snapshot())
+				}
+				t.Logf("%s: Klick angekommen, document.hasFocus() im Handler: %v", tc.name, b.gw.has(`klick {"hat":true}`))
 				if tc.name == "geolocation" {
 					pump(t, s, 500*time.Millisecond, nil) // geo_status2 nach dem Rückruf
 					consent := logLocationConsent(t)

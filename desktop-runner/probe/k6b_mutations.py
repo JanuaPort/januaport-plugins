@@ -251,6 +251,9 @@ CASES = [
     ("eingriff-wert-in-meldung", "fensterio", "TestWebView2Eingriffe", [edit(ENVF, 'out = append(out, fmt.Sprintf("%s(laenge=%d,laufend)", name, len(value)))', 'out = append(out, fmt.Sprintf("%s(laenge=%d,laufend)", name, len(value))+value)')]),
     ("eingriff-kanal-neutral", "fensterio", "TestWebView2Eingriffe", [edit(ENVF, '"WEBVIEW2_RELEASE_CHANNEL_PREFERENCE":   "0",', '"WEBVIEW2_RELEASE_CHANNEL_PREFERENCE":   "1",')]),
     ("envsnap-importiert-mehr", "fensterio", "TestEnvsnapLaeuftVorDemLader", [edit(ESN, 'import "os"', 'import (\n\t"os"\n\t"strings"\n)\n\nvar _ = strings.ToUpper')]),
+    # Lauf 10: Fokus an die WebView
+    ("fokus-bei-setfocus-fehlt", "fensterio", "TestSurfaceGibtDerSeiteDenFokus", [edit(WVS, "case wmSetFocus:\n\t\t\tif s.view != nil {\n\t\t\t\ts.chromium.Focus()", "case wmSetFocus:\n\t\t\tif s.view != nil {\n\t\t\t\t_ = s.chromium")]),
+    ("fokus-beim-anzeigen-fehlt", "fensterio", "TestSurfaceGibtDerSeiteDenFokus", [edit(WVS, "pShow.Call(s.hwnd, 1)\n\t\t\ts.chromium.Focus()", "pShow.Call(s.hwnd, 1)")]),
 ]
 
 

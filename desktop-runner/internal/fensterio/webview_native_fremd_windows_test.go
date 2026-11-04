@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/fenster"
@@ -371,6 +372,7 @@ func TestWindowsWebViewBrowserpruefungFailClosed(t *testing.T) {
 // Standort (Maschine und Benutzer) als Allow/Deny. Nur für die Fehlerausgabe der Geolocation-Sonde.
 func logLocationConsent(t *testing.T) (machine string) {
 	t.Helper()
+	logLocationService(t)
 	for _, root := range []struct {
 		name string
 		key  registry.Key
@@ -388,4 +390,29 @@ func logLocationConsent(t *testing.T) (machine string) {
 		}
 	}
 	return machine
+}
+
+// logLocationService nennt den Zustand des Windows-Standortdienstes lfsvc (Geolocation hängt auch bei Allow, wenn er
+// nicht läuft). Nur lesender Zugriff auf den Dienst-Manager.
+func logLocationService(t *testing.T) {
+	t.Helper()
+	m, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
+	if err != nil {
+		t.Logf("Dienst lfsvc: Dienst-Manager nicht geöffnet (%v)", err)
+		return
+	}
+	defer windows.CloseServiceHandle(m)
+	name, _ := windows.UTF16PtrFromString("lfsvc")
+	h, err := windows.OpenService(m, name, windows.SERVICE_QUERY_STATUS)
+	if err != nil {
+		t.Logf("Dienst lfsvc: nicht geöffnet (%v)", err)
+		return
+	}
+	defer windows.CloseServiceHandle(h)
+	var st windows.SERVICE_STATUS
+	if err := windows.QueryServiceStatus(h, &st); err != nil {
+		t.Logf("Dienst lfsvc: Zustand nicht lesbar (%v)", err)
+		return
+	}
+	t.Logf("Dienst lfsvc: Zustand %d (1 gestoppt, 2 startet, 3 stoppt, 4 läuft)", st.CurrentState)
 }

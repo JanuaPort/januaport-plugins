@@ -93,11 +93,12 @@ type wndClass struct {
 type winRect struct{ Left, Top, Right, Bottom int32 }
 
 const (
-	wmSize    = 0x0005
-	wmClose   = 0x0010
-	wmDestroy = 0x0002
-	swRestore = 9
-	className = "JanuaPortApp"
+	wmSize     = 0x0005
+	wmSetFocus = 0x0007
+	wmClose    = 0x0010
+	wmDestroy  = 0x0002
+	swRestore  = 9
+	className  = "JanuaPortApp"
 )
 
 // NewSurface legt Fenster, WebView und alle Sperren an. Es blockiert kurz (WebView2-Start) und gehört auf
@@ -327,6 +328,7 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 		{"show", func() error {
 			s.layout()
 			pShow.Call(s.hwnd, 1)
+			s.chromium.Focus() // der Fokus gehört der Seite, sonst landet Tastatureingabe nicht in ihr
 			return nil
 		}},
 		{"navigate", func() error {
@@ -590,6 +592,11 @@ func surfaceProc(hwnd, msg, wp, lp uintptr) uintptr {
 		case wmSize:
 			if s.view != nil {
 				s.layout()
+			}
+			return 0
+		case wmSetFocus:
+			if s.view != nil {
+				s.chromium.Focus() // Aktivieren des Fensters: Fokus an die WebView weiterreichen
 			}
 			return 0
 		case wmClose:

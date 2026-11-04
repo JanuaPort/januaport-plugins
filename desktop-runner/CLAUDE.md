@@ -520,6 +520,13 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     der Maschine (`HKLM\...\ConsentStore\location`) auf `Deny`, bleibt die Standortabfrage der Seite bei `prompt` hängen, ohne
     PermissionRequested und ohne Rückruf (Lauf 8); steht sie auf `Allow`, verlangt die Sonde `PermissionRequested art=3`
     mit Deny und den Rückruf `PERMISSION_DENIED`. Ohne Rückruf bleibt der Fall rot und sagt „unbelegt“.
+    Lauf 10: Zwischenablage und Standort laufen in der Sonde im `click`-Handler der Seite (Nutzeraktivierung und Fokus);
+    die Seite meldet `document.hasFocus()` im Handler (`klick`), und der Host liefert den Klick auf die Fläche des
+    Fensters (im Sekundentakt). Kam nie ein Klick, ist der Fall rot („kein Klick, unbelegt“), nie grün. Ein Fenster im
+    Vordergrund hat noch nicht den Fokus der Seite: Das Fenster gibt ihn der WebView beim Anzeigen und bei `WM_SETFOCUS`
+    (`s.chromium.Focus`, MoveFocus programmatisch; `TestSurfaceGibtDerSeiteDenFokus`), sonst landet Tastatureingabe nicht
+    in der Seite, bis jemand hineinklickt (auch für Nutzer ein Mangel, nicht nur für die Sonde). Die Geolocation-Sonde
+    nennt zusätzlich den Zustand des Dienstes `lfsvc` und die Standort-Einwilligung.
     Eine verworfene Webnachricht (Quelle nicht lesbar) nennt in der Spur das HRESULT, ob der Zeiger leer war und die
     Seite, auf der die WebView steht (`wv2com.ReadString`); verworfen wird weiterhin fail-closed, nie zugelassen.
     Service Worker: `ClearBrowsingData` (Profile2.ClearBrowsingDataAll) wird für Service Worker nativ geprüft
