@@ -51,12 +51,12 @@ func TestDiagText(t *testing.T) {
 
 func TestReplySummary(t *testing.T) {
 	for in, want := range map[string]string{
-		`{"id":"1","ok":true,"ergebnis":{"geheim":"x"}}`:         "ok",
-		`{"id":null,"ok":false,"fehler":"abgelehnt"}`:            "fehler=abgelehnt",
-		`{"id":"1","ok":false,"fehler":"C:\Users\geheim\x.txt"}`: "fehler=?",
-		`{"id":"1","ok":false}`:                                  "fehler=?",
-		`kein json`:                                              "unlesbar",
-		``:                                                       "unlesbar",
+		`{"id":"1","ok":true,"ergebnis":{"geheim":"x"}}`:            "ok",
+		`{"id":null,"ok":false,"fehler":"abgelehnt"}`:               "fehler=abgelehnt",
+		`{"id":"1","ok":false,"fehler":"C:\\Users\\geheim\\x.txt"}`: "fehler=?",
+		`{"id":"1","ok":false}`:                                     "fehler=?",
+		`kein json`:                                                 "unlesbar",
+		``:                                                          "unlesbar",
 	} {
 		if got := ReplySummary([]byte(in)); got != want {
 			t.Errorf("%q: %q, erwartet %q", in, got, want)

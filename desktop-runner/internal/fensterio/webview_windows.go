@@ -4,6 +4,7 @@ package fensterio
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -190,17 +191,36 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 				a := wv2com.P(args)
 				source, ok := wv2com.GetString(a, wv2com.IdxMessageSource)
 				if !ok {
+					s.trace("WebMessageVerworfen", "quelle nicht lesbar")
 					return 0
 				}
 				msg, ok := wv2com.GetString(a, wv2com.IdxMessageTryGetAsStr)
 				if !ok {
+					s.trace("WebMessageVerworfen", "kein String, Quelle "+fenster.DiagText(source))
 					return 0
 				}
 				s.trace("WebMessageReceived", source)
+				if s.cfg.Probe != nil {
+					allowed, why := fenster.SourceVerdict(app, MessageSource(source))
+					s.trace("MessageVerdict", fmt.Sprintf("quelle=%s ok=%v grund=%q laenge=%d", fenster.DiagText(source), allowed, why, len(msg)))
+				}
 				s.o.Host.Receive(MessageSource(source), msg)
 				return 0
 			})
 			return wv2com.AddEvent(s.com(), wv2com.IdxAddWebMessageReceived, h)
+		}},
+		{"diagnose NavigationCompleted", func() error {
+			if s.cfg.Probe == nil {
+				return nil // nur die nativen Sonden schauen zu; im Betrieb gibt es keinen Handler
+			}
+			h := wv2com.NewHandler(wv2com.IIDNavigationCompletedHandler, func(_, args uintptr) uintptr {
+				a := wv2com.P(args)
+				success, ok1 := wv2com.GetInt32(a, 3)
+				status, ok2 := wv2com.GetInt32(a, 4)
+				s.trace("NavigationCompleted", fmt.Sprintf("erfolg=%v status=%d lesbar=%v", success != 0, status, ok1 && ok2))
+				return 0
+			})
+			return wv2com.AddEvent(s.com(), wv2com.IdxAddNavigationCompleted, h)
 		}},
 		{"virtual host", func() error {
 			host, ok := fenster.AppHost(app)
@@ -411,6 +431,9 @@ func (s *Surface) Pump() {
 		return
 	}
 	for _, b := range s.o.Host.Drain() {
+		if s.cfg.Probe != nil {
+			s.trace("Antwort", fenster.ReplySummary(b))
+		}
 		if err := s.view.PostWebMessageAsString(string(b)); err != nil && !errors.Is(err, windows.ERROR_IO_PENDING) {
 			continue
 		}

@@ -67,6 +67,18 @@ func (g *probeGateway) Werkzeug(_ context.Context, name string, args json.RawMes
 	g.mu.Unlock()
 	return json.RawMessage(`{"ok":true}`), nil
 }
+func (g *probeGateway) reset() {
+	g.mu.Lock()
+	g.events = nil
+	g.mu.Unlock()
+}
+
+func (g *probeGateway) snapshot() []string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return append([]string(nil), g.events...)
+}
+
 func (g *probeGateway) has(sub string) bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -95,6 +107,28 @@ type probeBed struct {
 	gw    *probeGateway
 
 	closers []func() // laufen auf dem Thread der Sonde, bevor er endet (Fenster gehören ihrem Thread)
+
+	mu        sync.Mutex
+	snapshots []func() []string // Spuren aller geöffneten Fenster, für die Ausgabe im Fehlerfall
+}
+
+// dump gibt im Fehlerfall alles aus, was die Sonde gesehen hat: die Spur jedes Fensters (native Ereignisse,
+// Urteile mit Grund, NavigationCompleted mit Status, Antworten als ok oder fester Code) und die Meldungen der
+// Seite an die Brücke. Texte der Seite laufen durch DiagText (gequotet, begrenzt, Träger maskiert).
+func (b *probeBed) dump(t *testing.T) {
+	t.Helper()
+	b.mu.Lock()
+	snaps := append([]func() []string(nil), b.snapshots...)
+	b.mu.Unlock()
+	for i, snap := range snaps {
+		for _, line := range snap() {
+			t.Logf("Spur %d: %s", i, line)
+		}
+	}
+	for _, e := range b.gw.snapshot() {
+		t.Logf("Seite meldet: %s", fenster.DiagText(e))
+	}
+	t.Logf("Fremdserver: %d Treffer %v", b.hits.Load(), b.seenPaths())
 }
 
 func newProbeBed(t *testing.T) *probeBed {
@@ -131,6 +165,7 @@ func (b *probeBed) seenPaths() []string {
 // täte, und dass die native Sperre greift.
 func (b *probeBed) openProbe(app string, files map[string]string, mutate func(*SurfaceConfig)) (*Surface, *Opened, *[]string) {
 	t := b.t
+	b.gw.reset() // Ereignisse früherer Unterfälle dürfen nie als Beleg dieses Falls zählen
 	dir := t.TempDir()
 	for name, body := range files {
 		p := filepath.Join(dir, filepath.FromSlash(name))
@@ -145,9 +180,22 @@ func (b *probeBed) openProbe(app string, files map[string]string, mutate func(*S
 	if err != nil {
 		t.Fatal(err)
 	}
-	o := &Opened{Name: app, Dir: dir, UserDataDir: filepath.Join(t.TempDir(), "webview", app), TestDevice: true, Host: host}
+	// Der Browser hält Dateien im Datenordner noch kurz nach dem Schließen offen; t.TempDir würde daran scheitern.
+	dataRoot, err := os.MkdirTemp("", "jnpt-probe-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.closers = append(b.closers, func() { removeWhenFree(t, dataRoot) })
+	o := &Opened{Name: app, Dir: dir, UserDataDir: filepath.Join(dataRoot, "webview", app), TestDevice: true, Host: host}
 	var trace []string
 	var mu sync.Mutex
+	b.mu.Lock()
+	b.snapshots = append(b.snapshots, func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string(nil), trace...)
+	})
+	b.mu.Unlock()
 	cfg := SurfaceConfig{
 		OnLink: func(l Link) { mu.Lock(); trace = append(trace, "link "+l.Host); mu.Unlock() },
 		Probe:  func(ev, detail string) { mu.Lock(); trace = append(trace, ev+" "+detail); mu.Unlock() },
@@ -207,6 +255,9 @@ func (b *probeBed) run(t *testing.T, frist time.Duration, body func(t *testing.T
 		}
 		defer leave()
 		defer func() {
+			if t.Failed() {
+				b.dump(t)
+			}
 			for i := len(b.closers) - 1; i >= 0; i-- {
 				b.closers[i]()
 			}
@@ -217,6 +268,7 @@ func (b *probeBed) run(t *testing.T, frist time.Duration, body func(t *testing.T
 	select {
 	case <-done:
 	case <-time.After(frist):
+		b.dump(t)
 		t.Fatalf("Sonde hängt: keine Rückmeldung innerhalb von %v", frist)
 	}
 }
@@ -228,6 +280,7 @@ func probePage(head, body string) string {
 const probeJS = `
 function send(name, data) { window.chrome.webview.postMessage(JSON.stringify({id: String(Math.random()).slice(2), befehl: "werkzeug", args: {name: name, arguments: data}})); }
 window.send = send;
+send("js_ok", {seite: location.pathname});
 `
 
 // Kontrolle für alle: die Seite lädt, Skript läuft, die Brücke antwortet (auch mit Doppelbindestrich im Host).
@@ -311,7 +364,7 @@ func TestWindowsWebViewNavigationStarting(t *testing.T) {
 	for name, body := range map[string]string{
 		"svgDerEigenenApp": `<a id="l" href="a.svg">x</a><script src="nav.js"></script>`,
 		"fremderHost":      `<a id="l" href="` + foreign + `">x</a><script src="nav.js"></script>`,
-		"locationFremd":    `<script>location.href = "` + foreign + `";</script><script src="nav.js"></script>`,
+		"locationFremd":    `<script src="loc.js"></script><script src="nav.js"></script>`,
 		"metaRefresh":      `<meta http-equiv="refresh" content="0;url=` + foreign + `"><script src="nav.js"></script>`,
 		"dataUrl":          `<a id="l" href="data:text/html,<script>1</script>">x</a><script src="nav.js"></script>`,
 		"fileUrl":          `<a id="l" href="file:///C:/Windows/win.ini">x</a><script src="nav.js"></script>`,
@@ -326,6 +379,7 @@ func TestWindowsWebViewNavigationStarting(t *testing.T) {
 					"index.html": probePage(`<script src="probe.js"></script>`, body),
 					"probe.js":   probeJS,
 					"nav.js":     navJS,
+					"loc.js":     `location.href = "` + foreign + `";`,
 					"a.svg":      svg,
 				}, nil)
 				if !pump(t, s, 20*time.Second, func() bool { return b.gw.has(`"pfad":"/index.html"`) }) {
@@ -344,8 +398,10 @@ func TestWindowsWebViewEigeneSeiteNavigierbar(t *testing.T) {
 	b := newProbeBed(t)
 	b.run(t, probeFrist, func(t *testing.T) {
 		s, _, _ := b.openProbe("probe", map[string]string{
-			"index.html": probePage(`<script src="probe.js"></script>`, `<a id="l" href="zwei.html">x</a><script>document.getElementById("l").click();</script>`),
-			"zwei.html":  probePage(`<script src="probe.js"></script>`, `<script>send("zwei", {pfad: location.pathname});</script>`),
+			"index.html": probePage(`<script src="probe.js"></script>`, `<a id="l" href="zwei.html">x</a><script src="klick.js"></script>`),
+			"zwei.html":  probePage(`<script src="probe.js"></script>`, `<script src="zwei.js"></script>`),
+			"klick.js":   `document.getElementById("l").click();`,
+			"zwei.js":    `send("zwei", {pfad: location.pathname});`,
 			"probe.js":   probeJS,
 		}, nil)
 		if !pump(t, s, 20*time.Second, func() bool { return b.gw.has(`"pfad":"/zwei.html"`) }) {
@@ -397,7 +453,8 @@ func TestWindowsWebViewDownloadStarting(t *testing.T) {
 		downloads := filepath.Join(t.TempDir(), "dl")
 		_ = os.MkdirAll(downloads, 0o700)
 		s, _, trace := b.openProbe("probe", map[string]string{
-			"index.html": probePage(`<script src="probe.js"></script>`, `<a id="l" download="d.txt" href="daten.txt">x</a><script>document.getElementById("l").click(); setTimeout(function(){send("dl", {});}, 1500);</script>`),
+			"index.html": probePage(`<script src="probe.js"></script>`, `<a id="l" download="d.txt" href="daten.txt">x</a><script src="dl.js"></script>`),
+			"dl.js":      `document.getElementById("l").click(); setTimeout(function(){send("dl", {});}, 1500);`,
 			"probe.js":   probeJS,
 			"daten.txt":  "geheim",
 		}, nil)
@@ -421,7 +478,8 @@ func TestWindowsWebViewNachrichtQuelle(t *testing.T) {
 	b := newProbeBed(t)
 	b.run(t, probeFrist, func(t *testing.T) {
 		s, _, trace := b.openProbe("probe", map[string]string{
-			"index.html": probePage(`<script src="probe.js"></script>`, `<script>send("q", {});</script>`),
+			"index.html": probePage(`<script src="probe.js"></script>`, `<script src="q.js"></script>`),
+			"q.js":       `send("q", {});`,
 			"probe.js":   probeJS,
 		}, nil)
 		if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("q ") }) {
@@ -445,10 +503,11 @@ func TestWindowsWebViewBerechtigungenAbgelehnt(t *testing.T) {
 	b := newProbeBed(t)
 	b.run(t, probeFrist, func(t *testing.T) {
 		s, _, _ := b.openProbe("probe", map[string]string{
-			"index.html": probePage(`<script src="probe.js"></script>`, `<script>
+			"index.html": probePage(`<script src="probe.js"></script>`, `<script src="rechte.js"></script>`),
+			"rechte.js": `
 navigator.geolocation.getCurrentPosition(function(){ send("geo", {code: 0}); }, function(e){ send("geo", {code: e.code}); });
 navigator.mediaDevices.getUserMedia({audio: true}).then(function(){ send("mikro", {ok: true}); }).catch(function(e){ send("mikro", {ok: false, name: e.name}); });
-</script>`),
+`,
 			"probe.js": probeJS,
 		}, nil)
 		if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("geo ") && b.gw.has("mikro ") }) {
@@ -466,7 +525,8 @@ func TestWindowsWebViewProzessabsturz(t *testing.T) {
 	b.run(t, probeFrist, func(t *testing.T) {
 		closed := false
 		s, o, _ := b.openProbe("probe", map[string]string{
-			"index.html": probePage(`<script src="probe.js"></script>`, `<script>send("lebt", {});</script>`),
+			"index.html": probePage(`<script src="probe.js"></script>`, `<script src="lebt.js"></script>`),
+			"lebt.js":    `send("lebt", {});`,
 			"probe.js":   probeJS,
 		}, func(c *SurfaceConfig) { c.OnClosed = func() { closed = true } })
 		if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("lebt") }) {
@@ -502,7 +562,8 @@ func TestWindowsWebViewProzessbaumOhneTraeger(t *testing.T) {
 		t.Setenv("JNPT_SONDE_TRAEGER", "") // Kontrolle gegen die Namensprüfung unten: leer, nicht gesetzt
 		os.Unsetenv("JNPT_SONDE_TRAEGER")
 		s, o, _ := b.openProbe("probe", map[string]string{
-			"index.html": probePage(`<script src="probe.js"></script>`, `<script>send("baum", {});</script>`),
+			"index.html": probePage(`<script src="probe.js"></script>`, `<script src="baum.js"></script>`),
+			"baum.js":    `send("baum", {});`,
 			"probe.js":   probeJS,
 		}, nil)
 		if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("baum") }) {
@@ -537,8 +598,9 @@ func TestWindowsWebViewClearBrowsingData(t *testing.T) {
 	b := newProbeBed(t)
 	b.run(t, probeFrist, func(t *testing.T) {
 		s, _, _ := b.openProbe("probe", map[string]string{
-			"index.html": probePage(`<script src="probe.js"></script>`, `<script>localStorage.setItem("k", "v"); send("gesetzt", {v: localStorage.getItem("k")});</script>`),
-			"probe.js":   probeJS,
+			"index.html":  probePage(`<script src="probe.js"></script>`, `<script src="speicher.js"></script>`),
+			"speicher.js": `localStorage.setItem("k", "v"); send("gesetzt", {v: localStorage.getItem("k")});`,
+			"probe.js":    probeJS,
 		}, nil)
 		if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("gesetzt") }) {
 			t.Fatal("Seite lädt nicht")
@@ -752,4 +814,37 @@ func openSurfaces() int {
 	surfacesMu.Lock()
 	defer surfacesMu.Unlock()
 	return len(surfaces)
+}
+
+// removeWhenFree löscht den Datenordner des Browsers, sobald dessen Prozesse die Dateien freigeben. Gelingt es
+// nicht, ist das ein Hinweis (der Widerruf des Läufers löscht ihn dann beim nächsten Versuch), kein Sondenfehler.
+func removeWhenFree(t *testing.T, dir string) {
+	var err error
+	for i := 0; i < 40; i++ {
+		if err = os.RemoveAll(dir); err == nil {
+			return
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	t.Logf("Hinweis: Datenordner nach 10 s noch gesperrt (%v)", err)
+}
+
+// CSP in der Praxis: Ein Inline-Skript läuft nicht (script-src 'self'), ein Skript als Datei schon. Das ist die
+// Kontrolle dafür, dass die übrigen Sonden ihre Auslöser als Dateien liefern müssen.
+func TestWindowsWebViewInlineSkriptBlockiert(t *testing.T) {
+	b := newProbeBed(t)
+	b.run(t, probeFrist, func(t *testing.T) {
+		s, _, _ := b.openProbe("probe", map[string]string{
+			"index.html": probePage(`<script src="probe.js"></script>`, `<script>send("inline", {});</script><script src="datei.js"></script>`),
+			"probe.js":   probeJS,
+			"datei.js":   `send("datei", {});`,
+		}, nil)
+		if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("datei ") }) {
+			t.Fatal("Skript als Datei läuft nicht: Die Seite lädt nicht oder die Brücke antwortet nicht")
+		}
+		pump(t, s, time.Second, nil)
+		if b.gw.has("inline ") {
+			t.Fatal("Inline-Skript lief trotz CSP")
+		}
+	})
 }

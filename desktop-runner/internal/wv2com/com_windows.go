@@ -25,6 +25,7 @@ type Obj = unsafe.Pointer
 const (
 	// ICoreWebView2
 	IdxAddNavigationStarting      = 7
+	IdxAddNavigationCompleted     = 15 // nur Diagnose der Sonden
 	IdxAddFrameNavigationStarting = 17
 	IdxAddWebMessageReceived      = 34
 	IdxAddNewWindowRequested      = 44
@@ -50,15 +51,16 @@ const (
 
 // IIDs aus WebView2.h.
 var (
-	iidUnknown                   = mustGUID("{00000000-0000-0000-C000-000000000046}")
-	IIDWebView2_4                = mustGUID("{20d02d59-6df2-42dc-bd06-f98a694b1302}")
-	IIDWebView2_13               = mustGUID("{F75F09A8-667E-4983-88D6-C8773F315E84}")
-	IIDProfile2                  = mustGUID("{fa740d4b-5eae-4344-a8ad-74be31925397}")
-	IIDNavigationStartingHandler = mustGUID("{9adbe429-f36d-432b-9ddc-f8881fbd76e3}")
-	IIDNewWindowHandler          = mustGUID("{d4c185fe-c81c-4989-97af-2d3fa7ab5651}")
-	IIDDownloadStartingHandler   = mustGUID("{efedc989-c396-41ca-83f7-07f845a55724}")
-	IIDWebMessageHandler         = mustGUID("{57213f19-00e6-49fa-8e07-898ea01ecbd2}")
-	IIDClearBrowsingDataHandler  = mustGUID("{e9710a06-1d1d-49b2-8234-226f35846ae5}")
+	iidUnknown                    = mustGUID("{00000000-0000-0000-C000-000000000046}")
+	IIDWebView2_4                 = mustGUID("{20d02d59-6df2-42dc-bd06-f98a694b1302}")
+	IIDWebView2_13                = mustGUID("{F75F09A8-667E-4983-88D6-C8773F315E84}")
+	IIDProfile2                   = mustGUID("{fa740d4b-5eae-4344-a8ad-74be31925397}")
+	IIDNavigationStartingHandler  = mustGUID("{9adbe429-f36d-432b-9ddc-f8881fbd76e3}")
+	IIDNavigationCompletedHandler = mustGUID("{d33a35bf-1c49-4f98-93ab-006e0533fe1c}")
+	IIDNewWindowHandler           = mustGUID("{d4c185fe-c81c-4989-97af-2d3fa7ab5651}")
+	IIDDownloadStartingHandler    = mustGUID("{efedc989-c396-41ca-83f7-07f845a55724}")
+	IIDWebMessageHandler          = mustGUID("{57213f19-00e6-49fa-8e07-898ea01ecbd2}")
+	IIDClearBrowsingDataHandler   = mustGUID("{e9710a06-1d1d-49b2-8234-226f35846ae5}")
 )
 
 // mustGUID liefert bei einem Schreibfehler die Null-GUID: Die Anfrage danach scheitert, das Fenster öffnet nicht.
@@ -129,6 +131,15 @@ func takeString(get func(out uintptr) uintptr) (string, bool) {
 // GetString ruft einen get_X-Zugriff mit LPWSTR-Ergebnis.
 func GetString(o Obj, idx int) (string, bool) {
 	return takeString(func(out uintptr) uintptr { return Call(o, idx, out) })
+}
+
+// GetInt32 ruft einen get_X-Zugriff mit 32-Bit-Ergebnis (BOOL, Enum).
+func GetInt32(o Obj, idx int) (int32, bool) {
+	var v int32
+	if Failed(Call(o, idx, uintptr(unsafe.Pointer(&v)))) {
+		return 0, false
+	}
+	return v, true
 }
 
 // PutBool ruft ein put_X(BOOL).
