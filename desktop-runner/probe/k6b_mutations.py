@@ -50,6 +50,11 @@ RSR = "internal/fenster/resource.go"
 DGN = "internal/fenster/diag.go"
 ENVF = "internal/fensterio/env.go"
 ESN = "internal/envsnap/envsnap.go"
+C3 = "internal/edge/ICoreWebView2Controller3.go"
+RDRS = "internal/client/reader.go"
+RTM = "internal/fensterio/runtime.go"
+EVS = "internal/fensterio/events.go"
+HOSTF = "internal/fensterio/host.go"
 APL = "internal/client/appload.go"
 
 
@@ -229,7 +234,7 @@ CASES = [
     ("env-scrub-fehlt", "fensterio", "TestAdapterPruefteThreadUndWartetBegrenzt", [edit(WVS, '{"umgebung", func() error {', '{"env", func() error {')]),
     ("env-gross-klein", "fensterio", "TestEnvNamenZumEntfernen", [edit(ENVF, 'strings.EqualFold(name[:4], "jnpt")', 'name[:4] == "JNPT"')]),
     # SEC-Urteil Lauf 5: Browserprozess prüfen, WEBVIEW2_*, spekulatives Laden
-    ("netzargumente-fehlen", "fensterio", "TestAdapterSperrtRessourcenUndNetz", [edit(WVS, "args = append(args, fenster.NetworkLockArgs()...)", "_ = fenster.NetworkLockArgs")]),
+    ("netzargumente-fehlen", "fensterio", "TestAdapterSperrtRessourcenUndNetz", [edit(WVS, "for _, a := range fenster.NetworkLockArgs() {", "for _, a := range []string(nil) {")]),
     ("browserpruefung-fehlt", "fensterio", "TestAdapterPruefteThreadUndWartetBegrenzt", [edit(WVS, '{"browser pruefen", func() error {', '{"browser", func() error {')]),
     ("browserpruefung-ohne-kommandozeile", "fensterio", "TestAdapterSperrtRessourcenUndNetz", [edit(WVS, "problems := fenster.BrowserCommandLineProblems(line)", "problems := []string(nil)\n\t\t\t_ = line")]),
     ("webview2-variablen-ignoriert", "fensterio", "TestAdapterSperrtRessourcenUndNetz", [edit(WVS, "if findings := webview2Findings(envsnap.Start(), os.Environ()); len(findings) > 0 {", "if findings := jnptNames(nil); len(findings) > 0 {"), edit(WVS, '\t"github.com/januaport/januaport-plugins/desktop-runner/internal/envsnap"\n', '')]),
@@ -262,6 +267,27 @@ CASES = [
     ("sichtbar-fehler-ignoriert", "fensterio", "TestSurfaceSchaltetDieWebViewSichtbar", [edit(WVS, "\t\t\tif err := s.chromium.SetVisible(true); err != nil {\n\t\t\t\treturn ErrWebView\n\t\t\t}", "\t\t\tif err := s.chromium.SetVisible(true); err != nil {\n\t\t\t\t_ = err\n\t\t\t}")]),
     ("sichtbar-nach-fokus", "fensterio", "TestSurfaceSchaltetDieWebViewSichtbar", [edit(WVS, "\t\t\tif err := s.chromium.SetVisible(true); err != nil {\n\t\t\t\treturn ErrWebView\n\t\t\t}\n", ""), edit(WVS, "\t\t\ts.chromium.Focus()\n\t\t\ts.traceGeometry()", "\t\t\ts.chromium.Focus()\n\t\t\tif err := s.chromium.SetVisible(true); err != nil {\n\t\t\t\treturn ErrWebView\n\t\t\t}\n\t\t\ts.traceGeometry()")]),
     ("minimieren-ignoriert", "fensterio", "TestSurfaceSchaltetDieWebViewSichtbar", [edit(WVS, "\t\t\t\t_ = s.chromium.SetVisible(wp != 1)\n", "")]),
+    # SEC-R4 F1 bis F6 und Mutantenlücken
+    ("cmdline-schalter-gross", "fenster", "TestBrowserCommandLineAndereSchreibweisen", [edit(RSR, 'key := "--" + strings.ToLower(name)', 'key := "--" + name')]),
+    ("cmdline-schalter-bindestrich", "fenster", "TestBrowserCommandLineAndereSchreibweisen", [edit(RSR, '		case strings.HasPrefix(a, "-"), strings.HasPrefix(a, "/"):\n			rest = a[1:]\n', '')]),
+    ("cmdline-webrtc-pflicht", "fenster", "TestBrowserCommandLineWebrtcPflicht", [edit(RSR, '		{"--webrtc-ip-handling-policy", "disable_non_proxied_udp"},\n', '')]),
+    ("webrtc-argument-fehlt", "fenster", "TestBrowserArguments", [edit(RSR, ' --webrtc-ip-handling-policy=disable_non_proxied_udp`', '`')]),
+    ("split-backslash", "fenster", "TestSplitCommandLine", [edit(RSR, 'cur.WriteString(strings.Repeat("\\\\", n/2))', 'cur.WriteString(strings.Repeat("\\\\", n))')]),
+    ("edge-rasterization", "fensterio", "TestEdgeOhneDieZweiUpstreamFehler", [edit(ECH, "	var token _EventRegistrationToken", "	if c3 := e.controller.GetICoreWebView2Controller3(); c3 != nil {\n		_ = c3.PutRasterizationScale(1.0)\n	}\n	var token _EventRegistrationToken")]),
+    ("edge-bool-zeiger", "fensterio", "TestEdgeOhneDieZweiUpstreamFehler", [edit(C3, "uintptr(boolToInt(value)), // upstream 9a5551d: BOOL als Wert, nicht als Zeiger", "uintptr(unsafe.Pointer(&value)),")]),
+    ("wipe-fehlt", "client", "TestStrictUndLoeschenNullt", [edit(RDRS, "	defer clear(b)\n	return strict(b, v)", "	return strict(b, v)")]),
+    ("identity-ohne-wipe", "client", "TestReaderIdentityLoeschtDenKlartext", [edit(RDRS, "	defer clear(b)\n	var v struct {", "	var v struct {")]),
+    ("rd-size-gross", "client", "TestReaderGroessenGrenze", [edit(RDRS, "info.Size() > 20<<20", "info.Size() > 21<<20")]),
+    ("rd-size-klein", "client", "TestReaderGroessenGrenze", [edit(RDRS, "info.Size() > 20<<20", "info.Size() > 19<<20")]),
+    ("closemissing-schliesst-nicht", "fensterio", "TestCloseMissingSchliesstNurVerschwundene", [edit(RTM, "			w.Close()\n", "			_ = w\n")]),
+    ("closemissing-alle", "fensterio", "TestCloseMissingSchliesstNurVerschwundene", [edit(RTM, "if !slices.Contains(names, name) {\n			closed", "if true {\n			closed")]),
+    ("bedienfeld-schliesst-nicht", "fensterio", "TestBedienfeldSchliesstFensterVerschwundenerApps", [edit(APW, "			fensterio.CloseMissing(a.surfaces, l.Names)\n", "")]),
+    ("watch-notexist-ignoriert", "fensterio", "TestWatchLeertDieListeSofortBeiFehlenderDatei", [edit(RTM, "			if errors.Is(err, fs.ErrNotExist) {\n				failures = 3 // die Zustandsdatei ist weg (Widerruf): eindeutig, nicht erst nach drei Versuchen\n			}\n", "")]),
+    ("watch-eins", "fensterio", "TestWatchLeertDieListeErstNachDreiFehlern", [edit(RTM, "if failures == 3 &&", "if failures == 1 &&")]),
+    ("apps-fehlende-datei-verloren", "fensterio", "TestRuntimeAppsMeldetFehlendeDatei", [edit(RTM, "		if errors.Is(err, fs.ErrNotExist) {\n			return AppList{}, fmt.Errorf(\"%w: %w\", ErrOpen, fs.ErrNotExist)\n		}\n", "")]),
+    ("host-cap-weg", "fensterio", "TestHostBegrenztGleichzeitigeNachrichten", [edit(HOSTF, "if h.inflight.Add(1) > maxInflight {", "if h.inflight.Add(1) > maxInflight*100 {")]),
+    ("falsche-aussage", "fensterio", "TestKeineFalschenAussagen", [edit(EVS, "sonst wird die Navigation abgebrochen.", "sonst wird die Navigation abgebrochen (Abbruch vor der Anfrage).")]),
+    ("sollliste-waechst", "fensterio", "TestRueckleseprobeDecktSollListeAb", [edit("internal/fenster/settings.go", '		{"IsZoomControlEnabled", false},', '		{"IsZoomControlEnabled", false},\n		{"IsNeueEinstellung", false},')]),
 ]
 
 

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- K6b-2, SEC-R4: Netzsperre mit Pflichtargument auch für UDP-Wege, Schalter-Normalisierung, zwei Korrekturen der Kopie, Rückleseprobe der Einstellungen, Fenster schließen bei Entzug einer App.
 - K6b-2 (JanuaPort/januaport#1048): App-Fenster im Bedienfeld (WebView2 über eine angepasste Kopie von
   `go-webview2` v1.0.19 in `internal/edge` und einen dünnen eigenen COM-Adapter), ohne Release. Der Start des
   WebView ist begrenzt (20 s, fester Fehler, Fenster bleibt zu, kein `os.Exit`), COM-STA auf dem UI-Thread. Menüeintrag je zugewiesener App; Zustand nur

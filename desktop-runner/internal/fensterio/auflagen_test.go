@@ -17,6 +17,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/januaport/januaport-plugins/desktop-runner/internal/fenster"
 )
 
 // SEC-R4 F3: Zwei Fehler der Bibliothek v1.0.19 liefen bei jedem Fensterstart (upstream 7f3bc71 und 9a5551d). Die Kopie
@@ -228,5 +230,18 @@ func TestRuntimeAppsMeldetFehlendeDatei(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), b.bed.Root) {
 		t.Fatalf("Pfad im Fehler: %v", err)
+	}
+}
+
+// SEC-R4 F4: Die native Rückleseprobe nennt jede Einstellung der Sollliste. Kommt eine hinzu, muss auch der Leser dazu.
+func TestRueckleseprobeDecktSollListeAb(t *testing.T) {
+	b, err := os.ReadFile("webview_native_windows_test.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range fenster.Settings() {
+		if !strings.Contains(string(b), `"`+s.Name+`":`) {
+			t.Errorf("TestWindowsWebViewEinstellungenZurueckgelesen kennt %s nicht", s.Name)
+		}
 	}
 }

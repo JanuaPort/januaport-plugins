@@ -155,6 +155,8 @@ type probeBed struct {
 	t      *testing.T
 	srv    *httptest.Server // Loopback
 	ext    *httptest.Server // eigene IPv4-Adresse des Gasts, kein Loopback
+	udp    *udpSink         // UDP-Senke auf Loopback
+	udpExt *udpSink         // UDP-Senke auf der eigenen IPv4-Adresse des Gasts
 	hits   atomic.Int32     // HTTP-Anfragen an beide Server
 	conns  atomic.Int32     // neue TCP-Verbindungen zu beiden Servern (auch preconnect ohne Anfrage)
 	t0     time.Time
@@ -185,7 +187,7 @@ func (b *probeBed) dump(t *testing.T) {
 	for _, e := range b.gw.snapshot() {
 		t.Logf("Seite meldet: %s", fenster.DiagText(e))
 	}
-	t.Logf("Fremdserver: %d Anfragen, %d Verbindungen, Pfade %v", b.hits.Load(), b.conns.Load(), b.seenPaths())
+	t.Logf("Fremdserver: %d Anfragen, %d Verbindungen, Pfade %v; UDP loopback %d, extern %d (Nutzlast %d)", b.hits.Load(), b.conns.Load(), b.seenPaths(), b.udp.packets.Load(), b.udpExt.packets.Load(), b.udpExt.payload.Load())
 	b.paths.Lock()
 	for _, line := range b.hitLog {
 		t.Logf("Treffer %s", line)
@@ -261,6 +263,8 @@ func newProbeBed(t *testing.T) *probeBed {
 		t.Fatal("keine Nicht-Loopback-IPv4-Adresse im Gast: Die Sonde wäre für die zweite Hälfte blind")
 	}
 	b.ext = b.startServer("extern", ip+":0")
+	b.udp = b.startUDP("loopback", "127.0.0.1:0")
+	b.udpExt = b.startUDP("extern", ip+":0")
 	return b
 }
 
@@ -1406,4 +1410,61 @@ func screenPixel(x, y int32) uint32 {
 	defer pReleaseDC.Call(0, dc)
 	c, _, _ := pGetPixel.Call(dc, uintptr(x), uintptr(y))
 	return uint32(c)
+}
+
+// SEC-R4 F4: applySettings prüft nur das HRESULT. Die Sonde liest alle Werte aus fenster.Settings() zurück, damit ein
+// Versatz in der zusammengelegten Vtable von ICoreWebViewSettings auffällt (ein Setter, der auf den falschen Eintrag
+// schreibt, liefert S_OK).
+func TestWindowsWebViewEinstellungenZurueckgelesen(t *testing.T) {
+	b := newProbeBed(t)
+	b.run(t, probeFrist, func(t *testing.T) {
+		s, _, _ := b.openProbe("probe", map[string]string{
+			"index.html": probePage(`<script src="probe.js"></script>`, ``),
+			"probe.js":   probeJS,
+		}, nil)
+		st, err := s.chromium.GetSettings()
+		if err != nil || st == nil {
+			t.Fatalf("keine Einstellungen: %v", err)
+		}
+		s4 := st.GetICoreWebView2Settings4()
+		if s4 == nil {
+			t.Fatal("ICoreWebView2Settings4 fehlt: Autofill und Passwortspeicher ließen sich nicht setzen")
+		}
+		getters := map[string]func() (bool, error){
+			"AreBrowserAcceleratorKeysEnabled": st.GetAreBrowserAcceleratorKeysEnabled,
+			"AreDefaultContextMenusEnabled":    st.GetAreDefaultContextMenusEnabled,
+			"AreDefaultScriptDialogsEnabled":   st.GetAreDefaultScriptDialogsEnabled,
+			"AreDevToolsEnabled":               st.GetAreDevToolsEnabled,
+			"AreHostObjectsAllowed":            st.GetAreHostObjectsAllowed,
+			"IsBuiltInErrorPageEnabled":        st.GetIsBuiltInErrorPageEnabled,
+			"IsGeneralAutofillEnabled":         s4.GetIsGeneralAutofillEnabled,
+			"IsPasswordAutosaveEnabled":        s4.GetIsPasswordAutosaveEnabled,
+			"IsPinchZoomEnabled":               st.GetIsPinchZoomEnabled,
+			"IsScriptEnabled":                  st.GetIsScriptEnabled,
+			"IsStatusBarEnabled":               st.GetIsStatusBarEnabled,
+			"IsSwipeNavigationEnabled":         st.GetIsSwipeNavigationEnabled,
+			"IsWebMessageEnabled":              st.GetIsWebMessageEnabled,
+			"IsZoomControlEnabled":             st.GetIsZoomControlEnabled,
+		}
+		read := 0
+		for _, want := range fenster.Settings() {
+			get := getters[want.Name]
+			if get == nil {
+				t.Fatalf("kein Leser für %s: Die Sonde deckt die Sollliste nicht ab", want.Name)
+			}
+			got, err := get()
+			if err != nil {
+				t.Errorf("%s nicht lesbar: %v", want.Name, err)
+				continue
+			}
+			read++
+			if got != want.An {
+				t.Errorf("%s ist %v, Soll %v", want.Name, got, want.An)
+			}
+		}
+		t.Logf("%d Einstellungen zurückgelesen", read)
+		if read != len(fenster.Settings()) {
+			t.Errorf("nur %d von %d Einstellungen gelesen", read, len(fenster.Settings()))
+		}
+	})
 }

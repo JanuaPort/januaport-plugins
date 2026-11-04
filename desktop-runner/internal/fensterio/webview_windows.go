@@ -36,6 +36,8 @@ type SurfaceConfig struct {
 	// noResourceFilter und noNetLock schalten Schicht 1 und 2 für die Ursachensonde ab (nur in-package).
 	noResourceFilter bool
 	noNetLock        bool
+	// noWebRTCPolicy lässt das Pflichtargument für UDP weg (nur die Kontrolle der Sonde, dass der Weg sonst offen ist).
+	noWebRTCPolicy bool
 	// allowPermissions erlaubt in der Sonde alle Berechtigungen (nur als sehende Kontrolle, dass die Seite sonst
 	// etwas bekäme); im Betrieb ist es immer aus.
 	allowPermissions bool
@@ -167,7 +169,12 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 			// Schicht 1 ist Pflicht daneben, und der Schritt "browser pruefen" verlangt das Ergebnis nach dem Start.
 			var args []string
 			if !cfg.noNetLock {
-				args = append(args, fenster.NetworkLockArgs()...)
+				for _, a := range fenster.NetworkLockArgs() {
+					if cfg.noWebRTCPolicy && strings.HasPrefix(a, "--webrtc-ip-handling-policy") {
+						continue
+					}
+					args = append(args, a)
+				}
 			}
 			s.chromium.AdditionalBrowserArgs = append(args, cfg.extraBrowserArgs...)
 			return s.chromium.Begin(s.hwnd)
@@ -214,7 +221,7 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 			for _, p := range problems {
 				s.trace("BrowserArgument", p)
 			}
-			if len(problems) > 0 && !cfg.noNetLock {
+			if len(problems) > 0 && !cfg.noNetLock && !cfg.noWebRTCPolicy {
 				return ErrWebView
 			}
 			return nil

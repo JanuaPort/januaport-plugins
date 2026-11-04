@@ -539,6 +539,17 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     (Chromium vertagt Abfragen für unsichtbare Seiten, passt zur hängenden Geolocation), die Vektoren des spekulativen
     Ladens (Prerender, Prefetch und Preconnect hängen am Zustand der Seite), Zeitgeber (auf 1 s gedrosselt),
     Eingabe und `hasFocus`, der Prozessbaum (andere Renderer-Prozesse). Das sind die Fälle, die nach dem Fix neu zu fahren sind.
+    **SEC-R4-Auflagen (Fundstelle, Test, Mutant):** F1 Die Netzsperre trägt als Pflichtargument auch die Richtlinie für WebRTC
+    (`NetworkLockArgs`, `BrowserCommandLineProblems`; `TestBrowserArguments`, `TestBrowserCommandLineWebrtcPflicht`;
+    nativ `TestWindowsWebViewWebRTCNull` und die Kontrolle `TestWindowsWebViewWebRTCKontrolle`; Wirkt das Argument in
+    WebView2 nicht, geht es an SEC zurück, es gibt keine Umgehung). F2 Die Kommandozeilenprüfung normalisiert Schalter
+    (`--x`, `-x`, `/x`, Groß- und Kleinschreibung; `TestBrowserCommandLineAndereSchreibweisen`, `TestSplitCommandLine`).
+    F3 Die zwei Aufrufe aus v1.0.19 sind ersetzt (`TestEdgeOhneDieZweiUpstreamFehler`), Ergebnis des Prüfpunkts für
+    v1.0.19 bis v1.0.23 in `internal/edge/doc.go`. F4 `TestWindowsWebViewEinstellungenZurueckgelesen` liest alle 14
+    Einstellungen der Sollliste zurück. F5 Aussagen korrigiert (`TestKeineFalschenAussagen`), der Klartext-Puffer von
+    `credential` wird genullt (`TestStrictUndLoeschenNullt`, `TestReaderIdentityLoeschtDenKlartext`). F6 Das Fenster einer
+    App schließt, wenn sie aus der Liste verschwindet (`CloseMissing`, `TestCloseMissingSchliesstNurVerschwundene`); fehlt
+    die Zustandsdatei, wird die Liste sofort leer. Die Mutanten stehen in `probe/k6b_mutations.py`.
     Lauf 11: `WM_SETFOCUS` kam während `Close` und traf den geleerten Controller (`Chromium.Focus`); im Bedienfeld hätte das den
     Prozess samt Halt beendet. Jetzt prüft jede Methode der Kopie, die `e.controller` oder `e.webview` aufruft, das Feld
     vorher auf nil (`TestEdgeMethodenPruefenControllerUndWebviewAufNil`); ungenutzte Methoden ohne Prüfung sind entfernt.
