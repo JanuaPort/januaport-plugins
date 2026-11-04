@@ -253,7 +253,10 @@ CASES = [
     ("envsnap-importiert-mehr", "fensterio", "TestEnvsnapLaeuftVorDemLader", [edit(ESN, 'import "os"', 'import (\n\t"os"\n\t"strings"\n)\n\nvar _ = strings.ToUpper')]),
     # Lauf 10: Fokus an die WebView
     ("fokus-bei-setfocus-fehlt", "fensterio", "TestSurfaceGibtDerSeiteDenFokus", [edit(WVS, "case wmSetFocus:\n\t\t\tif s.view != nil {\n\t\t\t\ts.chromium.Focus()", "case wmSetFocus:\n\t\t\tif s.view != nil {\n\t\t\t\t_ = s.chromium")]),
-    ("fokus-beim-anzeigen-fehlt", "fensterio", "TestSurfaceGibtDerSeiteDenFokus", [edit(WVS, "pShow.Call(s.hwnd, 1)\n\t\t\ts.chromium.Focus()", "pShow.Call(s.hwnd, 1)")]),
+    ("fokus-beim-anzeigen-fehlt", "fensterio", "TestSurfaceGibtDerSeiteDenFokus", [edit(WVS, "\t\t\ts.chromium.Focus()\n\t\t\ts.traceGeometry()", "\t\t\ts.traceGeometry()")]),
+    ("vordergrund-beim-anzeigen-fehlt", "fensterio", "TestSurfaceGibtDerSeiteDenFokus", [edit(WVS, "\t\t\tpForeground.Call(s.hwnd)\n\t\t\ts.chromium.Focus()\n\t\t\ts.traceGeometry()", "\t\t\ts.chromium.Focus()\n\t\t\ts.traceGeometry()")]),
+    ("edge-focus-ohne-nil", "fensterio", "TestEdgeMethodenPruefenControllerUndWebviewAufNil", [edit(ECH, "\tif e.controller == nil {\n\t\treturn\n\t}\n\terr := e.controller.MoveFocus(", "\terr := e.controller.MoveFocus(")]),
+    ("edge-getsettings-ohne-nil", "fensterio", "TestEdgeMethodenPruefenControllerUndWebviewAufNil", [edit(ECH, "\tif e.webview == nil {\n\t\treturn nil, errors.New(\"keine WebView\")\n\t}\n", "")]),
 ]
 
 

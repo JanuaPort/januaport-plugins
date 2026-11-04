@@ -222,46 +222,6 @@ func (e *Chromium) Resize() {
 	e.ResizeWithBounds(&bounds)
 }
 
-func (e *Chromium) Navigate(url string) {
-	err := e.webview.Navigate(url)
-	if err != nil {
-		e.errorCallback(err)
-	}
-}
-
-func (e *Chromium) NavigateToString(content string) {
-	err := e.webview.NavigateToString(content)
-	if err != nil {
-		e.errorCallback(err)
-	}
-}
-
-func (e *Chromium) Init(script string) {
-	err := e.webview.AddScriptToExecuteOnDocumentCreated(script, nil)
-	if err != nil {
-		e.errorCallback(err)
-	}
-}
-
-func (e *Chromium) Eval(script string) {
-	if e.webview == nil || e.shuttingDown {
-		return
-	}
-
-	err := e.webview.ExecuteScript(script, nil)
-	if err != nil && !errors.Is(err, windows.ERROR_IO_PENDING) {
-		e.errorCallback(err)
-	}
-}
-
-func (e *Chromium) Show() error {
-	return e.controller.PutIsVisible(true)
-}
-
-func (e *Chromium) Hide() error {
-	return e.controller.PutIsVisible(false)
-}
-
 func (e *Chromium) QueryInterface(_, _ uintptr) uintptr {
 	return 0
 }
@@ -457,13 +417,6 @@ func (e *Chromium) WebResourceRequested(sender *ICoreWebView2, args *ICoreWebVie
 	return 0
 }
 
-func (e *Chromium) AddWebResourceRequestedFilter(filter string, ctx COREWEBVIEW2_WEB_RESOURCE_CONTEXT) {
-	err := e.webview.AddWebResourceRequestedFilter(filter, ctx)
-	if err != nil {
-		e.errorCallback(err)
-	}
-}
-
 func (e *Chromium) Environment() *ICoreWebView2Environment {
 	return e.environment
 }
@@ -497,6 +450,9 @@ func (e *Chromium) AcceleratorKeyPressed(sender *ICoreWebView2Controller, args *
 }
 
 func (e *Chromium) GetSettings() (*ICoreWebViewSettings, error) {
+	if e.webview == nil {
+		return nil, errors.New("keine WebView")
+	}
 	return e.webview.GetSettings()
 }
 
@@ -545,141 +501,6 @@ func (e *Chromium) Focus() {
 	}
 }
 
-func (e *Chromium) PutZoomFactor(zoomFactor float64) {
-	err := e.controller.PutZoomFactor(zoomFactor)
-	if err != nil {
-		e.errorCallback(err)
-	}
-}
-
-func (e *Chromium) OpenDevToolsWindow() {
-	err := e.webview.OpenDevToolsWindow()
-	if err != nil {
-		e.errorCallback(err)
-	}
-}
-
 func (e *Chromium) HasCapability(c Capability) bool {
 	return HasCapability(e.webview2RuntimeVersion, c)
-}
-
-func (e *Chromium) GetIsSwipeNavigationEnabled() (bool, error) {
-	if !HasCapability(e.webview2RuntimeVersion, SwipeNavigation) {
-		return false, UnsupportedCapabilityError
-	}
-	webview2Settings, err := e.webview.GetSettings()
-	if err != nil {
-		return false, err
-	}
-	webview2Settings6 := webview2Settings.GetICoreWebView2Settings6()
-	var result bool
-	result, err = webview2Settings6.GetIsSwipeNavigationEnabled()
-	if err != nil {
-		return false, err
-	}
-	return result, nil
-}
-
-// PutIsGeneralAutofillEnabled controls whether autofill for information
-// like names, street and email addresses, phone numbers, and arbitrary input
-// is enabled. This excludes password and credit card information. When
-// IsGeneralAutofillEnabled is false, no suggestions appear, and no new information
-// is saved. When IsGeneralAutofillEnabled is true, information is saved, suggestions
-// appear and clicking on one will populate the form fields.
-// It will take effect immediately after setting.
-// The default value is `FALSE`.
-func (e *Chromium) PutIsGeneralAutofillEnabled(value bool) error {
-	if !HasCapability(e.webview2RuntimeVersion, GeneralAutofillEnabled) {
-		return UnsupportedCapabilityError
-	}
-	webview2Settings, err := e.webview.GetSettings()
-	if err != nil {
-		return err
-	}
-	webview2Settings4 := webview2Settings.GetICoreWebView2Settings4()
-	return webview2Settings4.PutIsGeneralAutofillEnabled(value)
-}
-
-// PutIsPasswordAutosaveEnabled sets whether the browser should offer to save passwords and other
-// identifying information entered into forms automatically.
-// The default value is `FALSE`.
-func (e *Chromium) PutIsPasswordAutosaveEnabled(value bool) error {
-	if !HasCapability(e.webview2RuntimeVersion, PasswordAutosaveEnabled) {
-		return UnsupportedCapabilityError
-	}
-	webview2Settings, err := e.webview.GetSettings()
-	if err != nil {
-		return err
-	}
-	webview2Settings4 := webview2Settings.GetICoreWebView2Settings4()
-	return webview2Settings4.PutIsPasswordAutosaveEnabled(value)
-}
-
-func (e *Chromium) PutIsSwipeNavigationEnabled(enabled bool) error {
-	if !HasCapability(e.webview2RuntimeVersion, SwipeNavigation) {
-		return UnsupportedCapabilityError
-	}
-	webview2Settings, err := e.webview.GetSettings()
-	if err != nil {
-		return err
-	}
-	webview2Settings6 := webview2Settings.GetICoreWebView2Settings6()
-	err = webview2Settings6.PutIsSwipeNavigationEnabled(enabled)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (e *Chromium) AllowExternalDrag(allow bool) error {
-	if !HasCapability(e.webview2RuntimeVersion, AllowExternalDrop) {
-		return UnsupportedCapabilityError
-	}
-	controller := e.GetController()
-	controller4 := controller.GetICoreWebView2Controller4()
-	err := controller4.PutAllowExternalDrop(allow)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (e *Chromium) GetAllowExternalDrag() (bool, error) {
-	if !HasCapability(e.webview2RuntimeVersion, AllowExternalDrop) {
-		return false, UnsupportedCapabilityError
-	}
-	controller := e.GetController()
-	controller4 := controller.GetICoreWebView2Controller4()
-	result, err := controller4.GetAllowExternalDrop()
-	if err != nil {
-		return false, err
-	}
-	return result, nil
-}
-
-func (e *Chromium) GetCookieManager() (*ICoreWebView2CookieManager, error) {
-	if e.webview == nil {
-		return nil, errors.New("webview not initialized")
-	}
-
-	// Check WebView2 version
-	if e.webview2RuntimeVersion == "" {
-		return nil, errors.New("WebView2 runtime version not available")
-	}
-
-	// Get ICoreWebView2_2 interface
-	webview2, err := e.webview.QueryInterface2()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get ICoreWebView2_2: %w\nThis functionality requires WebView2 Runtime version 89.0.721.0 or later. Current version: %s", err, e.webview2RuntimeVersion)
-	}
-	defer webview2.Release()
-
-	// Get cookie manager
-	cookieManager, err := webview2.GetCookieManager()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get cookie manager: %w", err)
-	}
-
-	// Note: The caller is responsible for calling Release() on the returned cookieManager
-	return cookieManager, nil
 }

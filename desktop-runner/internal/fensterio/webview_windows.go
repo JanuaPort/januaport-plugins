@@ -58,6 +58,7 @@ type Surface struct {
 	view     *edge.ICoreWebView2
 	closed   bool
 	quit     bool // WM_QUIT kam während des Starts und wurde weitergereicht
+	traced   int  // Zahl der Fensternachrichten, die die Sonde schon in der Spur hat
 }
 
 var (
@@ -72,6 +73,8 @@ var (
 	pPost        = user32.NewProc("PostMessageW")
 	pForeground  = user32.NewProc("SetForegroundWindow")
 	pLoadCursor  = user32.NewProc("LoadCursorW")
+	pWindowRect  = user32.NewProc("GetWindowRect")
+	pToScreen    = user32.NewProc("ClientToScreen")
 	surfaceProcs = sync.OnceValue(func() uintptr { return syscall.NewCallback(surfaceProc) })
 
 	classOnce sync.Once
@@ -328,7 +331,11 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 		{"show", func() error {
 			s.layout()
 			pShow.Call(s.hwnd, 1)
-			s.chromium.Focus() // der Fokus gehört der Seite, sonst landet Tastatureingabe nicht in ihr
+			// Das Bedienfeld hat gerade die Eingabe (Klick auf den Menüeintrag) und darf das neue Fenster nach vorn holen;
+			// ohne aktives Fenster hat die Seite keinen Fokus. Danach gehört der Fokus der WebView.
+			pForeground.Call(s.hwnd)
+			s.chromium.Focus()
+			s.traceGeometry()
 			return nil
 		}},
 		{"navigate", func() error {
@@ -386,6 +393,56 @@ func (s *Surface) pumpOnce() {
 		}
 		pTranslate.Call(uintptr(unsafe.Pointer(&m)))
 		pDispatchMsg.Call(uintptr(unsafe.Pointer(&m)))
+	}
+}
+
+// traceGeometry nennt der Sonde, wo das Fenster liegt und wohin man klicken muss (Mitte der Fläche der WebView, in
+// Bildschirmkoordinaten). Nur mit Probe.
+func (s *Surface) traceGeometry() {
+	if s.cfg.Probe == nil {
+		return
+	}
+	var win, client winRect
+	pWindowRect.Call(s.hwnd, uintptr(unsafe.Pointer(&win)))
+	pClientRect.Call(s.hwnd, uintptr(unsafe.Pointer(&client)))
+	view, _ := fenster.Layout(int(client.Right-client.Left), int(client.Bottom-client.Top), s.o.TestDevice)
+	pt := struct{ X, Y int32 }{int32(view.X + view.W/2), int32(view.Y + view.H/2)}
+	pToScreen.Call(s.hwnd, uintptr(unsafe.Pointer(&pt)))
+	s.trace("Fenster", fmt.Sprintf("rect=(%d,%d,%d,%d) flaeche_mitte_bildschirm=(%d,%d)", win.Left, win.Top, win.Right, win.Bottom, pt.X, pt.Y))
+}
+
+// traceMessage hält die Eingabenachrichten des Fensters fest, die für Klick und Fokus zählen: Ein Klick in die WebView
+// erreicht das Elternfenster als WM_PARENTNOTIFY mit der Maustaste, ein Klick auf die Leiste oder den Rand als
+// WM_LBUTTONDOWN. Höchstens 60 Einträge je Fenster.
+func (s *Surface) traceMessage(msg, wp, lp uintptr) {
+	const (
+		wmActivate, wmKillFocus, wmMouseActivate, wmLButtonDown, wmParentNotify = 0x0006, 0x0008, 0x0021, 0x0201, 0x0210
+	)
+	if s.traced >= 60 {
+		return
+	}
+	x, y := int16(lp&0xffff), int16((lp>>16)&0xffff)
+	switch msg {
+	case wmParentNotify:
+		if event := wp & 0xffff; event == wmLButtonDown || event == 0x0204 || event == 0x0207 {
+			s.traced++
+			s.trace("Fenster", fmt.Sprintf("WM_PARENTNOTIFY maustaste=%#x x=%d y=%d", event, x, y))
+		}
+	case wmLButtonDown:
+		s.traced++
+		s.trace("Fenster", fmt.Sprintf("WM_LBUTTONDOWN x=%d y=%d", x, y))
+	case wmMouseActivate:
+		s.traced++
+		s.trace("Fenster", "WM_MOUSEACTIVATE")
+	case wmActivate:
+		s.traced++
+		s.trace("Fenster", fmt.Sprintf("WM_ACTIVATE zustand=%d", wp&0xffff))
+	case wmSetFocus:
+		s.traced++
+		s.trace("Fenster", "WM_SETFOCUS")
+	case wmKillFocus:
+		s.traced++
+		s.trace("Fenster", "WM_KILLFOCUS")
 	}
 }
 
@@ -588,6 +645,9 @@ func surfaceProc(hwnd, msg, wp, lp uintptr) uintptr {
 	s := surfaces[hwnd]
 	surfacesMu.Unlock()
 	if s != nil {
+		if s.cfg.Probe != nil {
+			s.traceMessage(msg, wp, lp)
+		}
 		switch msg {
 		case wmSize:
 			if s.view != nil {

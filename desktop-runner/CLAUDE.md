@@ -527,6 +527,15 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     (`s.chromium.Focus`, MoveFocus programmatisch; `TestSurfaceGibtDerSeiteDenFokus`), sonst landet Tastatureingabe nicht
     in der Seite, bis jemand hineinklickt (auch für Nutzer ein Mangel, nicht nur für die Sonde). Die Geolocation-Sonde
     nennt zusätzlich den Zustand des Dienstes `lfsvc` und die Standort-Einwilligung.
+    Lauf 11: `WM_SETFOCUS` kam während `Close` und traf den geleerten Controller (`Chromium.Focus`); im Bedienfeld hätte das den
+    Prozess samt Halt beendet. Jetzt prüft jede Methode der Kopie, die `e.controller` oder `e.webview` aufruft, das Feld
+    vorher auf nil (`TestEdgeMethodenPruefenControllerUndWebviewAufNil`); ungenutzte Methoden ohne Prüfung sind entfernt.
+    Alle Fensternachrichten in `surfaceProc` (`WM_SIZE` über `SetSize`, `WM_SETFOCUS`, `WM_CLOSE`, `WM_DESTROY`) sind damit
+    gegen das Zeitfenster nach `Close` gesichert; `Pump` und die Ereignishandler prüfen `closed` bzw. den Host. Der
+    Schritt `show` holt das neue Fenster in den Vordergrund (SetForegroundWindow, das Bedienfeld hat gerade die Eingabe
+    des Menüklicks) und gibt der WebView den Fokus. Die Sonde meldet je Fenster die Lage (`Fenster rect=… flaeche_mitte_bildschirm`)
+    und die Eingabenachrichten (`WM_PARENTNOTIFY maustaste`, `WM_LBUTTONDOWN`, `WM_ACTIVATE`, `WM_SETFOCUS`), die Seite die
+    erste Aktivierung (Klick, Maus- oder Zeigertaste, Taste) mit `hasFocus` und ihren Zustand (`seite_zustand`, `fenster_fokus`).
     Eine verworfene Webnachricht (Quelle nicht lesbar) nennt in der Spur das HRESULT, ob der Zeiger leer war und die
     Seite, auf der die WebView steht (`wv2com.ReadString`); verworfen wird weiterhin fail-closed, nie zugelassen.
     Service Worker: `ClearBrowsingData` (Profile2.ClearBrowsingDataAll) wird für Service Worker nativ geprüft

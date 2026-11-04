@@ -70,5 +70,8 @@ func (i *ICoreWebView2) GetICoreWebView2_3() *ICoreWebView2_3 {
 }
 
 func (e *Chromium) GetICoreWebView2_3() *ICoreWebView2_3 {
+	if e.webview == nil {
+		return nil
+	}
 	return e.webview.GetICoreWebView2_3()
 }

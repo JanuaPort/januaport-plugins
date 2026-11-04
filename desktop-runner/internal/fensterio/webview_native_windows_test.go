@@ -105,6 +105,17 @@ func (g *probeGateway) reset() {
 	g.mu.Unlock()
 }
 
+// matching liefert die gemeldeten Ereignisse, die mit prefix beginnen, gequotet und begrenzt.
+func (g *probeGateway) matching(prefix string) []string {
+	var out []string
+	for _, e := range g.snapshot() {
+		if strings.HasPrefix(e, prefix) {
+			out = append(out, fenster.DiagText(e))
+		}
+	}
+	return out
+}
+
 func (g *probeGateway) snapshot() []string {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -643,10 +654,17 @@ func TestWindowsWebViewBerechtigungenAbgelehnt(t *testing.T) {
 	// Fläche, im Sekundentakt); kommt keiner, ist der Fall rot ("kein Klick, unbelegt"), nie grün.
 	const clickJS = `
 var geklickt = false;
-function beiKlick(start) {
-  document.addEventListener("click", function(){ if (geklickt) { return; } geklickt = true; send("klick", {hat: document.hasFocus()}); start(); }, true);
+send("seite_zustand", {sichtbar: document.visibilityState, fokus: document.hasFocus()});
+window.addEventListener("focus", function(){ send("fenster_fokus", {ereignis: "focus"}); });
+window.addEventListener("blur", function(){ send("fenster_fokus", {ereignis: "blur"}); });
+function beiAktivierung(start) {
+  // Die erste Aktivierung der Seite löst aus: Klick, Maus- oder Zeigertaste oder eine Taste des Hosts.
+  ["click", "mousedown", "pointerdown", "keydown"].forEach(function(art){
+    document.addEventListener(art, function(){ if (geklickt) { return; } geklickt = true; send("klick", {art: art, hat: document.hasFocus()}); start(); }, true);
+  });
   setTimeout(function(){ if (!geklickt) { send("kein_klick", {}); } }, 25000);
 }
+var beiKlick = beiAktivierung;
 `
 	marker := fmt.Sprintf("synthetisch-zwischenablage-%x", time.Now().UnixNano())
 	clipJS := clickJS + `beiKlick(function(){
@@ -746,7 +764,7 @@ beiKlick(function(){
 				frist := 20 * time.Second
 				if tc.clip || tc.name == "geolocation" {
 					frist = 40 * time.Second // der Host klickt im Sekundentakt auf die Fläche
-					t.Logf("%s: Die Sonde wartet bis zu 25 s auf einen Klick des Hosts auf die Fläche des Fensters", tc.name)
+					t.Logf("%s: Die Sonde wartet bis zu 25 s auf einen Klick oder eine Taste des Hosts (Ziel siehe Spur 'Fenster … flaeche_mitte_bildschirm')", tc.name)
 				}
 				if !pump(t, s, frist, answered) {
 					t.Fatalf("%s: keine Antwort der Seite innerhalb der Frist", tc.name)
@@ -754,7 +772,9 @@ beiKlick(function(){
 				if b.gw.has("kein_klick") {
 					t.Fatalf("%s: kein Klick, unbelegt (die Seite wartete 25 s auf einen Klick in die Fläche; Vordergrund und Fokus siehe Protokoll). Seite meldet: %v", tc.name, b.gw.snapshot())
 				}
-				t.Logf("%s: Klick angekommen, document.hasFocus() im Handler: %v", tc.name, b.gw.has(`klick {"hat":true}`))
+				if b.gw.has("klick ") {
+					t.Logf("%s: Aktivierung angekommen (%s), document.hasFocus() im Handler: %v", tc.name, b.gw.matching("klick "), b.gw.has(`"hat":true`))
+				}
 				if tc.name == "geolocation" {
 					pump(t, s, 500*time.Millisecond, nil) // geo_status2 nach dem Rückruf
 					consent := logLocationConsent(t)
