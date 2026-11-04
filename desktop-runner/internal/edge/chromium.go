@@ -535,6 +535,10 @@ func (e *Chromium) NotifyParentWindowPositionChanged() error {
 }
 
 func (e *Chromium) Focus() {
+	// WM_SETFOCUS kommt auch während Close, der Controller ist dann schon weg.
+	if e.controller == nil {
+		return
+	}
 	err := e.controller.MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC)
 	if err != nil {
 		e.errorCallback(err)
