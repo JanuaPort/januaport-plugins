@@ -482,8 +482,17 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Hintergrundnetz und DNS-Vorabholen aus, das letzte `--disable-features` mit `Prerender2` und
     `NoStatePrefetch`, `--proxy-pac-url`, `--no-proxy-server`, `--proxy-auto-detect` und `--enable-features` mit
     Prerender verboten); sonst bleibt das Fenster zu (fester Fehler, Tray und Halt stehen). Die Meldungen nennen
-    nur Argumentnamen. (b) Jede gesetzte `WEBVIEW2_*`-Variable (`webview2Names`) ist ein Eingriff: Der Schritt
-    `umgebung` lehnt vor allem anderen ab, auch vor dem Entfernen der `JNPT*`-Variablen. (c) Spekulatives Laden:
+    nur Argumentnamen. (b) Jede gesetzte `WEBVIEW2_*`-Variable ist ein Eingriff: Der Schritt `umgebung` lehnt vor allem
+    anderen ab, auch vor dem Entfernen der `JNPT*`-Variablen. Der Go-Lader setzt aber selbst im Paket-Init
+    (`webviewloader/env_create.go:16-19`, `preventEnvAndRegistryOverrides` `:165-176`, nochmals vor jedem
+    Aufruf `:109`) `WEBVIEW2_PIPE_FOR_SCRIPT_DEBUGGER`, `..._ADDITIONAL_BROWSER_ARGUMENTS`,
+    `..._BROWSER_EXECUTABLE_FOLDER`, `..._USER_DATA_FOLDER` auf leer und `..._RELEASE_CHANNEL_PREFERENCE` auf `0`,
+    damit weder Umgebung noch Registry etwas überschreiben (WebView2 prüft auf Vorhandensein, nicht auf den Wert).
+    Darum vergleicht `webview2Findings` die Momentaufnahme vor dem Lader-Init (`internal/envsnap`: nur `os`,
+    Importpfad sortiert vor `github.com/wailsapp`, Go initialisiert seit 1.21 in dieser Reihenfolge; hier darf
+    nichts stehen) mit der Umgebung jetzt (nur diese fünf Namen mit genau diesen Werten sind der erwartete
+    Zustand, jeder andere Name oder Wert ist ein Eingriff). Meldungen tragen Name und Wertlänge, nie den Wert.
+    Dass ein überschriebener Wert dabei unsichtbar bliebe, fängt die Prüfung nach Wirkung ab (a). (c) Spekulatives Laden:
     `SpeculationArguments` (`Prerender2`, `NoStatePrefetch`, `--disable-background-networking`,
     `--dns-prefetch-disable`), welche Namen in der eingesetzten Runtime wirken, belegt allein die Sonde
     (Betriebsarten `schicht1UndFeatures`, `nurFeatures`); zusätzlich lehnt die Ladeprüfung der Läufer-Ablage

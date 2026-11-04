@@ -251,7 +251,7 @@ CASES = [
     # Lauf 6: Eingriffe vor und nach dem Lader-Init unterscheiden
     ("eingriff-start-ignoriert", "fensterio", "TestWebView2Eingriffe", [edit(ENVF, "for _, kv := range start {", "for _, kv := range []string(nil) {")]),
     ("eingriff-laufend-ignoriert", "fensterio", "TestWebView2Eingriffe", [edit(ENVF, "for _, kv := range current {", "for _, kv := range []string(nil) {")]),
-    ("eingriff-neutral-alles", "fensterio", "TestWebView2Eingriffe", [edit(ENVF, "ok && value == want {", "ok {")]),
+    ("eingriff-neutral-alles", "fensterio", "TestWebView2Eingriffe", [edit(ENVF, "ok && value == want {", "ok && (value == want || true) {")]),
     ("eingriff-wert-in-meldung", "fensterio", "TestWebView2Eingriffe", [edit(ENVF, 'out = append(out, fmt.Sprintf("%s(laenge=%d,laufend)", name, len(value)))', 'out = append(out, fmt.Sprintf("%s(laenge=%d,laufend)", name, len(value))+value)')]),
     ("eingriff-kanal-neutral", "fensterio", "TestWebView2Eingriffe", [edit(ENVF, '"WEBVIEW2_RELEASE_CHANNEL_PREFERENCE":   "0",', '"WEBVIEW2_RELEASE_CHANNEL_PREFERENCE":   "1",')]),
     ("envsnap-importiert-mehr", "fensterio", "TestEnvsnapLaeuftVorDemLader", [edit(ESN, 'import "os"', 'import (\n\t"os"\n\t"strings"\n)\n\nvar _ = strings.ToUpper')]),
