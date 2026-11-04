@@ -253,6 +253,9 @@ func TestAppCSPWirdEingesetzt(t *testing.T) {
 		{"kommentarDavor", "<!-- c --><html>\n<head>\n<title>x</title></head></html>", "<!-- c --><html>\n<head>" + csp + "\n<title>x</title></head></html>"},
 		{"ohneHtmlTag", "<head><title>x</title></head><body></body>", "<head>" + csp + "<title>x</title></head><body></body>"},
 		{"umlaute", "<html><head><title>Grüße</title></head></html>", "<html><head>" + csp + "<title>Grüße</title></head></html>"},
+		{"crlf", "<html>\r\n<head>\r\n<title>x</title></head></html>", "<html>\r\n<head>" + csp + "\r\n<title>x</title></head></html>"},
+		{"tabsUndUmbruch", "\t<!doctype html>\n\t<html>\n\t<HEAD>\n</HEAD></html>", "\t<!doctype html>\n\t<html>\n\t<HEAD>" + csp + "\n</HEAD></html>"},
+		{"headMitBody", "<html><head></head><body><p>x</p></body></html>", "<html><head>" + csp + "</head><body><p>x</p></body></html>"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := injectCSP([]byte(tc.html))
@@ -287,6 +290,19 @@ func TestAppCSPAbweisungen(t *testing.T) {
 		"textVorHead":             "<html>Text<head></head></html>",
 		"headNurImKommentar":      "<html><!-- <head> --><body></body></html>",
 		"headImTitel":             "<html><title><head></title><body></body></html>",
+		// SEC-R4 F1: Text oder End-Tag vor dem <head> beendet den Head für den Parser; der Tokenizer sieht das nicht.
+		"textVorHeadOhneHtml":         "x<head><title>y</title></head>",
+		"endTagBrVorHead":             "</br><head></head>",
+		"endTagBrNachHtml":            "<html></br><head></head></html>",
+		"endTagPVorHead":              "<html></p><head></head></html>",
+		"absatzVorHead":               "<p><head></head></p>",
+		"headNurImSkript":             "<html><script>var a = \"<head>\"</script></html>",
+		"stilVorHead":                 "<style>a{}</style><head></head>",
+		"bomVorDoctype":               "\ufeff<!doctype html><html><head></head></html>",
+		"nbspVorHead":                 "\u00a0<html><head></head></html>",
+		"nelVorHead":                  "\u0085<head></head>",
+		"nulVorHead":                  "\x00<head></head>",
+		"headMitInhaltInTitelUndText": "<html><title>a</title>x<head></head></html>",
 	} {
 		t.Run(name, func(t *testing.T) {
 			if out, err := injectCSP([]byte(html)); err == nil {
@@ -498,5 +514,31 @@ func TestAppAblageVerschwindetBeimWiderruf(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(st.Root, "apps")); err == nil {
 		t.Fatal("App-Ablage überlebt den Widerruf")
+	}
+}
+
+// SEC-R4 F1: Die Prüfung nach dem Einsetzen ist die Parser-Sicht. Hier ist der Vorfilter (Tokenizer)
+// bewusst nachsichtig (Unicode-Leerraum vor dem Head), der Parser verschiebt das <head> aber in den Body:
+// Das Literal läge im Body, Chromium verwürfe es. Nur die Parserprüfung fängt das.
+func TestAppCSPParserPruefungIstDieEigentlichePruefung(t *testing.T) {
+	csp := fenster.CSPMeta()
+	if _, err := injectCSP([]byte("\u00a0<html><head></head></html>")); err == nil {
+		t.Fatal("NBSP vor dem Head eingesetzt, obwohl der Parser das Literal in den Body legt")
+	}
+	for name, html := range map[string]string{
+		"literalImBodyBeiNbsp": "\u00a0<html><head>" + csp + "</head></html>",
+		"literalNachText":      "x<head>" + csp + "</head>",
+		"literalNachEndTag":    "</br><head>" + csp + "</head>",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if leadingCSP([]byte(html)) {
+				t.Fatal("Open akzeptiert ein Literal, das der Parser nicht in <head> sieht")
+			}
+		})
+	}
+	// Kontrolle: derselbe Aufbau ohne Störzeichen besteht beides.
+	out, err := injectCSP([]byte("<html><head></head></html>"))
+	if err != nil || !leadingCSP(out) {
+		t.Fatal(err)
 	}
 }
