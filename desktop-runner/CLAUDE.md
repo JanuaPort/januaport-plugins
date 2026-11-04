@@ -30,7 +30,9 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 | internal/platform/security_linux.go, server_linux.go | Linux-HMAC/Dateirechte, Sperre und Server-Konfiguration |
 | container.go, container_engine.go, secrets_linux.go | Docker-CLI, Startwege und Geheimnisgrenze |
 | internal/fenster | Reines Go ohne Netz/Prozess/Datei/Windows (K6b-1): CSP-Literal, Navigation, Nachrichten, Einstellungen, Umschlag, Brücke |
-| internal/fensterio | Adapter zu `fenster`: Gateway (App-Token im RAM, 401 → einmal neu) und Pipe-Wrapper mit zwei Operationen |
+| internal/fensterio | Hinter der Tür des Bedienfelds (K6b-2): Gateway (App-Token im RAM, 401 → einmal neu), Pipe-Wrapper mit zwei Operationen, `Host` (UI-Thread-sicher), `PanelExchange` über die vorhandene Verbindung, `Runtime` (Apps lesen, öffnen), Urteile für native Ereignisse, `Surface` (nur Windows) |
+| internal/wv2com | Nur Windows: dünner COM-Adapter neben go-webview2 für NavigationStarting, NewWindowRequested, DownloadStarting, Quelle der Webnachricht, ClearBrowsingData |
+| internal/client/reader.go | `Reader`: nur lesender Zugriff des Bedienfelds auf Zugangsdaten, geprüftes Manifest und App-Siegel |
 | apptoken.go, appstore.go, appload.go, copied_apphost.go | Vertrag 5 im Client: App-Token, privates Ablegen mit Siegel, Ladeprüfung, markierte apphost-Kopie |
 | contract/golden-v5 | Bytegleicher Kernspiegel von Vertrag 5 (Manifest und Routen) mit SHA256SUMS |
 | probe/k6b_mutations.py | Mutationen K6b-1 im Container mit Go und Python |
@@ -274,10 +276,25 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     separater Windows-Prozess ohne CGO, gebaut mit `-H=windowsgui`.
     `internal/panel`: reines Linux-testbares Modell. `internal/panelio`: I/O.
     `cmd/bedienfeld`: UI-Thread mit LockOSThread und Message-Loop; Pipe-Lesen
-    in Goroutines, Übergabe per PostMessage. Kein Credential/eigener Netzweg.
-    Transitive Importe: kein `net/http`/`internal/client`, `net` nur über Pipe.
-    Benannte Ausnahmeliste `importExceptions` in `TestPanelImportWaechter`
-    leer (K6b später). Win32 via syscall/System32; x/sys/windows nur hinter Pipe.
+    in Goroutinen, Übergabe per PostMessage. **Neu gefasst in K6b-2 (SEC-B1–B4):** Das Bedienfeld
+    als Prozess hält seit den App-Fenstern das Gerätetoken (nur lesend, Reader) und einen Netzweg
+    zum Gateway, aber **nur hinter einer Tür**: `cmd/bedienfeld -> internal/fensterio` ist die einzige
+    benannte Kante. `internal/panel`, `internal/panelio` und `internal/pipe` bleiben strikt ohne
+    `net/http`, `internal/client`, `internal/fensterio` und freies `net`; `importExceptions` in
+    `TestPanelImportWaechter` bleibt leer, der Wächter ist je Wurzel geschnitten (keine Kantenliste),
+    `TestFensterioNurUeberDieTuer` prüft, dass nur `cmd/bedienfeld` die Tür nutzt. Das Bedienfeld selbst
+    importiert weder `internal/client` noch `internal/platform` noch `net/http`
+    (`TestBedienfeldImportiertClientNicht`, `TestPlatformNurHinterDerTuer`). Hinter der Tür gilt B3: aus
+    `internal/client` nur Leser und AppAPI (`TestFensterioRuftNurLeserUndAppAPI`, AST), kein Engine-,
+    Spawn-, Claim-, Schreib- oder Widerrufsaufruf; bei „revoked“ ein fester Fehler, gelöscht wird nichts
+    (`TestRuntimeWiderrufLoeschtNichts`). B1: Die UI-Thread-Dateien rufen weder Gateway noch Brücke noch
+    Zugangsdaten-Lesen noch Pipe-Gespräch (`TestBedienfeldUIThreadOhneNetzUndBruecke`); `Host.Receive`
+    blockiert nie, Gateway und lokaler Pfad haben getrennte Plätze (`TestHostAnhaltenBleibtBeiHaengendemGatewayBedienbar`),
+    ein WebView2-Absturz (`ProcessFailed`) schließt nur das Fenster (`TestHostFailBrichtAbUndNimmtNichtsMehrAn`,
+    nativ `TestWindowsWebViewProzessabsturz`). B4: Die Pipe bleibt tokenfrei; das Token wird erst beim
+    Öffnen einer App gelesen (`TestReaderAppsDekodiertKeinToken`) und steht nie in Env, Kommandozeile,
+    AdditionalBrowserArguments oder Benutzerdatenverzeichnis (`TestWindowsWebViewProzessbaumOhneTraeger`).
+    Win32 via syscall/System32; x/sys/windows nur hinter Pipe und hinter der Tür.
     Ausschließlich `pipe.Dial()` prüft Bildpfad, Authenticode und Benutzer-SID.
     Nichts vor erfolgreicher Prüfung schreiben; kein Ausweichname, Wiederholung
     mit 5–60 Sekunden Abstand. Fünf Sekunden ohne Status oder bei blockiertem
@@ -305,7 +322,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Native Prozesssonde: echte Exe ohne Argumente, PEB/Umgebung ohne `jnpt*`
     (Exe-Name ausgenommen), Handle-Vererbung samt Gegenprobe. Läuft über den
     bestehenden Windows-Job. Kein Tray-Rauchtest/lokaler GUI-Start.
-    L6 bindet Installation/zweite Aufgabe/Release gemeinsam (Invariante 17); HTML/WebView erst K6b.
+    L6 bindet Installation/zweite Aufgabe/Release gemeinsam (Invariante 17); App-Fenster: Invariante 18 (K6b-2).
 
 17. Installation und Release (#1240 L6; Plan-Invariante 19):
     `desktop-runner.exe` und `jnpt-bedienfeld.exe` aus demselben Release im selben
@@ -370,6 +387,28 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     `zustand`, `bis`, `netz`; `Anhalten` gilt erst, wenn der Läufer `angehalten` bestätigt.
     Grenze (SEC K6b (c), Invariante 15): Die Pipe-ACL schützt nicht gegen den WebView2-Hauptprozess.
 
+    **K6b-2 (App-Fenster im Bedienfeld, SEC-B1–B4 und natives Ereignismodell):** Menüeintrag je App
+    (`panel.Model.SetApps`, nur Namen), Öffnen in einer fensterio-Goroutine (`Runtime.OpenAsync`: Manifest
+    prüfen, Siegel prüfen, erst dann Zugangsdaten lesen, `client.NewAPI` mit onRevoke ohne Löschen).
+    `Surface` (nur Windows, UI-Thread): natives Fenster, WebView2 über `go-webview2` v1.0.19 (gepinnt, MIT,
+    NOTICE) plus dünner eigener COM-Adapter `internal/wv2com` für alles, was die Bibliothek nicht durchreicht
+    (Vtable-Positionen und IIDs aus WebView2.h, SDK 1.0.2535.41). **Nativ gebunden, Pflicht, sonst öffnet das
+    Fenster nicht** (`RunSteps`, fester Fehler `webview_nicht_nutzbar`): `NavigationStarting` und
+    `FrameNavigationStarting` (Abbruch vor der Anfrage, auch Redirect und meta refresh; nur `.html`-Seiten der
+    eigenen App laufen), `NewWindowRequested` (immer `Handled`, nie ein Fenster; externe https-Links nur über
+    den nativen Ja-Dialog mit Host, dann `ShellExecuteW`), `DownloadStarting` (Cancel und Handled),
+    `WebMessageReceived` mit Quelle (`MessageSource` → `MessageAllowed`), `PermissionRequested` (global
+    Deny), `ProcessFailed` (Fenster schließen, Host abbrechen). Dazu `Settings()` vollständig,
+    `ClearBrowsingData` (A5, ICoreWebView2_13/Profile2), virtueller Host je App mit Zugriff `DENY`,
+    `Layout`: Die WebView bekommt einen Bereich, auf Testgeräten darüber die native Leiste „Test – Testgerät“.
+    Das Benutzerdatenverzeichnis `<Zustand>\webview\<app>` entsteht mit `platform.MkdirPrivate`
+    (private DACL) und wird vom Widerruf des Läufers ohne Verweisen zu folgen gelöscht
+    (`TestRevokeLoeschtWebviewOhneVerweiseZuFolgen`). `WebResourceRequested` wird nicht benutzt (die
+    Bibliothek beendet dort bei einem COM-Fehler den Prozess). Grenzen: Die Bibliothek spiegelt jede
+    Seitennachricht an die Seite zurück (Echo, die Seite ignoriert Nachrichten ohne `ok`); alte Fassungen
+    unter `apps\` werden nicht aufgeräumt; die Ereignisse sind unter Linux nur als Urteile geprüft, ihre
+    Bindung belegt allein die native Sonde (`webview_native_windows_test.go`, Opt-in).
+
 ## Benannte Grenzen
 
 Widerruf wird offline erst beim Kontakt sichtbar, bis zur Gnadenfrist kann
@@ -422,6 +461,7 @@ mit PASS ohne SKIP laufen. CI/Kompilierung ersetzen diesen Gate-Beleg nicht.
 | Bedienfeld, Plan 14/15/18, §6.6, H4 | TestPanelZustaende, TestPanelMenueBefehleUndSetupEingabe, TestPanelFrageNurLokal, TestPanelStoerungBleibtBisNeuGeprueftemZustand, TestPanelServerpruefungSperrtBefehle, TestServerpruefungSendetNichtsAmAdapter, TestVerbindungVerwirftAlteBefehleUndBrichtSchreibenAb, TestBlockiertesSchreibenTrotzHeartbeatWirdGetrennt, TestFokusWaechter, TestBedienfeldNurGepruefterDial, TestPanelImportWaechter, TestL4SchemaPflichtfelder, TestH4RoheFragenAmLaeufer, TestH4SkriptTitelAbgewiesen, TestH4RoheFrageGrenzen, TestPanelEingabeAusVerifiziertemManifest; Windows: TestWindowsBedienfeldProzesssonde |
 | Rückfragen intern, L3-Anteil | TestFrageNurLokal, TestFrageFristUndDisconnect, TestPipeFrageAntwortWeiterleitung, TestPipeHaltSchliesstFrage |
 | L5 SEC-R4 F1/H2 | TestL5EndaufnahmeNachHaltUndWandzeit (Anhalten: 0 Aufnahmen/Uploads; Wandzeit: 1, ohne Engine-Sperre), TestL5LaufpinSeparatGebunden (verified gültig, nur Laufpin abweichend); Mutationen completion-halt, completion-wall-context, run-pin-binding |
+| PC-Fenster K6b-2 (SEC B1–B4, native Ereignisse) | fensterio: TestHostReceiveBlockiertNie, TestHostAnhaltenBleibtBeiHaengendemGatewayBedienbar, TestHostFailBrichtAbUndNimmtNichtsMehrAn, TestRuntimeOpenAsyncKehrtSofortZurueck, TestRuntimeSchreibtNichtsInDenZustand, TestRuntimeWiderrufLoeschtNichts, TestRuntimeAppsOhneTraeger, TestPanelExchange*, TestNavigationVerdict, TestNewWindowVerdictIstImmerAbgebrochen, TestDownloadVerdictBrichtImmerAb, TestMessageSource, TestRunStepsHaeltBeimErstenFehlerAn, TestAdapterBindetAlleEreignisse, TestAdapterWendetAlleSettingsAn, TestFensterioRuftNurLeserUndAppAPI, TestBedienfeldImportiertClientNicht, TestPlatformNurHinterDerTuer, TestBedienfeldUIThreadOhneNetzUndBruecke, TestFensterioKeinAbbruchUndKeinPanel; panel: TestPanelImportWaechter, TestFensterioNurUeberDieTuer, TestPanelApp*; client: TestReader*, TestSyncLegtAppsAb, TestRevokeLoeschtWebviewOhneVerweiseZuFolgen, TestAppPrepareNachWiderrufLegtNichtsAb; fenster: TestExternalLink, TestDecide, TestLayout; Windows nativ (Opt-in): TestWindowsWebView* |
 | PC-Fenster K6b-1 (Plan 4c/5, SEC K6b) | fenster: TestCSPExakt, TestNavigationAllowed, TestMessageAllowed, TestSettingsSollliste, TestUmschlagStrikt, TestUmschlagGrenzeGenau256KiB, TestBrueckeAntwortOhneTraeger, TestBrueckeUnerlaubteQuelleBleibtStumm, TestFensterImportWaechter; fensterio: TestLokalGenauZweiOperationen, TestLokalAnhalten, TestGatewayHolTokenEinmalUndSendetNurZweiTraeger, TestGatewayHoltBei401NeuUndWiederholtEinmal, TestGatewayZweite401IstNichtAngemeldet, TestGatewayFehlerOhneTraeger; client: TestGoldenV5AusKern, TestManifestV5StriktAmAdapter, TestAppTokenAmHTTPAdapter, TestAppTokenAntwortStrikt, TestAppRPCAmHTTPAdapter, TestAppPaketGuterFallLegtPrivatAbUndVersiegelt, TestAppSiegelVorJedemOeffnen, TestAppPaketAblehnungenLegenNichtsAb, TestAppCSPWirdEingesetzt, TestAppCSPAbweisungen, TestLeadingCSP, TestAppCSPJedeHTMLDatei, TestAppSiegelDecktEingesetztesLiteral, TestAppOpenPrueftFuehrendesLiteralTrotzNeuemSiegel, TestEnsureHoltPaketUeberHTTPNurEinmal, TestCopiedApphostFunctions |
 | Helfer L5, Plan 3/15/16/18, L3-2/H3 | TestScreenshotNurTestgeraet/roheRahmen, TestErgebnisNurTestauftrag/roheRahmen, client.TestFrageNurLokal (echter Python-Bootstrap), TestL5ErgebnisNullUndGrenzen, TestL5ScreenshotGrenzen, TestL5RahmenStrikt, TestL5BootstrapModule, TestL5TestauftragAmHTTPAdapter, TestKeineListenerDownloaderOderPip, TestScreenshotPNGBufferGrenze, TestScreenshotLinuxStub; Windows nur kompiliert: TestWindowsScreenshotGDI, TestWindowsScreenshotGDIChild, TestWindowsPythonKindOhneBedienfeldPipe |
 
@@ -507,6 +547,8 @@ Nach externer Zwangsbeendigung den betroffenen Guard ausdrücklich prüfen.
 Abschlussbericht ausschließlich im Chat, keine Berichtsdatei im Repository.
 
 SEC-R4 F3 ergänzt Mutanten für Träger in JSON-Escapes und Schlüsseln (`traeger-unescape`, `traeger-schluessel`), `rpc-methode`, `rpc-id`, `rpc-version`, `rpc-ergebnis-und-fehler`, `http-beide-traeger`, `http-app-endpoint`, `http-app-praefix`, `gw-revoked-code`.
+K6b-2 ergänzt Mutanten für Host (`host-*`), Exchange (`exchange-*`), Leser (`reader-*`), Laufzeit (`runtime-*`), Wächter (`ui-thread-liest`, `bedienfeld-importiert-*`, `panel-importiert-fensterio`), die Ereignisurteile und Pflichtschritte (`nav-*`, `neues-fenster-*`, `download-*`, `quelle-ignoriert`, `schritte-*`, `adapter-*`), Links, Layout und App-Menü.
+Native Sonden (nur Test-VM, Opt-in `JNPT_NATIVE_WEBVIEW_PROBE=1`): `go test -c -o fensterio.test.exe ./internal/fensterio` auf dem Build-Rechner, auf der VM `fensterio.test.exe -test.run TestWindowsWebView -test.v`; das Binary braucht dort kein Go, nur die WebView2-Runtime und eine interaktive Sitzung; `PATH` darf kein `jnpt` tragen.
 K6b-1-Mutationen: `python3 probe/k6b_mutations.py [name…]`, im Container `golang:1.26.10` mit
 nachinstalliertem Python (Worktree als Mount, exklusiv). Jeder Mutant muss kompilieren und den
 benannten Test rot machen; Compilerfehler zählen nicht; `finally` stellt die Bytes her. Reine
