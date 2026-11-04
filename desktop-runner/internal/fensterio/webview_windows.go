@@ -5,6 +5,7 @@ package fensterio
 import (
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -125,6 +126,16 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 				s.requestClose()
 			}
 			s.chromium.SetErrorCallback(func(error) {})
+			return nil
+		}},
+		{"umgebung", func() error {
+			// Auflage SEC (a): Die Browserprozesse erben diese Umgebung. Variablen mit Namen JNPT* (Konfiguration,
+			// Opt-ins, vielleicht Träger) werden vorher entfernt; das Bedienfeld liest keine davon.
+			for _, name := range jnptNames(os.Environ()) {
+				if err := os.Unsetenv(name); err != nil {
+					return err
+				}
+			}
 			return nil
 		}},
 		{"embed begin", func() error {

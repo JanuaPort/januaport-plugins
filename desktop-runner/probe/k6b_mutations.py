@@ -46,6 +46,9 @@ BMN = "cmd/bedienfeld/main_windows.go"
 EDD = "internal/edge/doc.go"
 EDW = "internal/edge/corewebview2.go"
 PTW = "internal/pipe/transport_windows.go"
+RSR = "internal/fenster/resource.go"
+DGN = "internal/fenster/diag.go"
+ENVF = "internal/fensterio/env.go"
 
 
 def edit(path, old, new):
@@ -210,6 +213,20 @@ CASES = [
     ("edge-ohne-upstream-hash", "fensterio", "TestEdgeKopieNenntUpstream", [edit(EDD, "11c6e567b916645d5fe6df006681f988ac52c13d", "unbekannt")]),
     ("edge-falsche-pruefsumme", "fensterio", "TestEdgeKopieNenntUpstream", [edit(EDD, "h1:7U3QcDj1PrBPaxJNCui2k1SkWml+Q5kvFUFyTImA6NU=", "h1:alt=")]),
     ("edge-wird-importiert", "panel", "TestEdgeNurVonFensterio", [edit(PTW, '\t"golang.org/x/sys/windows"\n)', '\t"golang.org/x/sys/windows"\n\n\t_ "github.com/januaport/januaport-plugins/desktop-runner/internal/edge"\n)')]),
+    # Fremdserver-Befund: Schichten 1 und 2, Diagnose, Umgebung
+    ("resource-filter-fehlt", "fensterio", "TestAdapterSperrtRessourcenUndNetz", [edit(WVS, 'return wv2com.AddWebResourceRequestedFilter(s.com(), "*", wv2com.ResourceContextAll)', 'return nil')]),
+    ("netzargumente-fehlen", "fensterio", "TestAdapterSperrtRessourcenUndNetz", [edit(WVS, "s.chromium.AdditionalBrowserArgs = fenster.BrowserArgs()", "_ = fenster.BrowserArgs")]),
+    ("resource-fremder-host", "fenster", "TestResourceAllowed", [edit(RSR, "if !strings.HasPrefix(raw, prefix) {\n\t\treturn false\n\t}", "if false {\n\t\treturn false\n\t}")]),
+    ("resource-dokument-ohne-html", "fenster", "TestResourceAllowed", [edit(RSR, "if document {\n\t\treturn NavigationAllowed(app, raw)\n\t}", "_ = document")]),
+    ("resource-elternverzeichnis", "fenster", "TestResourceAllowed", [edit(RSR, 'if seg == ".." {', 'if seg == "..." {')]),
+    ("resource-kodierter-trenner", "fenster", "TestResourceAllowed", [edit(RSR, '[]string{"%2f", "%5c", "%00", "%3f", "%23"}', '[]string{"%5c", "%00", "%3f", "%23"}')]),
+    ("browserargs-loopback", "fenster", "TestBrowserArguments", [edit(RSR, "--proxy-bypass-list=<-loopback> --host-resolver-rules", "--host-resolver-rules"), edit(RSR, "`--proxy-bypass-list=<-loopback>`, ", "")]),
+    ("browserargs-festes-ziel", "fenster", "TestBrowserArguments", [edit(RSR, "--proxy-server=http://0.0.0.0:0 --proxy", "--proxy-server=http://127.0.0.1:1 --proxy"), edit(RSR, "`--proxy-server=http://0.0.0.0:0`", "`--proxy-server=http://127.0.0.1:1`")]),
+    ("diag-traeger", "fenster", "TestDiagText", [edit(DGN, "if EnthaeltTraeger([]byte(s)) {", "if false {")]),
+    ("verdict-rahmen", "fenster", "TestSourceVerdict", [edit(DGN, "if !s.MainFrame {\n\t\treturn false, \"rahmen\"\n\t}", "")]),
+    ("reply-inhalt", "fenster", "TestReplySummary", [edit(DGN, 'return "fehler=" + r.Fehler', 'return "fehler=" + r.Fehler + string(b)'), edit(DGN, 'if r.Ok != nil && *r.Ok {\n\t\treturn "ok"', 'if r.Ok != nil && *r.Ok {\n\t\treturn "ok" + string(b)')]),
+    ("env-scrub-fehlt", "fensterio", "TestAdapterPruefteThreadUndWartetBegrenzt", [edit(WVS, '{"umgebung", func() error {', '{"env", func() error {')]),
+    ("env-gross-klein", "fensterio", "TestEnvNamenZumEntfernen", [edit(ENVF, 'strings.EqualFold(name[:4], "jnpt")', 'name[:4] == "JNPT"')]),
 ]
 
 

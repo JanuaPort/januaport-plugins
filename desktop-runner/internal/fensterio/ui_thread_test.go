@@ -70,7 +70,7 @@ func TestAdapterPruefteThreadUndWartetBegrenzt(t *testing.T) {
 		}
 		return true
 	})
-	for _, step := range []string{"com apartment", "embed begin", "embed wait"} {
+	for _, step := range []string{"com apartment", "umgebung", "embed begin", "embed wait"} {
 		if !literals[step] {
 			t.Errorf("Schritt %q fehlt im Adapter", step)
 		}

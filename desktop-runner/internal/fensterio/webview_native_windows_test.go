@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -35,7 +36,12 @@ import (
 
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/edge"
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/fenster"
+	"github.com/januaport/januaport-plugins/desktop-runner/internal/platform"
 )
+
+// probeOptIn wird beim Start des Test-Binaries gelesen: Die erste Oberfläche entfernt JNPT*-Variablen aus der
+// Umgebung (Auflage SEC a), danach wäre der Opt-in sonst weg.
+var probeOptIn = os.Getenv("JNPT_NATIVE_WEBVIEW_PROBE") == "1"
 
 var (
 	pPeek     = user32.NewProc("PeekMessageW")
@@ -100,12 +106,16 @@ func (probeLokal) Anhalten(context.Context) error { return nil }
 
 // probeBed ist ein Fremdserver (loopback), der jeden Abruf zählt: Ein Treffer heißt, dass etwas ausgeleitet wurde.
 type probeBed struct {
-	t     *testing.T
-	srv   *httptest.Server
-	hits  atomic.Int32
-	paths sync.Mutex
-	seen  []string
-	gw    *probeGateway
+	t      *testing.T
+	srv    *httptest.Server // Loopback
+	ext    *httptest.Server // eigene IPv4-Adresse des Gasts, kein Loopback
+	hits   atomic.Int32     // HTTP-Anfragen an beide Server
+	conns  atomic.Int32     // neue TCP-Verbindungen zu beiden Servern (auch preconnect ohne Anfrage)
+	t0     time.Time
+	paths  sync.Mutex
+	seen   []string
+	hitLog []string
+	gw     *probeGateway
 
 	closers []func() // laufen auf dem Thread der Sonde, bevor er endet (Fenster gehören ihrem Thread)
 
@@ -129,21 +139,46 @@ func (b *probeBed) dump(t *testing.T) {
 	for _, e := range b.gw.snapshot() {
 		t.Logf("Seite meldet: %s", fenster.DiagText(e))
 	}
-	t.Logf("Fremdserver: %d Treffer %v", b.hits.Load(), b.seenPaths())
+	t.Logf("Fremdserver: %d Anfragen, %d Verbindungen, Pfade %v", b.hits.Load(), b.conns.Load(), b.seenPaths())
+	b.paths.Lock()
+	for _, line := range b.hitLog {
+		t.Logf("Treffer %s", line)
+	}
+	b.paths.Unlock()
 }
 
-func newProbeBed(t *testing.T) *probeBed {
-	if os.Getenv("JNPT_NATIVE_WEBVIEW_PROBE") != "1" {
-		t.Skip("opt-in: JNPT_NATIVE_WEBVIEW_PROBE=1 in einer interaktiven Sitzung mit WebView2-Runtime")
+// ownIPv4 liefert eine IPv4-Adresse des Gasts, die weder Loopback noch Link-Local ist.
+func ownIPv4() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
 	}
-	if strings.Contains(strings.ToLower(os.Getenv("PATH")), "jnpt") {
-		t.Fatal("PATH trägt jnpt: Die Umgebung der Sonde muss sauber sein")
+	for _, a := range addrs {
+		ipn, ok := a.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		if ip := ipn.IP.To4(); ip != nil && !ip.IsLoopback() && !ip.IsLinkLocalUnicast() && !ip.IsUnspecified() {
+			return ip.String()
+		}
 	}
-	b := &probeBed{t: t, gw: &probeGateway{}}
-	b.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return ""
+}
+
+// startServer startet einen zählenden Fremdserver. Jede Anfrage wird mit den Kopfzeilen Sec-Fetch-*, Sec-Purpose
+// und Purpose festgehalten (Zeit relativ zum Start der Sonde), jede neue Verbindung wird gezählt.
+func (b *probeBed) startServer(label, addr string) *httptest.Server {
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		b.t.Fatalf("%s: %v", label, err)
+	}
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b.hits.Add(1)
 		b.paths.Lock()
 		b.seen = append(b.seen, r.URL.Path)
+		b.hitLog = append(b.hitLog, fmt.Sprintf("+%dms %s %s %s dest=%s mode=%s site=%s sec-purpose=%s purpose=%s", time.Since(b.t0).Milliseconds(), label, r.Method, r.URL.Path,
+			fenster.DiagText(r.Header.Get("Sec-Fetch-Dest")), fenster.DiagText(r.Header.Get("Sec-Fetch-Mode")), fenster.DiagText(r.Header.Get("Sec-Fetch-Site")),
+			fenster.DiagText(r.Header.Get("Sec-Purpose")), fenster.DiagText(r.Header.Get("Purpose"))))
 		b.paths.Unlock()
 		w.Header().Set("Content-Type", "text/javascript")
 		if strings.HasSuffix(r.URL.Path, ".zip") {
@@ -151,7 +186,35 @@ func newProbeBed(t *testing.T) *probeBed {
 		}
 		fmt.Fprint(w, "")
 	}))
-	t.Cleanup(b.srv.Close)
+	srv.Listener.Close()
+	srv.Listener = l
+	srv.Config.ConnState = func(_ net.Conn, st http.ConnState) {
+		if st == http.StateNew {
+			b.conns.Add(1)
+			b.paths.Lock()
+			b.hitLog = append(b.hitLog, fmt.Sprintf("+%dms %s neue Verbindung", time.Since(b.t0).Milliseconds(), label))
+			b.paths.Unlock()
+		}
+	}
+	srv.Start()
+	b.t.Cleanup(srv.Close)
+	return srv
+}
+
+func newProbeBed(t *testing.T) *probeBed {
+	if !probeOptIn {
+		t.Skip("opt-in: JNPT_NATIVE_WEBVIEW_PROBE=1 in einer interaktiven Sitzung mit WebView2-Runtime")
+	}
+	if strings.Contains(strings.ToLower(os.Getenv("PATH")), "jnpt") {
+		t.Fatal("PATH trägt jnpt: Die Umgebung der Sonde muss sauber sein")
+	}
+	b := &probeBed{t: t, gw: &probeGateway{}, t0: time.Now()}
+	b.srv = b.startServer("loopback", "127.0.0.1:0")
+	ip := ownIPv4()
+	if ip == "" {
+		t.Fatal("keine Nicht-Loopback-IPv4-Adresse im Gast: Die Sonde wäre für die zweite Hälfte blind")
+	}
+	b.ext = b.startServer("extern", ip+":0")
 	return b
 }
 
@@ -182,24 +245,35 @@ func (b *probeBed) openProbe(app string, files map[string]string, mutate func(*S
 		t.Fatal(err)
 	}
 	// Der Browser hält Dateien im Datenordner noch kurz nach dem Schließen offen; t.TempDir würde daran scheitern.
-	dataRoot, err := os.MkdirTemp("", "jnpt-probe-")
+	dataRoot, err := os.MkdirTemp("", "probe-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	b.closers = append(b.closers, func() { removeWhenFree(t, dataRoot) })
 	o := &Opened{Name: app, Dir: dir, UserDataDir: filepath.Join(dataRoot, "webview", app), TestDevice: true, Host: host}
 	var trace []string
+	var stamps []time.Duration
 	var mu sync.Mutex
 	b.mu.Lock()
 	b.snapshots = append(b.snapshots, func() []string {
 		mu.Lock()
 		defer mu.Unlock()
-		return append([]string(nil), trace...)
+		out := make([]string, len(trace))
+		for i, line := range trace {
+			out[i] = fmt.Sprintf("+%dms %s", stamps[i].Milliseconds(), line)
+		}
+		return out
 	})
 	b.mu.Unlock()
+	add := func(line string) {
+		mu.Lock()
+		trace = append(trace, line)
+		stamps = append(stamps, time.Since(b.t0))
+		mu.Unlock()
+	}
 	cfg := SurfaceConfig{
-		OnLink: func(l Link) { mu.Lock(); trace = append(trace, "link "+l.Host); mu.Unlock() },
-		Probe:  func(ev, detail string) { mu.Lock(); trace = append(trace, ev+" "+detail); mu.Unlock() },
+		OnLink: func(l Link) { add("link " + l.Host) },
+		Probe:  func(ev, detail string) { add(ev + " " + detail) },
 	}
 	if mutate != nil {
 		mutate(&cfg)
@@ -499,23 +573,40 @@ func TestWindowsWebViewNachrichtQuelle(t *testing.T) {
 	})
 }
 
-// PermissionRequested: Standard Deny.
+// PermissionRequested: Standard Deny. Berechtigungen ohne Gerät (Geolocation, Benachrichtigungen, Zwischenablage
+// lesen), damit die Abfrage das Gerät nicht umgeht (ein Mikrofon gibt es auf der VM nicht). Belegt wird die
+// Antwort der Seite und die native Ablehnung im Ereignis PermissionRequested.
 func TestWindowsWebViewBerechtigungenAbgelehnt(t *testing.T) {
 	b := newProbeBed(t)
 	b.run(t, probeFrist, func(t *testing.T) {
-		s, _, _ := b.openProbe("probe", map[string]string{
+		s, _, trace := b.openProbe("probe", map[string]string{
 			"index.html": probePage(`<script src="probe.js"></script>`, `<script src="rechte.js"></script>`),
 			"rechte.js": `
-navigator.geolocation.getCurrentPosition(function(){ send("geo", {code: 0}); }, function(e){ send("geo", {code: e.code}); });
-navigator.mediaDevices.getUserMedia({audio: true}).then(function(){ send("mikro", {ok: true}); }).catch(function(e){ send("mikro", {ok: false, name: e.name}); });
+navigator.geolocation.getCurrentPosition(function(){ send("geo", {code: 0}); }, function(e){ send("geo", {code: e.code}); }, {timeout: 8000});
+Notification.requestPermission().then(function(r){ send("notif", {antwort: r}); });
+navigator.clipboard.readText().then(function(){ send("clip", {ok: true}); }).catch(function(e){ send("clip", {ok: false, name: e.name}); });
 `,
 			"probe.js": probeJS,
 		}, nil)
-		if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("geo ") && b.gw.has("mikro ") }) {
+		if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("geo ") && b.gw.has("notif ") && b.gw.has("clip ") }) {
 			t.Fatal("Berechtigungsabfragen blieben ohne Antwort")
 		}
-		if !b.gw.has(`"code":1`) || b.gw.has(`"ok":true`) {
-			t.Fatalf("Berechtigung nicht abgelehnt: %v", b.gw.events)
+		if !b.gw.has(`"code":1`) || b.gw.has(`"code":0`) || !b.gw.has(`"antwort":"denied"`) || b.gw.has(`"antwort":"granted"`) || !b.gw.has(`"ok":false`) || b.gw.has(`"ok":true`) {
+			t.Fatalf("Berechtigung nicht abgelehnt: %v", b.gw.snapshot())
+		}
+		// Native Ablehnung: Jede gemeldete Abfrage wurde mit Deny beantwortet, und mindestens eine kam an.
+		asked := 0
+		deny := fmt.Sprintf("antwort=%d", edge.CoreWebView2PermissionStateDeny)
+		for _, e := range *trace {
+			if strings.HasPrefix(e, "PermissionRequested ") {
+				asked++
+				if !strings.HasSuffix(e, deny) {
+					t.Fatalf("Abfrage nicht abgelehnt: %q", e)
+				}
+			}
+		}
+		if asked == 0 {
+			t.Fatalf("PermissionRequested nie gemeldet; die Ablehnung kam nicht aus dem Ereignis: %v", *trace)
 		}
 	})
 }
@@ -555,13 +646,17 @@ func TestWindowsWebViewProzessabsturz(t *testing.T) {
 }
 
 // Prozessbaum (SEC (a), (b)): Weder Umgebung noch Kommandozeile irgendeines msedgewebview2-Prozesses unter
-// dem Prozess, der das Token hält, tragen jnpt oder einen Träger; das Benutzerdatenverzeichnis auch nicht.
+// dem Prozess, der das Token hält, tragen einen Träger, einen JNPT*-Variablennamen oder den Pipe-Namen; der
+// echte Produktpfad des Benutzerdatenverzeichnisses trägt kein jnpt. Der öffentliche Hostname *.jnpt.invalid
+// (virtueller Host, kein Geheimnis) wird nur als solcher ausgenommen und gezählt, jedes andere jnpt ist ein Fund.
+// Kontrolle: Vor dem Start stehen JNPT*-Variablen mit tokenförmigem Wert in der Umgebung des Testprozesses; die
+// Bereinigung des Produkts muss sie entfernen, sonst würden die Kindprozesse sie erben.
 func TestWindowsWebViewProzessbaumOhneTraeger(t *testing.T) {
 	b := newProbeBed(t)
 	b.run(t, probeFrist, func(t *testing.T) {
 		const fakeToken = "jn" + "ptpc_" + "SONDENWERT0123456789"
-		t.Setenv("JNPT_SONDE_TRAEGER", "") // Kontrolle gegen die Namensprüfung unten: leer, nicht gesetzt
-		os.Unsetenv("JNPT_SONDE_TRAEGER")
+		os.Setenv("JNPT_SONDE_TRAEGER", fakeToken)
+		os.Setenv("jnpt_sonde_klein", "x")
 		s, o, _ := b.openProbe("probe", map[string]string{
 			"index.html": probePage(`<script src="probe.js"></script>`, `<script src="baum.js"></script>`),
 			"baum.js":    `send("baum", {});`,
@@ -570,26 +665,57 @@ func TestWindowsWebViewProzessbaumOhneTraeger(t *testing.T) {
 		if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("baum") }) {
 			t.Fatal("Seite lädt nicht")
 		}
+		if os.Getenv("JNPT_SONDE_TRAEGER") != "" {
+			t.Fatal("Die Bereinigung des Produkts hat JNPT_SONDE_TRAEGER nicht aus der Umgebung entfernt")
+		}
 		procs := webviewProcesses(t)
 		if len(procs) == 0 {
 			t.Fatal("kein msedgewebview2-Prozess gefunden: Die Sonde wäre blind")
 		}
+		hostnames, netArgs := 0, 0
 		for _, p := range procs {
-			text := strings.ToLower(p.cmdline + "\n" + p.env)
-			for _, bad := range []string{"jnpt", strings.ToLower(fakeToken), "bearer"} {
-				if strings.Contains(text, bad) {
-					t.Errorf("Prozess %d (%s) trägt %q", p.pid, p.name, bad)
+			t.Logf("Prozess %d (%s): Kommandozeile %d Zeichen, Umgebung %d Zeichen, Variablen JNPT*: %v", p.pid, p.name, len(p.cmdline), len(p.env), jnptNames(strings.Split(p.env, "\x00")))
+			for part, text := range map[string]string{"Kommandozeile": p.cmdline, "Umgebung": p.env} {
+				if fenster.EnthaeltTraeger([]byte(text)) || strings.Contains(strings.ToLower(text), strings.ToLower(fakeToken)) || strings.Contains(strings.ToLower(text), "bearer") {
+					t.Errorf("Prozess %d (%s) trägt in der %s einen Träger", p.pid, p.name, part)
+				}
+				if strings.Contains(strings.ToLower(text), "bedienfeld") {
+					t.Errorf("Prozess %d kennt in der %s den Pipe-Namen", p.pid, part)
+				}
+				rest := strings.ReplaceAll(strings.ToLower(text), ".jnpt.invalid", "")
+				hostnames += strings.Count(strings.ToLower(text), ".jnpt.invalid")
+				for i := 0; i < len(rest); {
+					j := strings.Index(rest[i:], "jnpt")
+					if j < 0 {
+						break
+					}
+					at := i + j
+					lo, hi := max(0, at-30), min(len(rest), at+30)
+					t.Errorf("Prozess %d (%s): jnpt in der %s: ...%s...", p.pid, p.name, part, fenster.DiagText(rest[lo:hi]))
+					i = at + 4
 				}
 			}
+			if strings.Contains(p.cmdline, "--proxy-server=http://0.0.0.0:0") {
+				netArgs++
+			}
+		}
+		t.Logf("Hostname *.jnpt.invalid kam %d-mal in Kommandozeilen und Umgebungen vor (ausgenommen)", hostnames)
+		if netArgs == 0 {
+			t.Errorf("kein Browserprozess trägt die Argumente von Schicht 2 (%s): Sie kommen nicht an", fenster.BrowserArguments)
+		}
+		root, err := platform.Root()
+		if err != nil {
+			t.Fatal(err)
+		}
+		product, err := UserDataDir(root, "probe")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(strings.ToLower(product), "jnpt") {
+			t.Fatalf("Produktpfad des Benutzerdatenverzeichnisses trägt jnpt: %s", fenster.DiagText(product))
 		}
 		if strings.Contains(strings.ToLower(o.UserDataDir), "jnpt") {
-			t.Fatal("Benutzerdatenverzeichnis trägt jnpt im Pfad")
-		}
-		// Kein Pipe-Handle (SEC (b)): Keine vererbbaren Handles; hier genügt, dass der Name nirgends auftaucht.
-		for _, p := range procs {
-			if strings.Contains(strings.ToLower(p.cmdline+p.env), "bedienfeld") {
-				t.Errorf("Prozess %d kennt den Pipe-Namen", p.pid)
-			}
+			t.Fatal("Benutzerdatenverzeichnis der Sonde trägt jnpt im Pfad")
 		}
 	})
 }
