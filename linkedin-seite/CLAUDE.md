@@ -1,4 +1,4 @@
-# linkedin-seite 0.3.0 — Modulvertrag (#1306 F4, #1237)
+# linkedin-seite 0.3.1 — Modulvertrag (#1306 F4, #1237)
 
 Privater Python-REST-Beisteller, Apache 2.0. PO 29.10.2026 Option (a): Stufe A (Lesen); seit
 0.2.0 Stufe B1 (Posten nach Freigabe, SEC c-6575359082 und c-6575837332). Synthetisch geprüft,
@@ -10,10 +10,10 @@ Root-CLAUDE.md war im Ausgangscheckout nicht vorhanden.
   Follower-Ende höchstens heute−2, Seite höchstens gestern; spätere Eingabe
   `end_date_not_available`, kein Klemmen. Vorgabe endet am letzten verfügbaren Tag.
 - `source_contract.py`: EIN Ort aller Hersteller-Endpunkte, Parameter und Feldnamen,
-  Kommentar „aus Herstellerdoku, live zu belegen“. Scopes exakt
-  `rw_organization_admin r_organization_social` für Stufe A. Seit 0.2.0 der Block Stufe B1:
-  `WRITE_SCOPES` = genau `w_organization_social` + `w_organization_social_feed` (Kommentar, Comments API
-  202610), geschlossene `WRITE_ENDPOINTS` (Methode, Pfad je
+  Kommentar „aus Herstellerdoku, live zu belegen“. `SCOPES` = was der Lesepfad braucht
+  (`rw_organization_admin r_organization_social`), `WRITE_SCOPES` = was der Schreibpfad braucht
+  (`w_organization_social` + `w_organization_social_feed`, Kommentar, Comments API 202610),
+  `GRANT_SCOPES` = ihre Vereinigung, der eine Grant (0.3.1). Geschlossene `WRITE_ENDPOINTS` (Methode, Pfad je
   Operation, Doku-URL je Zeile), `UPLOAD_HOSTS`/`UPLOAD_PATH_PREFIX`, `UPLOAD_TOKEN` je Upload-Art,
   Video-Teilgröße, Status-Takt und Höchstzeit, Umfrage-Grenzen, reservierte Little-Text-Zeichen.
 - `linkedin_adapter.py`: fünf feste REST-Endpunkte, nur einzelne GETs, kein BATCH_GET.
@@ -38,16 +38,19 @@ Root-CLAUDE.md war im Ausgangscheckout nicht vorhanden.
   TLS-Prüfung, keine Proxies/Redirects/Retry. Access bis 60 Tage; Refresh optional bis
   365 Tage ab Erstzustimmung, Frist nie verlängern. Tokenantwort tolerant, wo LinkedIn
   ungenau ist, streng, wo es schützt (0.1.1, c-6571493150): `scope` mit Komma und/oder
-  Leerraum getrennt, Menge weiter exakt gleich `SCOPES` (`scope_set`); Laufzeiten bis
+  Leerraum getrennt, Menge exakt gleich `GRANT_SCOPES` (`scope_set`); die Zustimmung verlangt das
+  Feld (`scope_required`), beim Refresh darf es fehlen, weil ein Refresh keinen Grant erweitert und
+  eine Ablehnung ein Fehlen zum Ausfall um Tag 55 machte. `validate_identity` verlangt `scope` exakt
+  gleich `GRANT_SCOPES`; JSON ohne `scope` oder mit anderer Menge startet nicht. Laufzeiten bis
   Höchstwert + 1 Tag (`OVERSHOOT_TOLERANCE_SECONDS`) werden auf 60/365 Tage gedeckelt
   (`lifetime`), darüber/nicht int/≤0 = `unexpected_source_shape`. Erneuerung fünf Minuten vor Ablauf
   beim nächsten Abruf ausschließlich RAM; kein Tresor-Rückschreiben. Warnung ab 14 Tagen
   vor Access-Ablauf ohne Refresh bzw. Refresh-Ablauf mit Refresh, nur Datum; danach
-  ohne nutzbaren Access `token_abgelaufen`. Metadaten über verkürzte Frist zum Elternprozess.
+  ohne nutzbaren Access `token_abgelaufen`. Der Token-Zustand: Abschnitt unten.
 - `workers.py`: Vorbild google-reporting, zwei spawn-Prozesse, vier Queueplätze,
   30 Berichte/Minute, 20 Sekunden inklusive Queue/Token. Timeout/Disconnect killt und
-  reapt vor Ersatz. 50 HTTP-Versuche/UTC-Tag im SERVERPROZESS, IPC-Permit vor jedem
-  GET/Refresh, Fehlschläge zählen. Neustart setzt Tageszähler zurück.
+  reapt vor Ersatz. 50 HTTP-Versuche/UTC-Tag im SERVERPROZESS, IPC-Permit vor jedem GET,
+  Refresh zählt über den Transport des Pools, Fehlschläge zählen. Neustart setzt Tageszähler zurück.
 - `server.py`: Bridge-Key-Auth, feste GET-Routen, keine freien Pfade; 8 KiB Anfrage,
   Pfad 512, 512 KiB Quelle/Antwort. Feste Fehler-JSON `{"error": code}`; optional die
   definierte Tokenwarnung auf jeder Anwendungsantwort, auch lokalem `/healthz` und Fehler.
@@ -57,7 +60,9 @@ Root-CLAUDE.md war im Ausgangscheckout nicht vorhanden.
   Tokenmetadaten. Upgrade verlangt Canary-Negativproben.
 - `tools/zustimmung.py`: PO-Rechner, nicht im Image. State zufällig/geprüft, PKCE S256
   erst nach Herstellerbeleg, sonst ohne; beide Loopbacks 127.0.0.1 und ::1:8765,
-  nie Wildcard. Redirect bleibt http://localhost:8765/linkedin/callback.
+  nie Wildcard. Redirect bleibt http://localhost:8765/linkedin/callback. `--gesamt` ist Pflicht und
+  der einzige Modus, geparst vor der Secret-Abfrage: Eine alte Befehlszeile endet mit
+  `ungueltige_argumente` statt still einen anderen Scope-Satz anzufordern, der frühere Tokens entwertet.
   Gemeinsam genau eine Anfrage; die erste beendet beide Listener auch bei falschem
   State/Pfad. Nach Abweisung neu starten; Warte-/Gesamtfrist fünf Minuten.
   Nur EAFNOSUPPORT/EADDRNOTAVAIL/EPROTONOSUPPORT: IPv4 weiter, fester stderr-Hinweis.
@@ -70,11 +75,12 @@ Root-CLAUDE.md war im Ausgangscheckout nicht vorhanden.
 
 Invarianten in README, SETUP, Code, Deploy, CI und Tests gemeinsam nachziehen.
 Secret-Hausmuster #887: `plugin-linkedin-seite` (Bridge-Key, zugleich Connector-Credential
-`linkedin-seite`) und `plugin-linkedin-seite-oauth` (OAuth-JSON); seit 0.2.0 optional
-`plugin-linkedin-seite-post-oauth` (Schreib-Grant) und `plugin-linkedin-seite-gateway` (eigener
-Gateway-Token, nur `redaktionsplan_get`, `<ablage>_get_file`). tmpfiles erzeugt alle vier
-Ordner 0750/65532; Compose hängt sie read-only ein, eigenes Key-Unit-Paar beobachtet
-alle vier `runtime-key` und führt force-recreate aus; REQUIRE verlangt nur die zwei Stufe-A-Schlüssel. Nie Klartext unter /etc oder /opt.
+`linkedin-seite`) und `plugin-linkedin-seite-oauth` (OAuth-JSON des einen Grants); seit 0.2.0
+optional `plugin-linkedin-seite-gateway` (eigener Gateway-Token, nur `redaktionsplan_get`,
+`<ablage>_get_file`). Die frühere Stelle `plugin-linkedin-seite-post-oauth` ist mit 0.3.1 entfallen.
+tmpfiles erzeugt alle drei Ordner 0750/65532; Compose hängt sie read-only ein, eigenes Key-Unit-Paar
+beobachtet alle drei `runtime-key` und führt force-recreate aus; REQUIRE verlangt nur Bridge-Key und Grant.
+Nie Klartext unter /etc oder /opt.
 Konfiguration ist secretfrei. Kein Secret in Envs, Repo, Fehlerantwort oder Log.
 Dienst bindet nur reservierte Plugin-IP; internal-Netz und Egress-Firewall Betreiberpflicht.
 
@@ -91,6 +97,49 @@ Tag `linkedin-seite-vX.Y.Z` ausschließlich durch Auftraggeber; Aktionen SHA-gep
 keine neuen Aktionen. amd64-Build, SBOM/Provenance, Digest-/Config-Digest-Sonden,
 Trivy-Bericht, erst dann Tag. Workflow-Änderung zieht Release-Test/CHANGELOG nach.
 Version steht in diesem Kopf, README-Kopf und CHANGELOG; Compose/Deskriptor ohne Version.
+## Ein Grant, ein Token-Zustand (0.3.1, #1237)
+
+Befund 03.11.2026: Nach der zweiten Zustimmung derselben App für dasselbe Mitglied, nur mit den
+Schreib-Scopes, lieferte jeder Lesezugriff `source_access_denied`. Die Herstellerdoku sagt dazu: „If
+you request a different scope than the previously granted scope, all the previous access tokens are
+invalidated.“ Live ist die Ursache nicht belegt. Daraus folgt: **ein Grant, keine zweite Zustimmung.**
+Wer einen Scope ergänzt, fordert den ganzen neuen Satz in einer Zustimmung an und ersetzt das JSON.
+
+Prozessmodell: Serverprozess, zwei persistente Lese-Worker und je Auftrag ein Schreib- oder
+Vorschau-Prozess, alle spawn. Bis 0.3.0 hielt jeder Worker eine eigene Token-Kopie, jeder Job begann
+wieder beim Tresorstand, und ein gekillter Worker nahm eine laufende Erneuerung mit.
+Seit 0.3.1 gilt:
+
+- `oauth.Tokens` existiert genau einmal, im Serverprozess, gebaut in `server.build_pools` und beiden
+  Pools übergeben. `access(transport)` ist die einzige Stelle, die erneuert.
+- Eine `threading.Lock` umfasst Prüfung, Tausch und Übernahme. Bewusst keine asyncio-Sperre: Ein
+  abgebrochener Request gäbe sie frei, während der Tausch im Thread weiterläuft, und der nächste
+  tauschte ein zweites Mal. `access()` läuft deshalb immer über `asyncio.to_thread`, nie auf dem
+  Event-Loop; ein gekillter Worker verliert das Ergebnis nicht, es landet im Zustand.
+- `self.data` wird in einem Schritt ersetzt, weil `warning()` ohne Sperre liest.
+- Worker und Jobs halten `oauth.TokenClient`: `('token',)` über die vorhandene Pipe, Antwort das
+  Access-Token, je Aufruf, ungecacht. Spawn-Argumente tragen keinen Token, kein Refresh-Token, kein
+  Client-Secret. Die frühere `expiry`-Nachricht ist entfallen, der Zustand liegt ja beim Server.
+- Permit- und Transportgrenzen bleiben je Pfad getrennt: Jeder Pool baut seinen eigenen `Transport`
+  mit seinem eigenen Zähler (`_permit`, `_permit_http`). Wer erneuert, zahlt auf seinem Deckel; ein
+  leerer Lesedeckel stoppt nur den Lesepfad. Beide Zähler tragen `counter_lock`, weil neben dem
+  Event-Loop nun auch ein Erneuerungs-Thread zählt.
+- `job.write_started` und `nicht_ausgefuehrt` sind unberührt: Eine Erneuerung ist kein Schreibversuch.
+  Eine Vorschau bekommt kein Token (`vorschau_schreibt`).
+- `_send_token` dämmt unerwartete Fehler ein wie zuvor `worker_main` (502 `source_unavailable`).
+  Ohne das stirbt `_supervise`, `job.future` bleibt offen und der Schreibaufruf hängt für immer.
+
+Bewusste Grenzen: Die 25-Minuten-Frist eines Schreibjobs wird während einer Erneuerung nicht geprüft
+und kann sich um höchstens 36 Sekunden verschieben (18 Transport plus 18 Sperre), der Job schreibt
+in der Zeit nichts. Beim Herunterfahren wartet der Dienst bis zu 18 Sekunden auf einen laufenden
+Tausch. Refresh-Tokens bleiben nur im RAM: Nach einem Neustart beginnt der Dienst beim Tresorstand.
+
+Unverändert: SEC-Trennung im Gateway (Lesevorlage `linkedin-seite`, Schreibvorlage
+`linkedin-seite-manage`), Freigabe-Kopf `X-Jnpt-Freigabe`, Hash-Vergleich, Tagesdeckel, Lese-Routen
+nur GET, kein neues Werkzeug, keine Token-Werte in Logs oder Antworten. SEC Bed. 4 („eigener
+Schreib-Grant, nie getauscht“) ist damit aufgehoben: Das Access-Token im Lese-Worker trägt jetzt die
+Schreib-Scopes. Getrennt sind Pfade und Rechte, nicht mehr die Tokens.
+
 ## Schreibvertrag 0.3.0 (#1306 F4)
 
 Verbindlich: Plan v2/v2.1, SEC c-6602359446 (A1, A3) und c-6604738594 (H1–H3).
@@ -157,8 +206,8 @@ der frühere Konfigurationsschlüssel freigabe ist entfernt und wird abgewiesen.
   nach Dispatch ausschließlich mit IPC-Nachweis. Hash-Gleichheit wird nach dem Laden geprüft:
   nicht_freigegeben bleibt immer 409 ohne Ergebnisfeld. Ohne erfolgreiche Bridge-/Headerprüfung
   sowie für Vorschauen bleiben Fehlerstatus und fehlende Ergebnisindikatoren erhalten.
-  Lese- und Schreib-Grant bleiben getrennt, WRITE_SCOPES exakt w_organization_social und
-  w_organization_social_feed, Gateway-Token in eigener Tresor-Stelle.
+  Lesen und Schreiben teilen seit 0.3.1 den einen Grant (Abschnitt oben), der Gateway-Token
+  liegt in eigener Tresor-Stelle.
 
 Medien-/Umfrage-Grenzen und Upload-Host-/Teile-/Status-Prüfungen aus B1 gelten weiter.
 Kein GET des Ziel-Posts, kein DRAFT; Kommentartext ohne URN; little escaped reservierte
@@ -169,7 +218,8 @@ Verifikation mit Python 3.12, Abhängigkeiten aus requirements.lock:
 `python -m pip install --require-hashes -r requirements.lock`, dann im Modul
 `python -m unittest discover -s tests -v` und `python tests/mutations.py`.
 Pflichtmutanten: Hashvergleich/fehlender Header, jedes Hashfeld, geänderter Golden-Vektor,
-Ergebnisfelder vor/nach erstem Schreibversuch, zwei Gateway-Werkzeuge, bestehende SEC-Sperren.
+Ergebnisfelder vor/nach erstem Schreibversuch, zwei Gateway-Werkzeuge, bestehende SEC-Sperren,
+exakte Scope-Menge, `--gesamt` als Pflicht, Sperre um die Erneuerung, eigene Kopie je Prozess.
 Isolierte Kopien müssen rot werden; Originale bleiben unverändert. Ausgang und Doku-Checkliste
 stehen im PRUEFBERICHT. Synthetische Tests ersetzen kein Live-Gate.
 

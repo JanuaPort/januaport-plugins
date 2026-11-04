@@ -3,7 +3,7 @@
 ERROR: test_grant_is_exactly_the_read_and_the_write_scopes (test_contract.Contract.test_grant_is_exactly_the_read_and_the_write_scopes)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_contract.py", line 45, in test_grant_is_exactly_the_read_and_the_write_scopes
+  File "linkedin-seite\tests\test_contract.py", line 45, in test_grant_is_exactly_the_read_and_the_write_scopes
     self.assertEqual(s.GRANT_SCOPES, GRANT_LIST)
                      ^^^^^^^^^^^^^^
 AttributeError: module 'linkedin_seite.source_contract' has no attribute 'GRANT_SCOPES'. Did you mean: 'GRANT_TYPE'?
@@ -12,15 +12,15 @@ AttributeError: module 'linkedin_seite.source_contract' has no attribute 'GRANT_
 ERROR: test_runtime_paths_and_missing_invalid_identity (test_contract.Contract.test_runtime_paths_and_missing_invalid_identity)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_contract.py", line 61, in test_runtime_paths_and_missing_invalid_identity
+  File "linkedin-seite\tests\test_contract.py", line 61, in test_runtime_paths_and_missing_invalid_identity
     self.assertEqual(server.load_runtime_files(key, oauth), key.read_bytes())
                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\server.py", line 41, in load_runtime_files
+  File "linkedin-seite\linkedin_seite\server.py", line 41, in load_runtime_files
     load_identity(identity_path)
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 101, in load_identity
+  File "linkedin-seite\linkedin_seite\oauth.py", line 101, in load_identity
     return validate_identity(read_identity_file(path))
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
+  File "linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
     raise ValueError('invalid_identity')
 ValueError: invalid_identity
 
@@ -28,18 +28,18 @@ ValueError: invalid_identity
 ERROR: test_full_adapter_report_after_refresh_with_real_shape (test_oauth_toleranz.RealLinkedInShapeThroughRefreshPath.test_full_adapter_report_after_refresh_with_real_shape)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 171, in test_full_adapter_report_after_refresh_with_real_shape
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 171, in test_full_adapter_report_after_refresh_with_real_shape
     adapter = LocalAdapter(CFG, data, self.permit)
               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\support.py", line 50, in __init__
+  File "linkedin-seite\tests\support.py", line 50, in __init__
     super().__init__(cfg, data, permit, lambda p: LocalTransport(p, int(data[s.CLIENT_ID])))
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\linkedin_adapter.py", line 114, in __init__
+  File "linkedin-seite\linkedin_seite\linkedin_adapter.py", line 114, in __init__
     self.tokens = Tokens(identity, self.transport)
                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 178, in __init__
+  File "linkedin-seite\linkedin_seite\oauth.py", line 178, in __init__
     self.data = validate_identity(data)
                 ^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
+  File "linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
     raise ValueError('invalid_identity')
 ValueError: invalid_identity
 
@@ -47,13 +47,13 @@ ValueError: invalid_identity
 ERROR: test_overshoot_beyond_tolerance_on_the_refresh_path_fails_closed (test_oauth_toleranz.RealLinkedInShapeThroughRefreshPath.test_overshoot_beyond_tolerance_on_the_refresh_path_fails_closed)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 186, in test_overshoot_beyond_tolerance_on_the_refresh_path_fails_closed
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 186, in test_overshoot_beyond_tolerance_on_the_refresh_path_fails_closed
     tokens = Tokens(self.stored(timedelta(days=200)), LocalTransport(self.permit, self.fake.port))
              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 178, in __init__
+  File "linkedin-seite\linkedin_seite\oauth.py", line 178, in __init__
     self.data = validate_identity(data)
                 ^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
+  File "linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
     raise ValueError('invalid_identity')
 ValueError: invalid_identity
 
@@ -61,13 +61,13 @@ ValueError: invalid_identity
 ERROR: test_tokens_access_refreshes_with_comma_scope_and_overshoot (test_oauth_toleranz.RealLinkedInShapeThroughRefreshPath.test_tokens_access_refreshes_with_comma_scope_and_overshoot)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 161, in test_tokens_access_refreshes_with_comma_scope_and_overshoot
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 161, in test_tokens_access_refreshes_with_comma_scope_and_overshoot
     tokens = Tokens(data, LocalTransport(self.permit, self.fake.port), now=lambda: fixed)
              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 178, in __init__
+  File "linkedin-seite\linkedin_seite\oauth.py", line 178, in __init__
     self.data = validate_identity(data)
                 ^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
+  File "linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
     raise ValueError('invalid_identity')
 ValueError: invalid_identity
 
@@ -75,13 +75,13 @@ ValueError: invalid_identity
 ERROR: test_wrong_scope_on_the_refresh_path_still_fails_closed_with_one_call (test_oauth_toleranz.RealLinkedInShapeThroughRefreshPath.test_wrong_scope_on_the_refresh_path_still_fails_closed_with_one_call)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 178, in test_wrong_scope_on_the_refresh_path_still_fails_closed_with_one_call
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 178, in test_wrong_scope_on_the_refresh_path_still_fails_closed_with_one_call
     tokens = Tokens(self.stored(timedelta(days=200)), LocalTransport(self.permit, self.fake.port))
              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 178, in __init__
+  File "linkedin-seite\linkedin_seite\oauth.py", line 178, in __init__
     self.data = validate_identity(data)
                 ^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
+  File "linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
     raise ValueError('invalid_identity')
 ValueError: invalid_identity
 
@@ -89,12 +89,12 @@ ValueError: invalid_identity
 ERROR: test_comma_separated_as_sent_by_linkedin (test_oauth_toleranz.ScopeSeparators.test_comma_separated_as_sent_by_linkedin)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 40, in test_comma_separated_as_sent_by_linkedin
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 40, in test_comma_separated_as_sent_by_linkedin
     self.accepted(GRANT_COMMA)
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 31, in accepted
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 31, in accepted
     out = token_result(response(**{s.SCOPE: scope}), NOW)
           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
+  File "linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
     raise ReportError(502, 'unexpected_source_shape') from None
 linkedin_seite.domain.ReportError: unexpected_source_shape
 
@@ -102,12 +102,12 @@ linkedin_seite.domain.ReportError: unexpected_source_shape
 ERROR: test_comma_with_spaces_and_mixed_separators (test_oauth_toleranz.ScopeSeparators.test_comma_with_spaces_and_mixed_separators) (scope='rw_organization_admin, r_organization_social, w_organization_social, w_organization_social_feed')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 48, in test_comma_with_spaces_and_mixed_separators
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 48, in test_comma_with_spaces_and_mixed_separators
     self.accepted(scope)
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 31, in accepted
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 31, in accepted
     out = token_result(response(**{s.SCOPE: scope}), NOW)
           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
+  File "linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
     raise ReportError(502, 'unexpected_source_shape') from None
 linkedin_seite.domain.ReportError: unexpected_source_shape
 
@@ -115,12 +115,12 @@ linkedin_seite.domain.ReportError: unexpected_source_shape
 ERROR: test_comma_with_spaces_and_mixed_separators (test_oauth_toleranz.ScopeSeparators.test_comma_with_spaces_and_mixed_separators) (scope='rw_organization_admin ,r_organization_social ,w_organization_social ,w_organization_social_feed')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 48, in test_comma_with_spaces_and_mixed_separators
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 48, in test_comma_with_spaces_and_mixed_separators
     self.accepted(scope)
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 31, in accepted
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 31, in accepted
     out = token_result(response(**{s.SCOPE: scope}), NOW)
           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
+  File "linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
     raise ReportError(502, 'unexpected_source_shape') from None
 linkedin_seite.domain.ReportError: unexpected_source_shape
 
@@ -128,12 +128,12 @@ linkedin_seite.domain.ReportError: unexpected_source_shape
 ERROR: test_comma_with_spaces_and_mixed_separators (test_oauth_toleranz.ScopeSeparators.test_comma_with_spaces_and_mixed_separators) (scope=' rw_organization_admin , r_organization_social , w_organization_social , w_organization_social_feed ')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 48, in test_comma_with_spaces_and_mixed_separators
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 48, in test_comma_with_spaces_and_mixed_separators
     self.accepted(scope)
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 31, in accepted
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 31, in accepted
     out = token_result(response(**{s.SCOPE: scope}), NOW)
           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
+  File "linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
     raise ReportError(502, 'unexpected_source_shape') from None
 linkedin_seite.domain.ReportError: unexpected_source_shape
 
@@ -141,12 +141,12 @@ linkedin_seite.domain.ReportError: unexpected_source_shape
 ERROR: test_comma_with_spaces_and_mixed_separators (test_oauth_toleranz.ScopeSeparators.test_comma_with_spaces_and_mixed_separators) (scope=',rw_organization_admin,,r_organization_social,,w_organization_social,,w_organization_social_feed,')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 48, in test_comma_with_spaces_and_mixed_separators
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 48, in test_comma_with_spaces_and_mixed_separators
     self.accepted(scope)
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 31, in accepted
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 31, in accepted
     out = token_result(response(**{s.SCOPE: scope}), NOW)
           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
+  File "linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
     raise ReportError(502, 'unexpected_source_shape') from None
 linkedin_seite.domain.ReportError: unexpected_source_shape
 
@@ -154,12 +154,12 @@ linkedin_seite.domain.ReportError: unexpected_source_shape
 ERROR: test_comma_with_spaces_and_mixed_separators (test_oauth_toleranz.ScopeSeparators.test_comma_with_spaces_and_mixed_separators) (scope='rw_organization_admin r_organization_social w_organization_social w_organization_social_feed')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 48, in test_comma_with_spaces_and_mixed_separators
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 48, in test_comma_with_spaces_and_mixed_separators
     self.accepted(scope)
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 31, in accepted
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 31, in accepted
     out = token_result(response(**{s.SCOPE: scope}), NOW)
           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
+  File "linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
     raise ReportError(502, 'unexpected_source_shape') from None
 linkedin_seite.domain.ReportError: unexpected_source_shape
 
@@ -167,12 +167,12 @@ linkedin_seite.domain.ReportError: unexpected_source_shape
 ERROR: test_comma_with_spaces_and_mixed_separators (test_oauth_toleranz.ScopeSeparators.test_comma_with_spaces_and_mixed_separators) (scope='rw_organization_admin\tr_organization_social\tw_organization_social\tw_organization_social_feed')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 48, in test_comma_with_spaces_and_mixed_separators
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 48, in test_comma_with_spaces_and_mixed_separators
     self.accepted(scope)
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 31, in accepted
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 31, in accepted
     out = token_result(response(**{s.SCOPE: scope}), NOW)
           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
+  File "linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
     raise ReportError(502, 'unexpected_source_shape') from None
 linkedin_seite.domain.ReportError: unexpected_source_shape
 
@@ -180,12 +180,12 @@ linkedin_seite.domain.ReportError: unexpected_source_shape
 ERROR: test_comma_with_spaces_and_mixed_separators (test_oauth_toleranz.ScopeSeparators.test_comma_with_spaces_and_mixed_separators) (scope='rw_organization_admin,\nr_organization_social,\nw_organization_social,\nw_organization_social_feed')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 48, in test_comma_with_spaces_and_mixed_separators
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 48, in test_comma_with_spaces_and_mixed_separators
     self.accepted(scope)
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 31, in accepted
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 31, in accepted
     out = token_result(response(**{s.SCOPE: scope}), NOW)
           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
+  File "linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
     raise ReportError(502, 'unexpected_source_shape') from None
 linkedin_seite.domain.ReportError: unexpected_source_shape
 
@@ -193,7 +193,7 @@ linkedin_seite.domain.ReportError: unexpected_source_shape
 ERROR: test_consent_answer_must_name_the_scopes_it_grants (test_oauth_toleranz.ScopeSeparators.test_consent_answer_must_name_the_scopes_it_grants)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 78, in test_consent_answer_must_name_the_scopes_it_grants
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 78, in test_consent_answer_must_name_the_scopes_it_grants
     token_result(response(), NOW, scope_required=True)
 TypeError: token_result() got an unexpected keyword argument 'scope_required'
 
@@ -201,10 +201,10 @@ TypeError: token_result() got an unexpected keyword argument 'scope_required'
 ERROR: test_capped_refresh_and_full_access_window_validate_unchanged (test_oauth_toleranz.StoredCredential.test_capped_refresh_and_full_access_window_validate_unchanged) (kwargs={})
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 209, in test_capped_refresh_and_full_access_window_validate_unchanged
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 209, in test_capped_refresh_and_full_access_window_validate_unchanged
     self.assertEqual(validate_identity(dict(data), now), data)
                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
+  File "linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
     raise ValueError('invalid_identity')
 ValueError: invalid_identity
 
@@ -212,10 +212,10 @@ ValueError: invalid_identity
 ERROR: test_capped_refresh_and_full_access_window_validate_unchanged (test_oauth_toleranz.StoredCredential.test_capped_refresh_and_full_access_window_validate_unchanged) (kwargs={'refresh_days': None})
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 209, in test_capped_refresh_and_full_access_window_validate_unchanged
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 209, in test_capped_refresh_and_full_access_window_validate_unchanged
     self.assertEqual(validate_identity(dict(data), now), data)
                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
+  File "linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
     raise ValueError('invalid_identity')
 ValueError: invalid_identity
 
@@ -223,10 +223,10 @@ ValueError: invalid_identity
 ERROR: test_capped_refresh_and_full_access_window_validate_unchanged (test_oauth_toleranz.StoredCredential.test_capped_refresh_and_full_access_window_validate_unchanged) (kwargs={'refresh_days': 364, 'access_days': 59})
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 209, in test_capped_refresh_and_full_access_window_validate_unchanged
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 209, in test_capped_refresh_and_full_access_window_validate_unchanged
     self.assertEqual(validate_identity(dict(data), now), data)
                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
+  File "linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
     raise ValueError('invalid_identity')
 ValueError: invalid_identity
 
@@ -234,9 +234,9 @@ ValueError: invalid_identity
 ERROR: test_separator_and_order_tolerant_like_the_token_answer (test_oauth_toleranz.StoredCredential.test_separator_and_order_tolerant_like_the_token_answer) (scope='rw_organization_admin r_organization_social w_organization_social w_organization_social_feed')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 217, in test_separator_and_order_tolerant_like_the_token_answer
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 217, in test_separator_and_order_tolerant_like_the_token_answer
     validate_identity(dict(self.shape(now), **{s.SCOPE: scope}), now)
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
+  File "linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
     raise ValueError('invalid_identity')
 ValueError: invalid_identity
 
@@ -244,9 +244,9 @@ ValueError: invalid_identity
 ERROR: test_separator_and_order_tolerant_like_the_token_answer (test_oauth_toleranz.StoredCredential.test_separator_and_order_tolerant_like_the_token_answer) (scope='w_organization_social_feed,r_organization_social,rw_organization_admin,w_organization_social')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 217, in test_separator_and_order_tolerant_like_the_token_answer
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 217, in test_separator_and_order_tolerant_like_the_token_answer
     validate_identity(dict(self.shape(now), **{s.SCOPE: scope}), now)
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
+  File "linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
     raise ValueError('invalid_identity')
 ValueError: invalid_identity
 
@@ -254,9 +254,9 @@ ValueError: invalid_identity
 ERROR: test_separator_and_order_tolerant_like_the_token_answer (test_oauth_toleranz.StoredCredential.test_separator_and_order_tolerant_like_the_token_answer) (scope='w_organization_social_feed, w_organization_social, r_organization_social, rw_organization_admin')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 217, in test_separator_and_order_tolerant_like_the_token_answer
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 217, in test_separator_and_order_tolerant_like_the_token_answer
     validate_identity(dict(self.shape(now), **{s.SCOPE: scope}), now)
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
+  File "linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
     raise ValueError('invalid_identity')
 ValueError: invalid_identity
 
@@ -264,16 +264,16 @@ ValueError: invalid_identity
 ERROR: test_one_authorization_requests_exactly_the_four_scopes (test_post_consent.GrantConsent.test_one_authorization_requests_exactly_the_four_scopes)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_consent.py", line 42, in test_one_authorization_requests_exactly_the_four_scopes
+  File "linkedin-seite\tests\test_post_consent.py", line 42, in test_one_authorization_requests_exactly_the_four_scopes
     out = self.run_consent()
           ^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_consent.py", line 59, in run_consent
+  File "linkedin-seite\tests\test_consent.py", line 59, in run_consent
     return consent.consent('synthetic-client', 'synthetic-secret',
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tools\zustimmung.py", line 143, in consent
+  File "linkedin-seite\tools\zustimmung.py", line 143, in consent
     result = token_result(raw, datetime.now(timezone.utc), scopes=scopes)
              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
+  File "linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
     raise ReportError(502, 'unexpected_source_shape') from None
 linkedin_seite.domain.ReportError: unexpected_source_shape
 
@@ -281,16 +281,16 @@ linkedin_seite.domain.ReportError: unexpected_source_shape
 ERROR: test_separator_and_order_of_the_answer_are_tolerated_the_json_is_normalised (test_post_consent.GrantConsent.test_separator_and_order_of_the_answer_are_tolerated_the_json_is_normalised) (answer='w_organization_social_feed,r_organization_social,rw_organization_admin,w_organization_social')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_consent.py", line 57, in test_separator_and_order_of_the_answer_are_tolerated_the_json_is_normalised
+  File "linkedin-seite\tests\test_post_consent.py", line 57, in test_separator_and_order_of_the_answer_are_tolerated_the_json_is_normalised
     self.assertEqual(self.run_consent()[s.SCOPE], GRANT)
                      ^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_consent.py", line 59, in run_consent
+  File "linkedin-seite\tests\test_consent.py", line 59, in run_consent
     return consent.consent('synthetic-client', 'synthetic-secret',
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tools\zustimmung.py", line 143, in consent
+  File "linkedin-seite\tools\zustimmung.py", line 143, in consent
     result = token_result(raw, datetime.now(timezone.utc), scopes=scopes)
              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
+  File "linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
     raise ReportError(502, 'unexpected_source_shape') from None
 linkedin_seite.domain.ReportError: unexpected_source_shape
 
@@ -298,16 +298,16 @@ linkedin_seite.domain.ReportError: unexpected_source_shape
 ERROR: test_separator_and_order_of_the_answer_are_tolerated_the_json_is_normalised (test_post_consent.GrantConsent.test_separator_and_order_of_the_answer_are_tolerated_the_json_is_normalised) (answer='rw_organization_admin r_organization_social w_organization_social w_organization_social_feed')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_consent.py", line 57, in test_separator_and_order_of_the_answer_are_tolerated_the_json_is_normalised
+  File "linkedin-seite\tests\test_post_consent.py", line 57, in test_separator_and_order_of_the_answer_are_tolerated_the_json_is_normalised
     self.assertEqual(self.run_consent()[s.SCOPE], GRANT)
                      ^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_consent.py", line 59, in run_consent
+  File "linkedin-seite\tests\test_consent.py", line 59, in run_consent
     return consent.consent('synthetic-client', 'synthetic-secret',
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tools\zustimmung.py", line 143, in consent
+  File "linkedin-seite\tools\zustimmung.py", line 143, in consent
     result = token_result(raw, datetime.now(timezone.utc), scopes=scopes)
              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
+  File "linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
     raise ReportError(502, 'unexpected_source_shape') from None
 linkedin_seite.domain.ReportError: unexpected_source_shape
 
@@ -315,16 +315,16 @@ linkedin_seite.domain.ReportError: unexpected_source_shape
 ERROR: test_separator_and_order_of_the_answer_are_tolerated_the_json_is_normalised (test_post_consent.GrantConsent.test_separator_and_order_of_the_answer_are_tolerated_the_json_is_normalised) (answer='w_organization_social_feed, w_organization_social, r_organization_social, rw_organization_admin')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_consent.py", line 57, in test_separator_and_order_of_the_answer_are_tolerated_the_json_is_normalised
+  File "linkedin-seite\tests\test_post_consent.py", line 57, in test_separator_and_order_of_the_answer_are_tolerated_the_json_is_normalised
     self.assertEqual(self.run_consent()[s.SCOPE], GRANT)
                      ^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_consent.py", line 59, in run_consent
+  File "linkedin-seite\tests\test_consent.py", line 59, in run_consent
     return consent.consent('synthetic-client', 'synthetic-secret',
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tools\zustimmung.py", line 143, in consent
+  File "linkedin-seite\tools\zustimmung.py", line 143, in consent
     result = token_result(raw, datetime.now(timezone.utc), scopes=scopes)
              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
+  File "linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
     raise ReportError(502, 'unexpected_source_shape') from None
 linkedin_seite.domain.ReportError: unexpected_source_shape
 
@@ -332,16 +332,16 @@ linkedin_seite.domain.ReportError: unexpected_source_shape
 ERROR: test_vault_json_is_what_the_service_loads (test_post_consent.GrantConsent.test_vault_json_is_what_the_service_loads)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_consent.py", line 49, in test_vault_json_is_what_the_service_loads
+  File "linkedin-seite\tests\test_post_consent.py", line 49, in test_vault_json_is_what_the_service_loads
     out = self.run_consent()
           ^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_consent.py", line 59, in run_consent
+  File "linkedin-seite\tests\test_consent.py", line 59, in run_consent
     return consent.consent('synthetic-client', 'synthetic-secret',
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tools\zustimmung.py", line 143, in consent
+  File "linkedin-seite\tools\zustimmung.py", line 143, in consent
     result = token_result(raw, datetime.now(timezone.utc), scopes=scopes)
              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
+  File "linkedin-seite\linkedin_seite\oauth.py", line 173, in token_result
     raise ReportError(502, 'unexpected_source_shape') from None
 linkedin_seite.domain.ReportError: unexpected_source_shape
 
@@ -349,10 +349,10 @@ linkedin_seite.domain.ReportError: unexpected_source_shape
 ERROR: test_identity_requires_exactly_the_four_scopes (test_post_server.Tokens.test_identity_requires_exactly_the_four_scopes)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_server.py", line 261, in test_identity_requires_exactly_the_four_scopes
+  File "linkedin-seite\tests\test_post_server.py", line 261, in test_identity_requires_exactly_the_four_scopes
     self.assertEqual(oauth.validate_identity(dict(good)), good)
                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
+  File "linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
     raise ValueError('invalid_identity')
 ValueError: invalid_identity
 
@@ -360,13 +360,13 @@ ValueError: invalid_identity
 ERROR: test_refresh_must_return_the_one_grant (test_post_server.Tokens.test_refresh_must_return_the_one_grant)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_server.py", line 316, in test_refresh_must_return_the_one_grant
+  File "linkedin-seite\tests\test_post_server.py", line 316, in test_refresh_must_return_the_one_grant
     tokens = oauth.Tokens(data, LocalWriteTransport(lambda: None, li.port))
              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 178, in __init__
+  File "linkedin-seite\linkedin_seite\oauth.py", line 178, in __init__
     self.data = validate_identity(data)
                 ^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
+  File "linkedin-seite\linkedin_seite\oauth.py", line 78, in validate_identity
     raise ValueError('invalid_identity')
 ValueError: invalid_identity
 
@@ -374,7 +374,7 @@ ValueError: invalid_identity
 FAIL: test_compose_mounts_three_read_only_directories (test_deploy_files.DeployFiles.test_compose_mounts_three_read_only_directories)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_deploy_files.py", line 31, in test_compose_mounts_three_read_only_directories
+  File "linkedin-seite\tests\test_deploy_files.py", line 31, in test_compose_mounts_three_read_only_directories
     self.assertEqual(
 AssertionError: Lists differ: [('/r[184 chars]uth'), ('/run/jnpt/plugins/linkedin-seite-post[31 chars]th')] != [('/r[184 chars]uth')]
 
@@ -396,15 +396,15 @@ First extra element 3:
 FAIL: test_the_second_grant_place_is_gone_from_every_deploy_file (test_deploy_files.DeployFiles.test_the_second_grant_place_is_gone_from_every_deploy_file)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_deploy_files.py", line 44, in test_the_second_grant_place_is_gone_from_every_deploy_file
+  File "linkedin-seite\tests\test_deploy_files.py", line 44, in test_the_second_grant_place_is_gone_from_every_deploy_file
     self.assertNotIn("post-oauth", text(path), str(path))
-AssertionError: 'post-oauth' unexpectedly found in 'name: jnpt-plugin-linkedin-seite\nservices:\n  linkedin-seite:\n    image: ${JNPT_LINKEDIN_SEITE_IMAGE:?image digest required}\n    user: "65532:65532"\n    read_only: true\n    cap_drop: [ALL]\n    security_opt: [no-new-privileges:true]\n    pids_limit: 32\n    mem_limit: 512m\n    memswap_limit: 512m\n    cpus: 1\n    ipc: none\n    tmpfs:\n      - /tmp:size=2m,noexec,nosuid,nodev,uid=65532,gid=65532,mode=0700\n    environment:\n      LINKEDIN_SEITE_BIND_IP: ${LINKEDIN_SEITE_PLUGIN_IP:?exact internal network address required}\n    volumes:\n      - type: bind\n        source: /opt/jnpt/plugins/linkedin-seite/config.json\n        target: /etc/linkedin-seite/config.json\n        read_only: true\n        bind: {create_host_path: false}\n      # Zwei ORDNER-Mounts statt Datei-Mounts (Muster #887): ein atomar ersetzter\n      # Schlüssel kommt an, und die Stellen entstehen im Gateway aus den Ordnern.\n      # jnpt/runtime-key = der EINE Bridge-Key (Stelle plugin-linkedin-seite),\n      # oauth/runtime-key = das OAuth-JSON (plugin-linkedin-seite-oauth).\n      # Beide liest der Dienst nur beim Start; den Neustart nach einem\n      # Schlüsselwechsel löst deploy/jnpt-linkedin-seite-key.path aus.\n      - type: bind\n        source: /run/jnpt/plugins/linkedin-seite\n        target: /run/secrets/jnpt\n        read_only: true\n        bind: {create_host_path: false}\n      - type: bind\n        source: /run/jnpt/plugins/linkedin-seite-oauth\n        target: /run/secrets/oauth\n        read_only: true\n        bind: {create_host_path: false}\n      # Stufe B1 (#1306 F4, 0.3.0): Schreib-Grant (plugin-linkedin-seite-post-oauth)\n      # und der eigene, nur lesende Gateway-Token (plugin-linkedin-seite-gateway).\n      # Genau redaktionsplan_get + redaktion_medien_get_file; Freigabe kommt als Kern-Header.\n      # Die Ordner müssen per tmpfiles existieren; die Dateien darin sind optional.\n      - type: bind\n        source: /run/jnpt/plugins/linkedin-seite-post-oauth\n        target: /run/secrets/post-oauth\n        read_only: true\n        bind: {create_host_path: false}\n      - type: bind\n        source: /run/jnpt/plugins/linkedin-seite-gateway\n        target: /run/secrets/gateway\n        read_only: true\n        bind: {create_host_path: false}\n    networks:\n      plugins:\n        ipv4_address: ${LINKEDIN_SEITE_PLUGIN_IP:?exact internal network address required}\n      egress: {}\n    healthcheck:\n      test: [CMD, python, -c, "import os,urllib.request; urllib.request.build_opener(urllib.request.ProxyHandler({})).open(\'http://\'+os.environ[\'LINKEDIN_SEITE_BIND_IP\']+\':8092/healthz\',timeout=2)"]\n      interval: 10s\n      timeout: 3s\n      retries: 3\n    restart: unless-stopped\nnetworks:\n  plugins:\n    external: true\n    name: jnpt_plugins\n  # Dedicated network. Host firewall must restrict egress before activation;\n  # Compose does not enforce domain allowlists. No other workload joins it.\n  egress: {}\n' : C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\docker-compose.yml
+AssertionError: 'post-oauth' unexpectedly found in 'name: jnpt-plugin-linkedin-seite\nservices:\n  linkedin-seite:\n    image: ${JNPT_LINKEDIN_SEITE_IMAGE:?image digest required}\n    user: "65532:65532"\n    read_only: true\n    cap_drop: [ALL]\n    security_opt: [no-new-privileges:true]\n    pids_limit: 32\n    mem_limit: 512m\n    memswap_limit: 512m\n    cpus: 1\n    ipc: none\n    tmpfs:\n      - /tmp:size=2m,noexec,nosuid,nodev,uid=65532,gid=65532,mode=0700\n    environment:\n      LINKEDIN_SEITE_BIND_IP: ${LINKEDIN_SEITE_PLUGIN_IP:?exact internal network address required}\n    volumes:\n      - type: bind\n        source: /opt/jnpt/plugins/linkedin-seite/config.json\n        target: /etc/linkedin-seite/config.json\n        read_only: true\n        bind: {create_host_path: false}\n      # Zwei ORDNER-Mounts statt Datei-Mounts (Muster #887): ein atomar ersetzter\n      # Schlüssel kommt an, und die Stellen entstehen im Gateway aus den Ordnern.\n      # jnpt/runtime-key = der EINE Bridge-Key (Stelle plugin-linkedin-seite),\n      # oauth/runtime-key = das OAuth-JSON (plugin-linkedin-seite-oauth).\n      # Beide liest der Dienst nur beim Start; den Neustart nach einem\n      # Schlüsselwechsel löst deploy/jnpt-linkedin-seite-key.path aus.\n      - type: bind\n        source: /run/jnpt/plugins/linkedin-seite\n        target: /run/secrets/jnpt\n        read_only: true\n        bind: {create_host_path: false}\n      - type: bind\n        source: /run/jnpt/plugins/linkedin-seite-oauth\n        target: /run/secrets/oauth\n        read_only: true\n        bind: {create_host_path: false}\n      # Stufe B1 (#1306 F4, 0.3.0): Schreib-Grant (plugin-linkedin-seite-post-oauth)\n      # und der eigene, nur lesende Gateway-Token (plugin-linkedin-seite-gateway).\n      # Genau redaktionsplan_get + redaktion_medien_get_file; Freigabe kommt als Kern-Header.\n      # Die Ordner müssen per tmpfiles existieren; die Dateien darin sind optional.\n      - type: bind\n        source: /run/jnpt/plugins/linkedin-seite-post-oauth\n        target: /run/secrets/post-oauth\n        read_only: true\n        bind: {create_host_path: false}\n      - type: bind\n        source: /run/jnpt/plugins/linkedin-seite-gateway\n        target: /run/secrets/gateway\n        read_only: true\n        bind: {create_host_path: false}\n    networks:\n      plugins:\n        ipv4_address: ${LINKEDIN_SEITE_PLUGIN_IP:?exact internal network address required}\n      egress: {}\n    healthcheck:\n      test: [CMD, python, -c, "import os,urllib.request; urllib.request.build_opener(urllib.request.ProxyHandler({})).open(\'http://\'+os.environ[\'LINKEDIN_SEITE_BIND_IP\']+\':8092/healthz\',timeout=2)"]\n      interval: 10s\n      timeout: 3s\n      retries: 3\n    restart: unless-stopped\nnetworks:\n  plugins:\n    external: true\n    name: jnpt_plugins\n  # Dedicated network. Host firewall must restrict egress before activation;\n  # Compose does not enforce domain allowlists. No other workload joins it.\n  egress: {}\n' : linkedin-seite\docker-compose.yml
 
 ======================================================================
 FAIL: test_tmpfiles_example_has_three_owned_directories (test_deploy_files.DeployFiles.test_tmpfiles_example_has_three_owned_directories)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_deploy_files.py", line 70, in test_tmpfiles_example_has_three_owned_directories
+  File "linkedin-seite\tests\test_deploy_files.py", line 70, in test_tmpfiles_example_has_three_owned_directories
     self.assertEqual(
 AssertionError: Lists differ: ['d /[147 chars]eite-post-oauth 0750 65532 65532 -', 'd /run/j[50 chars]2 -'] != ['d /[147 chars]eite-gateway 0750 65532 65532 -']
 
@@ -425,7 +425,7 @@ First extra element 3:
 FAIL: test_unit_pair_watches_all_three_keys_and_recreates (test_deploy_files.DeployFiles.test_unit_pair_watches_all_three_keys_and_recreates)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_deploy_files.py", line 81, in test_unit_pair_watches_all_three_keys_and_recreates
+  File "linkedin-seite\tests\test_deploy_files.py", line 81, in test_unit_pair_watches_all_three_keys_and_recreates
     self.assertEqual(
 AssertionError: Lists differ: ['/ru[127 chars]eite-post-oauth/runtime-key', '/run/jnpt/plugi[34 chars]key'] != ['/ru[127 chars]eite-gateway/runtime-key']
 
@@ -446,9 +446,9 @@ First extra element 3:
 FAIL: test_exact_set_missing_extra_or_unrelated_still_rejected (test_oauth_toleranz.ScopeSeparators.test_exact_set_missing_extra_or_unrelated_still_rejected) (scope='rw_organization_admin,r_organization_social')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 58, in test_exact_set_missing_extra_or_unrelated_still_rejected
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 58, in test_exact_set_missing_extra_or_unrelated_still_rejected
     self.rejected(scope)
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 35, in rejected
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 35, in rejected
     with self.assertRaises(ReportError) as cm:
          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 AssertionError: ReportError not raised
@@ -457,7 +457,7 @@ AssertionError: ReportError not raised
 FAIL: test_a_grant_from_before_0_3_1_without_scope_fails_closed (test_oauth_toleranz.StoredCredential.test_a_grant_from_before_0_3_1_without_scope_fails_closed)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_oauth_toleranz.py", line 223, in test_a_grant_from_before_0_3_1_without_scope_fails_closed
+  File "linkedin-seite\tests\test_oauth_toleranz.py", line 223, in test_a_grant_from_before_0_3_1_without_scope_fails_closed
     with self.assertRaises(ValueError):
          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 AssertionError: ValueError not raised
@@ -466,7 +466,7 @@ AssertionError: ValueError not raised
 FAIL: test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json (test_post_consent.GrantConsent.test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json) (answer='r_organization_social,rw_organization_admin')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_consent.py", line 65, in test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json
+  File "linkedin-seite\tests\test_post_consent.py", line 65, in test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json
     self.assertEqual((code, output), (1, ''))
 AssertionError: Tuples differ: (2, '') != (1, '')
 
@@ -485,7 +485,7 @@ First differing element 0:
 FAIL: test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json (test_post_consent.GrantConsent.test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json) (answer='w_organization_social,w_organization_social_feed')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_consent.py", line 65, in test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json
+  File "linkedin-seite\tests\test_post_consent.py", line 65, in test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json
     self.assertEqual((code, output), (1, ''))
 AssertionError: Tuples differ: (2, '') != (1, '')
 
@@ -504,7 +504,7 @@ First differing element 0:
 FAIL: test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json (test_post_consent.GrantConsent.test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json) (answer='rw_organization_admin,r_organization_social,w_organization_social')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_consent.py", line 65, in test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json
+  File "linkedin-seite\tests\test_post_consent.py", line 65, in test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json
     self.assertEqual((code, output), (1, ''))
 AssertionError: Tuples differ: (2, '') != (1, '')
 
@@ -523,7 +523,7 @@ First differing element 0:
 FAIL: test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json (test_post_consent.GrantConsent.test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json) (answer='w_organization_social_feed,r_organization_social,rw_organization_admin,w_organization_social,r_ads')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_consent.py", line 65, in test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json
+  File "linkedin-seite\tests\test_post_consent.py", line 65, in test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json
     self.assertEqual((code, output), (1, ''))
 AssertionError: Tuples differ: (2, '') != (1, '')
 
@@ -542,7 +542,7 @@ First differing element 0:
 FAIL: test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json (test_post_consent.GrantConsent.test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json) (answer='')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_consent.py", line 65, in test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json
+  File "linkedin-seite\tests\test_post_consent.py", line 65, in test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json
     self.assertEqual((code, output), (1, ''))
 AssertionError: Tuples differ: (2, '') != (1, '')
 
@@ -561,7 +561,7 @@ First differing element 0:
 FAIL: test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json (test_post_consent.GrantConsent.test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json) (answer='w_organization_social_feed;r_organization_social;rw_organization_admin;w_organization_social')
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_consent.py", line 65, in test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json
+  File "linkedin-seite\tests\test_post_consent.py", line 65, in test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json
     self.assertEqual((code, output), (1, ''))
 AssertionError: Tuples differ: (2, '') != (1, '')
 
@@ -580,7 +580,7 @@ First differing element 0:
 FAIL: test_an_answer_without_scope_ends_the_consent_without_a_vault_json (test_post_consent.GrantConsent.test_an_answer_without_scope_ends_the_consent_without_a_vault_json)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_consent.py", line 72, in test_an_answer_without_scope_ends_the_consent_without_a_vault_json
+  File "linkedin-seite\tests\test_post_consent.py", line 72, in test_an_answer_without_scope_ends_the_consent_without_a_vault_json
     self.assertEqual((code, output), (1, ''))
 AssertionError: Tuples differ: (2, '') != (1, '')
 
@@ -599,7 +599,7 @@ First differing element 0:
 FAIL: test_cli_writes_the_json_and_names_the_one_place (test_post_consent.GrantConsent.test_cli_writes_the_json_and_names_the_one_place)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_consent.py", line 77, in test_cli_writes_the_json_and_names_the_one_place
+  File "linkedin-seite\tests\test_post_consent.py", line 77, in test_cli_writes_the_json_and_names_the_one_place
     self.assertEqual(code, 0)
 AssertionError: 2 != 0
 
@@ -607,7 +607,7 @@ AssertionError: 2 != 0
 FAIL: test_schreiben_is_gone_and_cannot_create_a_second_grant (test_post_consent.GrantConsent.test_schreiben_is_gone_and_cannot_create_a_second_grant)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_consent.py", line 93, in test_schreiben_is_gone_and_cannot_create_a_second_grant
+  File "linkedin-seite\tests\test_post_consent.py", line 93, in test_schreiben_is_gone_and_cannot_create_a_second_grant
     self.assertEqual((code, output, errors), (2, '', 'ungueltige_argumente\n'))
 AssertionError: Tuples differ: (1, '', 'Schreib-Zustimmung (w_organizatio[113 chars]n\n') != (2, '', 'ungueltige_argumente\n')
 
@@ -626,7 +626,7 @@ First differing element 0:
 FAIL: test_the_script_offers_no_scope_choice (test_post_consent.GrantConsent.test_the_script_offers_no_scope_choice)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_consent.py", line 101, in test_the_script_offers_no_scope_choice
+  File "linkedin-seite\tests\test_post_consent.py", line 101, in test_the_script_offers_no_scope_choice
     self.assertNotIn('scopes', inspect.signature(function).parameters)
 AssertionError: 'scopes' unexpectedly found in mappingproxy(OrderedDict({'client_id': <Parameter "client_id">, 'client_secret': <Parameter "client_secret">, 'pkce': <Parameter "pkce=False">, 'opener': <Parameter "opener=<function open at 0x0000018C5605BF60>">, 'transport': <Parameter "transport=None">, 'timeout': <Parameter "timeout=300">, 'scopes': <Parameter "scopes=('rw_organization_admin', 'r_organization_social')">}))
 
@@ -634,7 +634,7 @@ AssertionError: 'scopes' unexpectedly found in mappingproxy(OrderedDict({'client
 FAIL: test_without_gesamt_nothing_happens (test_post_consent.GrantConsent.test_without_gesamt_nothing_happens)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_consent.py", line 87, in test_without_gesamt_nothing_happens
+  File "linkedin-seite\tests\test_post_consent.py", line 87, in test_without_gesamt_nothing_happens
     self.assertEqual((code, output, errors), (2, '', 'ungueltige_argumente\n'))
 AssertionError: Tuples differ: (1, '', 'zustimmung_fehlgeschlagen\n') != (2, '', 'ungueltige_argumente\n')
 
@@ -649,7 +649,7 @@ First differing element 0:
 FAIL: test_a_leftover_file_in_the_old_place_has_no_effect (test_post_server.Tokens.test_a_leftover_file_in_the_old_place_has_no_effect)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_server.py", line 295, in test_a_leftover_file_in_the_old_place_has_no_effect
+  File "linkedin-seite\tests\test_post_server.py", line 295, in test_a_leftover_file_in_the_old_place_has_no_effect
     self.assertEqual(server.load_write_side(config(1), token), (GATEWAY_TOKEN, 'an'))
 AssertionError: Tuples differ: (None, 'schreib_identitaet_ungueltig') != ('jnpt_a1b2c3d4_GATEWAYCANARYxxxxxxxxxxxxxxxxxxxxxxxx', 'an')
 
@@ -664,7 +664,7 @@ None
 FAIL: test_loading_the_write_side_fail_closed_with_fixed_reasons (test_post_server.Tokens.test_loading_the_write_side_fail_closed_with_fixed_reasons)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_server.py", line 302, in test_loading_the_write_side_fail_closed_with_fixed_reasons
+  File "linkedin-seite\tests\test_post_server.py", line 302, in test_loading_the_write_side_fail_closed_with_fixed_reasons
     self.assertEqual(server.load_write_side(cfg, token), (None, 'gateway_token_fehlt'))
 AssertionError: Tuples differ: (None, 'schreib_identitaet_fehlt') != (None, 'gateway_token_fehlt')
 
@@ -679,7 +679,7 @@ First differing element 1:
 FAIL: test_the_second_place_is_gone_from_the_service (test_post_server.Tokens.test_the_second_place_is_gone_from_the_service)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_server.py", line 274, in test_the_second_place_is_gone_from_the_service
+  File "linkedin-seite\tests\test_post_server.py", line 274, in test_the_second_place_is_gone_from_the_service
     self.assertFalse(hasattr(server, 'POST_IDENTITY_PATH'))
 AssertionError: True is not false
 

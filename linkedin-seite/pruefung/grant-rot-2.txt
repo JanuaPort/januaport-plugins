@@ -3,7 +3,7 @@ EEEEEEEEEEEEEEEEEEEEE
 ERROR: test_a_renewal_in_the_server_process_leaves_no_token_in_response_or_log (test_logs.Logs.test_a_renewal_in_the_server_process_leaves_no_token_in_response_or_log)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_logs.py", line 61, in test_a_renewal_in_the_server_process_leaves_no_token_in_response_or_log
+  File "linkedin-seite\tests\test_logs.py", line 61, in test_a_renewal_in_the_server_process_leaves_no_token_in_response_or_log
     port = int(proc.stdout.readline())
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ValueError: invalid literal for int() with base 10: 'Traceback (most recent call last):\n'
@@ -12,13 +12,13 @@ ValueError: invalid literal for int() with base 10: 'Traceback (most recent call
 ERROR: test_reads_and_writes_carry_the_same_access_token (test_post_server.OneTokenOnTheWire.test_reads_and_writes_carry_the_same_access_token)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+  File "python\Lib\asyncio\runners.py", line 118, in run
     return self._loop.run_until_complete(task)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+  File "python\Lib\asyncio\base_events.py", line 691, in run_until_complete
     return future.result()
            ^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
+  File "linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
     self.tokens = oauth.Tokens(self.data)  # one state for both pools, as server.build_pools wires it
                   ^^^^^^^^^^^^^^^^^^^^^^^
 TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
@@ -27,7 +27,7 @@ TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
 ERROR: test_a_failed_renewal_changes_nothing_and_the_next_caller_may_try (test_token_state.OneState.test_a_failed_renewal_changes_nothing_and_the_next_caller_may_try)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_token_state.py", line 58, in setUp
+  File "linkedin-seite\tests\test_token_state.py", line 58, in setUp
     self.tokens = Tokens(self.data)
                   ^^^^^^^^^^^^^^^^^
 TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
@@ -36,7 +36,7 @@ TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
 ERROR: test_a_renewal_is_published_in_one_step (test_token_state.OneState.test_a_renewal_is_published_in_one_step)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_token_state.py", line 58, in setUp
+  File "linkedin-seite\tests\test_token_state.py", line 58, in setUp
     self.tokens = Tokens(self.data)
                   ^^^^^^^^^^^^^^^^^
 TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
@@ -45,7 +45,7 @@ TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
 ERROR: test_concurrent_callers_renew_once (test_token_state.OneState.test_concurrent_callers_renew_once)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_token_state.py", line 58, in setUp
+  File "linkedin-seite\tests\test_token_state.py", line 58, in setUp
     self.tokens = Tokens(self.data)
                   ^^^^^^^^^^^^^^^^^
 TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
@@ -54,7 +54,7 @@ TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
 ERROR: test_each_caller_pays_on_its_own_transport (test_token_state.OneState.test_each_caller_pays_on_its_own_transport)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_token_state.py", line 58, in setUp
+  File "linkedin-seite\tests\test_token_state.py", line 58, in setUp
     self.tokens = Tokens(self.data)
                   ^^^^^^^^^^^^^^^^^
 TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
@@ -63,7 +63,7 @@ TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
 ERROR: test_read_counter_is_exact_under_concurrent_permits (test_token_state.OneState.test_read_counter_is_exact_under_concurrent_permits)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_token_state.py", line 58, in setUp
+  File "linkedin-seite\tests\test_token_state.py", line 58, in setUp
     self.tokens = Tokens(self.data)
                   ^^^^^^^^^^^^^^^^^
 TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
@@ -72,7 +72,7 @@ TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
 ERROR: test_serve_wires_one_state_into_both_pools (test_token_state.OneState.test_serve_wires_one_state_into_both_pools)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_token_state.py", line 58, in setUp
+  File "linkedin-seite\tests\test_token_state.py", line 58, in setUp
     self.tokens = Tokens(self.data)
                   ^^^^^^^^^^^^^^^^^
 TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
@@ -81,7 +81,7 @@ TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
 ERROR: test_write_counter_is_exact_under_concurrent_permits (test_token_state.OneState.test_write_counter_is_exact_under_concurrent_permits)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_token_state.py", line 58, in setUp
+  File "linkedin-seite\tests\test_token_state.py", line 58, in setUp
     self.tokens = Tokens(self.data)
                   ^^^^^^^^^^^^^^^^^
 TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
@@ -90,15 +90,15 @@ TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
 ERROR: test_a_preview_cannot_fetch_a_token (test_token_state.SharedState.test_a_preview_cannot_fetch_a_token)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+  File "python\Lib\asyncio\runners.py", line 118, in run
     return self._loop.run_until_complete(task)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+  File "python\Lib\asyncio\base_events.py", line 691, in run_until_complete
     return future.result()
            ^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
+  File "linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
     await super().asyncSetUp()
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
+  File "linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
     self.tokens = oauth.Tokens(self.data)  # one state for both pools, as server.build_pools wires it
                   ^^^^^^^^^^^^^^^^^^^^^^^
 TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
@@ -107,15 +107,15 @@ TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
 ERROR: test_a_rotated_refresh_token_is_the_one_the_other_path_presents (test_token_state.SharedState.test_a_rotated_refresh_token_is_the_one_the_other_path_presents)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+  File "python\Lib\asyncio\runners.py", line 118, in run
     return self._loop.run_until_complete(task)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+  File "python\Lib\asyncio\base_events.py", line 691, in run_until_complete
     return future.result()
            ^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
+  File "linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
     await super().asyncSetUp()
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
+  File "linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
     self.tokens = oauth.Tokens(self.data)  # one state for both pools, as server.build_pools wires it
                   ^^^^^^^^^^^^^^^^^^^^^^^
 TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
@@ -124,15 +124,15 @@ TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
 ERROR: test_a_spent_read_quota_stops_only_the_read_path (test_token_state.SharedState.test_a_spent_read_quota_stops_only_the_read_path)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+  File "python\Lib\asyncio\runners.py", line 118, in run
     return self._loop.run_until_complete(task)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+  File "python\Lib\asyncio\base_events.py", line 691, in run_until_complete
     return future.result()
            ^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
+  File "linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
     await super().asyncSetUp()
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
+  File "linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
     self.tokens = oauth.Tokens(self.data)  # one state for both pools, as server.build_pools wires it
                   ^^^^^^^^^^^^^^^^^^^^^^^
 TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
@@ -141,15 +141,15 @@ TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
 ERROR: test_a_spent_write_quota_stops_only_the_write_path (test_token_state.SharedState.test_a_spent_write_quota_stops_only_the_write_path)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+  File "python\Lib\asyncio\runners.py", line 118, in run
     return self._loop.run_until_complete(task)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+  File "python\Lib\asyncio\base_events.py", line 691, in run_until_complete
     return future.result()
            ^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
+  File "linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
     await super().asyncSetUp()
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
+  File "linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
     self.tokens = oauth.Tokens(self.data)  # one state for both pools, as server.build_pools wires it
                   ^^^^^^^^^^^^^^^^^^^^^^^
 TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
@@ -158,15 +158,15 @@ TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
 ERROR: test_a_worker_killed_during_a_renewal_does_not_lose_the_result (test_token_state.SharedState.test_a_worker_killed_during_a_renewal_does_not_lose_the_result)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+  File "python\Lib\asyncio\runners.py", line 118, in run
     return self._loop.run_until_complete(task)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+  File "python\Lib\asyncio\base_events.py", line 691, in run_until_complete
     return future.result()
            ^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
+  File "linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
     await super().asyncSetUp()
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
+  File "linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
     self.tokens = oauth.Tokens(self.data)  # one state for both pools, as server.build_pools wires it
                   ^^^^^^^^^^^^^^^^^^^^^^^
 TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
@@ -175,15 +175,15 @@ TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
 ERROR: test_both_warnings_read_the_one_state (test_token_state.SharedState.test_both_warnings_read_the_one_state)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+  File "python\Lib\asyncio\runners.py", line 118, in run
     return self._loop.run_until_complete(task)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+  File "python\Lib\asyncio\base_events.py", line 691, in run_until_complete
     return future.result()
            ^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
+  File "linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
     await super().asyncSetUp()
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
+  File "linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
     self.tokens = oauth.Tokens(self.data)  # one state for both pools, as server.build_pools wires it
                   ^^^^^^^^^^^^^^^^^^^^^^^
 TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
@@ -192,15 +192,15 @@ TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
 ERROR: test_no_secret_is_handed_to_a_worker_or_a_job (test_token_state.SharedState.test_no_secret_is_handed_to_a_worker_or_a_job)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+  File "python\Lib\asyncio\runners.py", line 118, in run
     return self._loop.run_until_complete(task)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+  File "python\Lib\asyncio\base_events.py", line 691, in run_until_complete
     return future.result()
            ^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
+  File "linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
     await super().asyncSetUp()
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
+  File "linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
     self.tokens = oauth.Tokens(self.data)  # one state for both pools, as server.build_pools wires it
                   ^^^^^^^^^^^^^^^^^^^^^^^
 TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
@@ -209,15 +209,15 @@ TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
 ERROR: test_only_the_path_that_renews_pays_for_the_renewal (test_token_state.SharedState.test_only_the_path_that_renews_pays_for_the_renewal)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+  File "python\Lib\asyncio\runners.py", line 118, in run
     return self._loop.run_until_complete(task)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+  File "python\Lib\asyncio\base_events.py", line 691, in run_until_complete
     return future.result()
            ^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
+  File "linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
     await super().asyncSetUp()
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
+  File "linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
     self.tokens = oauth.Tokens(self.data)  # one state for both pools, as server.build_pools wires it
                   ^^^^^^^^^^^^^^^^^^^^^^^
 TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
@@ -226,15 +226,15 @@ TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
 ERROR: test_parallel_read_and_write_renew_once (test_token_state.SharedState.test_parallel_read_and_write_renew_once)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+  File "python\Lib\asyncio\runners.py", line 118, in run
     return self._loop.run_until_complete(task)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+  File "python\Lib\asyncio\base_events.py", line 691, in run_until_complete
     return future.result()
            ^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
+  File "linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
     await super().asyncSetUp()
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
+  File "linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
     self.tokens = oauth.Tokens(self.data)  # one state for both pools, as server.build_pools wires it
                   ^^^^^^^^^^^^^^^^^^^^^^^
 TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
@@ -243,15 +243,15 @@ TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
 ERROR: test_the_next_write_job_finds_the_renewed_token (test_token_state.SharedState.test_the_next_write_job_finds_the_renewed_token)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+  File "python\Lib\asyncio\runners.py", line 118, in run
     return self._loop.run_until_complete(task)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+  File "python\Lib\asyncio\base_events.py", line 691, in run_until_complete
     return future.result()
            ^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
+  File "linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
     await super().asyncSetUp()
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
+  File "linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
     self.tokens = oauth.Tokens(self.data)  # one state for both pools, as server.build_pools wires it
                   ^^^^^^^^^^^^^^^^^^^^^^^
 TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
@@ -260,15 +260,15 @@ TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
 ERROR: test_the_read_path_still_sends_only_get_to_the_api (test_token_state.SharedState.test_the_read_path_still_sends_only_get_to_the_api)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+  File "python\Lib\asyncio\runners.py", line 118, in run
     return self._loop.run_until_complete(task)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+  File "python\Lib\asyncio\base_events.py", line 691, in run_until_complete
     return future.result()
            ^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
+  File "linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
     await super().asyncSetUp()
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
+  File "linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
     self.tokens = oauth.Tokens(self.data)  # one state for both pools, as server.build_pools wires it
                   ^^^^^^^^^^^^^^^^^^^^^^^
 TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
@@ -277,15 +277,15 @@ TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'
 ERROR: test_the_server_stays_responsive_during_a_renewal (test_token_state.SharedState.test_the_server_stays_responsive_during_a_renewal)
 ----------------------------------------------------------------------
 Traceback (most recent call last):
-  File "C:\ProgramData\miniconda3\Lib\asyncio\runners.py", line 118, in run
+  File "python\Lib\asyncio\runners.py", line 118, in run
     return self._loop.run_until_complete(task)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\ProgramData\miniconda3\Lib\asyncio\base_events.py", line 691, in run_until_complete
+  File "python\Lib\asyncio\base_events.py", line 691, in run_until_complete
     return future.result()
            ^^^^^^^^^^^^^^^
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
+  File "linkedin-seite\tests\test_token_state.py", line 160, in asyncSetUp
     await super().asyncSetUp()
-  File "C:\Users\MartinKammerer\Projekte\jpp-1237grant\linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
+  File "linkedin-seite\tests\test_post_server.py", line 44, in asyncSetUp
     self.tokens = oauth.Tokens(self.data)  # one state for both pools, as server.build_pools wires it
                   ^^^^^^^^^^^^^^^^^^^^^^^
 TypeError: Tokens.__init__() missing 1 required positional argument: 'transport'

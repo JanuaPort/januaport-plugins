@@ -1,9 +1,10 @@
-# LinkedIn-Seite 0.3.0 — #1237, Stufe A und Stufe B1
+# LinkedIn-Seite 0.3.1 — #1237, Stufe A und Stufe B1
 
 Privater Python-REST-Beisteller für Kennzahlen einer fest konfigurierten LinkedIn-Seite.
 PO-Entscheid vom 29.10.2026: Option (a), Stufe A. Seit 0.2.0 zusätzlich Stufe B1: Posten,
 Bearbeiten, Löschen und eigener Kommentar. Seit 0.3.0 erfolgt die Freigabe im Kern (#1306 F4),
-gebunden an den vollständigen Wirkungs-Hash v2 (Abschnitt unten). Synthetisch geprüft; Herstellervertrag und produktive Freigabe sind **noch nicht
+gebunden an den vollständigen Wirkungs-Hash v2 (Abschnitt unten). Seit 0.3.1 trägt **ein** Grant mit
+vier Scopes beide Pfade, gehalten von einem Token-Zustand im Serverprozess. Synthetisch geprüft; Herstellervertrag und produktive Freigabe sind **noch nicht
 live belegt**. Apache 2.0.
 
 ## Werkzeuge und Messvertrag
@@ -73,30 +74,45 @@ HTTP-Parserfehler vor der Middleware behalten das feste Fehler-JSON ohne Tokenme
 
 ## SEC-Prüfpunkte (A2)
 
-- **Scopes:** genau `rw_organization_admin r_organization_social`, als Konstante und im
-  Test gepinnt. LinkedIn bietet für die erforderliche Administration keinen Read-only-Scope;
-  deshalb ausschließlich feste GET-Fachrouten. Der einzige ausgehende POST dient dem
-  festen OAuth-Tokenendpunkt. Der Grant hat mehr Möglichkeiten als dieser Dienst;
-  Gatewayrechte allein begrenzen einen entwendeten Token nicht. Die Tokenantwort meldet
-  `scope` kommagetrennt (beobachtet 02.11.2026); Trenner sind Komma und/oder Leerraum
-  (`oauth.scope_set`), die Menge muss weiter **exakt** die zwei Scopes sein, nichts Zusätzliches,
-  nichts Fehlendes, kein anderer Trenner, Nicht-Strings fail-closed.
+- **Scopes:** ein Grant, genau `rw_organization_admin r_organization_social
+  w_organization_social w_organization_social_feed` (`GRANT_SCOPES`), als Konstante und im Test
+  gepinnt. `SCOPES` und `WRITE_SCOPES` bleiben als Bedeutung stehen: was der Lese- und was der
+  Schreibpfad braucht. Getrennte Grants tragen nicht: LinkedIn entwertet frühere Access-Tokens,
+  sobald ein anderer Scope-Satz angefordert wird (Herstellerdoku, ein Grant je Mitglied und App
+  ist die Folge). LinkedIn bietet für die erforderliche Administration keinen Read-only-Scope;
+  deshalb ausschließlich feste GET-Fachrouten auf dem Lesepfad. Dessen einziger ausgehender POST
+  dient dem festen OAuth-Tokenendpunkt. Der Grant hat mehr Möglichkeiten als dieser Dienst, und
+  seit 0.3.1 trägt das Access-Token auch im Lese-Worker die Schreib-Scopes: Gatewayrechte und die
+  festen Routen begrenzen den Dienst, einen entwendeten Token begrenzen sie nicht. Die Tokenantwort
+  meldet `scope` kommagetrennt (beobachtet 02.11.2026); Trenner sind Komma und/oder Leerraum
+  (`oauth.scope_set`), die Menge muss **exakt** die vier Scopes sein, nichts Zusätzliches, nichts
+  Fehlendes, kein anderer Trenner, Nicht-Strings fail-closed. Die Zustimmung verlangt das Feld
+  (`scope_required`), beim Refresh darf es fehlen und ist exakt, wenn es kommt.
 - **Token-Lebensdauer/Erneuerung:** Access höchstens 60 Tage. Optionales Refresh nur, wenn
   LinkedIn es beim Code-Tausch liefert; höchstens 365 Tage ab Erstzustimmung. LinkedIn
   überschreitet die Höchstwerte gelegentlich knapp (`refresh_token_expires_in` 31536059 =
   59 s zu viel): `oauth.lifetime` deckelt die Frist auf genau 60 bzw. 365 Tage, nie darüber;
   Toleranz höchstens ein Tag (`OVERSHOOT_TOLERANCE_SECONDS`), darüber, nicht ganzzahlig oder
   nicht positiv ergibt `unexpected_source_shape`. Gilt auch für die Erneuerung. Fünf Minuten
-  vor Access-Ablauf erneuert ein nächster Abruf im Worker. Neue Tokens bleiben im RAM;
+  vor Access-Ablauf erneuert ein nächster Abruf im Serverprozess, einmal für beide Pfade.
+  Neue Tokens bleiben im RAM;
   die ursprüngliche Refresh-Frist wird niemals verlängert. Kein Tresor-Rückschreiben.
   Ohne Refresh ab 14 Tagen vor Access-Ablauf die Warnung, danach `token_abgelaufen`.
   Mit Refresh gilt die Warnschwelle für Refresh-Ablauf (verkürzte Frist wird übernommen).
   Ein gültiger Access-Token funktioniert bis zu seinem eigenen Ablauf weiter.
-  Worker-Kill/Neustart verliert RAM-Tokens; neu gestartete Worker benutzen den Tresorstand.
-  Rotiert der Hersteller Refresh-Tokens mit Widerruf des alten, ist erneute Zustimmung nötig.
+  Ein Worker-Kill verliert nichts: Der Zustand liegt im Serverprozess, eine laufende Erneuerung
+  läuft dort zu Ende. Ein Neustart des Dienstes verliert RAM-Tokens und beginnt beim Tresorstand.
+  Rotiert der Hersteller Refresh-Tokens mit Widerruf des alten, ist danach erneute Zustimmung nötig.
+- **Ein Token-Zustand:** `oauth.Tokens` lebt nur im Serverprozess. Lese-Worker und Schreibjobs sind
+  eigene Prozesse und fragen über ihre Pipe (`oauth.TokenClient`); es kreuzt nur das Access-Token,
+  je Aufruf und ungecacht. Refresh-Token und Client-Secret erreichen keinen Worker und keinen Job.
+  Eine Thread-Sperre umfasst Prüfung, Tausch und Übernahme, deshalb erneuert genau einer. Der Tausch
+  läuft im Thread, der Server bleibt bedienbar. Jeder Pfad gibt seinen eigenen Transport mit: eine
+  Erneuerung zählt auf den Deckel des Pfads, der sie brauchte.
 - **Ablage:** Hausmuster #887: `plugin-linkedin-seite` für den Bridge-Key und
   `plugin-linkedin-seite-oauth` für OAuth-JSON mit `client_id`, `client_secret`,
-  `access_token`, `access_expires_at`, optional gemeinsam `refresh_token` und
+  `access_token`, `access_expires_at`, `scope` (exakt die vier Werte, sonst startet der Dienst
+  nicht), optional gemeinsam `refresh_token` und
   `refresh_expires_at`. Ablaufwerte als ISO-8601-Zeitstempel mit Zeitzone.
   Secrets ausschließlich Tresor → `/run` → read-only Ordner-Mounts; kein Klartext unter
   `/etc` oder `/opt`, keine Secrets in Envs, Repo, Logs oder Fehlerantworten.
@@ -148,12 +164,12 @@ Andere Bindefehler brechen ebenfalls ab; unter Windows werden Sockets exklusiv g
    Laufzeitschlüssel; fehlende Dateien bedeuten `unprovisioned`. Compose hängt die Ordner
    `/run/jnpt/plugins/linkedin-seite` nach `/run/secrets/jnpt` und
    `/run/jnpt/plugins/linkedin-seite-oauth` nach `/run/secrets/oauth`, seit 0.2.0 zusätzlich
-   `…-post-oauth` nach `/run/secrets/post-oauth` und `…-gateway` nach `/run/secrets/gateway`,
-   alle read-only. REQUIRE verlangt nur die zwei Stufe-A-Schlüssel.
+   `…-gateway` nach `/run/secrets/gateway`, alle read-only. REQUIRE verlangt nur die zwei
+   Schlüssel für Bridge und Grant.
 5. `jnpt-linkedin-seite-key.path` und `.service` nach `/etc/systemd/system/` legen;
    `systemctl daemon-reload`, dann `systemctl enable --now jnpt-linkedin-seite-key.path`.
-   Nur die Path-Unit aktivieren. Zwei `PathChanged` beobachten atomare Schlüsselwechsel;
-   `up -d --force-recreate` liest beide Werte neu. Das deckt auch Boot ab. Die generische
+   Nur die Path-Unit aktivieren. Drei `PathChanged` beobachten atomare Schlüsselwechsel;
+   `up -d --force-recreate` liest alle Werte neu. Das deckt auch Boot ab. Die generische
    Produktvorlage `jnpt-plugin-key@` kennt nur eine Stelle und genügt hier nicht.
 6. Eine freie IP im bestehenden **internal** Netz `jnpt_plugins` reservieren und als
    `LINKEDIN_SEITE_PLUGIN_IP` setzen. Listener ausschließlich dort, Port 8092, kein Hostport.
@@ -169,17 +185,22 @@ Rotation: Bridge-Key gleichzeitig in Stelle und Connector-Credential ersetzen. O
 Zustimmung erneut ausführen und JSON ersetzen; Path-Unit erzeugt Container neu (Gateway-
 Auslieferung bis 60 Sekunden plus Recreate). Ohne Refresh spätestens alle 60 Tage,
 mit Refresh jährlich vor dessen ursprünglichem Ablauf. Nach Boot/Restore Zugriff prüfen.
-Entfernen aus dem Tresor ist kein Widerruf: LinkedIn-Grants beim Anbieter widerrufen.
-Rückbau: Connectorrechte/Instanzen entfernen, Grants widerrufen, beide Stellen/Ordner und
+Entfernen aus dem Tresor ist kein Widerruf: den LinkedIn-Grant beim Anbieter widerrufen.
+Rückbau: Connectorrechte/Instanzen entfernen, Grant widerrufen, alle Stellen/Ordner und
 Units entfernen. Kein eigener Datenspeicher, keine geplanten Abfragen.
+
+Umstieg von 0.3.0 mit zwei Grants: Reihenfolge in SETUP.md, Abschnitt „Umstieg auf den einen
+Grant“. Die alte Stelle `plugin-linkedin-seite-post-oauth` wird geleert und ihr Ordner entfernt;
+0.3.1 hängt sie nicht ein und liest sie nicht.
 
 ## Grenzen, Prüfung und Release
 
 512 KiB Quell-/Antwortdaten, 8 KiB Anfrage/Parserheader, Pfad 512 Zeichen.
 Zwei persistente spawn-Worker, vier Queueplätze, 30 Berichte pro rollender Minute.
 20 Sekunden einschließlich Queue/Token/API; Timeout und Client-Abbruch töten den wirklichen
-Prozess und warten auf Reap. Kein weiterlaufender Arbeitsthread. Höchstens zwei RAM-
-Tokenstände. `safe_http.py` ist die gepinnte aiohttp-Naht aus google-reporting; Upgrades
+Prozess und warten auf Reap. Kein weiterlaufender Arbeitsthread, mit einer Ausnahme: eine laufende
+Token-Erneuerung läuft im Serverprozess zu Ende (höchstens 18 Sekunden), damit ihr Ergebnis nicht
+verloren geht. Genau ein RAM-Tokenstand. `safe_http.py` ist die gepinnte aiohttp-Naht aus google-reporting; Upgrades
 brauchen erneut Parser-Canarys. Log enthält nur feste Route, festen Code und Dauer.
 
 Python 3.12: `pip-compile --generate-hashes --output-file=requirements.lock requirements.in`,
@@ -344,13 +365,12 @@ Erben-Bit. Die Medien-Ablage darf **nicht** pseudonymisiert sein (sonst verweige
 
 ### Credentials, Bremse und Spur
 
-- **Schreib-Grant (SEC Bed. 4):** eigene Stelle `plugin-linkedin-seite-post-oauth`, Zustimmung mit
-  `tools/zustimmung.py --schreiben`, angefordert wird **genau** `w_organization_social
-  w_organization_social_feed`, nichts sonst. Das JSON trägt zusätzlich
-  `"scope": "w_organization_social w_organization_social_feed"`: die unveränderte Stufe-A-Prüfung weist
-  JSON mit `scope` ab, die Schreib-Prüfung verlangt genau diese Menge — ein Tausch fällt beim Laden auf.
-  Lese- und Schreib-Token verlassen nie ihren Prozess; jede Erneuerung des Schreib-Tokens muss wieder
-  genau diese zwei Scopes liefern (Trenner Komma oder Leerraum, Reihenfolge egal, Menge exakt).
+- **Ein Grant (#1237, 0.3.1, ersetzt SEC Bed. 4):** Die Stelle `plugin-linkedin-seite-oauth` trägt
+  Lesen und Schreiben, Zustimmung mit `tools/zustimmung.py --gesamt`, angefordert werden **genau** die
+  vier Scopes (`GRANT_SCOPES`). Das JSON trägt sie im Feld `scope`, der Dienst prüft sie beim Start
+  exakt und weist ein JSON ohne `scope` oder mit anderer Menge fail-closed ab. Die Trennung von Lesen
+  und Schreiben liegt im Gateway (Vorlagen `linkedin-seite` und `linkedin-seite-manage`, je eigene
+  Werkzeugrechte), im Freigabe-Kopf und in den getrennten Routen, nicht mehr im Token.
   Posten, Bearbeiten, Löschen sowie Bild-, Dokument- und Video-Upload stehen unter
   `w_organization_social` (Posts-, Images-, Documents-, Videos-API 202610). Kommentieren als
   Organisation steht unter `w_organization_social_feed`, belegt in der Comments API 202610, Tabelle
@@ -403,18 +423,18 @@ https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares
 
 ### Betreiberhandgriffe Stufe B1
 
-1. tmpfiles: die zwei neuen Zeilen aus `deploy/jnpt-plugins-linkedin-seite.conf.example`
-   (`linkedin-seite-post-oauth`, `linkedin-seite-gateway`) übernehmen und `systemd-tmpfiles --create`
-   ausführen — **vor** dem Image-Wechsel auf 0.3.0, sonst startet Compose nicht (Ordner-Mounts mit
-   `create_host_path: false`).
-2. Path-Unit aus `deploy/` neu ablegen (vier `PathChanged`), `systemctl daemon-reload`.
+1. tmpfiles: die Zeile `linkedin-seite-gateway` aus `deploy/jnpt-plugins-linkedin-seite.conf.example`
+   übernehmen und `systemd-tmpfiles --create` ausführen — **vor** dem Image-Wechsel, sonst startet
+   Compose nicht (Ordner-Mounts mit `create_host_path: false`).
+2. Path-Unit aus `deploy/` neu ablegen (drei `PathChanged`), `systemctl daemon-reload`.
 3. `config.json` um den Block `schreiben` ergänzen (`config.example.json`).
 4. Redaktionsplan erweitern (Schema oben), Medien-Ablage `redaktion-medien` als
    Ablage-Integration ohne Pseudonymisierung.
 5. Gateway-Token erzeugen (Team-Token, genau die zwei Werkzeuge oben) und per stdin setzen:
    `… | jnpt credential set --name plugin-linkedin-seite-gateway`. Alte Freigabe-Suchrechte aus dem Beisteller-Token entfernen;
    den alten Konfigurationsschlüssel `schreiben.freigabe` entfernen.
-6. Schreib-Zustimmung des PO (SETUP.md) in `plugin-linkedin-seite-post-oauth`.
+6. Zustimmung des PO mit `--gesamt` (SETUP.md) in `plugin-linkedin-seite-oauth`; sie trägt auch das
+   Schreiben, eine zweite gibt es nicht.
 7. Connector-Vorlage um die fünf Werkzeuge ergänzen, F2-Call-Frist derzeit 25 Sekunden (Runtime-Decke 120 Sekunden),
    unabhängig von der Jobgrenze des Beistellers von 25 Minuten; lange Jobs können unklar werden. Audit für SSO und Token auf Metadaten; die Vorschau-Antwort enthält den Post-Text.
 

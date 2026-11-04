@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.3.1 — 2026-11-04
+
+- JanuaPort/januaport#1237, Befund GATE 03.11.: Nach der zweiten Zustimmung (nur Schreib-Scopes)
+  lieferte jeder Lesezugriff `source_access_denied`. Die Herstellerdoku nennt das Verhalten; live
+  ist die Ursache nicht belegt. Zwei getrennte Grants tragen deshalb nicht.
+- **Ein Grant:** `GRANT_SCOPES` = `rw_organization_admin`, `r_organization_social`,
+  `w_organization_social`, `w_organization_social_feed`; `SCOPES` und `WRITE_SCOPES` bleiben als
+  Bedeutung. `tools/zustimmung.py --gesamt` ist Pflicht und der einzige Modus, `--schreiben` und der
+  Lese-Modus entfallen. Die Antwort muss die vier Scopes nennen (Trenner tolerant, Menge exakt), das
+  JSON trägt sie im Feld `scope`.
+- **Eine Stelle:** `plugin-linkedin-seite-oauth` trägt den Grant, der Dienst prüft die Menge beim
+  Start; JSON ohne `scope` oder mit anderer Menge startet nicht. `plugin-linkedin-seite-post-oauth`
+  wird nicht mehr gelesen; Mount, Pfad, tmpfiles-Zeile und Path-Beobachtung sind entfallen.
+- **Ein Token-Zustand:** `oauth.Tokens` lebt nur im Serverprozess, beide Pools teilen ihn.
+  Worker und Jobs fragen über ihre Pipe nach dem Access-Token; Refresh-Token und Client-Secret
+  erreichen sie nicht mehr. Eine Thread-Sperre lässt genau einen erneuern, auch über beide Pfade.
+  Ein gekillter Worker verliert keine laufende Erneuerung mehr, Folgejobs erneuern nicht erneut.
+  Der Tausch läuft im Thread, der Server bleibt bedienbar. Permit und Transport bleiben je Pfad getrennt.
+- Unverändert: SEC-Trennung im Gateway, `X-Jnpt-Freigabe`, Hash-Vergleich, Tagesdeckel, Lese-Routen
+  nur GET, kein neues Werkzeug. SEC Bed. 4 (eigener Schreib-Grant) ist aufgehoben und braucht eine
+  SEC-Entscheidung. Umstieg in SETUP.md: Widerruf, Einspielen, eine Zustimmung, alte Stelle leeren.
+- Synthetisch verifiziert; Live-Abnahme offen.
+
 ## 0.3.0 — 2026-11-03
 
 - SEC c-6608136792 / LEAD Variante a: Nach gültiger Headerform und bewiesener Nichtausführung
