@@ -1,0 +1,23 @@
+[
+  {
+    "path": "apps/demo/token",
+    "body": "",
+    "status": 200,
+    "response": {
+      "app_token": "APP-TOKEN",
+      "expires_at": "EXPIRY",
+      "mcp_path": "/api/device/v1/mcp"
+    }
+  },
+  {
+    "path": "apps/unknown/token",
+    "body": "",
+    "status": 401,
+    "response": {
+      "error": {
+        "class": "unauthorized",
+        "message": "Die Anmeldung ist fehlgeschlagen."
+      }
+    }
+  }
+]

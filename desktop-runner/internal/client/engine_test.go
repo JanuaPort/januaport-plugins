@@ -100,7 +100,7 @@ func TestVeralteterStartSynchronisiertErneut(t *testing.T) {
 	pub, key, _ := ed25519.GenerateKey(nil)
 	slot := time.Now().UTC().Truncate(time.Minute)
 	p := Pin{Pin: "demo", Commit: strings.Repeat("a", 64), Path: "demo", Algo: "sha256", DeclaredTools: []string{"tool"}, Schedules: []Schedule{{Name: "minute", Cron: "* * * * *", TZ: "UTC", Input: json.RawMessage(`{}`)}}}
-	m := Manifest{Contract: 4, DeviceID: "own", Seq: 1, IssuedAt: slot.Format(time.RFC3339), GraceHours: 1, Pins: []Pin{p}}
+	m := Manifest{Apps: &[]App{}, Contract: WindowsContract, DeviceID: "own", Seq: 1, IssuedAt: slot.Format(time.RFC3339), GraceHours: 1, Pins: []Pin{p}}
 	sign := func(m Manifest) SignedManifest {
 		b := encode(m)
 		c, _ := canonical(b)
@@ -110,7 +110,7 @@ func TestVeralteterStartSynchronisiertErneut(t *testing.T) {
 	dir := envKey(p)
 	os.MkdirAll(filepath.Join(st.Root, "envs", dir), 0700)
 	env := Environment{Origin: p, Dir: dir, Files: []FileSeal{}, Tools: p.DeclaredTools}
-	cfg := Config{Contract: 4, ExpectedAccount: "own", HeartbeatS: 60, PollHoldS: 25}
+	cfg := Config{Contract: WindowsContract, ExpectedAccount: "own", HeartbeatS: 60, PollHoldS: 25}
 	cfg.Device.ID = "own"
 	cfg.Device.Kind = "workstation"
 	cfg.StartPolicy.Mode = "always"

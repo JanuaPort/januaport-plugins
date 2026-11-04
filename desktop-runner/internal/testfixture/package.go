@@ -18,6 +18,11 @@ type obj struct {
 }
 
 func Package(files map[string][]byte, modeOverride string) (string, []byte) {
+	return PackageAt("demo", files, modeOverride)
+}
+
+// PackageAt legt die Dateien unter dem verschachtelten Pfad ab, etwa "apps/demo".
+func PackageAt(pinPath string, files map[string][]byte, modeOverride string) (string, []byte) {
 	var objects []obj
 	add := func(kind byte, data []byte) string {
 		typ := map[byte]string{'b': "blob", 'c': "commit", 't': "tree"}[kind]
@@ -59,11 +64,14 @@ func Package(files map[string][]byte, modeOverride string) (string, []byte) {
 		}
 		return add('t', raw.Bytes())
 	}
-	pin := tree("")
-	b, _ := hex.DecodeString(pin)
-	root := add('t', append([]byte("40000 demo\x00"), b...))
+	root := tree("")
+	segments := strings.Split(pinPath, "/")
+	for i := len(segments) - 1; i >= 0; i-- {
+		b, _ := hex.DecodeString(root)
+		root = add('t', append([]byte("40000 "+segments[i]+"\x00"), b...))
+	}
 	commit := add('c', []byte("tree "+root+"\n\ntest\n"))
-	head, _ := json.Marshal(map[string]any{"format": "gitobjects", "version": 1, "algo": "sha256", "commit": commit, "path": "demo", "objects": len(objects)})
+	head, _ := json.Marshal(map[string]any{"format": "gitobjects", "version": 1, "algo": "sha256", "commit": commit, "path": pinPath, "objects": len(objects)})
 	var out bytes.Buffer
 	write := func(b []byte) { binary.Write(&out, binary.BigEndian, uint32(len(b))); out.Write(b) }
 	write(head)

@@ -9,7 +9,7 @@ import (
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/pipe"
 )
 
-// H4: contract 4 Pin has no label field. Use its runner-bound manifest pin name,
+// H4: contract 4 and 5 Pins have no label field. Use its runner-bound manifest pin name,
 // bounded to the title's 40-character wire limit; never take text from stdout.
 func questionTitle(pin Pin) string {
 	r := []rune(pin.Pin)

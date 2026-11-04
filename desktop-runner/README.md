@@ -6,15 +6,17 @@ Implementiert und mit Fake-Kern, Linux-Race-Tests und nativen Windows-Sonden
 geprüft. Signiertes Windows-Release: `desktop-runner-v0.1.0` (#1163 D4).
 Gemeinsame Live-Abnahme mit der Anlage steht aus.
 Maßgeblich ist der [Draht-Vertrag](contract/README.md): historischer v1-D0-Vertrag und v2 für Linux-Server. Windows spricht ab 0.3.0
-**Vertrag 4** in Header und JSON. Das D0-Modul und die alten Goldens bleiben eingefroren.
+**Vertrag 4**, mit K6b-1 (Fenster-Teil des PC-Fensters, JanuaPort/januaport#1048, noch ohne Release)
+**Vertrag 5** in Header und JSON; er braucht einen Kern mit K6a. Das D0-Modul und die alten Goldens bleiben eingefroren.
 
 ## Vertrag 4 und Testaufträge
 
 0.3.0 behebt #1298: Signierte Manifeste mit `test_device:true` werden in allen
-unterstützten Fassungen (v1/v2/v3/v4) angenommen. Der aktuelle Windows-Sync
-verlangt Vertrag 4; ältere verifizierte Caches liefern beim Upgrade nur die
-Sequenz für den neuen Sync. Der Parser bleibt strikt: `apps` ist unter v4
-gesperrt, Setup-Beschriftungen haben höchstens 40 Unicode-Zeichen.
+unterstützten Fassungen (v1 bis v5) angenommen. Der aktuelle Windows-Sync
+verlangt Vertrag 5 (Vertrag 4 plus `apps`); ältere verifizierte Caches (v1, v3, v4)
+liefern beim Upgrade nur die Sequenz für den neuen Sync. Der Parser bleibt strikt:
+`apps` ist unter v1–v4 gesperrt und unter v5 Pflicht, Setup-Beschriftungen haben
+höchstens 40 Unicode-Zeichen.
 `pins[].setups` enthält feste Eingabe und `frei`-Felddefinitionen;
 `pins[].grace_hours` überschreibt die Gerätefrist.
 
@@ -40,6 +42,40 @@ auch bei `refused/offline`. Die markierte Meldung erreicht dann den Offline-Zäh
 nicht; es gilt die bestehende gezählte Verwerfung nach zehn HTTP-400-Antworten.
 Auch `result:null` wird vom geprüften Kernstand abgewiesen. L5 lässt bei
 `jnpt.ergebnis(None)` das Feld vollständig weg (Kern-Folgeänderung #1300).
+
+## PC-Fenster, Teil 1: Vertrag 5 und fensterlose Logik (K6b-1, ohne Release)
+
+JanuaPort/januaport#1048 (Hyperfokus #1313 B2). Dieser Stand enthält **kein Fenster**:
+keinen WebView2-Adapter, keine Änderung am Bedienfeld, kein Release. Er legt die
+prüfbare Grundlage, die K6b-2 an das Fenster hängt. Es gibt keinen lokalen Fensterbeleg.
+
+- **Vertrag 5:** Windows sendet Header und `contract: 5` (siehe [contract/README.md](contract/README.md),
+  Spiegel `contract/golden-v5/`). Ein Kern ohne K6a lehnt den Läufer ab; Update-Reihenfolge
+  wie bisher zuerst Kern, dann Läufer.
+- **App-Paket:** `AppStore` holt das Paket (`packages/{commit}?path=apps/<name>`, Quelle
+  Speicher), prüft es vollständig (Git-IDs, SHA-1DC/SHA-256, Objektmenge, Namen, Modus
+  100644) und danach die apphost-Regeln als markierte Kopie (`copied_apphost.go`:
+  MIME-Liste, Geheimnismuster, keine aktive Markup). Das CSP-Literal `fenster.CSP` setzt der Läufer
+  selbst als erstes Element in jedes `<head>` ein und versiegelt danach (davor `<meta charset="utf-8">`, SEC-R4 F4); HTML mit eigener CSP-Meta oder
+  ohne sauberes `<head>` wird abgewiesen, `Open` prüft das führende Literal erneut. Die apphost-CSP wird
+  nicht übernommen. Ablage privat unter `<Zustand>\apps\<name>\<commit>\`, Siegel (Pfad,
+  Größe, SHA-256) im verschlüsselten Zustand, Prüfung vor **jedem** Öffnen, nie stilles
+  Reparieren. Widerruf löscht Ablage und Siegel mit dem Zustand.
+- **App-Token:** `POST apps/{name}/token`, nur im RAM (`fensterio.Gateway`), bei 401 genau
+  einmal neu geholt. Das Token hat keinen Getter und druckt sich nie.
+- **Fenster-Policy (`internal/fenster`, reines Go):** exaktes CSP-Literal,
+  `NavigationAllowed` (nur `.html`-Seiten auf `https://app-<name>-pc.jnpt.invalid`, Einstieg `/index.html`, kein Port/Userinfo/
+  Großschreibung/Schema-Tricks), `MessageAllowed` (oberster Rahmen, eigene Origin, vier
+  Befehle), `Settings()` (nur Skript und Webnachrichten an), Umschlag `{id, befehl, args}`
+  (höchstens 256 KiB, strikt) und die Brücke: `status`, `anhalten` (lokal, genau zwei
+  Pipe-Operationen), `werkzeuge` (tools/list), `werkzeug` (tools/call). Antworten tragen
+  nur feste Codes (`abgelehnt`, `antwort_ungueltig`, `args`, `befehl`, `fehler`,
+  `nicht_angemeldet`, `nicht_erreichbar`, `umschlag`, `zu_gross`, `zu_viele`) und nie
+  einen Träger; Ergebnisse mit Token-Muster werden verworfen.
+
+Offen für K6b-2: WebView2-Adapter und `go-webview2`, `Exchange` über die vorhandene
+Bedienfeld-Verbindung (`panelio`), Benutzerdatenverzeichnis, Hygiene-Ausnahme, Prozessbaum-Sonde,
+externe Links, Release. Mutationen: `probe/k6b_mutations.py` (Container mit Go und Python).
 
 ## Skript-Helfer `jnpt` (0.4.0 in Arbeit, L5)
 
@@ -301,7 +337,7 @@ benutzen das bestehende Ergebnisjournal mit `run_key=setup/…`, `ran_offline:fa
 500 Unicode-Zeichen, 2–4 Optionen zu höchstens 40 Zeichen, Frist 5–3600 Sekunden,
 höchstens eine offene Frage je Lauf. `wahl` ist nullbasiert; fremde/abgelaufene
 Antworten werden abgewiesen. H4: Pflichtfeld `titel`, höchstens 40 Zeichen,
-aus dem Manifest-Pin, nie aus Skripttext. Vertrag 4 hat kein Pin-Label;
+aus dem Manifest-Pin, nie aus Skripttext. Vertrag 4 und 5 haben kein Pin-Label;
 Rückfall ist der Pin-Name (auf 40 Zeichen begrenzt).
 L4 bindet hierfür rohe `frage`-Rahmen an den Go-Laufkontext und prüft Grenzen,
 skriptseitige Titel und parallele Fragen am echten Execute-Adapter. Ungültige

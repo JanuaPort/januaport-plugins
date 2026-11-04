@@ -45,7 +45,7 @@ func l1JSONEqual(a, b []byte) bool {
 }
 
 func l1Manifest() Manifest {
-	return Manifest{Contract: 4, DeviceID: "aaaaaaaaaaaaaaaa", Seq: 42, IssuedAt: "2026-11-01T12:00:00Z", GraceHours: 24,
+	return Manifest{Apps: &[]App{}, Contract: WindowsContract, DeviceID: "aaaaaaaaaaaaaaaa", Seq: 42, IssuedAt: "2026-11-01T12:00:00Z", GraceHours: 24,
 		Pins: []Pin{{Pin: "test_aaaaaaaa", Algo: "sha1", Commit: strings.Repeat("a", 40), Path: "demo", DeclaredTools: []string{}, Schedules: []Schedule{}}}}
 }
 
@@ -65,7 +65,7 @@ func l1Sign(t *testing.T, raw []byte, device string) (SignedManifest, Credential
 func TestVertragJeGeraeteart(t *testing.T) {
 	for _, server := range []bool{false, true} {
 		t.Run(fmt.Sprint(server), func(t *testing.T) {
-			want := 4
+			want := 5
 			if server {
 				want = 2
 			}
@@ -209,10 +209,10 @@ func TestManifestV4StriktAmAdapter(t *testing.T) {
 }
 
 func TestTestgeraeteSynchronisieren1298(t *testing.T) {
-	for _, version := range []int{1, 2, 3, 4} {
+	for _, version := range []int{1, 2, 3, 4, 5} {
 		t.Run(fmt.Sprint(version), func(t *testing.T) {
 			m := l1Manifest()
-			m.Contract = version
+			setContract(&m, version)
 			m.TestDevice = true
 			if version == 2 {
 				m.Pins = []Pin{}
@@ -402,7 +402,7 @@ func TestSetupUndHaltAmHTTPAdapter(t *testing.T) {
 		if json.NewDecoder(r.Body).Decode(&body) != nil {
 			t.Error("JSON")
 		}
-		if r.Method != "POST" || r.Header.Get("X-Jnpt-Desktop-Contract") != "4" {
+		if r.Method != "POST" || r.Header.Get("X-Jnpt-Desktop-Contract") != "5" {
 			t.Error("Vertrag/Verb")
 		}
 		if strings.HasSuffix(r.URL.Path, "runs/start") {
@@ -425,7 +425,7 @@ func TestSetupUndHaltAmHTTPAdapter(t *testing.T) {
 			out["expires_at"] = encode("2027-01-01T00:00:00Z")
 			json.NewEncoder(w).Encode(out)
 		} else {
-			if r.URL.Path != "/api/device/v1/halt" || string(body["contract"]) != "4" || len(body) != 3 {
+			if r.URL.Path != "/api/device/v1/halt" || string(body["contract"]) != "5" || len(body) != 3 {
 				t.Error("Halt-Draht")
 			}
 			for _, key := range []string{"state", "until"} {
@@ -551,5 +551,14 @@ func TestOfflineNachmeldungAmAdapter(t *testing.T) {
 	e.deliverOne(context.Background())
 	if hits != 1 || len(st.Journal().Results) != 0 {
 		t.Fatal("Nachmeldung nicht bestätigt", hits)
+	}
+}
+
+// setContract stellt eine zum Vertrag passende Manifestform her: apps gibt es nur unter Vertrag 5.
+func setContract(m *Manifest, contract int) {
+	m.Contract = contract
+	m.Apps = nil
+	if contract == appsContract {
+		m.Apps = &[]App{}
 	}
 }

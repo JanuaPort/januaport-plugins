@@ -194,7 +194,7 @@ func (e *Engine) isReady() bool {
 	if e.Container != nil {
 		return b.Config.Contract == 2 && b.Config.Device.Kind == "server" && b.Config.StartPolicy.Mode == "always"
 	}
-	if b.Config.Contract != 4 {
+	if b.Config.Contract != WindowsContract {
 		return false
 	}
 	s, err := e.Session()
@@ -766,8 +766,8 @@ func (e *Engine) Run(ctx context.Context) error {
 	var cached Bundle
 	if err := e.State.Load("manifest", &cached); err == nil {
 		// Older verified Windows caches supply the sequence for the upgrade sync;
-		// they cannot authorize a claim or scheduled execution under contract 4.
-		if m, verifyErr := VerifyManifest(cached.Manifest.Envelope, e.Credential.Pubkey, e.Credential.DeviceID, 0); verifyErr != nil || (m.Contract != e.API.Contract() && !(e.Container == nil && (m.Contract == 1 || m.Contract == 3))) {
+		// they cannot authorize a claim or scheduled execution under the current Windows contract.
+		if m, verifyErr := VerifyManifest(cached.Manifest.Envelope, e.Credential.Pubkey, e.Credential.DeviceID, 0); verifyErr != nil || (m.Contract != e.API.Contract() && !(e.Container == nil && (m.Contract == 1 || m.Contract == 3 || m.Contract == 4))) {
 			if verifyErr == nil {
 				verifyErr = ErrManifest
 			}

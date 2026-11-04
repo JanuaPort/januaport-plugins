@@ -16,7 +16,7 @@ import (
 func haltBed(t *testing.T) *bed {
 	t.Helper()
 	b := newBed(t)
-	b.engine.Config.Contract = 4
+	b.engine.Config.Contract = WindowsContract
 	b.engine.Config.Device.ID = "aaaaaaaaaaaaaaaa"
 	b.engine.Config.Device.Kind = "workstation"
 	b.engine.Config.HeartbeatS, b.engine.Config.PollHoldS = 60, 25
@@ -376,7 +376,7 @@ func TestHaltMeldungKoalesziert(t *testing.T) {
 	var sent []haltState
 	fail := true
 	b.engine.API = l1API(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/device/v1/halt" || r.Method != "POST" || r.Header.Get("X-Jnpt-Desktop-Contract") != "4" {
+		if r.URL.Path != "/api/device/v1/halt" || r.Method != "POST" || r.Header.Get("X-Jnpt-Desktop-Contract") != "5" {
 			t.Error(r.URL.Path, r.Header)
 		}
 		var body struct {

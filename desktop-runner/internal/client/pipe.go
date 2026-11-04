@@ -39,7 +39,7 @@ func (e *Engine) panelStatus() panel.Message {
 		m.Beschaeftigt = true
 	}
 	manifest, err := VerifyManifest(b.Manifest.Envelope, e.Credential.Pubkey, e.Credential.DeviceID, 0)
-	if err != nil || manifest.Contract != 4 {
+	if err != nil || manifest.Contract != WindowsContract {
 		m.Zustand = "stoerung"
 		return m
 	}
@@ -221,7 +221,7 @@ func (e *Engine) startPanelSetup(ctx context.Context, pin, setup string) error {
 		return ErrProtocol
 	}
 	m, err := VerifyManifest(b.Manifest.Envelope, e.Credential.Pubkey, e.Credential.DeviceID, 0)
-	if err != nil || m.Contract != 4 {
+	if err != nil || m.Contract != WindowsContract {
 		return ErrManifest
 	}
 	var chosen *Pin

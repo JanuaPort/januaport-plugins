@@ -64,7 +64,7 @@ func TestWindowsAnhaltenBeendetEnkel(t *testing.T) {
 		t.Fatal(err)
 	}
 	env := client.Environment{Origin: pin, Dir: dir, Entry: "main.py", Timeout: 10, Tools: []string{}, Files: seal}
-	cfg := client.Config{Contract: 4, ExpectedAccount: "own"}
+	cfg := client.Config{Contract: client.WindowsContract, ExpectedAccount: "own"}
 	cfg.StartPolicy.Mode = "always"
 	pid := make(chan uint32, 1)
 	exe, err := os.Executable()

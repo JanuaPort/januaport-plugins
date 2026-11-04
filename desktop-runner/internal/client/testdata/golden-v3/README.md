@@ -16,8 +16,8 @@ unverändert. Keine Abhängigkeit vom lokalen Pfad der Quelle.
 Das Routen-Golden enthält Vertrag 3 und symbolische Antwortwerte (`EXPIRY`,
 `RUN-TOKEN`). Der Fake-Kern übernimmt die Routen/Körper, setzt den tatsächlichen
 Zufalls-Nonce und eine gültige Ablaufzeit ein; Header und Halt-Körper werden
-ausdrücklich gegen Vertrag 4 geprüft. Das Testmanifest ist absichtlich Vertrag 1
-und belegt #1298; die Regression prüft zusätzlich v2, v3 und v4.
+ausdrücklich gegen den Windows-Vertrag (ab K6b-1: 5) geprüft. Das Testmanifest ist absichtlich Vertrag 1
+und belegt #1298; die Regression prüft zusätzlich v2, v3, v4 und v5.
 
 `TestGoldenV3AusKern` pinnt sämtliche SHA-Werte, prüft Manifest-Roundtrips über
 den HTTP-Adapter und schützt außerdem die alten v1/v2-Bytes. `contract/`,
