@@ -207,7 +207,7 @@ func TestPanelExchangeMitLokalAnhalten(t *testing.T) {
 			x.Deliver(zustandFrame(t, state))
 		}
 	}()
-	var l fenster.Lokal = NewLokal(x.Exchange)
+	l := fenster.Lokal(NewLokal(x.Exchange))
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	if err := l.Anhalten(ctx); err != nil {

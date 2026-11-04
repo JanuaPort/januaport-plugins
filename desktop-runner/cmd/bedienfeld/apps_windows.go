@@ -34,6 +34,10 @@ func (a *application) sendCommand(m pipe.Message) bool {
 
 // drainApps nimmt Ergebnisse der Hintergrundarbeit ab: App-Liste, geöffnete Apps, Antworten an die Seiten.
 func (a *application) drainApps() {
+	// NewSurface pumpt beim Start der WebView Nachrichten; währenddessen nichts Neues anfangen.
+	if a.embedding {
+		return
+	}
 	for {
 		select {
 		case l := <-a.appLists:
@@ -81,7 +85,9 @@ func (a *application) handleOpened(r openResult) {
 		return
 	}
 	name := r.name
+	a.embedding = true
 	s, err := fensterio.NewSurface(r.o, fensterio.SurfaceConfig{OnLink: a.askLink, OnClosed: func() { delete(a.surfaces, name) }})
+	a.embedding = false
 	if err != nil {
 		r.o.Close()
 		a.notice("JanuaPort – App", "Die App „"+r.name+"“ kann nicht angezeigt werden (WebView2).")

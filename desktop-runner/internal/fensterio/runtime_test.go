@@ -64,7 +64,6 @@ func newCore(t *testing.T) *coreBed {
 type runtimeBed struct {
 	core *coreBed
 	bed  *statefixture.Bed
-	app  fenster.Source
 	rt   *Runtime
 	ex   *PanelExchange
 }

@@ -86,13 +86,12 @@ func (probeLokal) Anhalten(context.Context) error { return nil }
 
 // probeBed ist ein Fremdserver (loopback), der jeden Abruf zählt: Ein Treffer heißt, dass etwas ausgeleitet wurde.
 type probeBed struct {
-	t      *testing.T
-	srv    *httptest.Server
-	hits   atomic.Int32
-	paths  sync.Mutex
-	seen   []string
-	events sync.Map
-	gw     *probeGateway
+	t     *testing.T
+	srv   *httptest.Server
+	hits  atomic.Int32
+	paths sync.Mutex
+	seen  []string
+	gw    *probeGateway
 }
 
 func newProbeBed(t *testing.T) *probeBed {
@@ -123,9 +122,6 @@ func (b *probeBed) seenPaths() []string {
 	defer b.paths.Unlock()
 	return append([]string(nil), b.seen...)
 }
-
-// report ist das JS-Gerüst jeder Probeseite: meldet über die Brücke an probeGateway.
-const report = `<script src="probe.js"></script>`
 
 // openProbe legt Dateien in einen App-Ordner und öffnet ein echtes Fenster. Die Dateien gehen NICHT durch
 // den Ladeprüfer (er lehnt die Angriffsdateien absichtlich ab); die Sonde belegt, was der Browser mit ihnen

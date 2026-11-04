@@ -114,15 +114,16 @@ type application struct {
 
 	// K6b-2: Apps. Alles Blockierende (Zustand lesen, Gateway, Brücke, Pipe-Gespräch) läuft in fensterio-
 	// Goroutinen; hier stehen nur Kanäle, Karten und der Wecker.
-	rt       *fensterio.Runtime
-	exchange *fensterio.PanelExchange
-	gen      atomic.Uint64
-	appLists chan fensterio.AppList
-	opened   chan openResult
-	surfaces map[string]*fensterio.Surface
-	opening  map[string]bool
-	aux      uintptr
-	auxLink  *fensterio.Link
+	rt        *fensterio.Runtime
+	exchange  *fensterio.PanelExchange
+	gen       atomic.Uint64
+	appLists  chan fensterio.AppList
+	opened    chan openResult
+	surfaces  map[string]*fensterio.Surface
+	opening   map[string]bool
+	aux       uintptr
+	auxLink   *fensterio.Link
+	embedding bool
 }
 
 var app *application

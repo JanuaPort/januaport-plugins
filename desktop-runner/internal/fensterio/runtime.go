@@ -155,8 +155,8 @@ func Watch(ctx context.Context, interval time.Duration, read func() (AppList, er
 	defer tick.Stop()
 	for {
 		l, err := read()
-		switch {
-		case err == nil:
+		switch err {
+		case nil:
 			failures = 0
 			if !have || !slices.Equal(l.Names, last.Names) || l.TestDevice != last.TestDevice {
 				last, have = l, true
