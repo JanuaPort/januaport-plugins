@@ -230,7 +230,6 @@ CASES = [
     ("env-gross-klein", "fensterio", "TestEnvNamenZumEntfernen", [edit(ENVF, 'strings.EqualFold(name[:4], "jnpt")', 'name[:4] == "JNPT"')]),
     # SEC-Urteil Lauf 5: Browserprozess prüfen, WEBVIEW2_*, spekulatives Laden
     ("netzargumente-fehlen", "fensterio", "TestAdapterSperrtRessourcenUndNetz", [edit(WVS, "args = append(args, fenster.NetworkLockArgs()...)", "_ = fenster.NetworkLockArgs")]),
-    ("spekulationsargumente-fehlen", "fensterio", "TestAdapterSperrtRessourcenUndNetz", [edit(WVS, "args = append(args, fenster.SpeculationArgs()...)", "_ = fenster.SpeculationArgs")]),
     ("browserpruefung-fehlt", "fensterio", "TestAdapterPruefteThreadUndWartetBegrenzt", [edit(WVS, '{"browser pruefen", func() error {', '{"browser", func() error {')]),
     ("browserpruefung-ohne-kommandozeile", "fensterio", "TestAdapterSperrtRessourcenUndNetz", [edit(WVS, "problems := fenster.BrowserCommandLineProblems(line)", "problems := []string(nil)\n\t\t\t_ = line")]),
     ("webview2-variablen-ignoriert", "fensterio", "TestAdapterSperrtRessourcenUndNetz", [edit(WVS, "if findings := webview2Findings(envsnap.Start(), os.Environ()); len(findings) > 0 {", "if findings := jnptNames(nil); len(findings) > 0 {"), edit(WVS, '\t"github.com/januaport/januaport-plugins/desktop-runner/internal/envsnap"\n', '')]),
@@ -238,10 +237,7 @@ CASES = [
     ("webview2-ohne-unterstrich", "fensterio", "TestWebView2Eingriffe", [edit(ENVF, "len(name) >= 9 && strings.EqualFold(name[:9], \"webview2_\")", "len(name) >= 8 && strings.EqualFold(name[:8], \"webview2\")")]),
     ("cmdline-doppelt", "fenster", "TestBrowserCommandLineProblems", [edit(RSR, "case len(got) > 1:", "case false:")]),
     ("cmdline-abweichend", "fenster", "TestBrowserCommandLineProblems", [edit(RSR, "case got[0] != w.value:", "case false:")]),
-    ("cmdline-erstes-features", "fenster", "TestBrowserCommandLineProblems", [edit(RSR, "strings.Split(got[len(got)-1], \",\")", "strings.Split(got[0], \",\")")]),
-    ("cmdline-enable-features", "fenster", "TestBrowserCommandLineProblems", [edit(RSR, 'for _, v := range values["--enable-features"] {', 'for _, v := range []string(nil) {')]),
     ("cmdline-verbotene-argumente", "fenster", "TestBrowserCommandLineProblems", [edit(RSR, '[]string{"--proxy-pac-url", "--no-proxy-server", "--proxy-auto-detect"}', '[]string{"--proxy-pac-url"}')]),
-    ("cmdline-hintergrundnetz", "fenster", "TestBrowserCommandLineProblems", [edit(RSR, '[]string{"--disable-background-networking", "--dns-prefetch-disable"}', '[]string{"--dns-prefetch-disable"}')]),
     ("cmdline-anfuehrungszeichen", "fenster", "TestBrowserCommandLineProblems", [edit(RSR, "case c == '\"':\n\t\t\tinQuote = !inQuote", "case c == '\"':\n\t\t\tinQuote = false")]),
     ("lader-prerender", "client", "TestInjectCSPLehntSpekulativesLadenAb", [edit(APL, 'case "prerender", "prefetch", "preconnect", "dns-prefetch":', 'case "prefetch", "preconnect", "dns-prefetch":')]),
     ("lader-preconnect", "client", "TestInjectCSPLehntSpekulativesLadenAb", [edit(APL, 'case "prerender", "prefetch", "preconnect", "dns-prefetch":', 'case "prerender", "prefetch", "dns-prefetch":')]),

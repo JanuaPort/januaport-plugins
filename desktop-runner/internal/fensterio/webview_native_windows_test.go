@@ -46,11 +46,9 @@ var probeOptIn = os.Getenv("JNPT_NATIVE_WEBVIEW_PROBE") == "1"
 
 // probeMode wählt, welche Schichten FremdserverNull aktiv hat (JNPT_NATIVE_WEBVIEW_PROBE_MODUS, leer = alle):
 //
-//	beide                alle Schichten (Standard)
-//	nurSchicht1          nur der Ressourcenfilter
-//	nurSchicht2          nur Netz aus (Proxy, DNS), ohne Filter und ohne Features
-//	schicht1UndFeatures  Filter plus spekulatives Laden aus, Netz-Argumente weg
-//	nurFeatures          nur spekulatives Laden aus
+//	beide        alle Schichten (Standard)
+//	nurSchicht1  nur der Ressourcenfilter, ohne Netz-Argumente
+//	nurSchicht2  nur Netz aus (Proxy, DNS), ohne Filter
 //
 // So fährt man FremdserverNull unter einer gesetzten Richtlinie und sieht, welche Schicht sie aushebelt.
 var probeMode = os.Getenv("JNPT_NATIVE_WEBVIEW_PROBE_MODUS")
@@ -62,13 +60,9 @@ func modeConfig(t *testing.T, mode string) func(*SurfaceConfig) {
 	case "", "beide":
 		return nil
 	case "nurSchicht1":
-		return func(c *SurfaceConfig) { c.noNetLock, c.noSpeculation = true, true }
-	case "nurSchicht2":
-		return func(c *SurfaceConfig) { c.noResourceFilter, c.noSpeculation = true, true }
-	case "schicht1UndFeatures":
 		return func(c *SurfaceConfig) { c.noNetLock = true }
-	case "nurFeatures":
-		return func(c *SurfaceConfig) { c.noResourceFilter, c.noNetLock = true, true }
+	case "nurSchicht2":
+		return func(c *SurfaceConfig) { c.noResourceFilter = true }
 	}
 	t.Fatalf("unbekannte Betriebsart %q", mode)
 	return nil
@@ -625,9 +619,11 @@ func TestWindowsWebViewNachrichtQuelle(t *testing.T) {
 	})
 }
 
-// PermissionRequested: Standard Deny, je Berechtigung ein eigener Fall mit eigenem Ergebnis (kein Warten auf alle).
-// Geolocation: Kommt weder ein Rückruf der Seite noch ein PermissionRequested, ist der Fall rot und sagt es
-// ausdrücklich, statt durch Zeitablauf grün zu werden.
+// Berechtigungen, Maßstab ist die Wirkung (SEC-Urteil Lauf 7): Die Seite darf weder Zwischenablage noch Standort noch
+// Benachrichtigungen bekommen. Ob das Ereignis PermissionRequested ablehnt oder der Browser schon vorher selbst
+// verweigert, wird getrennt gemeldet: "Ereignis lehnt ab" ist der Beleg der Sperre, "Browser verweigert selbst" ist
+// kein Beleg der Ereignis-Sperre, aber ein grünes Ergebnis der Wirkung, wenn die Seite nichts erhält. Zeitablauf
+// ist nie ein Beleg: Geolocation braucht einen Rückruf der Seite. Erhält die Seite etwas, ist das ein Fund.
 func TestWindowsWebViewBerechtigungenAbgelehnt(t *testing.T) {
 	b := newProbeBed(t)
 	deny := fmt.Sprintf("antwort=%d", edge.CoreWebView2PermissionStateDeny)
@@ -642,58 +638,184 @@ func TestWindowsWebViewBerechtigungenAbgelehnt(t *testing.T) {
 		}
 		return
 	}
+	// waitFocus lässt die Seite warten, bis sie den Fokus hat (Zwischenablage und Standort fragen sonst nicht).
+	const waitFocus = `
+var versuche = 0;
+function mitFokus(start) { if (document.hasFocus() || versuche++ > 40) { send("fokus", {hat: document.hasFocus()}); start(); } else { setTimeout(function(){ mitFokus(start); }, 100); } }
+`
+	marker := fmt.Sprintf("synthetisch-zwischenablage-%x", time.Now().UnixNano())
+	clipJS := waitFocus + `mitFokus(function(){
+  navigator.clipboard.readText()
+    .then(function(t){ send("clip", {ok: true, gleich: t === window.MARKER, laenge: t.length}); })
+    .catch(function(e){ send("clip", {ok: false, name: e.name}); });
+});`
 	cases := []struct {
-		name, js, event string
-		art             int
-		check           func(t *testing.T)
+		name  string
+		js    string
+		ready string
+		art   int
+		allow bool
+		clip  bool
+		check func(t *testing.T, n, denied int, trace []string)
 	}{
-		{"benachrichtigungen", `Notification.requestPermission().then(function(r){ send("notif", {antwort: r}); });`, "notif ", 4, func(t *testing.T) {
-			if !b.gw.has(`"antwort":"denied"`) || b.gw.has(`"antwort":"granted"`) {
-				t.Fatalf("Benachrichtigungen nicht abgelehnt: %v", b.gw.snapshot())
-			}
-		}},
-		{"zwischenablageLesen", `navigator.clipboard.readText().then(function(){ send("clip", {ok: true}); }).catch(function(e){ send("clip", {ok: false, name: e.name}); });`, "clip ", 6, func(t *testing.T) {
-			if !b.gw.has(`"ok":false`) || b.gw.has(`"ok":true`) {
-				t.Fatalf("Zwischenablage nicht abgelehnt: %v", b.gw.snapshot())
-			}
-		}},
-		{"geolocation", `
-navigator.permissions.query({name: "geolocation"}).then(function(p){ send("geo_status", {state: p.state}); }).catch(function(e){ send("geo_status", {fehler: e.name}); });
-navigator.geolocation.getCurrentPosition(function(){ send("geo", {code: 0}); }, function(e){ send("geo", {code: e.code}); }, {timeout: 6000});
-setTimeout(function(){ send("geo_frist", {}); }, 9000);
-`, "geo ", 3, func(t *testing.T) {
-			if b.gw.has(`"code":0`) {
-				t.Fatal("Geolocation wurde gewährt")
-			}
-		}},
+		{"benachrichtigungen", `Notification.requestPermission().then(function(r){ send("notif", {antwort: r}); });`, "notif ", 4, false, false,
+			func(t *testing.T, n, denied int, trace []string) {
+				if !b.gw.has(`"antwort":"denied"`) || b.gw.has(`"antwort":"granted"`) {
+					t.Fatalf("Benachrichtigungen nicht abgelehnt: %v", b.gw.snapshot())
+				}
+				if n == 0 || denied != n {
+					t.Fatalf("PermissionRequested art=4: %d gemeldet, %d abgelehnt: %v", n, denied, trace)
+				}
+			}},
+		{"zwischenablageLesen", clipJS, "clip ", 6, false, true,
+			func(t *testing.T, n, denied int, trace []string) {
+				if b.gw.has(`"gleich":true`) || b.gw.has(`"ok":true`) {
+					t.Fatalf("FUND: Die Seite hat die Zwischenablage gelesen: %v", b.gw.snapshot())
+				}
+				if !b.gw.has(`"ok":false`) {
+					t.Fatalf("kein Fehler der Seite: %v", b.gw.snapshot())
+				}
+				if n > 0 && denied != n {
+					t.Fatalf("PermissionRequested art=6 nicht abgelehnt: %v", trace)
+				}
+				if n == 0 {
+					t.Logf("zwischenablageLesen: Browser verweigert selbst (kein PermissionRequested); die Seite erhielt nichts, die Ereignis-Sperre ist hier nicht belegt (Fokus: %v)", b.gw.has(`"hat":true`))
+				} else {
+					t.Logf("zwischenablageLesen: Ereignis lehnt ab (%d-mal)", n)
+				}
+			}},
+		// Sehende Kontrolle: Mit erlaubten Berechtigungen bekommt dieselbe Seite den synthetischen Wert. Ohne das sagt
+		// "erhält nichts" nichts.
+		{"zwischenablageKontrolle", clipJS, "clip ", 6, true, true,
+			func(t *testing.T, n, denied int, trace []string) {
+				if !b.gw.has(`"gleich":true`) {
+					t.Fatalf("Kontrolle blind: Bei erlaubter Berechtigung liest die Seite den synthetischen Wert nicht (Fokus: %v): %v", b.gw.has(`"hat":true`), b.gw.snapshot())
+				}
+			}},
+		{"geolocation", waitFocus + `
+function status(name){ navigator.permissions.query({name: "geolocation"}).then(function(p){ send(name, {state: p.state}); }).catch(function(e){ send(name, {fehler: e.name}); }); }
+status("geo_status");
+mitFokus(function(){
+  navigator.geolocation.getCurrentPosition(function(){ send("geo", {code: 0}); status("geo_status2"); }, function(e){ send("geo", {code: e.code}); status("geo_status2"); }, {timeout: 6000});
+});
+setTimeout(function(){ send("geo_frist", {}); }, 13000);
+`, "geo ", 3, false, false,
+			func(t *testing.T, n, denied int, trace []string) {
+				if b.gw.has(`"code":0`) || b.gw.has(`"state":"granted"`) {
+					t.Fatalf("FUND: Die Seite hat den Standort oder die Erlaubnis dafür bekommen: %v", b.gw.snapshot())
+				}
+				if n > 0 && denied != n {
+					t.Fatalf("PermissionRequested art=3 nicht abgelehnt: %v", trace)
+				}
+				if n == 0 {
+					t.Logf("geolocation: Browser verweigert selbst (kein PermissionRequested); die Seite erhielt nichts, die Ereignis-Sperre ist hier nicht belegt")
+				} else {
+					t.Logf("geolocation: Ereignis lehnt ab (%d-mal)", n)
+				}
+			}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			b.t = t
 			b.run(t, probeFrist, func(t *testing.T) {
+				if tc.clip {
+					if err := setClipboardText(marker); err != nil {
+						t.Fatalf("Zwischenablage setzen: %v", err)
+					}
+					b.closers = append(b.closers, clearClipboard)
+					if got := getClipboardText(); got != marker {
+						t.Fatalf("Kontrolle blind: Die Zwischenablage des Gasts trägt den synthetischen Wert nicht")
+					}
+				}
 				s, _, trace := b.openProbe("probe", map[string]string{
-					"index.html": probePage(`<script src="probe.js"></script>`, `<script src="rechte.js"></script>`),
+					"index.html": probePage(`<script src="probe.js"></script><script src="marker.js"></script>`, `<script src="rechte.js"></script>`),
+					"marker.js":  `window.MARKER = "` + marker + `";`,
 					"rechte.js":  tc.js,
 					"probe.js":   probeJS,
-				}, nil)
-				answered := func() bool { return b.gw.has(tc.event) || (tc.name == "geolocation" && b.gw.has("geo_frist")) }
-				if !pump(t, s, 15*time.Second, answered) {
+				}, func(c *SurfaceConfig) { c.allowPermissions = tc.allow })
+				s.Focus() // der Fokus gehört der Seite
+				answered := func() bool { return b.gw.has(tc.ready) || (tc.name == "geolocation" && b.gw.has("geo_frist")) }
+				if !pump(t, s, 20*time.Second, answered) {
 					t.Fatalf("%s: keine Antwort der Seite innerhalb der Frist", tc.name)
 				}
+				if tc.name == "geolocation" {
+					pump(t, s, 500*time.Millisecond, nil) // geo_status2 nach dem Rückruf
+					if !b.gw.has("geo ") {
+						logLocationConsent(t)
+						t.Fatalf("Geolocation unbelegt: kein Rückruf der Seite innerhalb der Frist, kein PermissionRequested art=3 (Zeitablauf ist kein Beleg). Seite meldet: %v", b.gw.snapshot())
+					}
+				}
 				n, denied := asked(*trace, tc.art)
-				t.Logf("%s: PermissionRequested art=%d gemeldet %d-mal, davon abgelehnt %d", tc.name, tc.art, n, denied)
-				if tc.name == "geolocation" && !b.gw.has("geo ") {
-					t.Fatalf("Geolocation: kein Rückruf der Seite innerhalb der Frist (PermissionRequested %d-mal gemeldet); Seite meldet: %v", n, b.gw.snapshot())
-				}
-				tc.check(t)
-				if n == 0 {
-					t.Fatalf("%s: PermissionRequested art=%d nie gemeldet; die Ablehnung kam nicht nachweislich aus dem Ereignis: %v", tc.name, tc.art, *trace)
-				}
-				if denied != n {
-					t.Fatalf("%s: %d von %d Abfragen nicht abgelehnt: %v", tc.name, n-denied, n, *trace)
-				}
+				t.Logf("%s: PermissionRequested art=%d gemeldet %d-mal, davon abgelehnt %d; Seite: %v", tc.name, tc.art, n, denied, b.gw.snapshot())
+				tc.check(t, n, denied, *trace)
 			})
 		})
+	}
+}
+
+var (
+	kernel32Clip      = windows.NewLazySystemDLL("kernel32.dll")
+	pGlobalAlloc      = kernel32Clip.NewProc("GlobalAlloc")
+	pGlobalLock       = kernel32Clip.NewProc("GlobalLock")
+	pGlobalUnlock     = kernel32Clip.NewProc("GlobalUnlock")
+	pOpenClipboard    = user32.NewProc("OpenClipboard")
+	pCloseClipboard   = user32.NewProc("CloseClipboard")
+	pEmptyClipboard   = user32.NewProc("EmptyClipboard")
+	pSetClipboardData = user32.NewProc("SetClipboardData")
+	pGetClipboardData = user32.NewProc("GetClipboardData")
+)
+
+const (
+	cfUnicodeText = 13
+	gmemMoveable  = 0x2
+)
+
+// setClipboardText legt einen synthetischen Text in die Zwischenablage des Gasts (nie echte Daten).
+func setClipboardText(text string) error {
+	u := windows.StringToUTF16(text)
+	size := uintptr(len(u) * 2)
+	h, _, _ := pGlobalAlloc.Call(gmemMoveable, size)
+	if h == 0 {
+		return errors.New("GlobalAlloc")
+	}
+	ptr, _, _ := pGlobalLock.Call(h)
+	if ptr == 0 {
+		return errors.New("GlobalLock")
+	}
+	copy(unsafe.Slice((*uint16)(ptrOf(ptr)), len(u)), u)
+	pGlobalUnlock.Call(h)
+	if r, _, _ := pOpenClipboard.Call(0); r == 0 {
+		return errors.New("OpenClipboard")
+	}
+	defer pCloseClipboard.Call()
+	pEmptyClipboard.Call()
+	if r, _, _ := pSetClipboardData.Call(cfUnicodeText, h); r == 0 {
+		return errors.New("SetClipboardData")
+	}
+	return nil
+}
+
+func getClipboardText() string {
+	if r, _, _ := pOpenClipboard.Call(0); r == 0 {
+		return ""
+	}
+	defer pCloseClipboard.Call()
+	h, _, _ := pGetClipboardData.Call(cfUnicodeText)
+	if h == 0 {
+		return ""
+	}
+	ptr, _, _ := pGlobalLock.Call(h)
+	if ptr == 0 {
+		return ""
+	}
+	defer pGlobalUnlock.Call(h)
+	return windows.UTF16PtrToString((*uint16)(ptrOf(ptr)))
+}
+
+func clearClipboard() {
+	if r, _, _ := pOpenClipboard.Call(0); r != 0 {
+		pEmptyClipboard.Call()
+		pCloseClipboard.Call()
 	}
 }
 
@@ -1135,3 +1257,6 @@ func TestWindowsEnvMomentaufnahmeVorLader(t *testing.T) {
 		t.Errorf("Eingriffe jetzt: %v", findings)
 	}
 }
+
+// ptrOf macht aus einer von Windows gelieferten Adresse einen Zeiger (go vet kennt den Ursprung nicht).
+func ptrOf(u uintptr) unsafe.Pointer { return *(*unsafe.Pointer)(unsafe.Pointer(&u)) }

@@ -470,7 +470,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     eine Proxy-Richtlinie ist eine Restgrenze von Schicht 2). Deshalb ist Schicht 1 Pflicht. (3)
     `NavigationStarting` bleibt dritte Schicht. Belegt wird nur nativ: `TestWindowsWebViewFremdserverNull`
     (17 Wege, Loopback und eigene IPv4-Adresse des Gasts, 0 Anfragen und 0 Verbindungen, sehende Kontrolle) und
-    `TestWindowsWebViewFremdserverUrsache` (ohne Schichten, nur Schicht 1, nur Schicht 2, Schicht 1 plus Features; Sec-Fetch-*,
+    `TestWindowsWebViewFremdserverUrsache` (ohne Schichten, nur Schicht 1, nur Schicht 2; Sec-Fetch-*,
     Sec-Purpose, Purpose und Zeitpunkt je Treffer). Auflage SEC (a): Der Schritt `umgebung` entfernt JNPT*-
     Variablen aus der Umgebung des Bedienfelds, bevor der Browser erbt (`jnptNames`); der Produktpfad des
     Datenordners (`<Cache>\JanuaPort\desktop-runner\webview\<app>`) trägt kein jnpt, der öffentliche
@@ -479,10 +479,8 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     daneben. (a) Der Schritt `browser pruefen` liest nach dem Start die Kommandozeile des Browserprozesses
     (`get_BrowserProcessId`, PEB des eigenen Kontos) und verlangt unsere Argumente exakt
     (`fenster.BrowserCommandLineProblems`: Proxy, Umgehungsliste und Resolver genau einmal mit unserem Wert,
-    Hintergrundnetz und DNS-Vorabholen aus, das letzte `--disable-features` mit `Prerender2` und
-    `NoStatePrefetch`, `--proxy-pac-url`, `--no-proxy-server`, `--proxy-auto-detect` und `--enable-features` mit
-    Prerender verboten); sonst bleibt das Fenster zu (fester Fehler, Tray und Halt stehen). Die Meldungen nennen
-    nur Argumentnamen. (b) Jede gesetzte `WEBVIEW2_*`-Variable ist ein Eingriff: Der Schritt `umgebung` lehnt vor allem
+    `--proxy-pac-url`, `--no-proxy-server` und `--proxy-auto-detect` verboten); sonst bleibt das Fenster zu (fester
+    Fehler, Tray und Halt stehen). Die Meldungen nennen nur Argumentnamen. (b) Jede gesetzte `WEBVIEW2_*`-Variable ist ein Eingriff: Der Schritt `umgebung` lehnt vor allem
     anderen ab, auch vor dem Entfernen der `JNPT*`-Variablen. Der Go-Lader setzt aber selbst im Paket-Init
     (`webviewloader/env_create.go:16-19`, `preventEnvAndRegistryOverrides` `:165-176`, nochmals vor jedem
     Aufruf `:109`) `WEBVIEW2_PIPE_FOR_SCRIPT_DEBUGGER`, `..._ADDITIONAL_BROWSER_ARGUMENTS`,
@@ -492,20 +490,31 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Importpfad sortiert vor `github.com/wailsapp`, Go initialisiert seit 1.21 in dieser Reihenfolge; hier darf
     nichts stehen) mit der Umgebung jetzt (nur diese fünf Namen mit genau diesen Werten sind der erwartete
     Zustand, jeder andere Name oder Wert ist ein Eingriff). Meldungen tragen Name und Wertlänge, nie den Wert.
-    Dass ein überschriebener Wert dabei unsichtbar bliebe, fängt die Prüfung nach Wirkung ab (a). (c) Spekulatives Laden:
-    `SpeculationArguments` (`Prerender2`, `NoStatePrefetch`, `--disable-background-networking`,
-    `--dns-prefetch-disable`), welche Namen in der eingesetzten Runtime wirken, belegt allein die Sonde
-    (Betriebsarten `schicht1UndFeatures`, `nurFeatures`); zusätzlich lehnt die Ladeprüfung der Läufer-Ablage
-    (`client.spekulativesLaden`) `<link rel=prerender|prefetch|preconnect|dns-prefetch>` und
-    `<script type=speculationrules>` ab. Dynamisch per Skript erzeugte Elemente deckt das nicht ab, deshalb nur
-    zusätzlich. Das schützt gegen IT-Richtlinien und Versehen, nicht gegen Prozesse im selben Konto (die bleiben
-    A1). Richtlinien werden gemessen, nicht geraten: `JNPT_NATIVE_WEBVIEW_PROBE_MODUS` (`beide`, `nurSchicht1`,
-    `nurSchicht2`, `schicht1UndFeatures`, `nurFeatures`) fährt `FremdserverNull` mit genau den gewählten Schichten
-    unter einer vom Admin gesetzten Richtlinie; greift eine, erscheint sie (`logProxyPolicies`) in der Ausgabe des
-    Lecks, greift keine, gibt es keine Registry-Liste. Kontrollen je Schicht: `TestWindowsWebViewSchichtenKontrollen`
-    (Seite ohne CSP: ohne Schichten sieht der Server den Abruf, mit nur Schicht 1 fängt der Filter ihn ab, mit nur
-    Schicht 2 scheitert er im Netz); `TestWindowsWebViewBrowserpruefungFailClosed` (widersprechendes Argument und
-    `WEBVIEW2_*` lassen das Fenster nicht öffnen).
+    Dass ein überschriebener Wert dabei unsichtbar bliebe, fängt die Prüfung nach Wirkung ab (a). (c) Spekulatives Laden: **Schicht 1 allein ist nicht
+    dicht**: Mit nur dem Ressourcenfilter lässt `<link rel=prerender>` ein echtes GET durch (Sondenlauf 7). Die
+    Feature-Schalter `Prerender2` und `NoStatePrefetch` wirkten in Runtime 156 nicht und sind entfernt, ebenso
+    `--disable-background-networking` und `--dns-prefetch-disable`, für die keine Messung trägt. Was hält, ist
+    **Schicht 2**: Das Netz im Browserprozess ist aus, und fällt sie aus (die Kommandozeile trägt sie nicht), öffnet
+    das Fenster nicht. Die Ladeprüfung der Läufer-Ablage (`client.spekulativesLaden`) lehnt zusätzlich
+    `<link rel=prerender|prefetch|preconnect|dns-prefetch>` und `<script type=speculationrules>` ab; das ist eine
+    kleine Zusatzschicht gegen statische Seiten, keine Sperre: dynamisch per Skript erzeugte Elemente deckt sie
+    nicht ab. Grenzen von Schicht 2: Sie schützt gegen IT-Richtlinien und Versehen, nicht gegen Prozesse im selben
+    Konto (die bleiben A1). Zwei Richtlinien (`ProxyMode`, `AdditionalBrowserArguments`) wurden gemessen und öffneten
+    sie nicht; ob WebView2 sie überhaupt liest, ist unbelegt. Eine Übersteuerung, die nicht in der Kommandozeile
+    sichtbar wird, erkennt die Prüfung nicht. `JNPT_NATIVE_WEBVIEW_PROBE_MODUS` (`beide`, `nurSchicht1`,
+    `nurSchicht2`) fährt `FremdserverNull` mit genau den gewählten Schichten (etwa unter einer vom Admin gesetzten
+    Richtlinie). Kontrollen je Schicht: `TestWindowsWebViewSchichtenKontrollen`
+    (Seite ohne CSP: ohne Schichten sieht der Server den Abruf; mit nur Schicht 1 meldet die Spur die Anfrage als
+    blockiert und es gibt 0 Treffer, `ok` der Seite zählt dort nicht, weil die lokale 403 einen no-cors-Abruf als
+    geglückt erscheinen lässt; mit nur Schicht 2 scheitert der Abruf im Netz); `TestWindowsWebViewBrowserpruefungFailClosed`
+    (widersprechendes Argument und `WEBVIEW2_*` lassen das Fenster nicht öffnen).
+    **Berechtigungen, Maßstab ist die Wirkung:** `TestWindowsWebViewBerechtigungenAbgelehnt` prüft je Berechtigung, ob die
+    Seite etwas bekommt. Zwischenablage: ein synthetischer Wert liegt vorher in der Zwischenablage des Gasts, die Kontrolle
+    (`zwischenablageKontrolle`, Berechtigungen erlaubt) muss ihn lesen, sonst sagt „erhält nichts“ nichts. Geolocation:
+    Ein Rückruf der Seite (Fehlercode, nie Position) ist der Beleg, Zeitablauf nie; bleibt die Abfrage hängen, ist der
+    Fall rot und nennt die Windows-Standort-Einwilligung. „Ereignis lehnt ab“ (PermissionRequested mit Deny) und „Browser
+    verweigert selbst“ (die Seite erhält nichts, ohne Ereignis) werden getrennt gemeldet; nur das erste belegt die
+    Ereignis-Sperre.
     Service Worker: `ClearBrowsingData` (Profile2.ClearBrowsingDataAll) wird für Service Worker nativ geprüft
     (`TestWindowsWebViewServiceWorkerWirdGeloescht`). Läufe der nativen Sonden brauchen `-test.timeout 20m`.
     Grenzen: alte Fassungen

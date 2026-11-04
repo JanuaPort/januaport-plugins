@@ -127,14 +127,13 @@ func TestWindowsWebViewFremdserverNull(t *testing.T) {
 					t.Logf("Betriebsart %q: Schicht 1 blockierte %d Anfragen", probeMode, blocked)
 					totalBlocked += blocked
 					if hits != 0 || conns != 0 {
-						logProxyPolicies(t) // greift eine Richtlinie, kommt genau sie in die Prüfung
 						t.Fatalf("%s → %s: %d Anfragen, %d Verbindungen beim Fremdserver", v.name, server.label, hits, conns)
 					}
 				})
 			})
 		}
 	}
-	filterOn := probeMode == "" || probeMode == "beide" || probeMode == "nurSchicht1" || probeMode == "schicht1UndFeatures"
+	filterOn := probeMode == "" || probeMode == "beide" || probeMode == "nurSchicht1"
 	if filterOn && totalBlocked == 0 {
 		t.Error("Kontrolle blind: Schicht 1 hat in keinem Fall eine Anfrage abgefangen")
 	}
@@ -149,10 +148,9 @@ func TestWindowsWebViewFremdserverUrsache(t *testing.T) {
 		name   string
 		mutate func(*SurfaceConfig)
 	}{
-		{"ohneSchichten", func(c *SurfaceConfig) { c.noResourceFilter, c.noNetLock, c.noSpeculation = true, true, true }},
+		{"ohneSchichten", func(c *SurfaceConfig) { c.noResourceFilter, c.noNetLock = true, true }},
 		{"nurSchicht1", modeConfig(t, "nurSchicht1")},
 		{"nurSchicht2", modeConfig(t, "nurSchicht2")},
-		{"schicht1UndFeatures", modeConfig(t, "schicht1UndFeatures")},
 	}
 	logged := 0
 	for _, cfg := range configs {
@@ -228,36 +226,6 @@ navigator.serviceWorker.register("sw.js").then(function(){ return navigator.serv
 	})
 }
 
-// logProxyPolicies gibt die Proxy-Richtlinien der Maschine und des Benutzers aus. Aufgerufen wird es nur, wenn ein
-// Fremdserver getroffen wurde: Greift eine Richtlinie, kommt genau sie in die Prüfung; greift keine, bleibt die
-// Liste aus dem Protokoll. Werte sind Konfiguration, keine Geheimnisse, laufen aber durch DiagText.
-func logProxyPolicies(t *testing.T) {
-	t.Helper()
-	for _, root := range []struct {
-		name string
-		key  registry.Key
-	}{{"HKLM", registry.LOCAL_MACHINE}, {"HKCU", registry.CURRENT_USER}} {
-		for _, path := range []string{`SOFTWARE\Policies\Microsoft\Edge`, `SOFTWARE\Policies\Microsoft\Edge\WebView2`} {
-			k, err := registry.OpenKey(root.key, path, registry.QUERY_VALUE)
-			if err != nil {
-				continue
-			}
-			names, _ := k.ReadValueNames(-1)
-			for _, name := range names {
-				if !strings.Contains(strings.ToLower(name), "proxy") && !strings.Contains(strings.ToLower(name), "argument") {
-					continue
-				}
-				if v, _, err := k.GetStringValue(name); err == nil {
-					t.Logf("Richtlinie %s\\%s\\%s = %s", root.name, path, name, fenster.DiagText(v))
-				} else if n, _, err := k.GetIntegerValue(name); err == nil {
-					t.Logf("Richtlinie %s\\%s\\%s = %d", root.name, path, name, n)
-				}
-			}
-			k.Close()
-		}
-	}
-}
-
 // Kontrolle je Schicht (SEC Lauf 5), mit einer Seite ohne CSP, damit nur die jeweilige Schicht zwischen Seite und
 // Server steht: ohne Schichten sieht der Server den Abruf (Kontrolle: Der Weg ist echt), mit nur Schicht 1 fängt der
 // Filter ihn ab (blockiert-Spur, 0 Treffer, Fehler in der Seite), mit nur Schicht 2 scheitert er im Netz (0 Treffer,
@@ -275,10 +243,11 @@ func TestWindowsWebViewSchichtenKontrollen(t *testing.T) {
 		mutate   func(*SurfaceConfig)
 		wantLeak bool
 		wantBlk  bool
+		okSeite  string // "" = egal: Ein no-cors-Abruf, den Schicht 1 lokal mit 403 beantwortet, gilt der Seite als geglückt
 	}{
-		{"ohneSchichten", func(c *SurfaceConfig) { c.noResourceFilter, c.noNetLock, c.noSpeculation = true, true, true }, true, false},
-		{"nurSchicht1", modeConfig(t, "nurSchicht1"), false, true},
-		{"nurSchicht2", modeConfig(t, "nurSchicht2"), false, false},
+		{"ohneSchichten", func(c *SurfaceConfig) { c.noResourceFilter, c.noNetLock = true, true }, true, false, "true"},
+		{"nurSchicht1", modeConfig(t, "nurSchicht1"), false, true, ""},
+		{"nurSchicht2", modeConfig(t, "nurSchicht2"), false, false, "false"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			b.t = t
@@ -296,10 +265,12 @@ func TestWindowsWebViewSchichtenKontrollen(t *testing.T) {
 					}
 				}
 				switch {
-				case c.wantLeak && (hits == 0 || !b.gw.has(`"ok":true`)):
+				case c.wantLeak && hits == 0:
 					t.Fatalf("Kontrolle blind: Ohne Schichten sieht der Server den Abruf nicht (Treffer %d)", hits)
-				case !c.wantLeak && (hits != 0 || b.gw.has(`"ok":true`)):
+				case !c.wantLeak && hits != 0:
 					t.Fatalf("Abruf kam durch (Treffer %d, Seite: %v)", hits, b.gw.snapshot())
+				case c.okSeite != "" && !b.gw.has(`"ok":`+c.okSeite):
+					t.Fatalf("Die Seite meldet nicht ok=%s: %v", c.okSeite, b.gw.snapshot())
 				case c.wantBlk && blocked == 0:
 					t.Fatal("Kontrolle blind: Schicht 1 hat den Abruf nicht als blockiert gemeldet")
 				case !c.wantBlk && blocked != 0:
@@ -394,4 +365,23 @@ func TestWindowsWebViewBrowserpruefungFailClosed(t *testing.T) {
 			}
 		})
 	})
+}
+
+// logLocationConsent erklärt, warum eine Standortabfrage hängen kann: Die Windows-Datenschutzeinstellung für den
+// Standort (Maschine und Benutzer) als Allow/Deny. Nur für die Fehlerausgabe der Geolocation-Sonde.
+func logLocationConsent(t *testing.T) {
+	t.Helper()
+	for _, root := range []struct {
+		name string
+		key  registry.Key
+	}{{"HKLM", registry.LOCAL_MACHINE}, {"HKCU", registry.CURRENT_USER}} {
+		k, err := registry.OpenKey(root.key, `SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location`, registry.QUERY_VALUE)
+		if err != nil {
+			t.Logf("Standort-Einwilligung %s: nicht lesbar (%v)", root.name, err)
+			continue
+		}
+		v, _, err := k.GetStringValue("Value")
+		k.Close()
+		t.Logf("Standort-Einwilligung %s: %s (%v)", root.name, fenster.DiagText(v), err)
+	}
 }
