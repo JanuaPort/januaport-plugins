@@ -89,7 +89,9 @@ type Opened struct {
 // Close beendet den Host und gibt die Verbindungen frei. Mehrfaches Aufrufen ist harmlos.
 func (o *Opened) Close() {
 	o.Host.Close()
-	o.api.Close()
+	if o.api != nil {
+		o.api.Close()
+	}
 }
 
 // Open prüft die App gegen das aktuelle, signierte Manifest und ihr Siegel, liest erst danach die
