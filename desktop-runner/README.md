@@ -365,7 +365,8 @@ registriert beide Dateien; Verschieben erfordert erneutes Installieren. Fehlt
 die reguläre Bedienfeld-Exe, scheitert `install` vor jeder Änderung mit dem festen
 Fehlercode E1. Bei weiteren Fehlern stellt es die vorherigen Autostarteinträge
 wieder her und meldet auch Fehler einer Rücknahme. Install/Update erhalten den
-lokalen Halt-Zustand.
+lokalen Halt-Zustand. Nach jedem Tausch der Exe-Dateien `install` erneut aufrufen,
+damit beide Autostarteinträge zu den neuen Dateien passen.
 Eine administrative Konsole ist nicht erforderlich.
 
 ~~~powershell

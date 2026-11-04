@@ -17,6 +17,7 @@ $mutations = @(
     @('runner_arguments', "throw 'runner_arguments'", 'return'),
     @('task_command_invalid', "throw 'task_command_invalid'", 'return'),
     @('task_principal_invalid', "throw 'task_principal_invalid'", 'return'),
+    @('task_run_level', "(`$runLevel -and `$runLevel.InnerText -cne 'LeastPrivilege') -or", ''),
     @('version', "[ValidatePattern('\A[0-9]+\.[0-9]+\.[0-9]+\z')]", ''),
     @('checksum_format', "throw 'checksum_format'", 'return'),
     @('checksum_mismatch', "throw 'checksum_mismatch'", 'return'),
