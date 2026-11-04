@@ -16,6 +16,7 @@ package fensterio
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -92,6 +93,8 @@ type probeBed struct {
 	paths sync.Mutex
 	seen  []string
 	gw    *probeGateway
+
+	closers []func() // laufen auf dem Thread der Sonde, bevor er endet (Fenster gehören ihrem Thread)
 }
 
 func newProbeBed(t *testing.T) *probeBed {
@@ -156,7 +159,7 @@ func (b *probeBed) openProbe(app string, files map[string]string, mutate func(*S
 	if err != nil {
 		t.Fatalf("NewSurface: %v", err)
 	}
-	t.Cleanup(func() { s.Close() })
+	b.closers = append(b.closers, s.Close)
 	return s, o, &trace
 }
 
@@ -185,9 +188,37 @@ func pump(t *testing.T, s *Surface, d time.Duration, cond func() bool) bool {
 	return cond == nil
 }
 
-func lockUI(t *testing.T) {
-	runtime.LockOSThread()
-	t.Cleanup(runtime.UnlockOSThread)
+// probeFrist ist die Frist je Sonde (je Unterfall): Ein Hänger kostet genau eine Sonde, nicht den Lauf.
+const probeFrist = 90 * time.Second
+
+// run führt die Sonde auf einem eigenen, festen Thread mit COM-STA aus (genau wie das Bedienfeld) und gibt
+// ihr eine eigene Frist. Der Thread bleibt gesperrt und endet mit der Goroutine, damit nichts von COM oder
+// Fenstern in den Pool zurückläuft. Hängt die Sonde, schlägt nur dieser Test fehl.
+func (b *probeBed) run(t *testing.T, frist time.Duration, body func(t *testing.T)) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runtime.LockOSThread()
+		leave, err := EnterUI()
+		if err != nil {
+			t.Errorf("EnterUI: %v", err)
+			return
+		}
+		defer leave()
+		defer func() {
+			for i := len(b.closers) - 1; i >= 0; i-- {
+				b.closers[i]()
+			}
+			b.closers = nil
+		}()
+		body(t)
+	}()
+	select {
+	case <-done:
+	case <-time.After(frist):
+		t.Fatalf("Sonde hängt: keine Rückmeldung innerhalb von %v", frist)
+	}
 }
 
 func probePage(head, body string) string {
@@ -202,22 +233,23 @@ window.send = send;
 // Kontrolle für alle: die Seite lädt, Skript läuft, die Brücke antwortet (auch mit Doppelbindestrich im Host).
 func TestWindowsWebViewSeiteBrueckeUndHostname(t *testing.T) {
 	b := newProbeBed(t)
-	lockUI(t)
 	for _, app := range []string{"probe", "_probe_"} { // _ wird zu - : app--probe--pc.jnpt.invalid
 		t.Run(app, func(t *testing.T) {
 			b.t = t
-			s, _, _ := b.openProbe(app, map[string]string{
-				"index.html": probePage(`<script src="probe.js"></script>`, `<script src="start.js"></script>`),
-				"probe.js":   probeJS,
-				"start.js":   `send("geladen", {pfad: location.pathname, host: location.host, protokoll: location.protocol});`,
-			}, nil)
-			if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("geladen") }) {
-				t.Fatal("Seite nicht geladen oder Brücke antwortet nicht (Hostname mit Doppelbindestrich?)")
-			}
-			host, _ := fenster.AppHost(app)
-			if !b.gw.has(host) || !b.gw.has(`"pfad":"/index.html"`) || !b.gw.has("https:") {
-				t.Fatalf("Seite lief auf falschem Host: %v", b.gw.events)
-			}
+			b.run(t, probeFrist, func(t *testing.T) {
+				s, _, _ := b.openProbe(app, map[string]string{
+					"index.html": probePage(`<script src="probe.js"></script>`, `<script src="start.js"></script>`),
+					"probe.js":   probeJS,
+					"start.js":   `send("geladen", {pfad: location.pathname, host: location.host, protokoll: location.protocol});`,
+				}, nil)
+				if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("geladen") }) {
+					t.Fatal("Seite nicht geladen oder Brücke antwortet nicht (Hostname mit Doppelbindestrich?)")
+				}
+				host, _ := fenster.AppHost(app)
+				if !b.gw.has(host) || !b.gw.has(`"pfad":"/index.html"`) || !b.gw.has("https:") {
+					t.Fatalf("Seite lief auf falschem Host: %v", b.gw.events)
+				}
+			})
 		})
 	}
 }
@@ -226,7 +258,6 @@ func TestWindowsWebViewSeiteBrueckeUndHostname(t *testing.T) {
 // verschluckt der ISO-2022-JP-Trick sie (Kontrolle: Die Sonde sieht den Angriff).
 func TestWindowsWebViewCSPUndZeichensatztrick(t *testing.T) {
 	b := newProbeBed(t)
-	lockUI(t)
 	esc := "\x1b"
 	evil := `<script src="` + b.srv.URL + `/evil.js"></script>`
 	fetchProbe := `<script src="fetch.js"></script>`
@@ -250,21 +281,23 @@ func TestWindowsWebViewCSPUndZeichensatztrick(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			b.t = t
-			hitsBefore := b.hits.Load()
-			s, _, _ := b.openProbe("probe", map[string]string{
-				"index.html": tc.html,
-				"probe.js":   probeJS,
-				"fetch.js":   probeJS + fetchJS,
-			}, nil)
-			// probe.js muss vor fetch.js laufen: Die Seiten oben laden nur fetch.js; es lädt probe.js selbst.
-			pump(t, s, 8*time.Second, func() bool { return b.gw.has("fetch") })
-			leaked := b.hits.Load() > hitsBefore
-			switch {
-			case tc.wantLeak && !leaked:
-				t.Fatalf("%s: Kontrolle blind. Die Sonde sieht den Angriff nicht; ein Grün bei den anderen Fällen wäre wertlos (Treffer: %v)", tc.wantLabel, b.seenPaths())
-			case !tc.wantLeak && leaked:
-				t.Fatalf("%s: CSP hielt nicht, der Fremdserver bekam %v", tc.wantLabel, b.seenPaths())
-			}
+			b.run(t, probeFrist, func(t *testing.T) {
+				hitsBefore := b.hits.Load()
+				s, _, _ := b.openProbe("probe", map[string]string{
+					"index.html": tc.html,
+					"probe.js":   probeJS,
+					"fetch.js":   probeJS + fetchJS,
+				}, nil)
+				// probe.js muss vor fetch.js laufen: Die Seiten oben laden nur fetch.js; es lädt probe.js selbst.
+				pump(t, s, 8*time.Second, func() bool { return b.gw.has("fetch") })
+				leaked := b.hits.Load() > hitsBefore
+				switch {
+				case tc.wantLeak && !leaked:
+					t.Fatalf("%s: Kontrolle blind. Die Sonde sieht den Angriff nicht; ein Grün bei den anderen Fällen wäre wertlos (Treffer: %v)", tc.wantLabel, b.seenPaths())
+				case !tc.wantLeak && leaked:
+					t.Fatalf("%s: CSP hielt nicht, der Fremdserver bekam %v", tc.wantLabel, b.seenPaths())
+				}
+			})
 		})
 	}
 }
@@ -273,7 +306,6 @@ func TestWindowsWebViewCSPUndZeichensatztrick(t *testing.T) {
 // meta refresh und location werden vor der Anfrage abgebrochen; die Seite bleibt.
 func TestWindowsWebViewNavigationStarting(t *testing.T) {
 	b := newProbeBed(t)
-	lockUI(t)
 	foreign := b.srv.URL + "/ziel.html"
 	svg := `<svg xmlns="http://www.w3.org/2000/svg"><script src="x" href="` + b.srv.URL + `/evil.js"/></svg>`
 	for name, body := range map[string]string{
@@ -287,20 +319,22 @@ func TestWindowsWebViewNavigationStarting(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			b.t = t
-			hitsBefore := b.hits.Load()
-			navJS := `var l = document.getElementById("l"); if (l) { l.click(); } setTimeout(function(){ send("nav", {pfad: location.pathname}); }, 1500);`
-			s, _, trace := b.openProbe("probe", map[string]string{
-				"index.html": probePage(`<script src="probe.js"></script>`, body),
-				"probe.js":   probeJS,
-				"nav.js":     navJS,
-				"a.svg":      svg,
-			}, nil)
-			if !pump(t, s, 20*time.Second, func() bool { return b.gw.has(`"pfad":"/index.html"`) }) {
-				t.Fatalf("Seite nicht mehr auf /index.html oder nie geladen; Ereignisse: %v", *trace)
-			}
-			if b.hits.Load() != hitsBefore {
-				t.Fatalf("Abruf beim Fremdserver: %v", b.seenPaths())
-			}
+			b.run(t, probeFrist, func(t *testing.T) {
+				hitsBefore := b.hits.Load()
+				navJS := `var l = document.getElementById("l"); if (l) { l.click(); } setTimeout(function(){ send("nav", {pfad: location.pathname}); }, 1500);`
+				s, _, trace := b.openProbe("probe", map[string]string{
+					"index.html": probePage(`<script src="probe.js"></script>`, body),
+					"probe.js":   probeJS,
+					"nav.js":     navJS,
+					"a.svg":      svg,
+				}, nil)
+				if !pump(t, s, 20*time.Second, func() bool { return b.gw.has(`"pfad":"/index.html"`) }) {
+					t.Fatalf("Seite nicht mehr auf /index.html oder nie geladen; Ereignisse: %v", *trace)
+				}
+				if b.hits.Load() != hitsBefore {
+					t.Fatalf("Abruf beim Fremdserver: %v", b.seenPaths())
+				}
+			})
 		})
 	}
 }
@@ -308,215 +342,223 @@ func TestWindowsWebViewNavigationStarting(t *testing.T) {
 // Kontrolle zu NavigationStarting: eigene HTML-Unterseite bleibt navigierbar.
 func TestWindowsWebViewEigeneSeiteNavigierbar(t *testing.T) {
 	b := newProbeBed(t)
-	lockUI(t)
-	s, _, _ := b.openProbe("probe", map[string]string{
-		"index.html": probePage(`<script src="probe.js"></script>`, `<a id="l" href="zwei.html">x</a><script>document.getElementById("l").click();</script>`),
-		"zwei.html":  probePage(`<script src="probe.js"></script>`, `<script>send("zwei", {pfad: location.pathname});</script>`),
-		"probe.js":   probeJS,
-	}, nil)
-	if !pump(t, s, 20*time.Second, func() bool { return b.gw.has(`"pfad":"/zwei.html"`) }) {
-		t.Fatal("eigene .html-Unterseite lässt sich nicht öffnen")
-	}
+	b.run(t, probeFrist, func(t *testing.T) {
+		s, _, _ := b.openProbe("probe", map[string]string{
+			"index.html": probePage(`<script src="probe.js"></script>`, `<a id="l" href="zwei.html">x</a><script>document.getElementById("l").click();</script>`),
+			"zwei.html":  probePage(`<script src="probe.js"></script>`, `<script>send("zwei", {pfad: location.pathname});</script>`),
+			"probe.js":   probeJS,
+		}, nil)
+		if !pump(t, s, 20*time.Second, func() bool { return b.gw.has(`"pfad":"/zwei.html"`) }) {
+			t.Fatal("eigene .html-Unterseite lässt sich nicht öffnen")
+		}
+	})
 }
 
 // NewWindowRequested: window.open und target=_blank erzeugen nie ein Fenster; ein https-Link wird als
 // Dialogvorschlag gemeldet, ein http-Ziel verschwindet.
 func TestWindowsWebViewNewWindowRequested(t *testing.T) {
 	b := newProbeBed(t)
-	lockUI(t)
-	hitsBefore := b.hits.Load()
-	var links []string
-	var mu sync.Mutex
-	s, _, trace := b.openProbe("probe", map[string]string{
-		"index.html": probePage(`<script src="probe.js"></script>`, `<a id="l" target="_blank" href="https://example.org/ziel">x</a><script src="win.js"></script>`),
-		"probe.js":   probeJS,
-		"win.js": `
+	b.run(t, probeFrist, func(t *testing.T) {
+		hitsBefore := b.hits.Load()
+		var links []string
+		var mu sync.Mutex
+		s, _, trace := b.openProbe("probe", map[string]string{
+			"index.html": probePage(`<script src="probe.js"></script>`, `<a id="l" target="_blank" href="https://example.org/ziel">x</a><script src="win.js"></script>`),
+			"probe.js":   probeJS,
+			"win.js": `
 var w1 = window.open("https://example.org/popup", "_blank");
 var w2 = window.open("` + b.srv.URL + `/popup", "_blank");
 document.getElementById("l").click();
 setTimeout(function(){ send("fenster", {w1: w1 === null, w2: w2 === null}); }, 1500);`,
-	}, func(c *SurfaceConfig) {
-		c.OnLink = func(l Link) { mu.Lock(); links = append(links, l.Host+"|"+l.URL); mu.Unlock() }
+		}, func(c *SurfaceConfig) {
+			c.OnLink = func(l Link) { mu.Lock(); links = append(links, l.Host+"|"+l.URL); mu.Unlock() }
+		})
+		if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("fenster") }) {
+			t.Fatal("Seite meldet nicht")
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if b.hits.Load() != hitsBefore {
+			t.Fatalf("Abruf beim Fremdserver: %v", b.seenPaths())
+		}
+		if len(links) == 0 || !strings.HasPrefix(links[0], "example.org|https://example.org/") {
+			t.Fatalf("kein Dialogvorschlag für den https-Link: %v, Ereignisse %v", links, *trace)
+		}
+		if topLevelWindows(t) != 1 {
+			t.Fatalf("zusätzliches Fenster entstanden (%d Top-Level-Fenster der Klasse)", topLevelWindows(t))
+		}
 	})
-	if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("fenster") }) {
-		t.Fatal("Seite meldet nicht")
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	if b.hits.Load() != hitsBefore {
-		t.Fatalf("Abruf beim Fremdserver: %v", b.seenPaths())
-	}
-	if len(links) == 0 || !strings.HasPrefix(links[0], "example.org|https://example.org/") {
-		t.Fatalf("kein Dialogvorschlag für den https-Link: %v, Ereignisse %v", links, *trace)
-	}
-	if topLevelWindows(t) != 1 {
-		t.Fatalf("zusätzliches Fenster entstanden (%d Top-Level-Fenster der Klasse)", topLevelWindows(t))
-	}
 }
 
 // DownloadStarting: Ein Download aus der eigenen App wird abgebrochen, es entsteht keine Datei.
 func TestWindowsWebViewDownloadStarting(t *testing.T) {
 	b := newProbeBed(t)
-	lockUI(t)
-	downloads := filepath.Join(t.TempDir(), "dl")
-	_ = os.MkdirAll(downloads, 0o700)
-	s, _, trace := b.openProbe("probe", map[string]string{
-		"index.html": probePage(`<script src="probe.js"></script>`, `<a id="l" download="d.txt" href="daten.txt">x</a><script>document.getElementById("l").click(); setTimeout(function(){send("dl", {});}, 1500);</script>`),
-		"probe.js":   probeJS,
-		"daten.txt":  "geheim",
-	}, nil)
-	seen := false
-	pump(t, s, 20*time.Second, func() bool {
-		for _, e := range *trace {
-			if strings.HasPrefix(e, "DownloadStarting") {
-				seen = true
+	b.run(t, probeFrist, func(t *testing.T) {
+		downloads := filepath.Join(t.TempDir(), "dl")
+		_ = os.MkdirAll(downloads, 0o700)
+		s, _, trace := b.openProbe("probe", map[string]string{
+			"index.html": probePage(`<script src="probe.js"></script>`, `<a id="l" download="d.txt" href="daten.txt">x</a><script>document.getElementById("l").click(); setTimeout(function(){send("dl", {});}, 1500);</script>`),
+			"probe.js":   probeJS,
+			"daten.txt":  "geheim",
+		}, nil)
+		seen := false
+		pump(t, s, 20*time.Second, func() bool {
+			for _, e := range *trace {
+				if strings.HasPrefix(e, "DownloadStarting") {
+					seen = true
+				}
 			}
+			return seen && b.gw.has("dl")
+		})
+		if !seen {
+			t.Fatalf("DownloadStarting nie gemeldet (Kontrolle: Der Auslöser ist blind): %v", *trace)
 		}
-		return seen && b.gw.has("dl")
 	})
-	if !seen {
-		t.Fatalf("DownloadStarting nie gemeldet (Kontrolle: Der Auslöser ist blind): %v", *trace)
-	}
 }
 
 // WebMessageReceived mit Source: Die Brücke bekommt die echte Quell-URL, nicht eine Annahme.
 func TestWindowsWebViewNachrichtQuelle(t *testing.T) {
 	b := newProbeBed(t)
-	lockUI(t)
-	s, _, trace := b.openProbe("probe", map[string]string{
-		"index.html": probePage(`<script src="probe.js"></script>`, `<script>send("q", {});</script>`),
-		"probe.js":   probeJS,
-	}, nil)
-	if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("q ") }) {
-		t.Fatal("Nachricht kam nicht an")
-	}
-	want := "WebMessageReceived " + fenster.StartURL("probe")
-	found := false
-	for _, e := range *trace {
-		if e == want {
-			found = true
+	b.run(t, probeFrist, func(t *testing.T) {
+		s, _, trace := b.openProbe("probe", map[string]string{
+			"index.html": probePage(`<script src="probe.js"></script>`, `<script>send("q", {});</script>`),
+			"probe.js":   probeJS,
+		}, nil)
+		if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("q ") }) {
+			t.Fatal("Nachricht kam nicht an")
 		}
-	}
-	if !found {
-		t.Fatalf("Quelle nicht als %q gemeldet: %v", want, *trace)
-	}
+		want := "WebMessageReceived " + fenster.StartURL("probe")
+		found := false
+		for _, e := range *trace {
+			if e == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("Quelle nicht als %q gemeldet: %v", want, *trace)
+		}
+	})
 }
 
 // PermissionRequested: Standard Deny.
 func TestWindowsWebViewBerechtigungenAbgelehnt(t *testing.T) {
 	b := newProbeBed(t)
-	lockUI(t)
-	s, _, _ := b.openProbe("probe", map[string]string{
-		"index.html": probePage(`<script src="probe.js"></script>`, `<script>
+	b.run(t, probeFrist, func(t *testing.T) {
+		s, _, _ := b.openProbe("probe", map[string]string{
+			"index.html": probePage(`<script src="probe.js"></script>`, `<script>
 navigator.geolocation.getCurrentPosition(function(){ send("geo", {code: 0}); }, function(e){ send("geo", {code: e.code}); });
 navigator.mediaDevices.getUserMedia({audio: true}).then(function(){ send("mikro", {ok: true}); }).catch(function(e){ send("mikro", {ok: false, name: e.name}); });
 </script>`),
-		"probe.js": probeJS,
-	}, nil)
-	if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("geo ") && b.gw.has("mikro ") }) {
-		t.Fatal("Berechtigungsabfragen blieben ohne Antwort")
-	}
-	if !b.gw.has(`"code":1`) || b.gw.has(`"ok":true`) {
-		t.Fatalf("Berechtigung nicht abgelehnt: %v", b.gw.events)
-	}
+			"probe.js": probeJS,
+		}, nil)
+		if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("geo ") && b.gw.has("mikro ") }) {
+			t.Fatal("Berechtigungsabfragen blieben ohne Antwort")
+		}
+		if !b.gw.has(`"code":1`) || b.gw.has(`"ok":true`) {
+			t.Fatalf("Berechtigung nicht abgelehnt: %v", b.gw.events)
+		}
+	})
 }
 
 // ProcessFailed (B1): Stirbt der Browserprozess, schließt das Fenster, der Host ist zu und der Test-Prozess lebt.
 func TestWindowsWebViewProzessabsturz(t *testing.T) {
 	b := newProbeBed(t)
-	lockUI(t)
-	closed := false
-	s, o, _ := b.openProbe("probe", map[string]string{
-		"index.html": probePage(`<script src="probe.js"></script>`, `<script>send("lebt", {});</script>`),
-		"probe.js":   probeJS,
-	}, func(c *SurfaceConfig) { c.OnClosed = func() { closed = true } })
-	if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("lebt") }) {
-		t.Fatal("Seite lädt nicht")
-	}
-	killed := 0
-	for _, p := range webviewProcesses(t) {
-		h, err := windows.OpenProcess(windows.PROCESS_TERMINATE, false, p.pid)
-		if err == nil {
-			_ = windows.TerminateProcess(h, 1)
-			_ = windows.CloseHandle(h)
-			killed++
+	b.run(t, probeFrist, func(t *testing.T) {
+		closed := false
+		s, o, _ := b.openProbe("probe", map[string]string{
+			"index.html": probePage(`<script src="probe.js"></script>`, `<script>send("lebt", {});</script>`),
+			"probe.js":   probeJS,
+		}, func(c *SurfaceConfig) { c.OnClosed = func() { closed = true } })
+		if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("lebt") }) {
+			t.Fatal("Seite lädt nicht")
 		}
-	}
-	if killed == 0 {
-		t.Fatal("kein msedgewebview2-Prozess unter dem Test gefunden (Kontrolle blind)")
-	}
-	if !pump(t, nil, 20*time.Second, func() bool { return closed }) {
-		t.Fatal("Fenster blieb nach dem Absturz stehen")
-	}
-	if !o.Host.Closed() {
-		t.Fatal("Host nach Absturz nicht geschlossen")
-	}
+		killed := 0
+		for _, p := range webviewProcesses(t) {
+			h, err := windows.OpenProcess(windows.PROCESS_TERMINATE, false, p.pid)
+			if err == nil {
+				_ = windows.TerminateProcess(h, 1)
+				_ = windows.CloseHandle(h)
+				killed++
+			}
+		}
+		if killed == 0 {
+			t.Fatal("kein msedgewebview2-Prozess unter dem Test gefunden (Kontrolle blind)")
+		}
+		if !pump(t, nil, 20*time.Second, func() bool { return closed }) {
+			t.Fatal("Fenster blieb nach dem Absturz stehen")
+		}
+		if !o.Host.Closed() {
+			t.Fatal("Host nach Absturz nicht geschlossen")
+		}
+	})
 }
 
 // Prozessbaum (SEC (a), (b)): Weder Umgebung noch Kommandozeile irgendeines msedgewebview2-Prozesses unter
 // dem Prozess, der das Token hält, tragen jnpt oder einen Träger; das Benutzerdatenverzeichnis auch nicht.
 func TestWindowsWebViewProzessbaumOhneTraeger(t *testing.T) {
 	b := newProbeBed(t)
-	lockUI(t)
-	const fakeToken = "jn" + "ptpc_" + "SONDENWERT0123456789"
-	t.Setenv("JNPT_SONDE_TRAEGER", "") // Kontrolle gegen die Namensprüfung unten: leer, nicht gesetzt
-	os.Unsetenv("JNPT_SONDE_TRAEGER")
-	s, o, _ := b.openProbe("probe", map[string]string{
-		"index.html": probePage(`<script src="probe.js"></script>`, `<script>send("baum", {});</script>`),
-		"probe.js":   probeJS,
-	}, nil)
-	if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("baum") }) {
-		t.Fatal("Seite lädt nicht")
-	}
-	procs := webviewProcesses(t)
-	if len(procs) == 0 {
-		t.Fatal("kein msedgewebview2-Prozess gefunden: Die Sonde wäre blind")
-	}
-	for _, p := range procs {
-		text := strings.ToLower(p.cmdline + "\n" + p.env)
-		for _, bad := range []string{"jnpt", strings.ToLower(fakeToken), "bearer"} {
-			if strings.Contains(text, bad) {
-				t.Errorf("Prozess %d (%s) trägt %q", p.pid, p.name, bad)
+	b.run(t, probeFrist, func(t *testing.T) {
+		const fakeToken = "jn" + "ptpc_" + "SONDENWERT0123456789"
+		t.Setenv("JNPT_SONDE_TRAEGER", "") // Kontrolle gegen die Namensprüfung unten: leer, nicht gesetzt
+		os.Unsetenv("JNPT_SONDE_TRAEGER")
+		s, o, _ := b.openProbe("probe", map[string]string{
+			"index.html": probePage(`<script src="probe.js"></script>`, `<script>send("baum", {});</script>`),
+			"probe.js":   probeJS,
+		}, nil)
+		if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("baum") }) {
+			t.Fatal("Seite lädt nicht")
+		}
+		procs := webviewProcesses(t)
+		if len(procs) == 0 {
+			t.Fatal("kein msedgewebview2-Prozess gefunden: Die Sonde wäre blind")
+		}
+		for _, p := range procs {
+			text := strings.ToLower(p.cmdline + "\n" + p.env)
+			for _, bad := range []string{"jnpt", strings.ToLower(fakeToken), "bearer"} {
+				if strings.Contains(text, bad) {
+					t.Errorf("Prozess %d (%s) trägt %q", p.pid, p.name, bad)
+				}
 			}
 		}
-	}
-	if strings.Contains(strings.ToLower(o.UserDataDir), "jnpt") {
-		t.Fatal("Benutzerdatenverzeichnis trägt jnpt im Pfad")
-	}
-	// Kein Pipe-Handle (SEC (b)): Keine vererbbaren Handles; hier genügt, dass der Name nirgends auftaucht.
-	for _, p := range procs {
-		if strings.Contains(strings.ToLower(p.cmdline+p.env), "bedienfeld") {
-			t.Errorf("Prozess %d kennt den Pipe-Namen", p.pid)
+		if strings.Contains(strings.ToLower(o.UserDataDir), "jnpt") {
+			t.Fatal("Benutzerdatenverzeichnis trägt jnpt im Pfad")
 		}
-	}
+		// Kein Pipe-Handle (SEC (b)): Keine vererbbaren Handles; hier genügt, dass der Name nirgends auftaucht.
+		for _, p := range procs {
+			if strings.Contains(strings.ToLower(p.cmdline+p.env), "bedienfeld") {
+				t.Errorf("Prozess %d kennt den Pipe-Namen", p.pid)
+			}
+		}
+	})
 }
 
 // ClearBrowsingData (A5): löscht Cookies/Speicher des Profils; die Antwort kommt im UI-Thread.
 func TestWindowsWebViewClearBrowsingData(t *testing.T) {
 	b := newProbeBed(t)
-	lockUI(t)
-	s, _, _ := b.openProbe("probe", map[string]string{
-		"index.html": probePage(`<script src="probe.js"></script>`, `<script>localStorage.setItem("k", "v"); send("gesetzt", {v: localStorage.getItem("k")});</script>`),
-		"probe.js":   probeJS,
-	}, nil)
-	if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("gesetzt") }) {
-		t.Fatal("Seite lädt nicht")
-	}
-	ok := make(chan bool, 1)
-	if err := s.ClearBrowsingData(func(good bool) { ok <- good }); err != nil {
-		t.Fatalf("ClearBrowsingData: %v", err)
-	}
-	var good bool
-	if !pump(t, s, 20*time.Second, func() bool {
-		select {
-		case good = <-ok:
-			return true
-		default:
-			return false
+	b.run(t, probeFrist, func(t *testing.T) {
+		s, _, _ := b.openProbe("probe", map[string]string{
+			"index.html": probePage(`<script src="probe.js"></script>`, `<script>localStorage.setItem("k", "v"); send("gesetzt", {v: localStorage.getItem("k")});</script>`),
+			"probe.js":   probeJS,
+		}, nil)
+		if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("gesetzt") }) {
+			t.Fatal("Seite lädt nicht")
 		}
-	}) || !good {
-		t.Fatal("ClearBrowsingData meldet keinen Erfolg")
-	}
+		ok := make(chan bool, 1)
+		if err := s.ClearBrowsingData(func(good bool) { ok <- good }); err != nil {
+			t.Fatalf("ClearBrowsingData: %v", err)
+		}
+		var good bool
+		if !pump(t, s, 20*time.Second, func() bool {
+			select {
+			case good = <-ok:
+				return true
+			default:
+				return false
+			}
+		}) || !good {
+			t.Fatal("ClearBrowsingData meldet keinen Erfolg")
+		}
+	})
 }
 
 // --- Hilfen: Fenster zählen, msedgewebview2-Prozesse unter dem Test samt Umgebung und Kommandozeile
@@ -622,4 +664,92 @@ func readPEB(t *testing.T, pid uint32) (cmdline, env string) {
 		}
 	}
 	return windows.UTF16ToString(cmd), string(envText)
+}
+
+// VM-Befund: Ohne COM auf dem Thread scheitert die Umgebung mit „CoInitialize wurde nicht aufgerufen“. Der Adapter
+// prüft den Thread vor dem Start und meldet den festen Fehler; kein Hänger, kein Fenster, kein Prozessende.
+func TestWindowsWebViewOhneCOMOeffnetNicht(t *testing.T) {
+	b := newProbeBed(t)
+	done := make(chan error, 1)
+	go func() {
+		runtime.LockOSThread() // bewusst ohne EnterUI
+		done <- b.openOhneCOM(false)
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrWebView) {
+			t.Fatalf("erwartet den festen Fehler, bekam %v", err)
+		}
+	case <-time.After(probeFrist):
+		t.Fatal("Sonde hängt")
+	}
+	if n := openSurfaces(); n != 0 {
+		t.Fatalf("%d Fenster nach dem Fehlstart", n)
+	}
+}
+
+// Erzwungener Fehlstart: Die Prüfung des Threads ist abgeschaltet, die Umgebung scheitert wirklich in WebView2
+// (so wie auf der VM). NewSurface muss in kurzer Zeit mit dem festen Fehler enden, ein Fenster bleibt zu, und
+// dieselbe Oberfläche (derselbe Thread) bleibt danach bedienbar: Nachrichten werden weiter verteilt.
+func TestWindowsWebViewFehlstartHaengtNicht(t *testing.T) {
+	b := newProbeBed(t)
+	type result struct {
+		err     error
+		elapsed time.Duration
+		pumped  bool
+	}
+	done := make(chan result, 1)
+	go func() {
+		runtime.LockOSThread()
+		start := time.Now()
+		err := b.openOhneCOM(true)
+		elapsed := time.Since(start)
+		pumped := pump(t, nil, 200*time.Millisecond, nil) // läuft zurück, ohne zu blockieren
+		done <- result{err, elapsed, pumped}
+	}()
+	select {
+	case r := <-done:
+		if !errors.Is(r.err, ErrWebView) {
+			t.Fatalf("erwartet den festen Fehler, bekam %v", r.err)
+		}
+		if r.elapsed > startFrist+5*time.Second {
+			t.Fatalf("Fehlstart dauerte %v (Grenze %v)", r.elapsed, startFrist)
+		}
+		if !r.pumped {
+			t.Fatal("Nachrichtenverteilung nach dem Fehlstart blockiert")
+		}
+	case <-time.After(probeFrist):
+		t.Fatal("Sonde hängt: NewSurface kehrt bei scheiternder Umgebung nicht zurück (Halt wäre blockiert)")
+	}
+	if n := openSurfaces(); n != 0 {
+		t.Fatalf("%d Fenster nach dem Fehlstart", n)
+	}
+}
+
+// openOhneCOM öffnet ein Fenster auf einem Thread, der COM nicht initialisiert hat.
+func (b *probeBed) openOhneCOM(ohnePruefung bool) error {
+	host, err := NewHost(HostConfig{App: "probe", Gateway: b.gw, Lokal: probeLokal{}, Wake: func() {}})
+	if err != nil {
+		return err
+	}
+	dir, err := os.MkdirTemp("", "jnpt-probe-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(dir)
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte(probePage("", "x")), 0o600); err != nil {
+		return err
+	}
+	o := &Opened{Name: "probe", Dir: dir, UserDataDir: filepath.Join(dir, "webview"), Host: host}
+	s, err := NewSurface(o, SurfaceConfig{noThreadCheck: ohnePruefung})
+	if err == nil {
+		s.Close()
+	}
+	return err
+}
+
+func openSurfaces() int {
+	surfacesMu.Lock()
+	defer surfacesMu.Unlock()
+	return len(surfaces)
 }
