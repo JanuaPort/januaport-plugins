@@ -56,7 +56,8 @@ func TestResourceAllowed(t *testing.T) {
 // Schicht 2: Das Netz im Browserprozess ist aus. Das tote Ziel ist kein Port, den ein anderes Konto binden
 // kann (kein Loopback, kein fester Port); DNS ist ebenfalls aus. Exakter Wortlaut, kein Träger darin.
 func TestBrowserArguments(t *testing.T) {
-	const want = `--proxy-server=http://0.0.0.0:0 --proxy-bypass-list=<-loopback> --host-resolver-rules="MAP * ~NOTFOUND"`
+	const want = `--proxy-server=http://0.0.0.0:0 --proxy-bypass-list=<-loopback> --host-resolver-rules="MAP * ~NOTFOUND" ` +
+		`--disable-features=Prerender2,NoStatePrefetch --disable-background-networking --dns-prefetch-disable`
 	if BrowserArguments != want {
 		t.Fatalf("BrowserArguments = %q", BrowserArguments)
 	}

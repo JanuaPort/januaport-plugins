@@ -179,7 +179,8 @@ func TestAdapterSperrtRessourcenUndNetz(t *testing.T) {
 		}
 		return true
 	})
-	for _, want := range []string{"fenster.ResourceAllowed", "fenster.BrowserArgs", "wv2com.AddWebResourceRequestedFilter", "wv2com.BlockedResponse"} {
+	for _, want := range []string{"fenster.ResourceAllowed", "fenster.NetworkLockArgs", "fenster.SpeculationArgs", "wv2com.AddWebResourceRequestedFilter", "wv2com.BlockedResponse",
+		"webview2Names", "wv2com.BrowserProcessID", "processCommandLine", "fenster.BrowserCommandLineProblems"} {
 		if !calls[want] {
 			t.Errorf("webview_windows.go ruft %s nicht auf", want)
 		}

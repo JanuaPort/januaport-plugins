@@ -23,3 +23,21 @@ func TestEnvNamenZumEntfernen(t *testing.T) {
 		t.Fatalf("%v, erwartet %v", got, want)
 	}
 }
+
+// SEC Lauf 5: Jede gesetzte WEBVIEW2_*-Umgebungsvariable gilt als Eingriff (Browserordner, Argumente, Datenordner
+// ...); das Fenster öffnet dann nicht. Nur Namen, nie Werte.
+func TestWebView2Namen(t *testing.T) {
+	got := webview2Names([]string{
+		"PATH=/bin",
+		"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--x",
+		"webview2_user_data_folder=/x",
+		"WEBVIEW2=1",
+		"MY_WEBVIEW2_X=1",
+		"WEBVIEW2_RELEASE_CHANNEL_PREFERENCE=1",
+		"=C:=C:/Users",
+	})
+	want := []string{"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "webview2_user_data_folder", "WEBVIEW2_RELEASE_CHANNEL_PREFERENCE"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("%v, erwartet %v", got, want)
+	}
+}
