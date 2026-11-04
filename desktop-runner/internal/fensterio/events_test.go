@@ -186,3 +186,55 @@ func TestAdapterSperrtRessourcenUndNetz(t *testing.T) {
 		}
 	}
 }
+
+// Lauf 10: Der Fokus gehört der Seite. Ohne MoveFocus nach dem Aktivieren des Fensters landet die Tastatureingabe nicht
+// in der Seite, bis jemand hineinklickt, und document.hasFocus() bleibt false. Das Fenster gibt ihn beim Anzeigen
+// und bei WM_SETFOCUS an die WebView.
+func TestSurfaceGibtDerSeiteDenFokus(t *testing.T) {
+	f, err := parser.ParseFile(token.NewFileSet(), "webview_windows.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var onSetFocus, onShow bool
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.FuncDecl:
+			if x.Name.Name == "surfaceProc" {
+				ast.Inspect(x.Body, func(m ast.Node) bool {
+					if cc, ok := m.(*ast.CaseClause); ok {
+						for _, e := range cc.List {
+							if id, ok := e.(*ast.Ident); ok && id.Name == "wmSetFocus" {
+								ast.Inspect(&ast.BlockStmt{List: cc.Body}, func(k ast.Node) bool {
+									if c, ok := k.(*ast.CallExpr); ok && callName(c.Fun) == "s.chromium.Focus" {
+										onSetFocus = true
+									}
+									return true
+								})
+							}
+						}
+					}
+					return true
+				})
+			}
+		case *ast.CompositeLit:
+			// Schritt "show": {"show", func() error { ... s.chromium.Focus() ... }}
+			if len(x.Elts) == 2 {
+				if lit, ok := x.Elts[0].(*ast.BasicLit); ok && lit.Value == `"show"` {
+					ast.Inspect(x.Elts[1], func(k ast.Node) bool {
+						if c, ok := k.(*ast.CallExpr); ok && callName(c.Fun) == "s.chromium.Focus" {
+							onShow = true
+						}
+						return true
+					})
+				}
+			}
+		}
+		return true
+	})
+	if !onSetFocus {
+		t.Error("surfaceProc gibt der WebView bei WM_SETFOCUS den Fokus nicht (s.chromium.Focus)")
+	}
+	if !onShow {
+		t.Error("der Schritt show gibt der WebView den Fokus nicht")
+	}
+}
