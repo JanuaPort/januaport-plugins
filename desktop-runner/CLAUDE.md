@@ -355,7 +355,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     (kein Wiederholen bei der zweiten 401) und bildet jeden Fehler auf einen festen Code ab.
     **Fenster-Policy (`internal/fenster`):** Import-Allowlist (keine Netz-, Prozess-, Datei-,
     Windows-Pakete). `NavigationAllowed` erlaubt nur `https://app-<name mit - statt _>-pc.jnpt.invalid`
-    ohne Port, Userinfo, Großschreibung, Steuer- und Nicht-ASCII-Zeichen. `MessageAllowed` verlangt
+    ohne Port, Userinfo, Großschreibung, Steuer- und Nicht-ASCII-Zeichen und **nur für Pfade mit der Endung `.html`** (SEC-R4 F2: SVG, JS, JSON, MAP, TXT tragen keine CSP und laufen sonst auf der App-Origin ohne Richtlinie; kodierte Trenner `%2f %5c %00 %3f %23` abgewiesen; Einstieg `StartURL` = `/index.html`). `MessageAllowed` verlangt
     obersten Rahmen, eigene Origin und einen der vier Befehle; andere Quellen bekommen keine Antwort.
     `Settings()` ist die Sollliste (nur `IsScriptEnabled` und `IsWebMessageEnabled` an).
     Umschlag `{id,befehl,args}`: ≤ 256 KiB, `DisallowUnknownFields`, keine doppelten Schlüssel;

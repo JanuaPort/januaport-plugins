@@ -64,7 +64,7 @@ prüfbare Grundlage, die K6b-2 an das Fenster hängt. Es gibt keinen lokalen Fen
 - **App-Token:** `POST apps/{name}/token`, nur im RAM (`fensterio.Gateway`), bei 401 genau
   einmal neu geholt. Das Token hat keinen Getter und druckt sich nie.
 - **Fenster-Policy (`internal/fenster`, reines Go):** exaktes CSP-Literal,
-  `NavigationAllowed` (nur `https://app-<name>-pc.jnpt.invalid`, kein Port/Userinfo/
+  `NavigationAllowed` (nur `.html`-Seiten auf `https://app-<name>-pc.jnpt.invalid`, Einstieg `/index.html`, kein Port/Userinfo/
   Großschreibung/Schema-Tricks), `MessageAllowed` (oberster Rahmen, eigene Origin, vier
   Befehle), `Settings()` (nur Skript und Webnachrichten an), Umschlag `{id, befehl, args}`
   (höchstens 256 KiB, strikt) und die Brücke: `status`, `anhalten` (lokal, genau zwei

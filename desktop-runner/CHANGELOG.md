@@ -14,7 +14,7 @@
   Element in jedes `<head>` ein (vor dem Siegel); eigene CSP-Meta oder kein sauberes `<head>` wird
   abgewiesen, `Open` prüft das führende Literal; geprüft wird zuletzt mit dem HTML-Parser (SEC-R4 F1). Die apphost-CSP wird nicht übernommen.
 - App-Token (`POST apps/{name}/token`) nur im RAM, bei 401 einmal neu geholt; gedruckt wird es nie.
-- `internal/fenster` (reines Go, Import-Wächter): exaktes CSP-Literal, `NavigationAllowed`,
+- `internal/fenster` (reines Go, Import-Wächter): exaktes CSP-Literal, `NavigationAllowed` (nur `.html`-Seiten, SEC-R4 F2),
   `MessageAllowed`, `Settings()`-Sollliste, strikter Umschlag (256 KiB) und die Brücke mit
   `status`, `anhalten` (lokal, genau zwei Pipe-Operationen), `werkzeuge`, `werkzeug`;
   Antworten nur mit festen Codes, nie mit einem Träger. `internal/fensterio` hängt Gateway

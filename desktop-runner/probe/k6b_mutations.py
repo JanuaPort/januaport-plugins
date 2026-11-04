@@ -38,8 +38,15 @@ CASES = [
     # --- internal/fenster: CSP, Navigation, Nachrichten, Einstellungen, Umschlag, Brücke
     ("csp-lockerung", "fenster", "TestCSPExakt", [edit(CSP, "script-src 'self';", "script-src 'self' 'unsafe-inline';")]),
     ("csp-connect", "fenster", "TestCSPExakt", [edit(CSP, "connect-src 'none'; base-uri", "connect-src *; base-uri")]),
-    ("nav-nach-host", "fenster", "TestNavigationAllowed", [edit(NAV, "rest != \"\" && rest[0] != '/' && rest[0] != '?' && rest[0] != '#'", "rest != \"\" && rest[0] != '/' && rest[0] != '?' && rest[0] != '#' && false"), edit(NAV, "u.Host == host && u.User == nil && u.Opaque == \"\"", "true")]),  # zwei Schichten: Präfixregel und Parser
+    ("nav-nach-host", "fenster", "TestNavigationAllowed", [edit(NAV, "if rest == \"\" || rest[0] != '/' {", "if false {"), edit(NAV, "u.Host == host && u.User == nil && u.Opaque == \"\"", "true")]),  # zwei Schichten: Präfixregel und Parser
     ("nav-grossschreibung", "fenster", "TestNavigationAllowed", [edit(NAV, "strings.HasPrefix(raw, prefix)", "strings.HasPrefix(strings.ToLower(raw), prefix)")]),
+    # SEC-R4 F2: nur .html-Seiten
+    ("nav-nur-html", "fenster", "TestNavigationAllowed", [edit(NAV, "if !htmlPath(rest) {", "if false {")]),
+    ("nav-html-endung-exakt", "fenster", "TestNavigationAllowed", [edit(NAV, "strings.HasSuffix(base, \".html\")", "strings.HasSuffix(strings.ToLower(base), \".html\")")]),
+    ("nav-html-kodierte-trenner", "fenster", "TestNavigationAllowed", [edit(NAV, "for _, enc := range []string{\"%2f\", \"%5c\", \"%00\", \"%3f\", \"%23\"} {", "for _, enc := range []string{} {")]),
+    ("nav-html-pfad-vor-query", "fenster", "TestNavigationAllowed", [edit(NAV, "path, _, _ := strings.Cut(rest, \"?\")", "path := rest")]),
+    ("nav-html-dateiname", "fenster", "TestNavigationAllowed", [edit(NAV, " && len(base) > len(\".html\")", "")]),
+    ("nav-start-index", "fenster", "TestStartURL", [edit(NAV, "return \"https://\" + host + \"/index.html\"", "return \"https://\" + host + \"/\"")]),
     ("nav-zeichen", "fenster", "TestNavigationAllowed", [edit(NAV, "r <= 0x20 || r >= 0x7f || r == '\\\\'", "false && r == 0")]),
     ("msg-rahmen", "fenster", "TestMessageAllowed", [edit(NAV, "return s.MainFrame && NavigationAllowed(app, s.URL)", "return NavigationAllowed(app, s.URL)")]),
     ("msg-origin", "fenster", "TestMessageAllowed", [edit(NAV, "return s.MainFrame && NavigationAllowed(app, s.URL)", "return s.MainFrame")]),
