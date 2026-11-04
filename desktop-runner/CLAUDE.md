@@ -466,15 +466,37 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Proxy-Ziel `0.0.0.0:0` (kein Port, den ein anderes Konto binden kann), `<-loopback>` (auch Loopback geht
     nicht am Proxy vorbei), `--host-resolver-rules="MAP * ~NOTFOUND"` (DNS aus), kein Träger darin. Der
     Kommandozeilenwert ist keine harte Grenze: `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` und Richtlinien der
-    Maschine oder des Benutzers können ihn übersteuern (`TestWindowsWebViewRichtlinienHinweis` listet sie auf;
+    Maschine oder des Benutzers können ihn übersteuern (siehe Betriebsarten der Sonde unten;
     eine Proxy-Richtlinie ist eine Restgrenze von Schicht 2). Deshalb ist Schicht 1 Pflicht. (3)
     `NavigationStarting` bleibt dritte Schicht. Belegt wird nur nativ: `TestWindowsWebViewFremdserverNull`
     (17 Wege, Loopback und eigene IPv4-Adresse des Gasts, 0 Anfragen und 0 Verbindungen, sehende Kontrolle) und
-    `TestWindowsWebViewFremdserverUrsache` (ohne Schichten, nur Schicht 1, nur Schicht 2; Sec-Fetch-*,
+    `TestWindowsWebViewFremdserverUrsache` (ohne Schichten, nur Schicht 1, nur Schicht 2, Schicht 1 plus Features; Sec-Fetch-*,
     Sec-Purpose, Purpose und Zeitpunkt je Treffer). Auflage SEC (a): Der Schritt `umgebung` entfernt JNPT*-
     Variablen aus der Umgebung des Bedienfelds, bevor der Browser erbt (`jnptNames`); der Produktpfad des
     Datenordners (`<Cache>\JanuaPort\desktop-runner\webview\<app>`) trägt kein jnpt, der öffentliche
     Hostname `*.jnpt.invalid` ist kein Geheimnis und wird in der Sonde nur als solcher ausgenommen und gezählt.
+    **Fail-closed nach Wirkung (SEC-Urteil Lauf 5):** Schicht 2 ist die tragende Sperre, Schicht 1 die Pflicht
+    daneben. (a) Der Schritt `browser pruefen` liest nach dem Start die Kommandozeile des Browserprozesses
+    (`get_BrowserProcessId`, PEB des eigenen Kontos) und verlangt unsere Argumente exakt
+    (`fenster.BrowserCommandLineProblems`: Proxy, Umgehungsliste und Resolver genau einmal mit unserem Wert,
+    Hintergrundnetz und DNS-Vorabholen aus, das letzte `--disable-features` mit `Prerender2` und
+    `NoStatePrefetch`, `--proxy-pac-url`, `--no-proxy-server`, `--proxy-auto-detect` und `--enable-features` mit
+    Prerender verboten); sonst bleibt das Fenster zu (fester Fehler, Tray und Halt stehen). Die Meldungen nennen
+    nur Argumentnamen. (b) Jede gesetzte `WEBVIEW2_*`-Variable (`webview2Names`) ist ein Eingriff: Der Schritt
+    `umgebung` lehnt vor allem anderen ab, auch vor dem Entfernen der `JNPT*`-Variablen. (c) Spekulatives Laden:
+    `SpeculationArguments` (`Prerender2`, `NoStatePrefetch`, `--disable-background-networking`,
+    `--dns-prefetch-disable`), welche Namen in der eingesetzten Runtime wirken, belegt allein die Sonde
+    (Betriebsarten `schicht1UndFeatures`, `nurFeatures`); zusätzlich lehnt die Ladeprüfung der Läufer-Ablage
+    (`client.spekulativesLaden`) `<link rel=prerender|prefetch|preconnect|dns-prefetch>` und
+    `<script type=speculationrules>` ab. Dynamisch per Skript erzeugte Elemente deckt das nicht ab, deshalb nur
+    zusätzlich. Das schützt gegen IT-Richtlinien und Versehen, nicht gegen Prozesse im selben Konto (die bleiben
+    A1). Richtlinien werden gemessen, nicht geraten: `JNPT_NATIVE_WEBVIEW_PROBE_MODUS` (`beide`, `nurSchicht1`,
+    `nurSchicht2`, `schicht1UndFeatures`, `nurFeatures`) fährt `FremdserverNull` mit genau den gewählten Schichten
+    unter einer vom Admin gesetzten Richtlinie; greift eine, erscheint sie (`logProxyPolicies`) in der Ausgabe des
+    Lecks, greift keine, gibt es keine Registry-Liste. Kontrollen je Schicht: `TestWindowsWebViewSchichtenKontrollen`
+    (Seite ohne CSP: ohne Schichten sieht der Server den Abruf, mit nur Schicht 1 fängt der Filter ihn ab, mit nur
+    Schicht 2 scheitert er im Netz); `TestWindowsWebViewBrowserpruefungFailClosed` (widersprechendes Argument und
+    `WEBVIEW2_*` lassen das Fenster nicht öffnen).
     Service Worker: `ClearBrowsingData` (Profile2.ClearBrowsingDataAll) wird für Service Worker nativ geprüft
     (`TestWindowsWebViewServiceWorkerWirdGeloescht`). Läufe der nativen Sonden brauchen `-test.timeout 20m`.
     Grenzen: alte Fassungen

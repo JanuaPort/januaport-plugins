@@ -43,6 +43,36 @@ import (
 // Umgebung (Auflage SEC a), danach wäre der Opt-in sonst weg.
 var probeOptIn = os.Getenv("JNPT_NATIVE_WEBVIEW_PROBE") == "1"
 
+// probeMode wählt, welche Schichten FremdserverNull aktiv hat (JNPT_NATIVE_WEBVIEW_PROBE_MODUS, leer = alle):
+//
+//	beide                alle Schichten (Standard)
+//	nurSchicht1          nur der Ressourcenfilter
+//	nurSchicht2          nur Netz aus (Proxy, DNS), ohne Filter und ohne Features
+//	schicht1UndFeatures  Filter plus spekulatives Laden aus, Netz-Argumente weg
+//	nurFeatures          nur spekulatives Laden aus
+//
+// So fährt man FremdserverNull unter einer gesetzten Richtlinie und sieht, welche Schicht sie aushebelt.
+var probeMode = os.Getenv("JNPT_NATIVE_WEBVIEW_PROBE_MODUS")
+
+// modeConfig übersetzt eine Betriebsart in die Schalter der Oberfläche (nur in-package).
+func modeConfig(t *testing.T, mode string) func(*SurfaceConfig) {
+	t.Helper()
+	switch mode {
+	case "", "beide":
+		return nil
+	case "nurSchicht1":
+		return func(c *SurfaceConfig) { c.noNetLock, c.noSpeculation = true, true }
+	case "nurSchicht2":
+		return func(c *SurfaceConfig) { c.noResourceFilter, c.noSpeculation = true, true }
+	case "schicht1UndFeatures":
+		return func(c *SurfaceConfig) { c.noNetLock = true }
+	case "nurFeatures":
+		return func(c *SurfaceConfig) { c.noResourceFilter, c.noNetLock = true, true }
+	}
+	t.Fatalf("unbekannte Betriebsart %q", mode)
+	return nil
+}
+
 var (
 	pPeek     = user32.NewProc("PeekMessageW")
 	pTransl   = user32.NewProc("TranslateMessage")
@@ -411,14 +441,21 @@ func TestWindowsWebViewCSPUndZeichensatztrick(t *testing.T) {
 			b.t = t
 			b.run(t, probeFrist, func(t *testing.T) {
 				hitsBefore := b.hits.Load()
-				s, _, _ := b.openProbe("probe", map[string]string{
+				s, _, trace := b.openProbe("probe", map[string]string{
 					"index.html": tc.html,
 					"probe.js":   probeJS,
 					"fetch.js":   probeJS + fetchJS,
 				}, nil)
 				// probe.js muss vor fetch.js laufen: Die Seiten oben laden nur fetch.js; es lädt probe.js selbst.
 				pump(t, s, 8*time.Second, func() bool { return b.gw.has("fetch") })
+				// Das sehende Signal ist der Versuch: ein Treffer beim Fremdserver oder eine Anfrage, die Schicht 1 vor dem
+				// Server abgefangen hat. Kontrollen brauchen den Versuch, Angriffsfälle dürfen ihn nicht haben.
 				leaked := b.hits.Load() > hitsBefore
+				for _, e := range *trace {
+					if strings.HasPrefix(e, "WebResourceBlockiert ") && (strings.Contains(e, "/evil.js") || strings.Contains(e, "/fetch")) {
+						leaked = true
+					}
+				}
 				switch {
 				case tc.wantLeak && !leaked:
 					t.Fatalf("%s: Kontrolle blind. Die Sonde sieht den Angriff nicht; ein Grün bei den anderen Fällen wäre wertlos (Treffer: %v)", tc.wantLabel, b.seenPaths())
@@ -439,7 +476,7 @@ func TestWindowsWebViewNavigationStarting(t *testing.T) {
 	for name, body := range map[string]string{
 		"svgDerEigenenApp": `<a id="l" href="a.svg">x</a><script src="nav.js"></script>`,
 		"fremderHost":      `<a id="l" href="` + foreign + `">x</a><script src="nav.js"></script>`,
-		"locationFremd":    `<script src="loc.js"></script><script src="nav.js"></script>`,
+		"locationFremd":    `<script src="nav.js"></script><script src="loc.js"></script>`,
 		"metaRefresh":      `<meta http-equiv="refresh" content="0;url=` + foreign + `"><script src="nav.js"></script>`,
 		"dataUrl":          `<a id="l" href="data:text/html,<script>1</script>">x</a><script src="nav.js"></script>`,
 		"fileUrl":          `<a id="l" href="file:///C:/Windows/win.ini">x</a><script src="nav.js"></script>`,
@@ -462,6 +499,20 @@ func TestWindowsWebViewNavigationStarting(t *testing.T) {
 				}
 				if b.hits.Load() != hitsBefore {
 					t.Fatalf("Abruf beim Fremdserver: %v", b.seenPaths())
+				}
+				// Kontrolle: Der Auslöser lief. Ohne gemeldeten Navigationsversuch wäre das Grün leer.
+				attempt := map[string]string{"svgDerEigenenApp": "/a.svg", "fremderHost": foreign, "locationFremd": foreign, "metaRefresh": foreign}[name]
+				seen := false
+				for _, e := range *trace {
+					if attempt != "" && strings.HasPrefix(e, "NavigationStarting ") && strings.HasSuffix(e, attempt) {
+						seen = true
+					}
+				}
+				switch {
+				case attempt != "" && !seen:
+					t.Fatalf("Kontrolle blind: kein NavigationStarting auf %s gemeldet; Ereignisse: %v", attempt, *trace)
+				case attempt == "":
+					t.Logf("Navigationsversuch von %s ist nicht Teil der Kontrolle (Ereignisse: %v)", name, *trace)
 				}
 			})
 		})
@@ -573,42 +624,76 @@ func TestWindowsWebViewNachrichtQuelle(t *testing.T) {
 	})
 }
 
-// PermissionRequested: Standard Deny. Berechtigungen ohne Gerät (Geolocation, Benachrichtigungen, Zwischenablage
-// lesen), damit die Abfrage das Gerät nicht umgeht (ein Mikrofon gibt es auf der VM nicht). Belegt wird die
-// Antwort der Seite und die native Ablehnung im Ereignis PermissionRequested.
+// PermissionRequested: Standard Deny, je Berechtigung ein eigener Fall mit eigenem Ergebnis (kein Warten auf alle).
+// Geolocation: Kommt weder ein Rückruf der Seite noch ein PermissionRequested, ist der Fall rot und sagt es
+// ausdrücklich, statt durch Zeitablauf grün zu werden.
 func TestWindowsWebViewBerechtigungenAbgelehnt(t *testing.T) {
 	b := newProbeBed(t)
-	b.run(t, probeFrist, func(t *testing.T) {
-		s, _, trace := b.openProbe("probe", map[string]string{
-			"index.html": probePage(`<script src="probe.js"></script>`, `<script src="rechte.js"></script>`),
-			"rechte.js": `
-navigator.geolocation.getCurrentPosition(function(){ send("geo", {code: 0}); }, function(e){ send("geo", {code: e.code}); }, {timeout: 8000});
-Notification.requestPermission().then(function(r){ send("notif", {antwort: r}); });
-navigator.clipboard.readText().then(function(){ send("clip", {ok: true}); }).catch(function(e){ send("clip", {ok: false, name: e.name}); });
-`,
-			"probe.js": probeJS,
-		}, nil)
-		if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("geo ") && b.gw.has("notif ") && b.gw.has("clip ") }) {
-			t.Fatal("Berechtigungsabfragen blieben ohne Antwort")
-		}
-		if !b.gw.has(`"code":1`) || b.gw.has(`"code":0`) || !b.gw.has(`"antwort":"denied"`) || b.gw.has(`"antwort":"granted"`) || !b.gw.has(`"ok":false`) || b.gw.has(`"ok":true`) {
-			t.Fatalf("Berechtigung nicht abgelehnt: %v", b.gw.snapshot())
-		}
-		// Native Ablehnung: Jede gemeldete Abfrage wurde mit Deny beantwortet, und mindestens eine kam an.
-		asked := 0
-		deny := fmt.Sprintf("antwort=%d", edge.CoreWebView2PermissionStateDeny)
-		for _, e := range *trace {
-			if strings.HasPrefix(e, "PermissionRequested ") {
-				asked++
-				if !strings.HasSuffix(e, deny) {
-					t.Fatalf("Abfrage nicht abgelehnt: %q", e)
+	deny := fmt.Sprintf("antwort=%d", edge.CoreWebView2PermissionStateDeny)
+	asked := func(trace []string, art int) (n, denied int) {
+		for _, e := range trace {
+			if strings.HasPrefix(e, fmt.Sprintf("PermissionRequested art=%d ", art)) {
+				n++
+				if strings.HasSuffix(e, deny) {
+					denied++
 				}
 			}
 		}
-		if asked == 0 {
-			t.Fatalf("PermissionRequested nie gemeldet; die Ablehnung kam nicht aus dem Ereignis: %v", *trace)
-		}
-	})
+		return
+	}
+	cases := []struct {
+		name, js, event string
+		art             int
+		check           func(t *testing.T)
+	}{
+		{"benachrichtigungen", `Notification.requestPermission().then(function(r){ send("notif", {antwort: r}); });`, "notif ", 4, func(t *testing.T) {
+			if !b.gw.has(`"antwort":"denied"`) || b.gw.has(`"antwort":"granted"`) {
+				t.Fatalf("Benachrichtigungen nicht abgelehnt: %v", b.gw.snapshot())
+			}
+		}},
+		{"zwischenablageLesen", `navigator.clipboard.readText().then(function(){ send("clip", {ok: true}); }).catch(function(e){ send("clip", {ok: false, name: e.name}); });`, "clip ", 6, func(t *testing.T) {
+			if !b.gw.has(`"ok":false`) || b.gw.has(`"ok":true`) {
+				t.Fatalf("Zwischenablage nicht abgelehnt: %v", b.gw.snapshot())
+			}
+		}},
+		{"geolocation", `
+navigator.permissions.query({name: "geolocation"}).then(function(p){ send("geo_status", {state: p.state}); }).catch(function(e){ send("geo_status", {fehler: e.name}); });
+navigator.geolocation.getCurrentPosition(function(){ send("geo", {code: 0}); }, function(e){ send("geo", {code: e.code}); }, {timeout: 6000});
+setTimeout(function(){ send("geo_frist", {}); }, 9000);
+`, "geo ", 3, func(t *testing.T) {
+			if b.gw.has(`"code":0`) {
+				t.Fatal("Geolocation wurde gewährt")
+			}
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			b.t = t
+			b.run(t, probeFrist, func(t *testing.T) {
+				s, _, trace := b.openProbe("probe", map[string]string{
+					"index.html": probePage(`<script src="probe.js"></script>`, `<script src="rechte.js"></script>`),
+					"rechte.js":  tc.js,
+					"probe.js":   probeJS,
+				}, nil)
+				answered := func() bool { return b.gw.has(tc.event) || (tc.name == "geolocation" && b.gw.has("geo_frist")) }
+				if !pump(t, s, 15*time.Second, answered) {
+					t.Fatalf("%s: keine Antwort der Seite innerhalb der Frist", tc.name)
+				}
+				n, denied := asked(*trace, tc.art)
+				t.Logf("%s: PermissionRequested art=%d gemeldet %d-mal, davon abgelehnt %d", tc.name, tc.art, n, denied)
+				if tc.name == "geolocation" && !b.gw.has("geo ") {
+					t.Fatalf("Geolocation: kein Rückruf der Seite innerhalb der Frist (PermissionRequested %d-mal gemeldet); Seite meldet: %v", n, b.gw.snapshot())
+				}
+				tc.check(t)
+				if n == 0 {
+					t.Fatalf("%s: PermissionRequested art=%d nie gemeldet; die Ablehnung kam nicht nachweislich aus dem Ereignis: %v", tc.name, tc.art, *trace)
+				}
+				if denied != n {
+					t.Fatalf("%s: %d von %d Abfragen nicht abgelehnt: %v", tc.name, n-denied, n, *trace)
+				}
+			})
+		})
+	}
 }
 
 // ProcessFailed (B1): Stirbt der Browserprozess, schließt das Fenster, der Host ist zu und der Test-Prozess lebt.

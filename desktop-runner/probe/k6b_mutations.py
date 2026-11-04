@@ -49,6 +49,7 @@ PTW = "internal/pipe/transport_windows.go"
 RSR = "internal/fenster/resource.go"
 DGN = "internal/fenster/diag.go"
 ENVF = "internal/fensterio/env.go"
+APL = "internal/client/appload.go"
 
 
 def edit(path, old, new):
@@ -215,7 +216,6 @@ CASES = [
     ("edge-wird-importiert", "panel", "TestEdgeNurVonFensterio", [edit(PTW, '\t"golang.org/x/sys/windows"\n)', '\t"golang.org/x/sys/windows"\n\n\t_ "github.com/januaport/januaport-plugins/desktop-runner/internal/edge"\n)')]),
     # Fremdserver-Befund: Schichten 1 und 2, Diagnose, Umgebung
     ("resource-filter-fehlt", "fensterio", "TestAdapterSperrtRessourcenUndNetz", [edit(WVS, 'return wv2com.AddWebResourceRequestedFilter(s.com(), "*", wv2com.ResourceContextAll)', 'return nil')]),
-    ("netzargumente-fehlen", "fensterio", "TestAdapterSperrtRessourcenUndNetz", [edit(WVS, "s.chromium.AdditionalBrowserArgs = fenster.BrowserArgs()", "_ = fenster.BrowserArgs")]),
     ("resource-fremder-host", "fenster", "TestResourceAllowed", [edit(RSR, "if !strings.HasPrefix(raw, prefix) {\n\t\treturn false\n\t}", "if false {\n\t\treturn false\n\t}")]),
     ("resource-dokument-ohne-html", "fenster", "TestResourceAllowed", [edit(RSR, "if document {\n\t\treturn NavigationAllowed(app, raw)\n\t}", "_ = document")]),
     ("resource-elternverzeichnis", "fenster", "TestResourceAllowed", [edit(RSR, 'if seg == ".." {', 'if seg == "..." {')]),
@@ -227,6 +227,26 @@ CASES = [
     ("reply-inhalt", "fenster", "TestReplySummary", [edit(DGN, 'return "fehler=" + r.Fehler', 'return "fehler=" + r.Fehler + string(b)'), edit(DGN, 'if r.Ok != nil && *r.Ok {\n\t\treturn "ok"', 'if r.Ok != nil && *r.Ok {\n\t\treturn "ok" + string(b)')]),
     ("env-scrub-fehlt", "fensterio", "TestAdapterPruefteThreadUndWartetBegrenzt", [edit(WVS, '{"umgebung", func() error {', '{"env", func() error {')]),
     ("env-gross-klein", "fensterio", "TestEnvNamenZumEntfernen", [edit(ENVF, 'strings.EqualFold(name[:4], "jnpt")', 'name[:4] == "JNPT"')]),
+    # SEC-Urteil Lauf 5: Browserprozess prüfen, WEBVIEW2_*, spekulatives Laden
+    ("netzargumente-fehlen", "fensterio", "TestAdapterSperrtRessourcenUndNetz", [edit(WVS, "args = append(args, fenster.NetworkLockArgs()...)", "_ = fenster.NetworkLockArgs")]),
+    ("spekulationsargumente-fehlen", "fensterio", "TestAdapterSperrtRessourcenUndNetz", [edit(WVS, "args = append(args, fenster.SpeculationArgs()...)", "_ = fenster.SpeculationArgs")]),
+    ("browserpruefung-fehlt", "fensterio", "TestAdapterPruefteThreadUndWartetBegrenzt", [edit(WVS, '{"browser pruefen", func() error {', '{"browser", func() error {')]),
+    ("browserpruefung-ohne-kommandozeile", "fensterio", "TestAdapterSperrtRessourcenUndNetz", [edit(WVS, "problems := fenster.BrowserCommandLineProblems(line)", "problems := []string(nil)\n\t\t\t_ = line")]),
+    ("webview2-variablen-ignoriert", "fensterio", "TestAdapterSperrtRessourcenUndNetz", [edit(WVS, "if names := webview2Names(os.Environ()); len(names) > 0 {", "if names := jnptNames(nil); len(names) > 0 {")]),
+    ("webview2-gross-klein", "fensterio", "TestWebView2Namen", [edit(ENVF, 'strings.EqualFold(name[:9], "webview2_")', 'name[:9] == "WEBVIEW2_"')]),
+    ("webview2-ohne-unterstrich", "fensterio", "TestWebView2Namen", [edit(ENVF, "len(name) >= 9 && strings.EqualFold(name[:9], \"webview2_\")", "len(name) >= 8 && strings.EqualFold(name[:8], \"webview2\")")]),
+    ("cmdline-doppelt", "fenster", "TestBrowserCommandLineProblems", [edit(RSR, "case len(got) > 1:", "case false:")]),
+    ("cmdline-abweichend", "fenster", "TestBrowserCommandLineProblems", [edit(RSR, "case got[0] != w.value:", "case false:")]),
+    ("cmdline-erstes-features", "fenster", "TestBrowserCommandLineProblems", [edit(RSR, "strings.Split(got[len(got)-1], \",\")", "strings.Split(got[0], \",\")")]),
+    ("cmdline-enable-features", "fenster", "TestBrowserCommandLineProblems", [edit(RSR, 'for _, v := range values["--enable-features"] {', 'for _, v := range []string(nil) {')]),
+    ("cmdline-verbotene-argumente", "fenster", "TestBrowserCommandLineProblems", [edit(RSR, '[]string{"--proxy-pac-url", "--no-proxy-server", "--proxy-auto-detect"}', '[]string{"--proxy-pac-url"}')]),
+    ("cmdline-hintergrundnetz", "fenster", "TestBrowserCommandLineProblems", [edit(RSR, '[]string{"--disable-background-networking", "--dns-prefetch-disable"}', '[]string{"--dns-prefetch-disable"}')]),
+    ("cmdline-anfuehrungszeichen", "fenster", "TestBrowserCommandLineProblems", [edit(RSR, "case c == '\"':\n\t\t\tinQuote = !inQuote", "case c == '\"':\n\t\t\tinQuote = false")]),
+    ("lader-prerender", "client", "TestInjectCSPLehntSpekulativesLadenAb", [edit(APL, 'case "prerender", "prefetch", "preconnect", "dns-prefetch":', 'case "prefetch", "preconnect", "dns-prefetch":')]),
+    ("lader-preconnect", "client", "TestInjectCSPLehntSpekulativesLadenAb", [edit(APL, 'case "prerender", "prefetch", "preconnect", "dns-prefetch":', 'case "prerender", "prefetch", "dns-prefetch":')]),
+    ("lader-grossschreibung", "client", "TestInjectCSPLehntSpekulativesLadenAb", [edit(APL, "strings.Fields(strings.ToLower(a.Val))", "strings.Fields(a.Val)")]),
+    ("lader-speculationrules", "client", "TestInjectCSPLehntSpekulativesLadenAb", [edit(APL, 'strings.EqualFold(strings.TrimSpace(a.Val), "speculationrules")', 'false')]),
+    ("lader-template", "client", "TestInjectCSPLehntSpekulativesLadenAb", [edit(APL, "\t\tfor c := n.FirstChild; c != nil; c = c.NextSibling {\n\t\t\twalk(c)\n\t\t}\n\t}\n\twalk(doc)\n\treturn found", "\t\tfor c := n.FirstChild; c != nil && n.Data != \"template\"; c = c.NextSibling {\n\t\t\twalk(c)\n\t\t}\n\t}\n\twalk(doc)\n\treturn found")]),
 ]
 
 

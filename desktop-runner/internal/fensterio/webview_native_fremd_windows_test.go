@@ -16,9 +16,12 @@ package fensterio
 // Laufzeit beachten: mehrere Minuten, daher -test.timeout 20m.
 
 import (
+	"errors"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -113,20 +116,27 @@ func TestWindowsWebViewFremdserverNull(t *testing.T) {
 		}
 	}
 	logged := b.logNewHits(t, 0)
+	totalBlocked := 0
 	for _, server := range []struct{ label, url string }{{"loopback", b.srv.URL}, {"extern", b.ext.URL}} {
 		for _, v := range exfilVectors(server.url+"/ziel.html", server.url) {
 			t.Run(server.label+"_"+v.name, func(t *testing.T) {
 				b.t = t
 				b.run(t, probeFrist, func(t *testing.T) {
-					hits, conns, blocked := runExfil(t, b, v, nil)
+					hits, conns, blocked := runExfil(t, b, v, modeConfig(t, probeMode))
 					logged = b.logNewHits(t, logged)
-					t.Logf("Schicht 1 blockierte %d Anfragen", blocked)
+					t.Logf("Betriebsart %q: Schicht 1 blockierte %d Anfragen", probeMode, blocked)
+					totalBlocked += blocked
 					if hits != 0 || conns != 0 {
+						logProxyPolicies(t) // greift eine Richtlinie, kommt genau sie in die Prüfung
 						t.Fatalf("%s → %s: %d Anfragen, %d Verbindungen beim Fremdserver", v.name, server.label, hits, conns)
 					}
 				})
 			})
 		}
+	}
+	filterOn := probeMode == "" || probeMode == "beide" || probeMode == "nurSchicht1" || probeMode == "schicht1UndFeatures"
+	if filterOn && totalBlocked == 0 {
+		t.Error("Kontrolle blind: Schicht 1 hat in keinem Fall eine Anfrage abgefangen")
 	}
 }
 
@@ -139,9 +149,10 @@ func TestWindowsWebViewFremdserverUrsache(t *testing.T) {
 		name   string
 		mutate func(*SurfaceConfig)
 	}{
-		{"ohneSchichten", func(c *SurfaceConfig) { c.noResourceFilter, c.noNetLock = true, true }},
-		{"nurSchicht1", func(c *SurfaceConfig) { c.noNetLock = true }},
-		{"nurSchicht2", func(c *SurfaceConfig) { c.noResourceFilter = true }},
+		{"ohneSchichten", func(c *SurfaceConfig) { c.noResourceFilter, c.noNetLock, c.noSpeculation = true, true, true }},
+		{"nurSchicht1", modeConfig(t, "nurSchicht1")},
+		{"nurSchicht2", modeConfig(t, "nurSchicht2")},
+		{"schicht1UndFeatures", modeConfig(t, "schicht1UndFeatures")},
 	}
 	logged := 0
 	for _, cfg := range configs {
@@ -217,19 +228,16 @@ navigator.serviceWorker.register("sw.js").then(function(){ return navigator.serv
 	})
 }
 
-// Hinweis, kein Beleg: Was könnte die Argumente von Schicht 2 übersteuern? Proxy-Richtlinien der Maschine und
-// des Benutzers sowie Umgebungsvariablen des WebView2-Loaders werden ausgegeben. Eine Maschinen-Richtlinie für den
-// Proxy ist eine Restgrenze von Schicht 2; Schicht 1 gilt dann allein.
-func TestWindowsWebViewRichtlinienHinweis(t *testing.T) {
-	if !probeOptIn {
-		t.Skip("opt-in: JNPT_NATIVE_WEBVIEW_PROBE=1")
-	}
-	found := 0
+// logProxyPolicies gibt die Proxy-Richtlinien der Maschine und des Benutzers aus. Aufgerufen wird es nur, wenn ein
+// Fremdserver getroffen wurde: Greift eine Richtlinie, kommt genau sie in die Prüfung; greift keine, bleibt die
+// Liste aus dem Protokoll. Werte sind Konfiguration, keine Geheimnisse, laufen aber durch DiagText.
+func logProxyPolicies(t *testing.T) {
+	t.Helper()
 	for _, root := range []struct {
 		name string
 		key  registry.Key
 	}{{"HKLM", registry.LOCAL_MACHINE}, {"HKCU", registry.CURRENT_USER}} {
-		for _, path := range []string{`SOFTWARE\Policies\Microsoft\Edge`, `SOFTWARE\Policies\Microsoft\Edge\WebView2`, `SOFTWARE\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments`} {
+		for _, path := range []string{`SOFTWARE\Policies\Microsoft\Edge`, `SOFTWARE\Policies\Microsoft\Edge\WebView2`} {
 			k, err := registry.OpenKey(root.key, path, registry.QUERY_VALUE)
 			if err != nil {
 				continue
@@ -239,27 +247,142 @@ func TestWindowsWebViewRichtlinienHinweis(t *testing.T) {
 				if !strings.Contains(strings.ToLower(name), "proxy") && !strings.Contains(strings.ToLower(name), "argument") {
 					continue
 				}
-				found++
-				if s, _, err := k.GetStringValue(name); err == nil {
-					t.Logf("Richtlinie %s\\%s\\%s = %s", root.name, path, name, fenster.DiagText(s))
+				if v, _, err := k.GetStringValue(name); err == nil {
+					t.Logf("Richtlinie %s\\%s\\%s = %s", root.name, path, name, fenster.DiagText(v))
 				} else if n, _, err := k.GetIntegerValue(name); err == nil {
 					t.Logf("Richtlinie %s\\%s\\%s = %d", root.name, path, name, n)
-				} else {
-					t.Logf("Richtlinie %s\\%s\\%s (nicht lesbar)", root.name, path, name)
 				}
 			}
 			k.Close()
 		}
 	}
-	for _, env := range []string{"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "WEBVIEW2_BROWSER_EXECUTABLE_FOLDER", "WEBVIEW2_USER_DATA_FOLDER", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"} {
-		if v := os.Getenv(env); v != "" {
-			found++
-			t.Logf("Umgebung %s gesetzt: %s", env, fenster.DiagText(v))
+}
+
+// Kontrolle je Schicht (SEC Lauf 5), mit einer Seite ohne CSP, damit nur die jeweilige Schicht zwischen Seite und
+// Server steht: ohne Schichten sieht der Server den Abruf (Kontrolle: Der Weg ist echt), mit nur Schicht 1 fängt der
+// Filter ihn ab (blockiert-Spur, 0 Treffer, Fehler in der Seite), mit nur Schicht 2 scheitert er im Netz (0 Treffer,
+// Fehler in der Seite, kein Filter beteiligt).
+func TestWindowsWebViewSchichtenKontrollen(t *testing.T) {
+	b := newProbeBed(t)
+	x := b.srv.URL + "/kontrolle.js"
+	files := map[string]string{
+		"index.html": "<!doctype html><html><head><meta charset=\"utf-8\"><script src=\"probe.js\"></script></head><body><script src=\"v.js\"></script></body></html>",
+		"probe.js":   probeJS,
+		"v.js":       `fetch("` + x + `", {mode: "no-cors"}).then(function(){ send("abruf", {ok: true}); }).catch(function(){ send("abruf", {ok: false}); });`,
+	}
+	for _, c := range []struct {
+		name     string
+		mutate   func(*SurfaceConfig)
+		wantLeak bool
+		wantBlk  bool
+	}{
+		{"ohneSchichten", func(c *SurfaceConfig) { c.noResourceFilter, c.noNetLock, c.noSpeculation = true, true, true }, true, false},
+		{"nurSchicht1", modeConfig(t, "nurSchicht1"), false, true},
+		{"nurSchicht2", modeConfig(t, "nurSchicht2"), false, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			b.t = t
+			b.run(t, probeFrist, func(t *testing.T) {
+				hits0 := b.hits.Load()
+				s, _, trace := b.openProbe("probe", files, c.mutate)
+				if !pump(t, s, 20*time.Second, func() bool { return b.gw.has("abruf ") }) {
+					t.Fatal("die Seite meldet das Ergebnis des Abrufs nicht")
+				}
+				hits := b.hits.Load() - hits0
+				blocked := 0
+				for _, e := range *trace {
+					if strings.HasPrefix(e, "WebResourceBlockiert ") && strings.Contains(e, "/kontrolle.js") {
+						blocked++
+					}
+				}
+				switch {
+				case c.wantLeak && (hits == 0 || !b.gw.has(`"ok":true`)):
+					t.Fatalf("Kontrolle blind: Ohne Schichten sieht der Server den Abruf nicht (Treffer %d)", hits)
+				case !c.wantLeak && (hits != 0 || b.gw.has(`"ok":true`)):
+					t.Fatalf("Abruf kam durch (Treffer %d, Seite: %v)", hits, b.gw.snapshot())
+				case c.wantBlk && blocked == 0:
+					t.Fatal("Kontrolle blind: Schicht 1 hat den Abruf nicht als blockiert gemeldet")
+				case !c.wantBlk && blocked != 0:
+					t.Fatalf("Schicht 1 meldet blockiert, obwohl sie aus ist: %d", blocked)
+				}
+			})
+		})
+	}
+}
+
+// Fail-closed (SEC Lauf 5): Ein widersprechendes Argument oder eine WEBVIEW2_*-Variable lässt das Fenster nicht
+// öffnen. Fester Fehler, kein Fenster, und die Spur sagt, welches Argument oder welche Variable es war (nur Namen).
+func TestWindowsWebViewBrowserpruefungFailClosed(t *testing.T) {
+	b := newProbeBed(t)
+	try := func(t *testing.T, mutate func(*SurfaceConfig)) (error, []string) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte(probePage("", "x")), 0o600); err != nil {
+			t.Fatal(err)
 		}
+		host, err := NewHost(HostConfig{App: "probe", Gateway: b.gw, Lokal: probeLokal{}, Wake: func() {}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		dataRoot, err := os.MkdirTemp("", "probe-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		b.closers = append(b.closers, func() { removeWhenFree(t, dataRoot) })
+		o := &Opened{Name: "probe", Dir: dir, UserDataDir: filepath.Join(dataRoot, "webview", "probe"), Host: host}
+		var mu sync.Mutex
+		var trace []string
+		cfg := SurfaceConfig{Probe: func(ev, detail string) { mu.Lock(); trace = append(trace, ev+" "+detail); mu.Unlock() }}
+		mutate(&cfg)
+		s, err := NewSurface(o, cfg)
+		if err == nil {
+			b.closers = append(b.closers, s.Close)
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		return err, append([]string(nil), trace...)
 	}
-	if found == 0 {
-		t.Log("keine Proxy-Richtlinie und keine WebView2-Umgebungsvariable gefunden")
-	} else {
-		t.Logf("%d Fundstellen: Sie können Schicht 2 übersteuern; Schicht 1 (WebResourceRequested) gilt dann allein", found)
-	}
+	t.Run("widersprechendesArgument", func(t *testing.T) {
+		b.t = t
+		b.run(t, probeFrist, func(t *testing.T) {
+			err, trace := try(t, func(c *SurfaceConfig) { c.extraBrowserArgs = []string{"--proxy-server=http://0.0.0.0:1"} })
+			if !errors.Is(err, ErrWebView) {
+				t.Fatalf("erwartet den festen Fehler, bekam %v (Spur %v)", err, trace)
+			}
+			found := false
+			for _, e := range trace {
+				if strings.HasPrefix(e, "BrowserArgument ") && strings.Contains(e, "--proxy-server") {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("Die Prüfung der Kommandozeile hat den Widerspruch nicht gemeldet: %v", trace)
+			}
+			if n := openSurfaces(); n != 0 {
+				t.Fatalf("%d Fenster nach dem Fehlstart", n)
+			}
+		})
+	})
+	t.Run("webview2Variable", func(t *testing.T) {
+		b.t = t
+		b.run(t, probeFrist, func(t *testing.T) {
+			os.Setenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--disable-features=Prerender2")
+			defer os.Unsetenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS")
+			err, trace := try(t, func(*SurfaceConfig) {})
+			if !errors.Is(err, ErrWebView) {
+				t.Fatalf("erwartet den festen Fehler, bekam %v (Spur %v)", err, trace)
+			}
+			found := false
+			for _, e := range trace {
+				if strings.HasPrefix(e, "Eingriff ") && strings.Contains(e, "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS") {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("Der Eingriff wurde nicht gemeldet: %v", trace)
+			}
+			if n := openSurfaces(); n != 0 {
+				t.Fatalf("%d Fenster nach dem Fehlstart", n)
+			}
+		})
+	})
 }
