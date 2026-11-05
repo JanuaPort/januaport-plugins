@@ -13,10 +13,17 @@ Beide Dateien liegen bytegleich in `golden-v5/` (mit `SHA256SUMS`); `golden/`,
 
 Windows-Geräte senden ab dem Läufer von K6b-1 `X-Jnpt-Desktop-Contract: 5` und
 `contract: 5` in Kopplung, Heartbeat und Halt. Vertrag 5 enthält Setups, Pin-Fristen und
-`test_device` unverändert aus Vertrag 4. Neu ist `apps:[{name,commit,path}]` oben im
+`test_device` unverändert aus Vertrag 4. Neu ist `apps:[{name,commit,path,mode?}]` oben im
 Manifest, immer ein Array (auch `[]`), nur unter Vertrag 5 (v1–v4 weisen das Feld ab).
 Der Läufer prüft streng: Name `^[a-z0-9_]{1,48}$`, `commit` 64 kleine Hex-Zeichen
 (SHA-256-Speichercommit), `path` exakt `apps/<name>`, streng aufsteigend nach Name.
+Seit #1321 ist `mode` optional, nur `a`, `b` oder leer; andere Werte werden als
+Manifestfehler abgewiesen. Vertrag bleibt 5. Anmeldeleiste, Knöpfe und Meldungen
+erscheinen nur bei b oder fehlendem/leerem Feld (Verhalten älterer Kerne), bei a
+gar nicht. Neue geprüfte Manifeste aktualisieren auch offene Fenster beim Abgleich.
+Dies ist nur Bedienhilfe: Rechte, `/token`, Login-Fluss und K6b-2/K6c-Sperren bleiben
+unverändert. Der bytegleiche Manifestspiegel aus dem Kern-Worktree `jpwt-1321`
+hat SHA-256 `7cfb70018cb3265f39245b43de2e0c64f2859b8be366c4b34509454058656ae6`.
 Pakete kommen über `GET packages/{commit}?path=apps/<name>`. App-Token:
 `POST apps/{name}/token` mit leerem Körper, Antwort `{app_token,expires_at,mcp_path}`
 mit Präfix `jnptpc_`; der Läufer hält es nur im RAM und holt es in Modus a bei 401 neu.

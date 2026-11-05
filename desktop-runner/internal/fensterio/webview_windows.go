@@ -557,7 +557,7 @@ func (s *Surface) createWindow() error {
 		}
 		s.bar = b
 	}
-	if s.o.login != nil {
+	if s.o.login != nil && s.o.ShowLoginBar() {
 		return s.createLoginControls(instance)
 	}
 	return nil

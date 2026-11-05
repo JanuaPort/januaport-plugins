@@ -1,5 +1,16 @@
 # Changelog
 
+## Unveröffentlicht — Anmeldeleiste nach App-Modus (#1321)
+
+- Vertrag 5 nimmt `apps[].mode` optional an (a/b/leer, sonst Manifestfehler).
+  In Modus a keine Anmeldeleiste, keine Knöpfe/Meldungen; in b und bei fehlendem/leerem
+  Feld wie bisher. Neue geprüfte Manifeste aktualisieren auch offene Fenster beim Abgleich.
+- Ausschließlich Anzeige: Rechte, `/token`, Login-Fluss und K6b-2/K6c-Sperren unverändert.
+  Browserdaten werden weiterhin beim Öffnen in beiden Modi gelöscht.
+- Manifest-Golden bytegleich aus `jpwt-1321` aktualisiert und SHA-geprüft; die übrigen
+  Goldens bleiben unverändert. Native Controls/Manifestwechsel prüft BOX mit
+  `TestWindowsWebViewAnmeldeleisteNachModus`; hier keine GUI-Ausführung.
+
 ## Unveröffentlicht — K6c P3 (#1048)
 
 - Persönliche PC-Anmeldung über nativen Knopf, Systembrowser, PKCE und zeitlich
@@ -29,7 +40,7 @@
 
 - K6b-1 (JanuaPort/januaport#1048, Hyperfokus #1313 B2), fensterloser Teil des PC-Fensters, ohne
   Fenster und ohne Release. **Windows spricht Vertrag 5** (Header und JSON; Vertrag 4 plus
-  `apps:[{name,commit,path}]`); der Läufer braucht einen Kern mit K6a, ältere Caches (v1, v3, v4)
+  `apps:[{name,commit,path,mode?}]`, optionaler Modus seit #1321); der Läufer braucht einen Kern mit K6a, ältere Caches (v1, v3, v4)
   liefern beim Upgrade nur die Sequenz. `apps` wird streng gelesen (Name, SHA-256-Commit,
   Pfad `apps/<name>`, sortiert), unter v1–v4 abgewiesen. Goldens des Kerns als
   `contract/golden-v5/` gespiegelt, alle bestehenden Goldens bytegleich.

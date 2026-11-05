@@ -350,11 +350,17 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 
 18. PC-Fenster, fensterloser Teil (#1048 K6b-1; Plan 5, SEC K6b (a)–(c)). Kein Fenster, kein
     WebView2-Adapter, keine Änderung am Bedienfeld (das ist K6b-2).
-    **Vertrag 5:** `client.WindowsContract = 5`; `apps:[{name,commit,path}]` ist unter v5 Pflicht
+    **Vertrag 5:** `client.WindowsContract = 5`; `apps:[{name,commit,path,mode?}]` ist unter v5 Pflicht
     (auch `[]`), sonst verboten. Name `^[a-z0-9_]{1,48}$`, `commit` 64 kleine Hex-Zeichen,
     `path == apps/<name>`, streng aufsteigend nach Name. Ein Cache v1/v3/v4 liefert beim Upgrade nur
-    die Sequenz (Invariante 5/10). Goldens: `contract/golden-v5/` (Kernbytes), alle älteren
-    bleiben bytegleich (`TestGoldenV5AusKern`).
+    die Sequenz (Invariante 5/10). `mode` optional, nur a/b/leer, sonst Manifestfehler.
+    Nur Bedienhilfe: b zeigt die native Anmeldeleiste, a weder Leiste noch Knöpfe/Meldungen;
+    fehlend/leer zeigt sie wie bisher. Neue geprüfte Manifeste aktualisieren auch offene Fenster
+    beim Abgleich (`Reader` → `Runtime.Apps/Watch` → `Surface.UpdateApps`); asynchrones Öffnen
+    übernimmt keinen älteren Anzeigestand. Rechte, `/token`, Login-Fluss und K6b-2/K6c-Sperren
+    bleiben unverändert. Goldens: `contract/golden-v5/` (Kernbytes), Manifest seit #1321 mit mode,
+    SHA-256 `7cfb70018cb3265f39245b43de2e0c64f2859b8be366c4b34509454058656ae6`;
+    ältere Vertragsgoldens bleiben bytegleich (`TestGoldenV5AusKern`).
     **App-Paket:** `AppStore.Ensure/Prepare/Open`. Erst `decodePackage` (Git-IDs, SHA-1DC/SHA-256,
     exakte Objektmenge, Namen), dann die kopierten apphost-Regeln (Modus nur 100644, ≤ 1000 Dateien,
     ≤ 4 MiB, MIME-Liste, Geheimnismuster, keine aktive Markup). **Das CSP-Literal setzt der Läufer selbst
@@ -569,7 +575,8 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Bindung belegt allein die native Sonde (`webview_native_windows_test.go`, Opt-in).
 
     **K6c P3 (persönliche Anmeldung, Vertrag 5/P2):** `internal/anmeldung` hält PKCE/State
-    und prüft den Rückruf. Ein nativer Anmelden-Knopf startet `login_windows.go` in einer
+    und prüft den Rückruf. Der native Anmelden-Knopf (b oder fehlendes/leeres mode;
+    in a keine Leiste/Knöpfe/Meldungen) startet `login_windows.go` in einer
     Goroutine: `/login` mit Challenge/Port/State, geprüfte HTTPS-URL ohne Userinfo über
     ShellExecuteW, passender Loopback-Rückruf, `/session` mit Code/Verifier. Kein JWT,
     kein Refresh, keine Logout-Route; Abmelden vergisst das Token lokal.
@@ -592,7 +599,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Auch beim Öffnen alte Profildaten löschen, ausdrücklich auch in Modus a. Keine Lockerung der Browser-Netzsperre;
     Service Worker umgehen Schicht 1, dort trägt Schicht 2 allein. B1–B4 gelten unverändert.
     Details/Tests: [fensterio/CLAUDE.md](internal/fensterio/CLAUDE.md).
-    `TestWindowsWebViewPersonenwechselUndAbmelden` und `TestWindowsWebViewAnmeldeknopf` sind neue opt-in-Sonden für BOX,
+    `TestWindowsWebViewAnmeldeleisteNachModus`, `TestWindowsWebViewPersonenwechselUndAbmelden` und `TestWindowsWebViewAnmeldeknopf` sind opt-in-Sonden für BOX,
     hier nur kompiliert. Lokales Adapter-Golden `internal/client/testdata/contract5_login_adapter.json`;
     bytegleicher P2-Kernspiegel aus ea50aa7a in `contract/golden-v5/contract5_login_routes.json`,
     SHA-geprüft durch `TestGoldenV5AusKern` und `SHA256SUMS`, mit `-text` gegen autocrlf geschützt.
@@ -631,6 +638,7 @@ mit PASS ohne SKIP laufen. CI/Kompilierung ersetzen diesen Gate-Beleg nicht.
 
 | Invariante | Tests |
 |---|---|
+| Anmeldeleiste #1321, mode nur a/b/leer, alte Kerne und Manifestwechsel | client: TestManifestAppModeAmHTTPAdapter, TestManifestV5GoldenRoundtrip; fensterio: TestRuntimeAppModeAusAktuellemManifest, TestRuntimeAppModeUmgehtPersonRequiredNicht, TestRuntimeWatchMeldetModuswechsel, TestAppModeNativVerdrahtet; Windows ohne GUI: TestSurfaceAnmeldeleisteNachModus, TestSurfaceModusAErzeugtKeineControls, TestSurfaceAnzeigemodusVerwirftAltenStand; BOX: TestWindowsWebViewAnmeldeleisteNachModus; Mutanten: leiste-immer, app-mode-ungueltig, anzeige-alter-stand |
 | B1: Git vor Spawn, Objektmenge/Modi/Namen | TestFalscherHashBrichtVorDemStartAb, TestPaketObjektmengeModiUndNamen, TestSHA1Collision, TestPaketMedientypAmHTTPAdapter, TestGoldenPaketeBytegenauUndManipulation |
 | Runtime/Lock/Umgebung | TestPythonAllowlistUndWheel, TestUmgebungVorJedemStart, TestUmgebungFehlendeZusaetzlicheDateien, TestWheelTagsLockUndManifestVerbote, TestWindowsPythonEchterStartUndManipulation |
 | ZIP-Namen/Typen/Kollisionen/Bomben | TestZIPAbweisungAmEntpacker; Kopien: TestCopiedLibraryFunctions |

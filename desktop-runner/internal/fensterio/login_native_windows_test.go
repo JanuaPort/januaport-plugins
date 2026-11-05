@@ -13,6 +13,47 @@ import (
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/fenster"
 )
 
+// BOX: echte Win32-Controls und Layout bei aufeinanderfolgenden Manifesten.
+func TestWindowsWebViewAnmeldeleisteNachModus(t *testing.T) {
+	b := newProbeBed(t)
+	b.run(t, probeFrist, func(t *testing.T) {
+		s, o, _ := b.openProbe("probe", map[string]string{"index.html": probePage(`<script src="probe.js"></script>`, ""), "probe.js": probeJS}, nil)
+		o.login = NewLogin(NewGateway(nil, "probe"), o.Host, nil, nil)
+		isWindow := user32.NewProc("IsWindow")
+		if err := isWindow.Find(); err != nil {
+			t.Fatal(err)
+		}
+		for i, mode := range []string{"a", "b", "", "a", "b"} {
+			old := []uintptr{s.loginButton, s.logoutButton, s.accountLabel}
+			s.UpdateApps(AppList{Names: []string{"probe"}, Modes: map[string]string{"probe": mode}, ManifestSeq: uint64(i + 1)})
+			shown := mode != "a"
+			for _, h := range []uintptr{s.loginButton, s.logoutButton, s.accountLabel} {
+				if (h != 0) != shown {
+					t.Fatalf("mode=%q: Controls=%#x/%#x/%#x", mode, s.loginButton, s.logoutButton, s.accountLabel)
+				}
+			}
+			if !shown {
+				for _, h := range old {
+					if h != 0 {
+						if exists, _, _ := isWindow.Call(h); exists != 0 {
+							t.Fatal("Modus a behält natives Control")
+						}
+					}
+				}
+			}
+			view, _ := s.bounds(1000, 700)
+			want, _ := fenster.Layout(1000, 700, o.TestDevice)
+			if shown {
+				want.Y += loginBarHeight
+				want.H -= loginBarHeight
+			}
+			if view != want {
+				t.Fatalf("mode=%q: Layout=%v erwartet %v", mode, view, want)
+			}
+		}
+	})
+}
+
 func TestWindowsWebViewAnmeldeknopf(t *testing.T) {
 	b := newProbeBed(t)
 	b.run(t, probeFrist, func(t *testing.T) {

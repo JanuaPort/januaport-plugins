@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"path/filepath"
 	"slices"
 	"time"
@@ -51,10 +52,13 @@ type Runtime struct {
 	reader *client.Reader
 }
 
-// AppList sind die Apps des zuletzt geprüften Manifests und das Testgerät-Signal. Kein Token, kein Pfad.
+// AppList sind Namen/Anzeigemodi und Sequenz des geprüften Manifests sowie das Testgerät-Signal.
+// Kein Token, kein Pfad; Modi bleiben hinter fensterio, panel erhält nur Namen.
 type AppList struct {
-	Names      []string
-	TestDevice bool
+	Names       []string
+	Modes       map[string]string
+	ManifestSeq uint64
+	TestDevice  bool
 }
 
 func NewRuntime(cfg RuntimeConfig) (*Runtime, error) {
@@ -79,9 +83,10 @@ func (r *Runtime) Apps() (AppList, error) {
 		}
 		return AppList{}, ErrOpen
 	}
-	l := AppList{TestDevice: v.TestDevice}
+	l := AppList{TestDevice: v.TestDevice, ManifestSeq: v.ManifestSeq, Modes: make(map[string]string, len(v.Apps))}
 	for _, a := range v.Apps {
 		l.Names = append(l.Names, a.Name)
+		l.Modes[a.Name] = a.Mode
 	}
 	return l, nil
 }
@@ -89,6 +94,8 @@ func (r *Runtime) Apps() (AppList, error) {
 // Opened ist eine geöffnete App: geprüfter Ordner, Benutzerdatenordner und der Host mit Gateway und Brücke.
 type Opened struct {
 	Name        string
+	Mode        string // Nur Anzeige; Rechte, Token und Login werden daraus nicht abgeleitet.
+	ManifestSeq uint64
 	Dir         string
 	UserDataDir string
 	TestDevice  bool
@@ -97,6 +104,10 @@ type Opened struct {
 	gateway     *Gateway
 	login       *Login
 }
+
+// ShowLoginBar blendet nur in Modus a Leiste, Knöpfe und Meldungen aus.
+// Fehlendes/leeres mode behält das Verhalten älterer Kerne. Löschen beim Öffnen bleibt Pflicht.
+func (o *Opened) ShowLoginBar() bool { return o.Mode != "a" }
 
 // Close beendet den Host und gibt die Verbindungen frei. Mehrfaches Aufrufen ist harmlos.
 func (o *Opened) Close() {
@@ -147,7 +158,7 @@ func (r *Runtime) Open(name string) (*Opened, error) {
 		api.Close()
 		return nil, ErrOpen
 	}
-	return &Opened{Name: name, Dir: dir, UserDataDir: userData, TestDevice: view.TestDevice, Host: host, api: api, gateway: gateway}, nil
+	return &Opened{Name: name, Mode: view.Apps[i].Mode, ManifestSeq: view.ManifestSeq, Dir: dir, UserDataDir: userData, TestDevice: view.TestDevice, Host: host, api: api, gateway: gateway}, nil
 }
 
 // OpenAsync öffnet in einer eigenen Goroutine und ruft done von dort auf. Der UI-Thread kehrt sofort zurück.
@@ -176,7 +187,7 @@ func Watch(ctx context.Context, interval time.Duration, read func() (AppList, er
 		switch err {
 		case nil:
 			failures = 0
-			if !have || !slices.Equal(l.Names, last.Names) || l.TestDevice != last.TestDevice {
+			if !have || !slices.Equal(l.Names, last.Names) || !maps.Equal(l.Modes, last.Modes) || l.ManifestSeq != last.ManifestSeq || l.TestDevice != last.TestDevice {
 				last, have = l, true
 				emit(l)
 			}

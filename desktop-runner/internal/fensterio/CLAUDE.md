@@ -4,6 +4,12 @@ Es gelten zusätzlich die Regeln in `../../CLAUDE.md`, insbesondere Invarianten 
 
 ## K6c: persönliche PC-Anmeldung
 
+- #1321, unverändert Vertrag 5: `apps[].mode` optional, nur a/b/leer, sonst Manifestfehler.
+  Anmeldeleiste mit Knöpfen/Meldungen nur bei b oder fehlendem/leerem Feld (alter Kern);
+  in a erscheint nichts davon. Ausschließlich Bedienhilfe: Rechte, `/token`, Login-Fluss
+  und K6b-2/K6c-Sperren unverändert. `Reader` → `Runtime.Open` übernimmt den geprüften Modus;
+  `Runtime.Apps/Watch` → `Surface.UpdateApps` aktualisiert offene Fenster beim nächsten
+  Manifestabgleich. Die Sequenz verhindert einen älteren Anzeigestand beim asynchronen Öffnen.
 - `Login.Start` startet nur Hintergrundarbeit. `login_windows.go` ruft den Gerätekanal
   und den Systembrowser auf. `Surface`/`Login.Pump` führen nur native UI-Arbeit aus.
   App-JavaScript kennt keinen Anmelde- oder Abmeldebefehl. Die Pipe bleibt tokenfrei.
@@ -45,9 +51,18 @@ Sitzung. `login_edges_test.go`: alte Antworten, hängendes Gateway,
 feste Fehler, Mehrfachklick. `loopback_windows_test.go` und
 `login_adapter_windows_test.go`: reine Go-HTTP-Tests, kein Browser/GUI.
 `login_wiring_test.go`: Komposition und ShellExecute-Prüfung.
+`appmode_test.go`: echter signierter Zustand/Reader, HTTP-/Token-/Brückenweg in beiden
+Modi und Watch bei Moduswechsel.
+`TestRuntimeAppModeUmgehtPersonRequiredNicht` erzwingt `/token`-409 in a/b/leer am
+echten HTTP-Adapter: feste Abweisung und kein MCP-Aufruf (Mutant `person-required`).
+`appmode_windows_test.go`: echte Surface-Layoutmethoden
+ohne GUI, früher Abbruch vor der Control-Anlage in a. Mutanten `leiste-immer` und
+`app-mode-ungueltig` (Feldprüfung am HTTP-/Manifestadapter) und `anzeige-alter-stand`
+(älteres Manifest beim asynchronen Öffnen, ohne GUI).
 `../client/hygiene_test.go`: exakte Listener-Zählung, rot auch bei null.
 
 Native Sonde **nur BOX/Test-VM**, `JNPT_NATIVE_WEBVIEW_PROBE=1`:
+`TestWindowsWebViewAnmeldeleisteNachModus` (echte Controls, Layout und Manifestwechsel),
 `TestWindowsWebViewPersonenwechselUndAbmelden` und `TestWindowsWebViewAnmeldeknopf` mit Persistenzkontrolle für
 localStorage, sessionStorage, IndexedDB und Service Worker. Sie ist hier lediglich
 kompiliert; ohne PASS ist die tatsächliche Bereinigung in WebView2 nicht belegt.
@@ -55,5 +70,6 @@ Bestehende Netz-/WebRTC-/Prozessbaumsonden bleiben Pflicht. Service Worker umgeh
 Schicht 1; dort trägt ausschließlich die unveränderte Netzsperre im Browserprozess.
 
 `python probe/k6c_mutations.py` aus der Modulwurzel, exklusiv mit dem Container
-`k6cp3-test`: kompilierende rote Mutanten und bytegenaue Wiederherstellung.
+`k6cp3-test` (überschreibbar mit `JNPT_MUTATION_CONTAINER`, #1321: `j1321p-mode`):
+kompilierende rote Mutanten und bytegenaue Wiederherstellung.
 Kein nativer WebView-Start im Mutationslauf.

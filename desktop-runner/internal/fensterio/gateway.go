@@ -22,6 +22,7 @@ type AppAPI interface {
 // in Modus a bei Bedarf geholt und bei 401 einmal erneuert; Modus b verlangt den
 // nativen Login. Es lebt nur hier im RAM. Es
 // verlässt das Objekt nie; Fehler sind ausschließlich feste fenster-Codes.
+// Maßgeblich ist die Kernantwort; apps[].mode steuert ausschließlich die native Anzeige.
 type Gateway struct {
 	api AppAPI
 	app string

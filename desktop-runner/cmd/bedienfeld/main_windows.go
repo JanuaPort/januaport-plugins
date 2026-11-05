@@ -118,6 +118,7 @@ type application struct {
 	exchange  *fensterio.PanelExchange
 	gen       atomic.Uint64
 	appLists  chan fensterio.AppList
+	apps      fensterio.AppList // letzter geprüfter Anzeigestand, nur UI-Thread
 	opened    chan openResult
 	surfaces  map[string]*fensterio.Surface
 	opening   map[string]bool

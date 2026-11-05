@@ -15,9 +15,10 @@ import (
 )
 
 // Kernreferenzen K6a und K6c P2 (ea50aa7a): Spiegelung aus JanuaPort/januaport, internal/desktop/testdata.
+// Manifest seit #1321 aus jpwt-1321 mit optionalem mode; übrige Spiegel unverändert.
 // Die Bytes wurden kopiert, nicht neu serialisiert (D0-Muster, contract/golden-v5).
 var v5Golden = map[string]string{
-	"manifest_apps_canonical.bin": "8a3e13cf6a20923793f4fb0c60101ba29b7421805fce0fe188b8f573f23964de",
+	"manifest_apps_canonical.bin": "7cfb70018cb3265f39245b43de2e0c64f2859b8be366c4b34509454058656ae6",
 	"contract5_routes.json":       "d77886162de998051fe75a191b7f0163b7315f543938f43f9db4a50efdd43c28",
 	"contract5_login_routes.json": "516c7896c791d481ebb7f7747b498819b91d64a62e1ca0627d1aecf508dd8bb5",
 }
@@ -85,7 +86,7 @@ func TestManifestV5GoldenRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Contract != 5 || m.Apps == nil || len(*m.Apps) != 1 || (*m.Apps)[0] != (App{Name: "demo", Commit: strings.Repeat("a", 64), Path: "apps/demo"}) {
+	if m.Contract != 5 || m.Apps == nil || len(*m.Apps) != 1 || (*m.Apps)[0] != (App{Name: "demo", Commit: strings.Repeat("a", 64), Path: "apps/demo", Mode: "a"}) {
 		t.Fatalf("Apps nicht gelesen: %+v", m)
 	}
 	can, err := canonical(encode(m))

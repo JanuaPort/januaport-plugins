@@ -41,8 +41,12 @@ func (a *application) drainApps() {
 	for {
 		select {
 		case l := <-a.appLists:
+			a.apps = l
 			// Verschwindet eine App (Widerruf), schließt ihr Fenster; offene Fenster sperren die Dateien der WebView.
 			fensterio.CloseMissing(a.surfaces, l.Names)
+			for _, s := range a.surfaces {
+				s.UpdateApps(l)
+			}
 			a.model.SetApps(l.Names)
 			a.render()
 		case r := <-a.opened:
@@ -97,6 +101,7 @@ func (a *application) handleOpened(r openResult) {
 		return
 	}
 	a.surfaces[name] = s
+	s.UpdateApps(a.apps)
 }
 
 func (a *application) closeSurfaces() {
