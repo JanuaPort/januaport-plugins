@@ -582,8 +582,14 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     native Leiste. `person_gewechselt` entscheidet, fehlend/null bedeutet true (A4).
     Bei Wechsel/Abmelden: Gateway sperren, Host-Epoche wechseln, alte Antworten verwerfen,
     altes Dokument durch about:blank beenden, ClearBrowsingDataAll erfolgreich abwarten,
-    erst dann Sitzung freigeben und neu laden (A5). Gleiche Person behält Seite/Eingaben.
-    Auch beim Öffnen alte Profildaten löschen. Keine Lockerung der Browser-Netzsperre;
+    erst dann Sitzung freigeben und neu laden (A5). Nur dieselbe weiterhin angemeldete
+    Person behält Seite/Eingaben; ohne lokale Anmeldung neu laden, auch wenn
+    `person_gewechselt=false`. `ErrNichtAngemeldet` der persönlichen Sitzung entfernt
+    Konto und „Angemeldet“ aus der Leiste. Nur `/session`-403 `kein_zugriff` wird zu
+    Zeitablauf (A8); Callback-Zugriffsfehler bleiben unverändert. A9: laufende und
+    bereits wartende Antworten über Login-Wechsel geprüft (`login_r4_test.go`,
+    Mutanten `login-suspend`/`host-suspend-out`).
+    Auch beim Öffnen alte Profildaten löschen, ausdrücklich auch in Modus a. Keine Lockerung der Browser-Netzsperre;
     Service Worker umgehen Schicht 1, dort trägt Schicht 2 allein. B1–B4 gelten unverändert.
     Details/Tests: [fensterio/CLAUDE.md](internal/fensterio/CLAUDE.md).
     `TestWindowsWebViewPersonenwechselUndAbmelden` und `TestWindowsWebViewAnmeldeknopf` sind neue opt-in-Sonden für BOX,

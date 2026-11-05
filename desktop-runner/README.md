@@ -88,14 +88,19 @@ Die Systembrowser-Anmeldung beim IdP bleibt bestehen.
 Voraussetzung: Kern mit Vertrag 5/P2 und `JNPT_APPS_LISTEN`. `/token` meldet für
 Modus b `409 person_required`. `/login` und `/session` laufen ausschließlich über
 den Gerätekanal. Der PC hält kein JWT und keinen Refresh-Token. Nach Ablauf ist
-ein neuer Browser-Login erforderlich. Keine Anmeldung durch App-JavaScript.
+ein neuer Browser-Login erforderlich. Sobald ein Aufruf die persönliche Sitzung
+als nicht angemeldet zurückweist, verschwinden Kontoname und „Angemeldet“ aus der
+nativen Leiste. Ein vorübergehender Netzfehler meldet die Person nicht ab.
+Keine Anmeldung durch App-JavaScript.
 
 Personenwechsel werden ausschließlich über `person_gewechselt` erkannt, im
-Zweifel true. Gleiche Namen sind kein Gleichheitsbeweis. Bei derselben Person
-bleiben Seite und Eingaben; bei Wechsel und Abmelden wird das alte Dokument
+Zweifel true. Gleiche Namen sind kein Gleichheitsbeweis. Bei derselben weiterhin
+angemeldeten Person bleiben Seite und Eingaben; ohne lokale Anmeldung wird auch
+bei `person_gewechselt=false` neu geladen; bei Wechsel und Abmelden wird das alte Dokument
 beendet, Browserdaten werden über ClearBrowsingDataAll gelöscht und die App
 neu geladen. Eine gescheiterte Bereinigung schließt das App-Fenster. Auch beim
-Öffnen werden alte Profildaten vor der ersten App-Seite gelöscht. Anzeigenamen
+Öffnen werden alte Profildaten vor der ersten App-Seite gelöscht, auch in Modus a:
+Eine App am PC behält keine lokalen Daten über das Öffnen hinaus. Anzeigenamen
 (maximal 128 Unicode-Zeichen, ohne Steuer-/Formatzeichen) gehören nur in die
 native Leiste, nie in Log oder Brücke. Träger bleiben im RAM.
 
@@ -103,6 +108,9 @@ Genau ein kurzlebiger IPv4-Listener auf `127.0.0.1:<zufälliger Port>` im
 Bedienfeld: nur ab Klick bis zum ersten passenden Rückruf oder fünf Minuten.
 Falscher Host/State liefert 400 und verbraucht nichts. Rücksprungfehler sind
 `kein_zugriff`, `platz_gesperrt`, `abgebrochen`, jeweils ohne Code/freien Text.
+Nur `403 kein_zugriff` beim anschließenden `/session`-Tausch wird als Zeitablauf
+angezeigt: Der Einmalcode kann während der Bestätigung ablaufen. Die
+Zugriffsmeldung aus dem Callback bleibt unverändert.
 Die Authorize-URL wird als HTTPS ohne Userinfo geprüft und über ShellExecuteW
 geöffnet. Netzwerk und Brücke laufen außerhalb des UI-Threads; Halt bleibt
 bedienbar. Die Pipe und die Wächter für panel/panelio/pipe bleiben unverändert.

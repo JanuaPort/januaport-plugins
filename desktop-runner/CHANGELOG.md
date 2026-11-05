@@ -6,6 +6,9 @@
   begrenzten IPv4-Loopback; Fehlerklassen ausschließlich als feste native Meldung.
 - Personenwechsel über `person_gewechselt`, Browserdaten bei Wechsel/Abmelden
   löschen und alte Antworten verwerfen. B1–B4 und Browser-Netzsperren unverändert.
+- SEC-R4: abgelaufener Einmalcode mit Zeitablaufmeldung, abgelaufene persönliche
+  Sitzung ohne Kontoname/Anmeldestatus, Wiederanmeldung ohne lokale Sitzung lädt neu.
+  Laufende und wartende Altantworten über Login mit zwei Mutanten gepinnt.
 - Lokales Adapter-Golden und bytegleicher P2-Kernspiegel aus ea50aa7a mit SHA-Wächter.
   WebView-Bereinigung einschließlich sessionStorage bleibt bis zur neuen BOX-Sonde
   unbelegt; kein lokaler GUI-Test, kein Release.

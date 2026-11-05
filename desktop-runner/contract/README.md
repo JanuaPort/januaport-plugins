@@ -31,7 +31,11 @@ Port 1024–65535. Fünf Minuten Pending, 60 Sekunden Einmalcode, kein JWT im PC
 Fehlerrücksprünge mit State und `fehler=kein_zugriff|platz_gesperrt|abgebrochen`,
 niemals Code dazu. Keine Logout-Route. Personenwechsel/Abmelden löschen Browserdaten;
 Name nur native Leiste, maximal 128 Unicode-Zeichen ohne Steuer-/Formatzeichen.
-Fehlendes/null `person_gewechselt` wird defensiv als true behandelt.
+Fehlendes/null `person_gewechselt` wird defensiv als true behandelt. Ohne lokale
+Anmeldung wird auch bei false neu geladen; nur eine weiterhin angemeldete gleiche
+Person behält Eingaben. `/session`-403 `kein_zugriff` wird lokal als Zeitablauf
+angezeigt; der Callback-Zugriffsfehler behält seinen Text. Beim Öffnen werden
+Browserdaten in beiden Modi gelöscht.
 `internal/client/testdata/contract5_login_adapter.json` prüft konkrete Client-Anfragen.
 Zusätzlich liegt `contract5_login_routes.json` aus dem Kern-Stand `ea50aa7a`
 bytegleich in `golden-v5/` (778 Byte, SHA-256

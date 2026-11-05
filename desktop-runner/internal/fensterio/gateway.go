@@ -71,7 +71,11 @@ func (g *Gateway) call(ctx context.Context, method string, params any) (json.Raw
 			g.verwerfen(gen)
 			continue
 		}
-		return nil, abbilden(err)
+		mapped := abbilden(err)
+		if errors.Is(mapped, fenster.ErrNichtAngemeldet) {
+			g.verwerfen(gen)
+		}
+		return nil, mapped
 	}
 }
 
@@ -122,6 +126,14 @@ func (g *Gateway) install(s client.AppSession) {
 	g.gen++
 	g.blocked = false
 	g.personal = true
+}
+
+// personalExpired ist ein RAM-Schnappschuss für Login.Pump auf dem UI-Thread.
+// Fehler einer alten Generation dürfen eine neue Anmeldung nicht zurücknehmen.
+func (g *Gateway) personalExpired() bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.personal && g.session.IsZero()
 }
 
 // verwerfen löscht die Sitzung nur, wenn niemand sie inzwischen erneuert hat.

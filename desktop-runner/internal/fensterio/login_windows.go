@@ -4,6 +4,7 @@ package fensterio
 
 import (
 	"context"
+	"errors"
 
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/anmeldung"
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/client"
@@ -42,7 +43,14 @@ func loginDevice(ctx context.Context, api *client.API, app string, open func(str
 		if r.Fehler != "" {
 			return client.PersonSession{}, loginError(r.Fehler)
 		}
-		return api.AppSession(ctx, app, r.Code, flow.Verifier)
+		person, err := api.AppSession(ctx, app, r.Code, flow.Verifier)
+		var he *client.HTTPError
+		// Der Code kann während der Bestätigung ablaufen. Nur diese Antwort
+		// aus /session umdeuten; Rücksprungfehler behalten ihren Zugriffstext.
+		if errors.As(err, &he) && he.Status == 403 && he.Class == "kein_zugriff" {
+			return client.PersonSession{}, loginError("zeitablauf")
+		}
+		return person, err
 	case <-ctx.Done():
 		return client.PersonSession{}, ctx.Err()
 	}

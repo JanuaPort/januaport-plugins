@@ -90,6 +90,11 @@ func (l *Login) current(gen uint64) bool {
 	return !l.closed && gen == l.generation
 }
 func (l *Login) Pump(v LoginView) {
+	if l.signed && l.gateway.personalExpired() {
+		l.signed = false
+		l.name = ""
+		l.message = anmeldung.Message("zeitablauf")
+	}
 	select {
 	case r := <-l.out:
 		if !l.current(r.generation) {
@@ -98,7 +103,7 @@ func (l *Login) Pump(v LoginView) {
 		if r.err != nil {
 			l.busy = false
 			l.message = loginMessage(r.err)
-		} else if r.person.Changed {
+		} else if r.person.Changed || !l.signed {
 			l.switchPerson(v, r.person, false, r.generation)
 		} else {
 			l.gateway.install(r.person.Session)
