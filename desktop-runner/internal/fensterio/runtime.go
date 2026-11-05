@@ -94,10 +94,15 @@ type Opened struct {
 	TestDevice  bool
 	Host        *Host
 	api         *client.API
+	gateway     *Gateway
+	login       *Login
 }
 
 // Close beendet den Host und gibt die Verbindungen frei. Mehrfaches Aufrufen ist harmlos.
 func (o *Opened) Close() {
+	if o.login != nil {
+		o.login.Close()
+	}
 	o.Host.Close()
 	if o.api != nil {
 		o.api.Close()
@@ -136,12 +141,13 @@ func (r *Runtime) Open(name string) (*Opened, error) {
 	if err != nil {
 		return nil, ErrOpen
 	}
-	host, err := NewHost(HostConfig{App: name, Gateway: NewGateway(api, name), Lokal: NewLokal(r.cfg.Exchange), Wake: r.cfg.Wake, Frist: r.cfg.Frist})
+	gateway := NewGateway(api, name)
+	host, err := NewHost(HostConfig{App: name, Gateway: gateway, Lokal: NewLokal(r.cfg.Exchange), Wake: r.cfg.Wake, Frist: r.cfg.Frist})
 	if err != nil {
 		api.Close()
 		return nil, ErrOpen
 	}
-	return &Opened{Name: name, Dir: dir, UserDataDir: userData, TestDevice: view.TestDevice, Host: host, api: api}, nil
+	return &Opened{Name: name, Dir: dir, UserDataDir: userData, TestDevice: view.TestDevice, Host: host, api: api, gateway: gateway}, nil
 }
 
 // OpenAsync öffnet in einer eigenen Goroutine und ruft done von dort auf. Der UI-Thread kehrt sofort zurück.

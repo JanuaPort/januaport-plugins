@@ -33,6 +33,9 @@ func checkLoopbackServer(t *testing.T, path string) {
 	}
 	ast.Inspect(f, func(n ast.Node) bool {
 		if s, ok := n.(*ast.SelectorExpr); ok {
+			if id, ok := s.X.(*ast.Ident); ok && id.Name == "net" && s.Sel.Name != "Listen" && s.Sel.Name != "TCPAddr" {
+				t.Error("Netzclient im Loopback", s.Sel.Name)
+			}
 			if id, ok := s.X.(*ast.Ident); ok && id.Name == "http" {
 				switch s.Sel.Name {
 				case "Server", "HandlerFunc", "Request", "ResponseWriter":

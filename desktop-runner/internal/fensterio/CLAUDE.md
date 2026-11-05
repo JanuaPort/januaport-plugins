@@ -1,0 +1,50 @@
+# CLAUDE.md — fensterio
+
+Es gelten zusätzlich die Regeln in `../../CLAUDE.md`, insbesondere Invarianten 16 und 18.
+
+## K6c: persönliche PC-Anmeldung
+
+- `Login.Start` startet nur Hintergrundarbeit. `login_windows.go` ruft den Gerätekanal
+  und den Systembrowser auf. `Surface`/`Login.Pump` führen nur native UI-Arbeit aus.
+  App-JavaScript kennt keinen Anmelde- oder Abmeldebefehl. Die Pipe bleibt tokenfrei.
+- `loopback_windows.go` ist die einzige Listener-Ausnahme: genau einmal
+  `net.Listen("tcp4", "127.0.0.1:0")`, nur vom Knopfdruck bis zum ersten passenden
+  Rückruf oder höchstens fünf Minuten. `net/http` ist dort ausschließlich Server,
+  mit ReadHeaderTimeout und MaxHeaderBytes. Falscher Host/State: 400, nichts verbraucht.
+- Rücksprungfehler ausschließlich `kein_zugriff`, `platz_gesperrt`, `abgebrochen`,
+  ohne Code und ohne fremden Text. Feste native Meldungen aus `anmeldung.Message`.
+- Anzeigename ausschließlich in der nativen Leiste, maximal 128 Unicode-Zeichen,
+  keine Steuer-/Formatzeichen; nie in Brücke, Pipe oder Log. Wechsel ausschließlich
+  nach `person_gewechselt`, fehlend/null bedeutet true. Gleiche Person behält Eingaben.
+- Bei Wechsel/Abmelden sofort Gateway sperren und Host-Epoche wechseln. Alte
+  Antworten werden verworfen. Altes Dokument durch `about:blank` beenden, Abschluss
+  abwarten, dann `ClearBrowsingDataAll`, erst nach Erfolg neue Sitzung und Seite
+  freigeben. Jeder Fehler/20-s-Frist schließt das App-Fenster. Auch beim ersten
+  Öffnen werden alte Profildaten vor der ersten App-Navigation gelöscht.
+- `about:blank` ist ausschließlich während dieses nativen Übergangs zulässig,
+  nur im obersten Rahmen. Der Rückruf akzeptiert keine Seitennachrichten. Ansonsten
+  bleiben K6b-2-Navigation, Ressourcenfilter, Browser-Netzsperre und WebRTC unverändert.
+- `authorize_url`: HTTPS ohne Userinfo, erneute Prüfung direkt vor ShellExecuteW.
+  Keine Shell. Keine neue Logout-Route: Abmelden vergisst den RAM-Träger lokal.
+- B1–B4: `panel`, `panelio`, `pipe` strikt; einzige Tür `cmd/bedienfeld → fensterio`.
+  Nur `client.Reader`/AppAPI, kein Engine/Spawn/Claim/Zustandsschreiben/Widerruf.
+
+## Belege
+
+`login_test.go`: Fake-View einschließlich gleicher Anzeigenamen, Reihenfolge,
+Fehler und Abmelden. `login_edges_test.go`: alte Antworten, hängendes Gateway,
+feste Fehler, Mehrfachklick. `loopback_windows_test.go` und
+`login_adapter_windows_test.go`: reine Go-HTTP-Tests, kein Browser/GUI.
+`login_wiring_test.go`: Komposition und ShellExecute-Prüfung.
+`../client/hygiene_test.go`: exakte Listener-Zählung, rot auch bei null.
+
+Native Sonde **nur BOX/Test-VM**, `JNPT_NATIVE_WEBVIEW_PROBE=1`:
+`TestWindowsWebViewPersonenwechselUndAbmelden` und `TestWindowsWebViewAnmeldeknopf` mit Persistenzkontrolle für
+localStorage, sessionStorage, IndexedDB und Service Worker. Sie ist hier lediglich
+kompiliert; ohne PASS ist die tatsächliche Bereinigung in WebView2 nicht belegt.
+Bestehende Netz-/WebRTC-/Prozessbaumsonden bleiben Pflicht. Service Worker umgehen
+Schicht 1; dort trägt ausschließlich die unveränderte Netzsperre im Browserprozess.
+
+`python probe/k6c_mutations.py` aus der Modulwurzel, exklusiv mit dem Container
+`k6cp3-test`: kompilierende rote Mutanten und bytegenaue Wiederherstellung.
+Kein nativer WebView-Start im Mutationslauf.

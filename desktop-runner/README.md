@@ -61,8 +61,8 @@ prüfbare Grundlage, die K6b-2 an das Fenster hängt. Es gibt keinen lokalen Fen
   nicht übernommen. Ablage privat unter `<Zustand>\apps\<name>\<commit>\`, Siegel (Pfad,
   Größe, SHA-256) im verschlüsselten Zustand, Prüfung vor **jedem** Öffnen, nie stilles
   Reparieren. Widerruf löscht Ablage und Siegel mit dem Zustand.
-- **App-Token:** `POST apps/{name}/token`, nur im RAM (`fensterio.Gateway`), bei 401 genau
-  einmal neu geholt. Das Token hat keinen Getter und druckt sich nie.
+- **App-Token:** `POST apps/{name}/token`, nur im RAM (`fensterio.Gateway`), in Modus a bei 401 genau
+  einmal neu geholt. Modus b verlangt den nativen Anmeldeweg unten. Das Token hat keinen Getter und druckt sich nie.
 - **Fenster-Policy (`internal/fenster`, reines Go):** exaktes CSP-Literal,
   `NavigationAllowed` (nur `.html`-Seiten auf `https://app-<name>-pc.jnpt.invalid`, Einstieg `/index.html`, kein Port/Userinfo/
   Großschreibung/Schema-Tricks), `MessageAllowed` (oberster Rahmen, eigene Origin, vier
@@ -74,6 +74,56 @@ prüfbare Grundlage, die K6b-2 an das Fenster hängt. Es gibt keinen lokalen Fen
   einen Träger; Ergebnisse mit Token-Muster werden verworfen.
 
 Der Fensterteil folgt im nächsten Abschnitt (K6b-2). Mutationen: `probe/k6b_mutations.py` (Container mit Go und Python).
+
+## Persönliche Anmeldung am PC (K6c P3, noch ohne VM-Beleg)
+
+Bei `nicht_angemeldet` in einer Modus-b-App startet **Anmelden** in der nativen
+Leiste den Systembrowser. Dort das eigene Konto wählen und die Bestätigungsseite
+prüfen. Danach zum App-Fenster zurückkehren. Die Leiste zeigt das Konto; Fehler
+erscheinen als feste Meldung. Die Anmeldung läuft höchstens fünf Minuten. Ein
+neuer Versuch braucht einen erneuten Klick. **Abmelden** vergisst die Sitzung
+lokal und löscht die Browserdaten der App; dafür gibt es keine Kern-Logout-Route.
+Die Systembrowser-Anmeldung beim IdP bleibt bestehen.
+
+Voraussetzung: Kern mit Vertrag 5/P2 und `JNPT_APPS_LISTEN`. `/token` meldet für
+Modus b `409 person_required`. `/login` und `/session` laufen ausschließlich über
+den Gerätekanal. Der PC hält kein JWT und keinen Refresh-Token. Nach Ablauf ist
+ein neuer Browser-Login erforderlich. Keine Anmeldung durch App-JavaScript.
+
+Personenwechsel werden ausschließlich über `person_gewechselt` erkannt, im
+Zweifel true. Gleiche Namen sind kein Gleichheitsbeweis. Bei derselben Person
+bleiben Seite und Eingaben; bei Wechsel und Abmelden wird das alte Dokument
+beendet, Browserdaten werden über ClearBrowsingDataAll gelöscht und die App
+neu geladen. Eine gescheiterte Bereinigung schließt das App-Fenster. Auch beim
+Öffnen werden alte Profildaten vor der ersten App-Seite gelöscht. Anzeigenamen
+(maximal 128 Unicode-Zeichen, ohne Steuer-/Formatzeichen) gehören nur in die
+native Leiste, nie in Log oder Brücke. Träger bleiben im RAM.
+
+Genau ein kurzlebiger IPv4-Listener auf `127.0.0.1:<zufälliger Port>` im
+Bedienfeld: nur ab Klick bis zum ersten passenden Rückruf oder fünf Minuten.
+Falscher Host/State liefert 400 und verbraucht nichts. Rücksprungfehler sind
+`kein_zugriff`, `platz_gesperrt`, `abgebrochen`, jeweils ohne Code/freien Text.
+Die Authorize-URL wird als HTTPS ohne Userinfo geprüft und über ShellExecuteW
+geöffnet. Netzwerk und Brücke laufen außerhalb des UI-Threads; Halt bleibt
+bedienbar. Die Pipe und die Wächter für panel/panelio/pipe bleiben unverändert.
+Die WebView behält ihre Netzsperre einschließlich WebRTC; Service Worker umgehen
+den Ressourcenfilter, dort trägt allein die Sperre im Browserprozess.
+
+Loopback belegt nur den Browserrechner, nicht den Besitzer des Ports.
+Weitergereichte Links/Codes und Mehrbenutzer-Rechner (auch ungekoppelte) bleiben
+Sicherheitsgrenzen. Das Audit belegt das Konto, nicht den Menschen am Platz.
+IdP-Sperren und Gruppenentzug wirken erst bei JWT-Ablauf. Keycloak und der
+HTTPS→Loopback-Sprung wurden hier nicht live geprüft.
+
+BOX fährt zusätzlich `TestWindowsWebViewPersonenwechselUndAbmelden` und `TestWindowsWebViewAnmeldeknopf` mit
+`JNPT_NATIVE_WEBVIEW_PROBE=1`, interaktiver Sitzung und `-test.timeout 20m`:
+Persistenzkontrolle, gleiche Namen, localStorage/sessionStorage/IndexedDB/Service
+Worker nach Wechsel und Abmelden. Hier nur cross-kompiliert, keine GUI gestartet.
+Die bestehenden WebRTC-, Netz- und Prozessbaumsonden bleiben Pflicht.
+Go-HTTP-Tests `TestLoopback*` und `TestLoginVomKnopfBisSessionAmAdapter` öffnen
+keinen Browser. Mutationen: `python probe/k6c_mutations.py` mit `k6cp3-test`.
+Ein lokales Adapter-Golden ist vorhanden; der bytegleiche P2-Kernspiegel
+`contract5_login_routes.json` samt SHA fehlt noch als Eingabe.
 
 ## PC-Fenster, Teil 2: App-Fenster im Bedienfeld (K6b-2, ohne Release)
 

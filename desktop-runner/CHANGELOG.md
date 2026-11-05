@@ -1,5 +1,15 @@
 # Changelog
 
+## Unveröffentlicht — K6c P3 (#1048)
+
+- Persönliche PC-Anmeldung über nativen Knopf, Systembrowser, PKCE und zeitlich
+  begrenzten IPv4-Loopback; Fehlerklassen ausschließlich als feste native Meldung.
+- Personenwechsel über `person_gewechselt`, Browserdaten bei Wechsel/Abmelden
+  löschen und alte Antworten verwerfen. B1–B4 und Browser-Netzsperren unverändert.
+- Lokales Adapter-Golden; originaler P2-Kernspiegel noch nicht geliefert.
+  WebView-Bereinigung einschließlich sessionStorage bleibt bis zur neuen BOX-Sonde
+  unbelegt; kein lokaler GUI-Test, kein Release.
+
 ## Unreleased
 
 - K6b-2, SEC-R4: Netzsperre mit Pflichtargument auch für UDP-Wege, Schalter-Normalisierung, zwei Korrekturen der Kopie, Rückleseprobe der Einstellungen, Fenster schließen bei Entzug einer App.

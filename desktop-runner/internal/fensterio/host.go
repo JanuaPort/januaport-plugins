@@ -40,9 +40,12 @@ type Host struct {
 	wake     func()
 	onClosed func()
 
-	mu     sync.Mutex
-	out    [][]byte
-	closed bool
+	mu        sync.Mutex
+	out       [][]byte
+	closed    bool
+	suspended bool
+	epoch     uint64
+	cfg       HostConfig
 
 	ctx      context.Context
 	cancel   context.CancelFunc
@@ -65,9 +68,9 @@ func NewHost(cfg HostConfig) (*Host, error) {
 	if cfg.MaxLokal <= 0 {
 		cfg.MaxLokal = 4
 	}
-	h := &Host{app: cfg.App, wake: cfg.Wake, onClosed: cfg.OnClosed}
+	h := &Host{cfg: cfg, app: cfg.App, wake: cfg.Wake, onClosed: cfg.OnClosed}
 	h.ctx, h.cancel = context.WithCancel(context.Background())
-	b, err := fenster.NewBruecke(cfg.App, &limitedGateway{inner: cfg.Gateway, sem: make(chan struct{}, cfg.MaxGateway)}, &limitedLokal{inner: cfg.Lokal, sem: make(chan struct{}, cfg.MaxLokal)}, hostView{h})
+	b, err := fenster.NewBruecke(cfg.App, &limitedGateway{inner: cfg.Gateway, sem: make(chan struct{}, cfg.MaxGateway)}, &limitedLokal{inner: cfg.Lokal, sem: make(chan struct{}, cfg.MaxLokal)}, hostView{h: h, epoch: h.epoch})
 	if err != nil {
 		return nil, err
 	}
@@ -78,19 +81,42 @@ func NewHost(cfg HostConfig) (*Host, error) {
 
 // Receive nimmt eine Seitennachricht an. Es kehrt immer sofort zurück (UI-Thread).
 func (h *Host) Receive(src fenster.Source, raw string) {
-	if h.Closed() || !fenster.SourceAllowed(h.app, src) {
+	h.mu.Lock()
+	if h.closed || h.suspended || !fenster.SourceAllowed(h.app, src) {
+		h.mu.Unlock()
 		return
 	}
 	if h.inflight.Add(1) > maxInflight {
 		h.inflight.Add(-1)
+		h.mu.Unlock()
 		return
 	}
+	bridge, ctx := h.bridge, h.ctx
 	h.wg.Add(1)
-	go func() {
-		defer h.wg.Done()
-		defer h.inflight.Add(-1)
-		h.bridge.Empfangen(h.ctx, src, []byte(raw))
-	}()
+	h.mu.Unlock()
+	go func() { defer h.wg.Done(); defer h.inflight.Add(-1); bridge.Empfangen(ctx, src, []byte(raw)) }()
+}
+
+// Suspend verwirft alte Antworten auch dann, wenn ein Adapter den Abbruch ignoriert.
+func (h *Host) Suspend() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.suspended = true
+	h.epoch++
+	h.out = nil
+	h.cancel()
+}
+func (h *Host) Resume() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.closed {
+		return
+	}
+	h.ctx, h.cancel = context.WithCancel(context.Background())
+	b, _ := fenster.NewBruecke(h.app, &limitedGateway{inner: h.cfg.Gateway, sem: make(chan struct{}, h.cfg.MaxGateway)}, &limitedLokal{inner: h.cfg.Lokal, sem: make(chan struct{}, h.cfg.MaxLokal)}, hostView{h: h, epoch: h.epoch})
+	b.Frist = h.cfg.Frist
+	h.bridge = b
+	h.suspended = false
 }
 
 // Drain übergibt die bereitliegenden Antworten (UI-Thread) und leert die Warteschlange.
@@ -132,12 +158,15 @@ func (h *Host) Closed() bool {
 // Wait wartet auf alle laufenden Nachrichten (Aufräumen und Tests).
 func (h *Host) Wait() { h.wg.Wait() }
 
-type hostView struct{ h *Host }
+type hostView struct {
+	h     *Host
+	epoch uint64
+}
 
 func (v hostView) Senden(b []byte) error {
 	h := v.h
 	h.mu.Lock()
-	if h.closed || len(h.out) >= queueSize {
+	if h.closed || h.suspended || v.epoch != h.epoch || len(h.out) >= queueSize {
 		h.mu.Unlock()
 		return fenster.ErrZuViele
 	}

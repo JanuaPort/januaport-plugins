@@ -126,7 +126,7 @@ func TestAdapterBindetAlleEreignisse(t *testing.T) {
 	})
 	want := RequiredEvents()
 	sort.Strings(want)
-	if !reflect.DeepEqual(want, []string{"DownloadStarting", "FrameNavigationStarting", "NavigationStarting", "NewWindowRequested", "PermissionRequested", "ProcessFailed", "WebMessageReceived", "WebResourceRequested"}) {
+	if !reflect.DeepEqual(want, []string{"DownloadStarting", "FrameNavigationStarting", "NavigationCompleted", "NavigationStarting", "NewWindowRequested", "PermissionRequested", "ProcessFailed", "WebMessageReceived", "WebResourceRequested"}) {
 		t.Fatalf("Pflichtereignisse: %v", want)
 	}
 	for _, ev := range want {

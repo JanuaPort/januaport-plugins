@@ -16,7 +16,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 | Pfad | Inhalt |
 |---|---|
 | main.go | CLI und feste Fehlerausgaben |
-| internal/client/http.go | Einziger HTTP-Adapter, E3, Tokenrollen, Widerruf |
+| internal/client/http.go | Einziger HTTP-Client-Adapter, E3, Tokenrollen, Widerruf (Server-Ausnahme K6c: fensterio/loopback_windows.go) |
 | manifest.go, copied_contract.go | Manifest/Kanonisierung/Ed25519, Gitobjekte/SHA-1DC, Cron/IANA |
 | environment.go, copied_lock.go, copied_zip.go | Allowlist, Wheels, Entpacken und Umgebungsseal |
 | engine.go, halt.go, bootstrap.py | Gemeinsamer Laufplatz, Takt, Claim/Start, lokaler Halt, Rahmenkanal/MCP |
@@ -30,11 +30,11 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 | internal/platform/security_linux.go, server_linux.go | Linux-HMAC/Dateirechte, Sperre und Server-Konfiguration |
 | container.go, container_engine.go, secrets_linux.go | Docker-CLI, Startwege und Geheimnisgrenze |
 | internal/fenster | Reines Go ohne Netz/Prozess/Datei/Windows (K6b-1): CSP-Literal, Navigation, Nachrichten, Einstellungen, Umschlag, Brücke |
-| internal/fensterio | Hinter der Tür des Bedienfelds (K6b-2): Gateway (App-Token im RAM, 401 → einmal neu), Pipe-Wrapper mit zwei Operationen, `Host` (UI-Thread-sicher), `PanelExchange` über die vorhandene Verbindung, `Runtime` (Apps lesen, öffnen), Urteile für native Ereignisse, `Surface` (nur Windows) |
+| internal/fensterio | Hinter der Tür des Bedienfelds (K6b-2): Gateway (App-Token im RAM, Modus a: 401 → einmal neu; Modus b: nativer Login), Pipe-Wrapper mit zwei Operationen, `Host` (UI-Thread-sicher), `PanelExchange` über die vorhandene Verbindung, `Runtime` (Apps lesen, öffnen), Urteile für native Ereignisse, `Surface` (nur Windows) |
 | internal/wv2com | Nur Windows: dünner COM-Adapter für NavigationStarting, NewWindowRequested, DownloadStarting, Quelle der Webnachricht, ClearBrowsingData |
 | internal/edge | Nur Windows: geprüfte, angepasste Kopie von go-webview2 v1.0.19 `pkg/edge` (MIT, NOTICE): kein `os.Exit`, kein `log.Fatal`, Start mit `Begin`/`Ready`/`Cancel`/`Close` statt `Embed` |
 | internal/client/reader.go | `Reader`: nur lesender Zugriff des Bedienfelds auf Zugangsdaten, geprüftes Manifest und App-Siegel |
-| apptoken.go, appstore.go, appload.go, copied_apphost.go | Vertrag 5 im Client: App-Token, privates Ablegen mit Siegel, Ladeprüfung, markierte apphost-Kopie |
+| apptoken.go, applogin.go, appstore.go, appload.go, copied_apphost.go | Vertrag 5 im Client: App-Token, privates Ablegen mit Siegel, Ladeprüfung, markierte apphost-Kopie |
 | contract/golden-v5 | Bytegleicher Kernspiegel von Vertrag 5 (Manifest und Routen) mit SHA256SUMS |
 | probe/k6b_mutations.py | Mutationen K6b-1 im Container mit Go und Python |
 | internal/testfixture | Synthetische Gitpakete nur für Tests |
@@ -268,7 +268,8 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     geschützt (Invariante 13). H3: Pipe-Serverhandles sind nicht vererbbar und
     stehen nie in der expliziten Python-Handleliste (nur stdin/stdout/NUL).
     Native Kind- und echte Python-Sonde prüfen Handle-Tabelle, Env und Kommandozeile:
-    kein Pipe-Name und kein `jnpt*`. Kein neuer Linux-/TCP-/HTTP-Listener.
+    kein Pipe-Name und kein `jnpt*`. Kein Linux-Listener. K6c erlaubt genau einen kurzlebigen
+    Windows-Loopback-Listener in `internal/fensterio/loopback_windows.go` (Invariante 18).
     Unbenannte/unlesbare Pipe-Endpunkte werden bei der Namensabfrage übersprungen;
     Erkennung der Eltern-Pipe, absichtlich vererbtes Handle und eine eigene
     Python-Kontrollpipe sichern die Sonden gegen falsch grüne Ergebnisse.
@@ -369,7 +370,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     **App-Token:** `API.AppToken` (`POST apps/{name}/token`, leerer Körper) und `API.AppRPC` (nur
     `tools/list`, `tools/call`) senden `Authorization` (Gerätetoken) plus genau einen
     `X-Jnpt-App-Token`, nie `X-Jnpt-Run-Token`. `AppSession` hat keinen Getter und druckt sich nie.
-    `fensterio.Gateway` hält sie nur im RAM, holt sie bei 401 `unauthorized` genau einmal neu
+    `fensterio.Gateway` hält sie nur im RAM, holt sie in Modus a bei 401 `unauthorized` genau einmal neu
     (kein Wiederholen bei der zweiten 401) und bildet jeden Fehler auf einen festen Code ab.
     **Fenster-Policy (`internal/fenster`):** Import-Allowlist (keine Netz-, Prozess-, Datei-,
     Windows-Pakete). `NavigationAllowed` erlaubt nur `https://app-<name mit - statt _>-pc.jnpt.invalid`
@@ -567,6 +568,28 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     unter `apps\` werden nicht aufgeräumt; die Ereignisse sind unter Linux nur als Urteile geprüft, ihre
     Bindung belegt allein die native Sonde (`webview_native_windows_test.go`, Opt-in).
 
+    **K6c P3 (persönliche Anmeldung, Vertrag 5/P2):** `internal/anmeldung` hält PKCE/State
+    und prüft den Rückruf. Ein nativer Anmelden-Knopf startet `login_windows.go` in einer
+    Goroutine: `/login` mit Challenge/Port/State, geprüfte HTTPS-URL ohne Userinfo über
+    ShellExecuteW, passender Loopback-Rückruf, `/session` mit Code/Verifier. Kein JWT,
+    kein Refresh, keine Logout-Route; Abmelden vergisst das Token lokal.
+    Genau ein `net.Listen("tcp4", "127.0.0.1:0")` in `internal/fensterio/loopback_windows.go`;
+    dort allein die neue net/http-Server-Ausnahme mit ReadHeaderTimeout/MaxHeaderBytes,
+    kein Client. Ab Klick höchstens fünf Minuten oder erster passender Rückruf;
+    falscher State/Host: 400, Listener bleibt offen. `TestKeineListenerDownloaderOderPip`
+    zählt auch null als Fehler. Fehlerrücksprung nur feste Liste ohne Code (A3).
+    Anzeigename max. 128 Unicode-Zeichen ohne Steuer-/Formatzeichen, ausschließlich
+    native Leiste. `person_gewechselt` entscheidet, fehlend/null bedeutet true (A4).
+    Bei Wechsel/Abmelden: Gateway sperren, Host-Epoche wechseln, alte Antworten verwerfen,
+    altes Dokument durch about:blank beenden, ClearBrowsingDataAll erfolgreich abwarten,
+    erst dann Sitzung freigeben und neu laden (A5). Gleiche Person behält Seite/Eingaben.
+    Auch beim Öffnen alte Profildaten löschen. Keine Lockerung der Browser-Netzsperre;
+    Service Worker umgehen Schicht 1, dort trägt Schicht 2 allein. B1–B4 gelten unverändert.
+    Details/Tests: [fensterio/CLAUDE.md](internal/fensterio/CLAUDE.md).
+    `TestWindowsWebViewPersonenwechselUndAbmelden` und `TestWindowsWebViewAnmeldeknopf` sind neue opt-in-Sonden für BOX,
+    hier nur kompiliert. Lokales Adapter-Golden `internal/client/testdata/contract5_login_adapter.json`;
+    bytegleicher P2-Kernspiegel noch offen, die Quelldatei wurde nicht geliefert.
+
 ## Benannte Grenzen
 
 Widerruf wird offline erst beim Kontakt sichtbar, bis zur Gnadenfrist kann
@@ -609,7 +632,7 @@ mit PASS ohne SKIP laufen. CI/Kompilierung ersetzen diesen Gate-Beleg nicht.
 | Konto/Sitzung/idle vor Spawn | TestKontoUndManipulationVorSpawn, TestReadyVerboteneZustaende, TestIdleVorSpawnUndMount, TestIdleWirdNieAlsAccountGemeldet |
 | Rückstau-Grenze abgelehnter Ergebnisse (L2) | TestAbgelehntesErgebnisStautDenRueckstauNicht, TestAltKernLehntIdleAbJournalStautNicht, TestVerwurfWirdLokalGeloggt |
 | Lauf-TEMP (L3–L6) | TestRunIDFormat, TestRunTempsCreateVerlaesstDieBasisNie, TestRunTempsAnlegenNeuUndExklusiv, TestRunTempsRemoveFolgtKeinemVerweis, TestRunTempsSweepRaeumtRestePlusVerweiseOhneEinzusteigen, TestLaufBekommtPrivatesTempAlsArbeitsverzeichnis, TestLaufTempWirdBeiJedemEndeAufgeraeumt, TestKindUmgebungOhneProfil; Windows: TestMkdirPrivateExklusivUndGeprueft, TestRunTempJunctionKanarienvogel, TestWindowsEnvOhneProfilUndTemp, TestWindowsPythonTempProLauf |
-| B2/B3 Windows: genau ein lokaler Pipe-Listener, keine Netzlistener/Downloads, keine privaten Bodys/Kind-Token | TestKeineListenerDownloaderOderPip, TestNurAnlageUndKeinePrivatenBodys, TestWindowsPythonEchterStartUndManipulation, TestWindowsJobObjectEnkelUndToken |
+| B2/B3 Windows: genau ein lokaler Pipe-Listener, genau ein kurzlebiger Windows-Loopback-Listener (K6c), keine Downloads/privaten Bodys/Kind-Token | TestKeineListenerDownloaderOderPip, TestNurAnlageUndKeinePrivatenBodys, TestWindowsPythonEchterStartUndManipulation, TestWindowsJobObjectEnkelUndToken |
 | Cron/DST, Offline-Grenze und Journal | TestCronZeitzoneUndSlots, TestOfflineRegel, TestOfflineVerweigertWirdJournalisiert |
 | E4: Ciphertext-Deckel, Bestätigung, Neustart | TestJournalDeckelBestaetigungNeustart, TestJournalMisstVerschluesselteBytes, TestWindowsNeustartInterrupted, TestErgebnisrueckstauUndAtomarerSlot |
 | Widerruf an allen Wegen, keine Wiederbelebung | TestWiderrufAnAllenHTTPWegen, TestWiderrufAllesWeg, TestRevokeFolgtKeinemVerweisInTmp, TestRevokeFolgtKeinerJunctionInTmp (Windows) |

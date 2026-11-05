@@ -45,6 +45,25 @@ func TestLoopbackNurEinmalUndFesterHost(t *testing.T) {
 		default:
 		}
 	}
+	for _, tc := range []struct{ method, url, body string }{
+		{"POST", u, ""}, {"GET", strings.Replace(u, "/jnpt/callback", "/jnpt/%63allback", 1), ""},
+		{"GET", u, "body"}, {"GET", u + "&extra=value", ""}, {"GET", strings.Replace(u, "synthetic-code", "%0a", 1), ""},
+	} {
+		req, _ := http.NewRequest(tc.method, tc.url, strings.NewReader(tc.body))
+		res, e := c.Do(req)
+		if e != nil {
+			t.Fatal(e)
+		}
+		res.Body.Close()
+		if res.StatusCode != 400 {
+			t.Fatal("ungueltige HTTP-Anfrage akzeptiert", tc.method, tc.url)
+		}
+		select {
+		case <-l.result:
+			t.Fatal("verbraucht")
+		default:
+		}
+	}
 	res, e := c.Get(u)
 	if e != nil {
 		t.Fatal(e)
