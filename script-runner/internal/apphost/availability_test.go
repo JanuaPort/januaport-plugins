@@ -86,9 +86,9 @@ func TestF2SessionCapacityEvictsEarliestAtHTTP(t *testing.T) {
 	// Arrange a full table, with the earliest expiry neither first nor last.
 	f.h.sessions = make(map[string]binding)
 	for i := 0; i < 4096; i++ {
-		f.h.sessions[fmt.Sprint("session-", i)] = binding{"a", f.now.Add(time.Hour)}
+		f.h.sessions[numberedAppToken(i)] = binding{"a", f.now.Add(time.Hour)}
 	}
-	f.h.sessions["session-2000"] = binding{"a", f.now.Add(time.Second)}
+	f.h.sessions[numberedAppToken(2000)] = binding{"a", f.now.Add(time.Second)}
 	c := f.login()
 	r := f.request("GET", "a.apps.example.test", "/_jnpt/callback?code=capacity", http.Header{"Cookie": {c.String()}}, "")
 	requireStatus(t, r, 200)
@@ -96,7 +96,7 @@ func TestF2SessionCapacityEvictsEarliestAtHTTP(t *testing.T) {
 	for _, tc := range []struct {
 		token string
 		want  int
-	}{{"session-2000", 401}, {"session-0", 200}, {"session-4095", 200}} {
+	}{{numberedAppToken(2000), 401}, {numberedAppToken(0), 200}, {numberedAppToken(4095), 200}} {
 		requireStatus(t, f.request("GET", "a.apps.example.test", "/", http.Header{"Cookie": {"__Host-jnpt_app=" + tc.token}}, ""), tc.want)
 	}
 	f.h.mu.Lock()
@@ -104,6 +104,10 @@ func TestF2SessionCapacityEvictsEarliestAtHTTP(t *testing.T) {
 	if len(f.h.sessions) != 4096 {
 		t.Fatal("session table must stay bounded", len(f.h.sessions))
 	}
+}
+
+func numberedAppToken(i int) string {
+	return "jnpt" + "app_" + fmt.Sprintf("%026d", i) + "." + strings.Repeat("B", 26)
 }
 
 func TestH2PackageFetchIsolationAndCoalescingAtHTTP(t *testing.T) {
@@ -146,7 +150,8 @@ func TestH2PackageFetchIsolationAndCoalescingAtHTTP(t *testing.T) {
 	// Release before httptest cleanup even when an assertion fails.
 	defer unblock()
 	f.h.c.GatewayURL = gw.URL
-	f.h.sessions["session-b"] = binding{"b", f.now.Add(time.Hour)}
+	bToken := numberedAppToken(1)
+	f.h.sessions[bToken] = binding{"b", f.now.Add(time.Hour)}
 	request := func(ctx context.Context, app, token string, waiter bool) (int, string, error) {
 		r, err := http.NewRequestWithContext(ctx, "GET", f.server.URL+"/", nil)
 		if err != nil {
@@ -184,7 +189,7 @@ func TestH2PackageFetchIsolationAndCoalescingAtHTTP(t *testing.T) {
 	}
 	bctx, bcancel := context.WithTimeout(ctx, time.Second)
 	defer bcancel()
-	n, body, err := request(bctx, "b", "session-b", false)
+	n, body, err := request(bctx, "b", bToken, false)
 	if err != nil || n != 200 || body != "app-b" {
 		t.Fatalf("app b blocked by app a: status=%d err=%v", n, err)
 	}
