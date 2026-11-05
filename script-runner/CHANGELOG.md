@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- #1317: Apphost akzeptiert die vom Kern ausgegebene App-Token-Form
+  `jnptapp_<26>.<26>` mit genau einem Punkt und je 26 Zeichen aus
+  `[A-Za-z0-9_-]`. Eigene Prüfung in Callback und Sitzung, unverändertes Cookie
+  und MCP-Bearer; `opaque` für Apphost-Schlüssel und Login-Verifier unverändert.
+  Test-first mit echter Base32-Form in allen bestehenden Apphost-Tests,
+  Form-/Grenztests am HTTP-Adapter und vollständigem Callback-Cookie-MCP-Ablauf.
+
 ## 0.4.1 — 2026-11-04 (JanuaPort/januaport#1299, #1296)
 
 - **Image:** `sha256:76ec4f8f517ad01243195927fda924e264408c56409cb5b8e5573127bda822e5` (Index, nur `linux/amd64`; arm64-Ausnahme siehe 0.3.1, JanuaPort/januaport#928; Release-Lauf 41869076813)

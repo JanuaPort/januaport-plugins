@@ -13,7 +13,7 @@ import (
 
 func TestSessionMustBeIssuedUnexpiredAndHostBound(t *testing.T) {
 	f := setup(t)
-	for _, value := range []string{"invented", credential("app") + "b"} {
+	for _, value := range []string{"invented", numberedAppToken(1)} {
 		requireStatus(t, f.request("GET", "a.apps.example.test", "/", http.Header{"Cookie": []string{"__Host-jnpt_app=" + value}}, ""), 401)
 	}
 	requireStatus(t, f.request("GET", "b.apps.example.test", "/", session(), ""), 401)

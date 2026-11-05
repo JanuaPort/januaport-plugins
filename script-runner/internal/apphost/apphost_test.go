@@ -23,7 +23,13 @@ import (
 )
 
 // Values are constructed at runtime, never credential-shaped literals in Git.
-func credential(kind string) string { return "jnpt" + kind + "_" + strings.Repeat("a", 43) }
+func credential(kind string) string {
+	if kind == "app" {
+		// crypto/rand.Text in the core emits 26 Base32 characters per half.
+		return "jnpt" + kind + "_" + strings.Repeat("A", 26) + "." + strings.Repeat("B", 26)
+	}
+	return "jnpt" + kind + "_" + strings.Repeat("a", 43)
+}
 
 type fileSpec struct{ name, data, mode string }
 
@@ -87,6 +93,7 @@ type fixture struct {
 	maxAge      int
 	key         string
 	keyPath     string
+	token       string
 	now         time.Time
 	logs        bytes.Buffer
 }
@@ -96,7 +103,7 @@ func setup(t *testing.T, files ...fileSpec) *fixture {
 	if len(files) == 0 {
 		files = []fileSpec{{"index.html", "<h1>app</h1>", ""}, {"main.js", "console.log(1)", ""}, {"jnpt.app.json", "{}", ""}}
 	}
-	f := &fixture{t: t, status: 200, proxyStatus: 200, maxAge: 47, key: credential("apphost"), now: time.Now().Truncate(time.Second)}
+	f := &fixture{t: t, status: 200, proxyStatus: 200, maxAge: 47, key: credential("apphost"), token: credential("app"), now: time.Now().Truncate(time.Second)}
 	f.data, f.commit = bundle(t, "a", files)
 	f.keyPath = filepath.Join(t.TempDir(), "runtime-key")
 	if err := os.WriteFile(f.keyPath, []byte(f.key), 0600); err != nil {
@@ -160,7 +167,7 @@ func (f *fixture) gateway(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(204)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"token": credential("app"), "expires_at": f.now.Add(time.Duration(f.maxAge) * time.Second).UTC().Format(time.RFC3339), "max_age": f.maxAge})
+		_ = json.NewEncoder(w).Encode(map[string]any{"token": f.token, "expires_at": f.now.Add(time.Duration(f.maxAge) * time.Second).UTC().Format(time.RFC3339), "max_age": f.maxAge})
 	case "/internal/apps/tls-ask":
 		if r.Method != "GET" || r.URL.Query().Get("domain") != "a.apps.example.test" || f.status != 200 {
 			w.WriteHeader(404)
