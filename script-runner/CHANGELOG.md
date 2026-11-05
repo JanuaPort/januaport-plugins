@@ -4,6 +4,10 @@
 
 ## 0.4.2 — 2026-11-05 (JanuaPort/januaport#1317)
 
+- **Image:** `sha256:72f1b40524fc6939fbd94c5674de4da24cd8c9ac621c0e19b0129fd10ab30da7` (Index, nur `linux/amd64`; arm64-Ausnahme siehe 0.3.1, JanuaPort/januaport#928; Release-Lauf 41995354612)
+- **Geprüft mit JanuaPort:** Kern 0.94.2 auf der Showcase seit 05.11. (`script_echo` nach dem Tausch `end=ok`, Apphost mit `monitor` und `steuer`, App-Anmeldung und Aufruf im Audit belegt)
+- **Scan:** Trivy 0.74.0 vom 05.11.2026, 0 Funde mit Fix; 1 CRITICAL und 59 HIGH ohne Fix fallen unter die Ausnahme JanuaPort/januaport#1059 bis 2027-01-08
+
 - #1317: Apphost akzeptiert die vom Kern ausgegebene App-Token-Form
   `jnptapp_<26>.<26>` mit genau einem Punkt und je 26 Zeichen aus
   `[A-Za-z0-9_-]`. Eigene Prüfung in Callback und Sitzung, unverändertes Cookie
