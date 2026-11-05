@@ -77,8 +77,10 @@ type fakeCore struct {
 	calls    int
 	model    func(http.ResponseWriter, *http.Request, int)
 	tool     json.RawMessage
-	list     json.RawMessage
-	before   func(http.ResponseWriter, *http.Request) bool
+	// toolFor liefert das Ergebnis des n-ten Werkzeugaufrufs (ab 1); nil heißt: tool.
+	toolFor func(n int) json.RawMessage
+	list    json.RawMessage
+	before  func(http.ResponseWriter, *http.Request) bool
 }
 
 func (f *fakeCore) serve(t *testing.T, w http.ResponseWriter, r *http.Request) {
@@ -142,6 +144,7 @@ func (f *fakeCore) serve(t *testing.T, w http.ResponseWriter, r *http.Request) {
 	case "tools/call":
 		f.mu.Lock()
 		f.calls++
+		n := f.calls
 		f.mu.Unlock()
 		var p struct {
 			Name      string
@@ -152,7 +155,9 @@ func (f *fakeCore) serve(t *testing.T, w http.ResponseWriter, r *http.Request) {
 			t.Error("tool call not forwarded")
 		}
 		result = f.tool
-		if f.tool == nil {
+		if f.toolFor != nil {
+			result = f.toolFor(n)
+		} else if f.tool == nil {
 			result = json.RawMessage(`{"content":[{"type":"text","text":"` + secret + `"}]}`)
 		}
 	default:
