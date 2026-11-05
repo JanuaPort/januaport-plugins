@@ -26,6 +26,65 @@ func pumpLoginResult(t *testing.T, l *Login, v *loginView, wake <-chan struct{})
 	l.Pump(v)
 }
 
+type loginPumpView struct {
+	loginView
+	accountCalls int
+}
+
+func (v *loginPumpView) Account(name, message string, busy, signed bool) {
+	v.accountCalls++
+	v.loginView.Account(name, message, busy, signed)
+}
+
+func TestLoginPumpVerwirftAlteGenerationNachAbmelden(t *testing.T) {
+	p := personForTest(t)
+	g := NewGateway(nil, "demo")
+	wake := make(chan struct{}, 1)
+	l := NewLogin(g, nil, func(context.Context) (client.PersonSession, error) { return p, nil }, func() { wake <- struct{}{} })
+	defer l.Close()
+	v := &loginPumpView{}
+	l.Start()
+	select {
+	case <-wake:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Login blockiert")
+	}
+	if len(l.out) != 1 {
+		t.Fatal("Kontrolle: Ergebnis fehlt im Puffer")
+	}
+	old := <-l.out
+	if old.err != nil || old.person.Session.IsZero() || !l.current(old.generation) {
+		t.Fatal("Kontrolle: kein gültiges Anmeldeergebnis")
+	}
+	l.out <- old
+	l.SignOut(v)
+	if len(l.out) != 0 || l.current(old.generation) {
+		t.Fatal("Kontrolle: Abmelden verwirft Generation/Puffer nicht")
+	}
+	v.quiet(true)
+	v.clear(true)
+	if !g.session.IsZero() || l.signed || v.signed || v.name != "" || v.message != anmeldung.Message("abgemeldet") {
+		t.Fatal("Kontrolle: Abmelden nicht abgeschlossen")
+	}
+	viewCalls, accountCalls := len(v.events), v.accountCalls
+
+	// SignOut leert den Puffer unter demselben Mutex wie das Einreihen.
+	// Die Prüfung in Pump ist die zweite Schicht und sichert gegen eine spätere
+	// Umordnung. Dafür wird das echte Ergebnis der alten Generation nach dem
+	// Abmelden bewusst erneut eingereiht; der heutige Ablauf tut das nicht.
+	l.out <- old
+	l.Pump(v)
+	if len(l.out) != 0 {
+		t.Error("Pump hat das alte Ergebnis nicht abgenommen")
+	}
+	if len(v.events) != viewCalls || v.accountCalls != accountCalls {
+		t.Error("alte Generation löst neue View-Aufrufe aus")
+	}
+	if !g.session.IsZero() || l.signed || l.name != "" || v.signed || v.name != "" || v.message != anmeldung.Message("abgemeldet") {
+		t.Error("alte Anmeldung kehrt nach Abmelden zurück")
+	}
+}
+
 // Beide Fälle benutzen den echten HTTP-Adapter, Gateway, Host und Login.
 // Kein direkter Suspend-Aufruf: Die Grenze muss durch switchPerson entstehen.
 func loginDiscardsOldReply(t *testing.T, queued bool) {

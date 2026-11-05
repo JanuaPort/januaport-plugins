@@ -27,6 +27,7 @@ CASES = [
     ("loeschfehler", "fensterio/login.go", "if !ok {", "if false {", "fensterio", "TestLoginBereinigungsfehler", False),
     ("abmelden-token", "fensterio/login.go", "l.gateway.Forget()\n\tif l.host", "// vergessen entfernt\n\tif l.host", "fensterio", "TestPersonenwechselVorFreigabe", False),
     ("login-suspend", "fensterio/login.go", "l.host.Suspend()", "// Suspend entfernt", "fensterio", "TestLoginVerwirftLaufendeAntwort", False),
+    ("login-pump-generation", "fensterio/login.go", "if !l.current(r.generation) {", "if false {", "fensterio", "TestLoginPumpVerwirftAlteGenerationNachAbmelden", False),
     ("host-suspend-out", "fensterio/host.go", "h.epoch++\n\th.out = nil", "h.epoch++", "fensterio", "TestLoginVerwirftWartendeAntwort", False),
     ("session-zeitablauf", "fensterio/login_windows.go", 'he.Class == "kein_zugriff"', 'he.Class == "unbekannt"', "fensterio", "TestLoginVomKnopfBisSessionAmAdapter", True),
     ("konto-abgelaufen", "fensterio/login.go", "l.signed && l.gateway.personalExpired()", "false && l.gateway.personalExpired()", "fensterio", "TestLoginSitzungsablaufEntferntKontoAmAdapter", False),
