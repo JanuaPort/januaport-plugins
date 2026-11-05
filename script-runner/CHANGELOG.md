@@ -4,6 +4,10 @@
 
 ## 0.4.1 — 2026-11-04 (JanuaPort/januaport#1299, #1296)
 
+- **Image:** `sha256:76ec4f8f517ad01243195927fda924e264408c56409cb5b8e5573127bda822e5` (Index, nur `linux/amd64`; arm64-Ausnahme siehe 0.3.1, JanuaPort/januaport#928; Release-Lauf 41869076813)
+- **Geprüft mit JanuaPort:** Kern 0.92.1 auf der Showcase seit 04.11. (`script_echo` vor und nach dem Tausch ok, Zeitplan `dauerlauf_1313` erster Slot `end=ok`); Speicherpins und App-Host weiter ohne Live-Lauf
+- **Scan:** Trivy 0.74.0 vom 04.11.2026, 0 Funde mit Fix; 1 CRITICAL und 58 HIGH ohne Fix fallen unter die Ausnahme JanuaPort/januaport#1059 bis 2027-01-08
+
 - #1299: Eine fehlende Speicher-Pinliste erzeugt INFO nur beim ersten Fehlen
   und bei Zustandswechseln. Andere Lese-, Signatur- und Hashfehler warnen je
   Durchlauf; Entzug der Freigaben und Fünf-Sekunden-Takt bleiben unverändert.
