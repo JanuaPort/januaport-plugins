@@ -300,13 +300,15 @@ func (a *application) render() {
 	n := notifyData{Window: a.window, ID: 1, Flags: trayFlags, Callback: wmTray, Icon: a.icons[v.Color]}
 	n.Size = uint32(unsafe.Sizeof(n))
 	copy(n.Tip[:], syscall.StringToUTF16(v.Tooltip))
-	op := uintptr(0)
-	if a.tray {
-		op = 1
+	try := func(modify bool) bool {
+		op := uintptr(0)
+		if modify {
+			op = nimModify
+		}
+		ok, _, _ := notifyIcon.Call(op, uintptr(unsafe.Pointer(&n)))
+		return ok != 0
 	}
-	if ok, _, _ := notifyIcon.Call(op, uintptr(unsafe.Pointer(&n))); ok != 0 {
-		a.tray = true
-	}
+	a.tray = panel.TrayUpdate(a.tray, try)
 	if a.tray && a.model.TakeNotice() {
 		a.notify()
 	}
