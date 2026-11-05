@@ -640,7 +640,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     `balloon-flag`, `balloon-in-render`, `notice-*` in `probe/l4_mutations.py`. Ob Windows den Hinweis zeigt
     (Fokus-Assistent, Benachrichtigungseinstellungen), ist nur nativ prüfbar.
     **Symbol nach Autostart:** `render()` setzt `a.tray` aus `panel.TrayUpdate(a.tray, …)`: Scheitert die erste
-    Operation (ADD/MODIFY), folgt die andere, weil das Symbol nach Autostart oder Explorer-Neustart schon da sein
+    Operation (ADD/MODIFY), folgt die andere, weil das Symbol beim ersten Neustart nach `install` schon da sein
     kann; sonst bliebe `tray` falsch und `TakeNotice` würde nie geprüft (Test `TestTrayUpdateVersuche`).
 
 ## Benannte Grenzen
