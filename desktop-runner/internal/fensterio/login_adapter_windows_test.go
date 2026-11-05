@@ -20,7 +20,7 @@ import (
 
 // Ausschließlich Go-HTTP, kein Systembrowser, kein Windows-/GUI-Aufruf.
 func TestLoginVomKnopfBisSessionAmAdapter(t *testing.T) {
-	for _, failure := range []string{"", "kein_zugriff", "platz_gesperrt", "abgebrochen"} {
+	for _, failure := range []string{"", "kein_zugriff", "platz_gesperrt", "abgebrochen", "session-kein_zugriff", "session-platz_gesperrt"} {
 		t.Run(failure, func(t *testing.T) {
 			var state, challenge string
 			var port, sessions, opens int
@@ -43,6 +43,11 @@ func TestLoginVomKnopfBisSessionAmAdapter(t *testing.T) {
 					fmt.Fprint(w, `{"authorize_url":"https://idp.example/authorize?a=b&state=c"}`)
 				case "/api/device/v1/apps/demo/session":
 					sessions++
+					if strings.HasPrefix(failure, "session-") {
+						w.WriteHeader(403)
+						fmt.Fprintf(w, `{"error":{"class":%q,"message":"PRIVATE"}}`, strings.TrimPrefix(failure, "session-"))
+						return
+					}
 					var b struct{ Code, Verifier string }
 					if json.NewDecoder(r.Body).Decode(&b) != nil || b.Code != "synthetic-code" || !anmeldung.ValidVerifier(b.Verifier) {
 						t.Error("Tausch")
@@ -71,7 +76,7 @@ func TestLoginVomKnopfBisSessionAmAdapter(t *testing.T) {
 					t.Error("Browserstart")
 				}
 				suffix := "code=synthetic-code"
-				if failure != "" {
+				if failure != "" && !strings.HasPrefix(failure, "session-") {
 					suffix = "fehler=" + failure
 				}
 				res, e := http.Get(fmt.Sprintf("http://127.0.0.1:%d/jnpt/callback?state=%s&%s", port, state, suffix))
@@ -90,6 +95,14 @@ func TestLoginVomKnopfBisSessionAmAdapter(t *testing.T) {
 			if failure == "" {
 				if e != nil || person.Session.IsZero() || sessions != 1 {
 					t.Fatal("kein Tausch", e)
+				}
+			} else if strings.HasPrefix(failure, "session-") {
+				want := "platz_gesperrt"
+				if failure == "session-kein_zugriff" {
+					want = "zeitablauf"
+				}
+				if e == nil || sessions != 1 || loginMessage(e) != anmeldung.Message(want) {
+					t.Fatal("falsche Meldung nach Code-Tausch", loginMessage(e))
 				}
 			} else if e == nil || sessions != 0 || loginMessage(e) != anmeldung.Message(failure) {
 				t.Fatal("Fehler hat Code eingeloest", e)

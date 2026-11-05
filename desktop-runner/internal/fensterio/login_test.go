@@ -20,6 +20,7 @@ type loginView struct {
 	quiet, clear         func(bool)
 	failQuiet, failClear bool
 	name, message        string
+	signed               bool
 }
 
 func (v *loginView) Quiesce(done func(bool)) error {
@@ -42,6 +43,7 @@ func (v *loginView) Reload() error { v.events = append(v.events, "reload"); retu
 func (v *loginView) Account(name, message string, busy, signed bool) {
 	v.name = name
 	v.message = message
+	v.signed = signed
 }
 func (v *loginView) FailLogin() { v.events = append(v.events, "fail") }
 
@@ -75,6 +77,8 @@ func TestPersonenwechselVorFreigabeUndAbmeldenLoeschen(t *testing.T) {
 			l := NewLogin(g, nil, func(context.Context) (client.PersonSession, error) { return p, nil }, func() { wake <- struct{}{} })
 			defer l.Close()
 			l.name = "Gleich" // zwei Personen dürfen denselben Namen tragen
+			l.signed = true
+			g.install(p.Session)
 			v := &loginView{}
 			l.Start()
 			select {

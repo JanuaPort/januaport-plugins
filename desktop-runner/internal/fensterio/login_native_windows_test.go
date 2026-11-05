@@ -86,6 +86,8 @@ setInterval(()=>localStorage.setItem("konto","synthetisch"),10);send("gespeicher
 		l := NewLogin(NewGateway(nil, "probe"), o.Host, func(context.Context) (client.PersonSession, error) { return person, nil }, nil)
 		o.login = l
 		l.name = "Gleich"
+		l.signed = true
+		l.gateway.install(person.Session)
 		b.gw.reset()
 		l.Start()
 		if !pump(t, s, 20*time.Second, func() bool { return !l.busy }) {
