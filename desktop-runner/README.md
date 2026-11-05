@@ -17,6 +17,8 @@ verlangt Vertrag 5 (Vertrag 4 plus `apps`); ältere verifizierte Caches (v1, v3,
 liefern beim Upgrade nur die Sequenz für den neuen Sync. Der Parser bleibt strikt:
 `apps` ist unter v1–v4 gesperrt und unter v5 Pflicht, Setup-Beschriftungen haben
 höchstens 40 Unicode-Zeichen.
+`apps[].mode` ist optional: nur `a`, `b` oder leer; andere Werte sind Manifestfehler.
+Vertrag 5 bleibt unverändert. Der Modus steuert ausschließlich die native Anzeige.
 `pins[].setups` enthält feste Eingabe und `frei`-Felddefinitionen;
 `pins[].grace_hours` überschreibt die Gerätefrist.
 
@@ -77,6 +79,12 @@ Der Fensterteil folgt im nächsten Abschnitt (K6b-2). Mutationen: `probe/k6b_mut
 
 ## Persönliche Anmeldung am PC (K6c P3, noch ohne VM-Beleg)
 
+Die Anmeldeleiste erscheint in Modus b. In Modus a erscheinen weder Anmeldeleiste
+noch Anmelde-/Abmeldeknopf oder Anmeldemeldung. Fehlt `apps[].mode` oder ist es leer
+(älterer Kern), erscheint die Leiste wie bisher. Ein neuer geprüfter Manifeststand
+aktualisiert auch offene Fenster beim nächsten Abgleich. Rechte, `/token`, Login-Fluss
+und alle Sperren aus K6b-2/K6c bleiben unverändert; der Modus ist nur Bedienhilfe.
+
 Bei `nicht_angemeldet` in einer Modus-b-App startet **Anmelden** in der nativen
 Leiste den Systembrowser. Dort das eigene Konto wählen und die Bestätigungsseite
 prüfen. Danach zum App-Fenster zurückkehren. Die Leiste zeigt das Konto; Fehler
@@ -123,15 +131,21 @@ Sicherheitsgrenzen. Das Audit belegt das Konto, nicht den Menschen am Platz.
 IdP-Sperren und Gruppenentzug wirken erst bei JWT-Ablauf. Keycloak und der
 HTTPS→Loopback-Sprung wurden hier nicht live geprüft.
 
-BOX fährt zusätzlich `TestWindowsWebViewPersonenwechselUndAbmelden` und `TestWindowsWebViewAnmeldeknopf` mit
+BOX fährt zusätzlich `TestWindowsWebViewAnmeldeleisteNachModus`, `TestWindowsWebViewPersonenwechselUndAbmelden` und `TestWindowsWebViewAnmeldeknopf` mit
 `JNPT_NATIVE_WEBVIEW_PROBE=1`, interaktiver Sitzung und `-test.timeout 20m`:
 Persistenzkontrolle, gleiche Namen, localStorage/sessionStorage/IndexedDB/Service
 Worker nach Wechsel und Abmelden. Hier nur cross-kompiliert, keine GUI gestartet.
 Die bestehenden WebRTC-, Netz- und Prozessbaumsonden bleiben Pflicht.
 Go-HTTP-Tests `TestLoopback*` und `TestLoginVomKnopfBisSessionAmAdapter` öffnen
-keinen Browser. Mutationen: `python probe/k6c_mutations.py` mit `k6cp3-test`.
+keinen Browser. Mutationen: `python probe/k6c_mutations.py` mit `k6cp3-test`
+(anderer eigener Container über `JNPT_MUTATION_CONTAINER`, für #1321 `j1321p-mode`).
+`leiste-immer` prüft ausschließlich das echte Surface-Layout ohne GUI;
+`app-mode-ungueltig` entfernt die Feldprüfung am HTTP-/Manifestadapter.
 Das lokale Adapter-Golden ergänzt den bytegleichen P2-Kernspiegel aus ea50aa7a:
 `contract/golden-v5/contract5_login_routes.json`, geprüft durch `TestGoldenV5AusKern` und `SHA256SUMS`.
+Der Manifestspiegel enthält ab #1321 `mode` (SHA-256
+`7cfb70018cb3265f39245b43de2e0c64f2859b8be366c4b34509454058656ae6`);
+ein Manifest ohne das Feld bleibt ausdrücklich getestet.
 
 ## PC-Fenster, Teil 2: App-Fenster im Bedienfeld (K6b-2, ohne Release)
 

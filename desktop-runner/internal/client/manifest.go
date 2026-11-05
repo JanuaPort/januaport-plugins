@@ -174,9 +174,12 @@ func RunKey(p Pin, s Schedule, slot time.Time) string {
 }
 
 // validApps prüft Vertrag 5 streng: gültiger Name, SHA-256-Commit, fester Pfad
-// apps/<name>, nach Name streng aufsteigend (damit auch eindeutig).
+// apps/<name>, nach Name streng aufsteigend (damit auch eindeutig), Mode nur a/b/leer.
 func validApps(apps []App) bool {
 	for i, a := range apps {
+		if a.Mode != "" && a.Mode != "a" && a.Mode != "b" {
+			return false
+		}
 		if !fenster.ValidAppName(a.Name) || !validID("sha256", a.Commit) || a.Path != "apps/"+a.Name || (i > 0 && apps[i-1].Name >= a.Name) {
 			return false
 		}

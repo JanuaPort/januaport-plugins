@@ -15,6 +15,7 @@ import (
 )
 
 // Kernreferenzen K6a und K6c P2 (ea50aa7a): Spiegelung aus JanuaPort/januaport, internal/desktop/testdata.
+// Manifest seit #1321 aus jpwt-1321 mit optionalem mode; übrige Spiegel unverändert.
 // Die Bytes wurden kopiert, nicht neu serialisiert (D0-Muster, contract/golden-v5).
 var v5Golden = map[string]string{
 	"manifest_apps_canonical.bin": "7cfb70018cb3265f39245b43de2e0c64f2859b8be366c4b34509454058656ae6",

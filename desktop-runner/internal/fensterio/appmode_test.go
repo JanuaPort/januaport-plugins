@@ -17,7 +17,6 @@ import (
 // Schreibt echte signierte Manifestbytes, auch für ungültige und alte Kernstände.
 func saveAppMode(t *testing.T, b *runtimeBed, mode *string, seq uint64) {
 	t.Helper()
-	b.bed.SaveManifest(t, b.bed.Apps, seq, true)
 	var bundle client.Bundle
 	if err := b.bed.St.Load("manifest", &bundle); err != nil {
 		t.Fatal(err)
@@ -27,6 +26,7 @@ func saveAppMode(t *testing.T, b *runtimeBed, mode *string, seq uint64) {
 		t.Fatal(err)
 	}
 	app := raw["apps"].([]any)[0].(map[string]any)
+	raw["seq"] = seq
 	delete(app, "mode")
 	if mode != nil {
 		app["mode"] = *mode
@@ -69,6 +69,25 @@ func TestRuntimeAppModeAusAktuellemManifest(t *testing.T) {
 	if o, err := b.rt.Open("demo"); err == nil {
 		o.Close()
 		t.Fatal("ungültiger Modus am echten Reader angenommen")
+	}
+}
+
+func TestRuntimeAppModeUmgehtPersonRequiredNicht(t *testing.T) {
+	b := newRuntimeBed(t)
+	b.core.personRequired.Store(true)
+	for i, mode := range []string{"a", "b", ""} {
+		saveAppMode(t, b, &mode, uint64(i+2))
+		o, err := b.rt.Open("demo")
+		if err != nil {
+			t.Fatal(err)
+		}
+		o.Host.Receive(fenster.Source{MainFrame: true, URL: fenster.StartURL("demo")}, `{"id":"1","befehl":"werkzeuge","args":{}}`)
+		o.Host.Wait()
+		got := o.Host.Drain()
+		o.Close()
+		if len(got) != 1 || !strings.Contains(string(got[0]), `"fehler":"nicht_angemeldet"`) || b.core.mcpHits.Load() != 0 || b.core.tokHits.Load() != int32(i+1) {
+			t.Fatalf("mode=%q umgeht die /token-Abweisung: %q", mode, got)
+		}
 	}
 }
 

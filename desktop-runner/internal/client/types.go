@@ -130,7 +130,9 @@ const appsContract = 5
 
 // App ist ein dem Gerät zugewiesener Manifesteintrag (Vertrag 5): Name,
 // SHA-256-Speichercommit und der feste Pfad apps/<name>. Keine Identity, keine Person.
+// Mode ist optional (a/b/leer), ausschließlich Bedienhilfe für die native Anmeldeleiste.
 type App struct {
+	Mode   string `json:"mode,omitempty"`
 	Name   string `json:"name"`
 	Commit string `json:"commit"`
 	Path   string `json:"path"`

@@ -21,12 +21,13 @@ import (
 )
 
 type coreBed struct {
-	srv      *httptest.Server
-	revoke   atomic.Bool
-	mcpHits  atomic.Int32
-	tokHits  atomic.Int32
-	lastHdr  atomic.Value // http.Header der letzten MCP-Anfrage
-	appToken string
+	srv            *httptest.Server
+	revoke         atomic.Bool
+	personRequired atomic.Bool
+	mcpHits        atomic.Int32
+	tokHits        atomic.Int32
+	lastHdr        atomic.Value // http.Header der letzten MCP-Anfrage
+	appToken       string
 }
 
 func newCore(t *testing.T) *coreBed {
@@ -37,6 +38,11 @@ func newCore(t *testing.T) *coreBed {
 		switch r.URL.Path {
 		case "/api/device/v1/apps/demo/token":
 			c.tokHits.Add(1)
+			if c.personRequired.Load() {
+				w.WriteHeader(409)
+				_, _ = io.WriteString(w, `{"error":{"class":"person_required","message":"Bitte mit dem eigenen Konto anmelden."}}`)
+				return
+			}
 			if c.revoke.Load() {
 				w.WriteHeader(401)
 				_, _ = io.WriteString(w, `{"error":{"class":"revoked"}}`)

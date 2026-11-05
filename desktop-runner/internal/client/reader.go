@@ -14,10 +14,12 @@ type Reader struct {
 	cipher Cipher
 }
 
-// AppsView ist, was das Bedienfeld über Apps wissen darf: die geprüften Manifesteinträge und das Testgerät-Signal.
+// AppsView ist, was das Bedienfeld über Apps wissen darf: geprüfte Manifesteinträge,
+// ihre Sequenz (gegen veraltete Anzeige beim asynchronen Öffnen) und das Testgerät-Signal.
 type AppsView struct {
-	Apps       []App
-	TestDevice bool
+	Apps        []App
+	ManifestSeq uint64
+	TestDevice  bool
 }
 
 // NewReader verlangt eine absolute, bereinigte Wurzel.
@@ -112,7 +114,7 @@ func (r *Reader) Apps() (AppsView, error) {
 	if err != nil || m.Contract != WindowsContract || m.Apps == nil {
 		return AppsView{}, ErrManifest
 	}
-	return AppsView{Apps: append([]App(nil), *m.Apps...), TestDevice: m.TestDevice}, nil
+	return AppsView{Apps: append([]App(nil), *m.Apps...), ManifestSeq: m.Seq, TestDevice: m.TestDevice}, nil
 }
 
 // OpenApp prüft das Siegel und liefert den Ordner; derselbe Weg wie AppStore.Open.

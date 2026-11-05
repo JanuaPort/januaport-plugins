@@ -3,15 +3,21 @@
 Auf Windows: python probe/k6c_mutations.py (Go-HTTP-Tests, keine GUI/Sonde).
 Linux-Ziele laufen im benannten Container k6cp3-test. Kein anderer Container
 wird gestartet, gestoppt oder verändert. Native WebView-Sonden gehören BOX.
+JNPT_MUTATION_CONTAINER überschreibt den Namen (für #1321: j1321p-mode).
 """
 from pathlib import Path
+import os
 import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+CONTAINER = os.environ.get("JNPT_MUTATION_CONTAINER", "k6cp3-test")
 
 # name, file, old, new, package, test, windows-only standard Go adapter
 CASES = [
+    ("leiste-immer", "fensterio/runtime.go", 'return o.Mode != "a"', 'return true', "fensterio", "TestSurfaceAnmeldeleisteNachModus", True),
+    ("app-mode-ungueltig", "client/manifest.go", 'a.Mode != "" && a.Mode != "a" && a.Mode != "b"', 'false', "client", "TestManifestAppModeAmHTTPAdapter", False),
+    ("anzeige-alter-stand", "fensterio/login_surface_windows.go", 'l.ManifestSeq < s.o.ManifestSeq', 'false', "fensterio", "TestSurfaceAnzeigemodusVerwirftAltenStand", True),
     ("pkce", "anmeldung/anmeldung.go", "sha256.Sum256([]byte(verifier))", 'sha256.Sum256([]byte("constant"))', "anmeldung", "TestPKCEUndState", False),
     ("state", "anmeldung/anmeldung.go", "subtle.ConstantTimeCompare([]byte(q.Get(\"state\")), []byte(f.State)) != 1", "subtle.ConstantTimeCompare([]byte(q.Get(\"state\")), []byte(f.State)) == -1", "fensterio", "TestLoopbackNurEinmal", True),
     ("host", "anmeldung/anmeldung.go", "host != wantHost", "false", "fensterio", "TestLoopbackNurEinmal", True),
@@ -33,7 +39,7 @@ CASES = [
     ("konto-abgelaufen", "fensterio/login.go", "l.signed && l.gateway.personalExpired()", "false && l.gateway.personalExpired()", "fensterio", "TestLoginSitzungsablaufEntferntKontoAmAdapter", False),
     ("unsigniert-neuladen", "fensterio/login.go", "r.person.Changed || !l.signed", "r.person.Changed", "fensterio", "TestLoginGleichePersonOhneLokaleSitzungLaedtNeu", False),
     ("alte-antwort", "fensterio/host.go", "v.epoch != h.epoch ||", "", "fensterio", "TestPersonenwechselVerwirftAlteBrueckenantwort", False),
-    ("person-required", "fensterio/gateway.go", 'he.Status == 409 && he.Class == "person_required"', 'he.Status == 409 && he.Class == "unknown"', "fensterio", "TestGatewayPersonRequiredAmAdapter", False),
+    ("person-required", "fensterio/gateway.go", 'he.Status == 409 && he.Class == "person_required"', 'he.Status == 409 && he.Class == "unknown"', "fensterio", "Test(GatewayPersonRequiredAmAdapter|RuntimeAppModeUmgehtPersonRequiredNicht)", False),
     ("frist", "fensterio/loopback_windows.go", "5 * time.Minute", "6 * time.Minute", "fensterio", "TestLoginNativVerdrahtet", False),
     ("falsch-verbraucht", "fensterio/loopback_windows.go", "w.WriteHeader(400)", "_ = listener.Close(); w.WriteHeader(400)", "fensterio", "TestLoopbackNurEinmal", True),
     ("header-frist", "fensterio/loopback_windows.go", "ReadHeaderTimeout: 5 * time.Second,", "", "client", "TestKeineListenerDownloaderOderPip", False),
@@ -45,7 +51,7 @@ CASES = [
 
 def command(package, test, windows):
     args = ["go", "test", "./internal/" + package, "-run", "^" + test, "-count=1", "-timeout=30s"]
-    return args if windows else ["docker", "exec", "k6cp3-test", *args]
+    return args if windows else ["docker", "exec", CONTAINER, *args]
 
 def main():
     selected = set(sys.argv[1:])
