@@ -1196,6 +1196,13 @@ als Anmeldung gelten. Die Anmeldung ist zustandslos: Der Verifier liegt nur im
 hostgebundenen Login-Cookie mit fünf Minuten Laufzeit, ohne serverseitige Login-Tabelle.
 Vor Exchange werden Cookie-Pflicht und Verifier-Form geprüft. Der Kern prüft
 App, S256(Verifier), Einmaligkeit und die 60 Sekunden Laufzeit des Codes.
+App-Tokens werden separat geprüft: `jnptapp_<26>.<26>`, genau ein Punkt,
+beide Hälften je genau 26 Zeichen aus `[A-Za-z0-9_-]` (Kern: zweimal
+`crypto/rand.Text()`, Base32). Dieselbe Prüfung gilt im Callback vor Cookie und
+RAM-Eintrag sowie in `session()` vor der RAM-Bindung, auch für `/mcp` und Logout.
+`http.SetCookie`, Cookie-Lesen und MCP-Bearer erhalten das Token bytegleich.
+`opaque` bleibt `[A-Za-z0-9_-]{43,256}` für `jnptapphost_` und Login-Verifier;
+ein Punkt wird dort weiterhin abgewiesen.
 Paketdaten und Sitzungen liegen ausschließlich im RAM; ein Neustart löscht die
 Sitzungen, verhindert aber keinen Callback mit noch gültigem Code und Cookie.
 Die ETag-Abfrage erfolgt je App frühestens fünf Sekunden nach Abrufabschluss;
@@ -1215,6 +1222,9 @@ bei weiter voller Tabelle den frühesten Ablauf verdrängen, statt Anmeldungen m
 | Lade-Regeln einschließlich Grenzen und Geheimnis-Mustern | `TestInvariant2LoadRulesAtHTTP` |
 | Exakter App-Host | `TestInvariant3HostAtHTTP` |
 | Login-Cookie und Verifier-Form vor Exchange | `TestInvariant4BrowserBindingAtHTTP` |
+| App-Token-Präfix, genau ein Punkt, Alphabet und 26/26-Grenzen im Callback sowie Sitzung, MCP und Logout; ungültige Form auch bei vorhandenem RAM-Eintrag abweisen | `TestAppTokenFormAtHTTP` |
+| Echtes Base32-App-Token unverändert durch Callback → Set-Cookie → Cookie → Sitzung → MCP-Bearer | `TestAppTokenCallbackCookieSessionAndMCPAtHTTP` |
+| Punkt bleibt für Apphost-Schlüssel und Login-Verifier gesperrt | `TestAppTokenDotDoesNotRelaxOtherFieldsAtHTTP` |
 | Zustandsloser Callback, Code-Bindung und Einmaligkeit im Kern-Stub | `TestF2StatelessCallbackCoreBindingAtHTTP` |
 | 5000 anonyme Navigationen sperren keine Anmeldung; frühesten Sitzungsablauf verdrängen | `TestF2AnonymousNavigationsCannotExhaustLoginAtHTTP`, `TestF2SessionCapacityEvictsEarliestAtHTTP` |
 | Paketabrufe je App zusammenfassen, andere Apps nicht blockieren | `TestH2PackageFetchIsolationAndCoalescingAtHTTP` |

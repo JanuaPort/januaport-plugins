@@ -438,6 +438,12 @@ Bindung des Codes an App und S256(Verifier), seine 60 Sekunden Laufzeit und die
 einmalige Verwendung. Das Login-Cookie wird bei jedem Callback gelöscht. Das Sitzungscookie ist
 HttpOnly, Secure, `SameSite=Strict`, und lebt höchstens `max_age` bzw. bis
 `expires_at`. Die Antwort führt mit einer skriptfreien Meta-Refresh-Seite zurück.
+App-Tokens haben die Form `jnptapp_<26>.<26>`: genau ein Punkt und je Hälfte
+genau 26 Zeichen aus `[A-Za-z0-9_-]`; der Kern erzeugt beide Hälften als Base32
+mit `crypto/rand.Text()`. Callback und Sitzungsprüfung verwenden dieselbe eigene
+Formprüfung. Das Token bleibt im `__Host-jnpt_app`-Cookie und als Bearer an
+`/mcp` sowie beim Widerruf bytegleich. Für den `jnptapphost_`-Schlüssel und den
+Login-Verifier gilt weiterhin `[A-Za-z0-9_-]{43,256}` ohne Punkt.
 Ein Apphost-Neustart verwirft bestehende Sitzungen; ein bereits begonnener Login
 kann mit seinem Cookie abgeschlossen werden. Die Sitzungstabelle hält höchstens
 4096 Einträge. Nach dem Entfernen abgelaufener Einträge verdrängt eine neue Sitzung

@@ -60,6 +60,10 @@ type Host struct {
 var label = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 var opaque = regexp.MustCompile(`^[A-Za-z0-9_-]{43,256}$`)
 
+// The core issues jnptapp_<id>.<secret>, each from crypto/rand.Text (26 Base32
+// characters). Keep the dot and both lengths bounded separately from opaque.
+var appToken = regexp.MustCompile(`^jnptapp_[A-Za-z0-9_-]{26}\.[A-Za-z0-9_-]{26}$`)
+
 // New validates configuration and fails closed when the materialized key is absent.
 func New(c Config) (*Host, error) {
 	if c.KeyPath == "" {
@@ -327,7 +331,7 @@ func (h *Host) prune() {
 }
 func (h *Host) session(r *http.Request, app string) (string, bool) {
 	c, e := r.Cookie("__Host-jnpt_app")
-	if e != nil {
+	if e != nil || !appToken.MatchString(c.Value) {
 		return "", false
 	}
 	h.mu.Lock()
@@ -372,12 +376,11 @@ func (h *Host) callback(w http.ResponseWriter, r *http.Request, app string) {
 		status(w, 502)
 		return
 	}
-	suffix, valid := strings.CutPrefix(result.Token, "jnptapp_")
 	age := result.MaxAge
 	if remaining := int(result.ExpiresAt.Sub(h.c.Now()).Seconds()); remaining < age {
 		age = remaining
 	}
-	if !valid || !opaque.MatchString(suffix) || age <= 0 {
+	if !appToken.MatchString(result.Token) || age <= 0 {
 		status(w, 401)
 		return
 	}
