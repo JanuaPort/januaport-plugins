@@ -39,6 +39,10 @@ CASES = [
     ("notice-question-text", "internal/panel", "TestHinweisNurAnEinerStelle", [edit(UI, "copy(n.Info[:], syscall.StringToUTF16(panel.NoticeText))", "copy(n.Info[:], syscall.StringToUTF16(a.model.View().Dialog.Text))")]),
     ("notice-appends-id", "internal/panel", "TestHinweisNurAnEinerStelle", [edit(UI, "syscall.StringToUTF16(panel.NoticeText)", "syscall.StringToUTF16(panel.NoticeText+a.dialogID)")]),
     ("notice-opens-dialog", "internal/panel", "TestHinweisNurAnEinerStelle", [edit(UI, "\t\ta.notify()\n", "\t\ta.notify()\n\t\ta.apply(a.model.Choose(\"frage\", time.Now()))\n")]),
+    # #1240 Symbol nach Autostart/Explorer-Neustart: bei Scheitern die andere Operation (NIM_ADD/NIM_MODIFY) versuchen.
+    ("tray-no-second-attempt", "internal/panel", "TestTrayUpdateVersuche", [edit("internal/panel/tray.go", "return attempt(!tray)", "return false")]),
+    ("tray-false-after-second", "internal/panel", "TestTrayUpdateVersuche", [edit("internal/panel/tray.go", "return attempt(!tray)", "attempt(!tray)\n\treturn false")]),
+    ("tray-render-ignores-update", "internal/panel", "TestRenderNutztTrayUpdate", [edit(UI, "a.tray = panel.TrayUpdate(a.tray, try)", "_ = panel.TrayUpdate\n\ta.tray = a.tray || try(a.tray)")]),
     ("notice-with-sound", "internal/panel", "TestHinweisNurAnEinerStelle", [edit(UI, "noticeInfoFlags = 1 | 0x10", "noticeInfoFlags = 1")]),
     ("notice-text-changed", "internal/panel", "TestHinweisFesterText", [edit(MODEL, 'NoticeText  = "JanuaPort braucht eine Antwort"', 'NoticeText  = "Rückfrage"')]),
     ("notice-not-consumed", "internal/panel", "TestHinweisEinmalJeNeuerFrage", [edit(MODEL, "due := m.noticeFor != nil && m.noticeFor == m.dialog\n\tm.noticeFor = nil", "due := m.noticeFor != nil && m.noticeFor == m.dialog")]),
