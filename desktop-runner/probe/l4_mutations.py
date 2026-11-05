@@ -37,6 +37,8 @@ CASES = [
     ("balloon-in-render", "internal/panel", "TestFokusWaechter", [edit(UI, "Flags: trayFlags,", "Flags: trayFlags | nifInfo,")]),
     ("notice-every-render", "internal/panel", "TestHinweisNurAnEinerStelle", [edit(UI, "if a.tray && a.model.TakeNotice() {", "if a.tray {")]),
     ("notice-question-text", "internal/panel", "TestHinweisNurAnEinerStelle", [edit(UI, "copy(n.Info[:], syscall.StringToUTF16(panel.NoticeText))", "copy(n.Info[:], syscall.StringToUTF16(a.model.View().Dialog.Text))")]),
+    ("notice-appends-id", "internal/panel", "TestHinweisNurAnEinerStelle", [edit(UI, "syscall.StringToUTF16(panel.NoticeText)", "syscall.StringToUTF16(panel.NoticeText+a.dialogID)")]),
+    ("notice-opens-dialog", "internal/panel", "TestHinweisNurAnEinerStelle", [edit(UI, "\t\ta.notify()\n", "\t\ta.notify()\n\t\ta.apply(a.model.Choose(\"frage\", time.Now()))\n")]),
     ("notice-with-sound", "internal/panel", "TestHinweisNurAnEinerStelle", [edit(UI, "noticeInfoFlags = 1 | 0x10", "noticeInfoFlags = 1")]),
     ("notice-text-changed", "internal/panel", "TestHinweisFesterText", [edit(MODEL, 'NoticeText  = "JanuaPort braucht eine Antwort"', 'NoticeText  = "Rückfrage"')]),
     ("notice-not-consumed", "internal/panel", "TestHinweisEinmalJeNeuerFrage", [edit(MODEL, "due := m.noticeFor != nil && m.noticeFor == m.dialog\n\tm.noticeFor = nil", "due := m.noticeFor != nil && m.noticeFor == m.dialog")]),

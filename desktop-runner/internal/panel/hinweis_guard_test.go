@@ -47,7 +47,7 @@ func TestHinweisNurAnEinerStelle(t *testing.T) {
 
 	// Inhalt: nur die festen Konstanten, kein Zugriff auf Modell, Dialog oder Rückfragetext.
 	fixed := map[string]bool{}
-	nimUsed, flagsUsed, calls := false, false, 0
+	nimUsed, flagsUsed, calls, converted := false, false, 0, 0
 	ast.Inspect(notify, func(n ast.Node) bool {
 		switch x := n.(type) {
 		case *ast.SelectorExpr:
@@ -63,6 +63,15 @@ func TestHinweisNurAnEinerStelle(t *testing.T) {
 				flagsUsed = true
 			}
 		case *ast.CallExpr:
+			if sel, ok := x.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "StringToUTF16" {
+				// Das Argument ist genau eine der beiden Konstanten, nie ein zusammengesetzter Ausdruck.
+				converted++
+				if len(x.Args) != 1 {
+					t.Error("StringToUTF16 im Hinweis ohne genau ein Argument")
+				} else if arg, ok := x.Args[0].(*ast.SelectorExpr); !ok || !isPanelNotice(arg) {
+					t.Error("Hinweistext ist keine unveränderte panel.NoticeTitle/panel.NoticeText")
+				}
+			}
 			if sel, ok := x.Fun.(*ast.SelectorExpr); ok {
 				if id, ok := sel.X.(*ast.Ident); ok && id.Name == "notifyIcon" && sel.Sel.Name == "Call" {
 					calls++
@@ -78,6 +87,9 @@ func TestHinweisNurAnEinerStelle(t *testing.T) {
 	})
 	if !fixed["NoticeTitle"] || !fixed["NoticeText"] {
 		t.Error("Hinweis nutzt nicht panel.NoticeTitle und panel.NoticeText")
+	}
+	if converted != 2 {
+		t.Errorf("Hinweis wandelt %d Texte, erwartet genau Titel und Text", converted)
 	}
 	if !flagsUsed {
 		t.Error("InfoFlags ohne noticeInfoFlags (NIIF_NOSOUND)")
@@ -125,12 +137,32 @@ func TestHinweisNurAnEinerStelle(t *testing.T) {
 		})
 		if takes && notifies {
 			guarded = true
+			// Der Zweig besteht nur aus a.notify(): Der Dialog öffnet sich nie von selbst.
+			if len(stmt.Body.List) != 1 {
+				t.Errorf("Hinweiszweig in render hat %d Anweisungen, erwartet genau a.notify()", len(stmt.Body.List))
+			} else if only, ok := stmt.Body.List[0].(*ast.ExprStmt); !ok || !isNotifyCall(only.X) {
+				t.Error("Hinweiszweig in render besteht nicht nur aus a.notify()")
+			}
 		}
 		return true
 	})
 	if notifyCalls != 1 || !guarded {
 		t.Errorf("notify muss genau einmal in render unter TakeNotice stehen (Aufrufe: %d, geschützt: %t)", notifyCalls, guarded)
 	}
+}
+
+func isPanelNotice(s *ast.SelectorExpr) bool {
+	pkg, ok := s.X.(*ast.Ident)
+	return ok && pkg.Name == "panel" && (s.Sel.Name == "NoticeTitle" || s.Sel.Name == "NoticeText")
+}
+
+func isNotifyCall(e ast.Expr) bool {
+	call, ok := e.(*ast.CallExpr)
+	if !ok || len(call.Args) != 0 {
+		return false
+	}
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	return ok && sel.Sel.Name == "notify"
 }
 
 func evalConst(t *testing.T, constants map[string]ast.Expr, e ast.Expr) uint64 {
