@@ -1,0 +1,1 @@
+{"_meta":{"januaport.ai/run":{"end":"error","detail":"tools","steps":1}},"content":[{"type":"text","text":"Der Agenten-Lauf ist beendet, weil im letzten Werkzeug-Schritt ein Aufruf gescheitert ist."}],"isError":true}

@@ -259,7 +259,7 @@ func TestLogErrorContentAbsent(t *testing.T) {
 }
 
 func TestAllResultGoldens(t *testing.T) {
-	for _, tc := range []struct{ file, end, detail string }{{"limit", "limit", "steps"}, {"provider", "error", "provider"}, {"rejected", "error", "rejected"}, {"error", "error", "gateway"}, {"cancelled", "cancelled", ""}, {"revoked", "revoked", ""}} {
+	for _, tc := range []struct{ file, end, detail string }{{"limit", "limit", "steps"}, {"provider", "error", "provider"}, {"rejected", "error", "rejected"}, {"error", "error", "gateway"}, {"cancelled", "cancelled", ""}, {"revoked", "revoked", ""}, {"tools", "error", "tools"}} {
 		b, e := os.ReadFile("../../contract/proposed/run_agent_response_" + tc.file + ".json")
 		if e != nil {
 			t.Fatal(e)

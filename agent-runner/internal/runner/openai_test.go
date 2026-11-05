@@ -46,8 +46,8 @@ func TestOpenAILoopTable(t *testing.T) {
 		{"text", 0, "", "stop", "ok", 0, 1},
 		{"one tool", 1, `{"q":"` + secret + `"}`, "tool_calls", "ok", 1, 2},
 		{"two tools", 2, `{"q":"` + secret + `"}`, "tool_calls", "ok", 2, 2},
-		{"invalid arguments", 1, `{SECRET`, "tool_calls", "ok", 0, 2},
-		{"non-object arguments", 1, `[]`, "tool_calls", "ok", 0, 2},
+		{"invalid arguments", 1, `{SECRET`, "tool_calls", "error", 0, 2},
+		{"non-object arguments", 1, `[]`, "tool_calls", "error", 0, 2},
 		{"length", 0, "", "length", "limit", 0, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

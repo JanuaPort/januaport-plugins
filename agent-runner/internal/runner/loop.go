@@ -74,6 +74,9 @@ func (r *Runner) run(parent context.Context, a Arguments, token string) (out *mc
 		seen[cursor] = true
 	}
 	history := newConversation(a, tools)
+	// Nur der letzte Werkzeug-Schritt zählt: Ein Fehler, nach dem ein Schritt ohne
+	// Fehler folgt, ist Erholung. Das Merkmal ist isError, nie ein Inhalt.
+	lastStepFailed := false
 	for record.Steps < a.Limits.Steps {
 		if ctx.Err() != nil {
 			return finish("cancelled", "", "")
@@ -84,6 +87,9 @@ func (r *Runner) run(parent context.Context, a Arguments, token string) (out *mc
 			return finish(end, detail, "")
 		}
 		if response.Stop == "end_turn" && len(response.Calls) == 0 {
+			if lastStepFailed {
+				return finish("error", "tools", "")
+			}
 			return finish("ok", "", response.Text)
 		}
 		if response.Stop == "max_tokens" {
@@ -93,6 +99,7 @@ func (r *Runner) run(parent context.Context, a Arguments, token string) (out *mc
 			return finish("error", "gateway", "")
 		}
 		results := []toolResult{}
+		stepFailed := false
 		ids := map[string]bool{}
 		for _, b := range response.Calls {
 			if !allowed[b.Name] || ids[b.ID] {
@@ -113,11 +120,13 @@ func (r *Runner) run(parent context.Context, a Arguments, token string) (out *mc
 				// OpenAI arguments are a JSON string. Give the model a fixed
 				// MCP-style error result instead of sending invalid tool input.
 				raw = json.RawMessage(`{"isError":true,"content":[{"type":"text","text":"Werkzeug-Eingabe ist kein gültiges JSON-Objekt."}]}`)
+				stepFailed = true
 			} else {
 				res, e := session.CallTool(ctx, &mcp.CallToolParams{Name: b.Name, Arguments: b.Input})
 				if e != nil {
 					return finish("error", "gateway", "")
 				}
+				stepFailed = stepFailed || res.IsError
 				raw, e = json.Marshal(res)
 				if e != nil {
 					return finish("error", "gateway", "")
@@ -125,6 +134,7 @@ func (r *Runner) run(parent context.Context, a Arguments, token string) (out *mc
 			}
 			results = append(results, toolResult{ID: b.ID, Raw: raw})
 		}
+		lastStepFailed = stepFailed
 		history.appendResults(results)
 	}
 	return finish("limit", "steps", "")

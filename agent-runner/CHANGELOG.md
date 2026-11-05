@@ -1,5 +1,23 @@
 # Changelog
 
+## Unveröffentlicht
+
+JanuaPort/januaport#1338, JanuaPort/januaport#1335.
+
+- Endet das Modell, und im letzten Werkzeug-Schritt scheiterte mindestens ein
+  Aufruf (`isError` im Werkzeug-Ergebnis oder ungültiges JSON), endet der Lauf
+  nicht mehr `ok`, sondern `error` mit dem Detail `tools`. Ein Fehler, nach dem
+  ein Schritt ohne Fehler folgt, und ein Lauf ohne Aufruf bleiben `ok`. Die
+  Wertung liest nur `isError`, keine Inhalte.
+- Die feste Meldung nennt bei `limit` die Grenze (`steps`, `tool_calls`,
+  `tokens_in`, `tokens_out`, `wall`, `content_filter`); ein unbekanntes Detail
+  behält den bisherigen Satz.
+- Neues Beispiel `contract/proposed/run_agent_response_tools.json`;
+  `run_agent_response_limit.json` trägt den Satz für die Grenze Schritte.
+  Contract 1 und die Ende-Klassen bleiben, Werte der Grenzen unverändert.
+- Verträglich in beide Richtungen: Ein älterer Kern kennt das Detail nicht,
+  das Ende bleibt `error`; ein älterer Läufer verhält sich wie bisher.
+
 ## 0.2.1 — 2026-10-28
 
 #1228.

@@ -15,9 +15,9 @@ OpenAI-Format braucht JanuaPort mit `model.protocol` (Version folgt); ein älter
 | Pfad | Aufgabe |
 |---|---|
 | `main.go` | HTTP auf 8090, Prozess-Abbruch, Healthcheck-Unterbefehl |
-| `internal/runner/contract.go` | Eingang, Lauf-Header, feste Ende-Sätze |
+| `internal/runner/contract.go` | Eingang, Lauf-Header, feste Ende-Sätze je Klasse und je Grenz-/Fehlerdetail |
 | `internal/runner/server.go` | MCP, runtime-key, genau `run_agent`, `/healthz` |
-| `internal/runner/loop.go` | Historie, Grenzen, MCP-Sitzung und Werkzeugfreigabe |
+| `internal/runner/loop.go` | Historie, Grenzen, MCP-Sitzung, Werkzeugfreigabe und Wertung des letzten Werkzeug-Schritts |
 | `internal/runner/gateway.go` | Modell-Durchgang, Lauf-Token, beschränkter HTTP-Transport |
 | `internal/runner/conversation.go` | Protokollwahl, Adapter und angehängte Historie |
 | `internal/openai` | Chat-Completions-Projektion, Prüfung und Werkzeugtexte |
@@ -72,6 +72,8 @@ Lauf-Token an derselben Betreiberadresse `JNPT_GATEWAY_URL`.
 | AG8: Fehlertext und unbekannte Fehlerdetails gelangen nicht in Antwort/Protokoll | `TestGatewayErrorsFixed`, `TestLogErrorContentAbsent`, `TestRevocationAtBothGateways` |
 | Werkzeugaufrufe nur aus tools/list; eindeutige IDs, gültige Namen, begrenzte Liste/Pagination | `TestUnsafeResponseAndUnknownToolAtAdapter`, `TestToolListAndMultiToolGuards`, `TestToolListSizeLimit` |
 | Schritte/Aufrufe lokal begrenzt, Wandzeit = min(Anfrage, Meldung), Standard 300 s; Context-Abbruch beendet laufendes HTTP samt SDK-Cleanup, cancel vor Close | `TestLimitsAtAdapter`, `TestCancellationAndWallAtAdapter`, `TestAdvertisedWallCapEnforcedAtAdapter`, `TestCleanupWithinWallAtAdapter`, `TestCancelBeforeSessionCloseAtAdapter` |
+| JanuaPort/januaport#1338: Endet das Modell, und im letzten Werkzeug-Schritt scheiterte mindestens ein Aufruf (`isError` im Werkzeug-Ergebnis oder der feste Fehler bei ungültigem JSON), endet der Lauf `error/tools`. Ein Fehler, nach dem ein Schritt ohne Fehler folgt (Erholung), und ein Lauf ohne Aufruf bleiben `ok`. Die Wertung liest nur `isError`, nie Inhalte, und kommt nie vom Modell; eine Grenze oder ein anderes Ende behält seine Klasse | `TestToolFailureEndsRunAtAdapter`, `TestToolFailureDoesNotOverrideLimit`, `TestOpenAILoopTable`, `TestAllResultGoldens` |
+| JanuaPort/januaport#1335: Die feste Meldung nennt bei `limit` die Grenze (steps, tool_calls, tokens_in, tokens_out, wall, content_filter) und bei `error/tools` den Werkzeug-Fehler; unbekanntes Detail behält den allgemeinen Satz, das Detail steht nie wörtlich im Satz | `TestFixedMessagePerDetail`, `TestLimitSentencesAtAdapter`, `TestAllResultGoldens` |
 | Lauf-Protokoll enthält nur Schritte, Anzahl und Namen der Werkzeuge, Ende-Klasse, optional festes Ende-Detail, Dauer | `TestLoopGoldenThinkingAndLog` gegen `run_log_ok.json`, `TestOpenAIFinishDetailsAtAdapter` |
 | OpenAI content_filter endet limit/content_filter, unterscheidbar von length (limit/tokens_out) und error; keine Ausgabe gefilterter Inhalte und keine Werkzeugausführung | `TestOpenAIFinishDetailsAtAdapter` |
 | #1069: genau internes jnpt_plugins, kein Host-Port, kein zusätzliches Ausgangsnetz | `TestCompose`, `TestComposeForbiddenPaths` |
@@ -97,6 +99,17 @@ Lauf-Token an derselben Betreiberadresse `JNPT_GATEWAY_URL`.
   höchstens 1024 unterschiedliche Folgeseiten sind Protokollschutz.
 - Die Erfolgsausgabe besteht aus finalem Text; Anthropic-Thinking steht nur in
   der Modellhistorie. Fehler-Antworten verwenden die feste Satzliste.
+- Werkzeug-Fehler (JanuaPort/januaport#1338): Sie gehen weiter als Daten an das
+  Modell, das sich erholen darf. Der Läufer wertet allein das Ende: Maßgeblich ist
+  nur der letzte Werkzeug-Schritt (Merker `lastStepFailed` in `loop.go`), ein Schritt
+  mit zwei Aufrufen gilt als gescheitert, sobald einer scheiterte. Bewusst
+  hingenommen: Falsch-Rot (das Modell fragt zuletzt etwas ab, bekommt „nicht
+  gefunden“ als Fehler und antwortet richtig; der Lauf wird rot, sichtbar und
+  wiederholbar) und Rest-Grün (ein früher gescheiterter Schreibaufruf mit danach
+  erfolgreichem Lesen, ebenso ein Lauf ohne Aufruf bleibt `ok`; das erkennt nur eine
+  Inhaltsprüfung, die es nicht gibt). Wie bei jedem Ende außer `ok` ersetzt der feste
+  Satz den Modelltext. Contract 1 und die Ende-Klassen bleiben; ein älterer Kern
+  kennt das Detail `tools` nicht, behält aber das Ende `error`, also nie Grün.
 - Bei abgerissenem Relay kann die HTTP-Endantwort den Aufrufer nicht mehr
   erreichen. Der Lauf endet trotzdem, das Protokoll meldet `cancelled`.
 - SDK-Zweitweg: Der ausgehende MCP-Transport löst seine Verbindung vom

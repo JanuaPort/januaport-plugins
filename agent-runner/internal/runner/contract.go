@@ -86,9 +86,23 @@ func singleHeader(h http.Header, key string) bool {
 	return strings.IndexFunc(values[0], func(r rune) bool { return r < 33 || r > 126 }) < 0
 }
 
+// limitMessages nennen die Grenze, an der ein Lauf endete. Das Detail steht nie
+// wörtlich im Satz; ein unbekanntes Detail behält den allgemeinen Satz.
+var limitMessages = map[string]string{
+	"steps":          "Der Agenten-Lauf hat die Grenze für Schritte erreicht und ist beendet.",
+	"tool_calls":     "Der Agenten-Lauf hat die Grenze für Werkzeug-Aufrufe erreicht und ist beendet.",
+	"tokens_in":      "Der Agenten-Lauf hat die Grenze für Eingabe-Tokens erreicht und ist beendet.",
+	"tokens_out":     "Der Agenten-Lauf hat die Grenze für Ausgabe-Tokens erreicht und ist beendet.",
+	"wall":           "Der Agenten-Lauf hat die Grenze für die Laufzeit erreicht und ist beendet.",
+	"content_filter": "Der Modellanbieter hat die Antwort gefiltert; der Agenten-Lauf ist beendet.",
+}
+
 func fixedMessage(end, detail string) string {
 	switch end {
 	case "limit":
+		if m, ok := limitMessages[detail]; ok {
+			return m
+		}
 		return "Der Agenten-Lauf hat eine seiner Grenzen erreicht und ist beendet."
 	case "cancelled":
 		return "Der Agenten-Lauf wurde abgebrochen."
@@ -96,6 +110,8 @@ func fixedMessage(end, detail string) string {
 		return "Die Freigabe für den Agenten-Lauf wurde entzogen."
 	}
 	switch detail {
+	case "tools":
+		return "Der Agenten-Lauf ist beendet, weil im letzten Werkzeug-Schritt ein Aufruf gescheitert ist."
 	case "provider":
 		return "Der Modellanbieter hat den Aufruf mit einem Fehler beantwortet; sein Text wird nicht weitergegeben."
 	case "rejected":
