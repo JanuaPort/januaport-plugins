@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -95,11 +96,19 @@ func TestRuntimeWatchMeldetModuswechsel(t *testing.T) {
 	b := newRuntimeBed(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	// Lesen und Ersetzen nie gleichzeitig: Unter Windows scheitert ein Lesen während MoveFileEx, und drei Fehler
+	// in Folge leeren die Liste. Im 1-ms-Takt wäre das ein Testartefakt, das Bedienfeld liest alle 15 s.
+	var file sync.Mutex
+	read := func() (AppList, error) {
+		file.Lock()
+		defer file.Unlock()
+		return b.rt.Apps()
+	}
 	got := make(chan AppList, 8)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		b.rt.Watch(ctx, time.Millisecond, func(l AppList) { got <- l })
+		Watch(ctx, time.Millisecond, read, func(l AppList) { got <- l })
 	}()
 	defer func() { cancel(); <-done }()
 	check := func(mode string, seq uint64) {
@@ -115,7 +124,9 @@ func TestRuntimeWatchMeldetModuswechsel(t *testing.T) {
 	}
 	check("", 1) // alter Kern ohne mode
 	for i, mode := range []string{"a", "b", "", "a"} {
+		file.Lock()
 		saveAppMode(t, b, &mode, uint64(i+2))
+		file.Unlock()
 		check(mode, uint64(i+2))
 	}
 }
