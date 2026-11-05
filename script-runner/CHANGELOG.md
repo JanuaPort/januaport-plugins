@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.2 — 2026-11-05 (JanuaPort/januaport#1317)
+
 - #1317: Apphost akzeptiert die vom Kern ausgegebene App-Token-Form
   `jnptapp_<26>.<26>` mit genau einem Punkt und je 26 Zeichen aus
   `[A-Za-z0-9_-]`. Eigene Prüfung in Callback und Sitzung, unverändertes Cookie
