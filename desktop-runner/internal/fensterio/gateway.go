@@ -19,16 +19,20 @@ type AppAPI interface {
 }
 
 // Gateway ruft tools/list und tools/call für genau eine App. Das App-Token wird
-// bei Bedarf geholt, lebt nur hier im RAM und wird bei 401 einmal erneuert. Es
+// in Modus a bei Bedarf geholt und bei 401 einmal erneuert; Modus b verlangt den
+// nativen Login. Es lebt nur hier im RAM. Es
 // verlässt das Objekt nie; Fehler sind ausschließlich feste fenster-Codes.
 type Gateway struct {
 	api AppAPI
 	app string
 	seq atomic.Int64
 
-	mu      sync.Mutex
-	session client.AppSession
-	gen     uint64
+	fetchMu  sync.Mutex
+	blocked  bool
+	personal bool
+	mu       sync.Mutex
+	session  client.AppSession
+	gen      uint64
 }
 
 func NewGateway(api AppAPI, app string) *Gateway { return &Gateway{api: api, app: app} }
@@ -55,30 +59,81 @@ func (g *Gateway) call(ctx context.Context, method string, params any) (json.Raw
 		}
 		res, err := g.api.AppRPC(ctx, s, g.seq.Add(1), method, params)
 		if err == nil {
+			g.mu.Lock()
+			valid := g.gen == gen && !g.blocked
+			g.mu.Unlock()
+			if !valid {
+				return nil, fenster.ErrNichtAngemeldet
+			}
 			return res, nil
 		}
 		if attempt == 0 && unauthorized(err) {
 			g.verwerfen(gen)
 			continue
 		}
-		return nil, abbilden(err)
+		mapped := abbilden(err)
+		if errors.Is(mapped, fenster.ErrNichtAngemeldet) {
+			g.verwerfen(gen)
+		}
+		return nil, mapped
 	}
 }
 
 // token liefert die RAM-Sitzung und holt sie bei Bedarf unter derselben Sperre,
 // damit parallele Aufrufe höchstens ein Token anfordern.
 func (g *Gateway) token(ctx context.Context) (client.AppSession, uint64, error) {
+	g.fetchMu.Lock()
+	defer g.fetchMu.Unlock()
+	g.mu.Lock()
+	if g.blocked || (g.personal && g.session.IsZero()) {
+		g.mu.Unlock()
+		return client.AppSession{}, 0, fenster.ErrNichtAngemeldet
+	}
+	if !g.session.IsZero() {
+		s, gen := g.session, g.gen
+		g.mu.Unlock()
+		return s, gen, nil
+	}
+	gen := g.gen
+	g.mu.Unlock()
+	s, e := g.api.AppToken(ctx, g.app)
+	if e != nil {
+		return client.AppSession{}, 0, e
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if g.session.IsZero() {
-		s, err := g.api.AppToken(ctx, g.app)
-		if err != nil {
-			return client.AppSession{}, 0, err
-		}
-		g.session = s
-		g.gen++
+	if g.gen != gen || g.blocked {
+		return client.AppSession{}, 0, fenster.ErrNichtAngemeldet
 	}
+	g.session = s
+	g.gen++
 	return g.session, g.gen, nil
+}
+
+// Forget sperrt sofort, auch bei einem hängenden HTTP-Aufruf. Kein Netz unter mu.
+func (g *Gateway) Forget() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.session = client.AppSession{}
+	g.gen++
+	g.blocked = true
+	g.personal = true
+}
+func (g *Gateway) install(s client.AppSession) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.session = s
+	g.gen++
+	g.blocked = false
+	g.personal = true
+}
+
+// personalExpired ist ein RAM-Schnappschuss für Login.Pump auf dem UI-Thread.
+// Fehler einer alten Generation dürfen eine neue Anmeldung nicht zurücknehmen.
+func (g *Gateway) personalExpired() bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.personal && g.session.IsZero()
 }
 
 // verwerfen löscht die Sitzung nur, wenn niemand sie inzwischen erneuert hat.
@@ -100,11 +155,13 @@ func abbilden(err error) error {
 	var he *client.HTTPError
 	var rpc *client.RPCError
 	switch {
+	case errors.Is(err, fenster.ErrNichtAngemeldet):
+		return fenster.ErrNichtAngemeldet
 	case errors.Is(err, client.ErrRevoked):
 		return fenster.ErrNichtAngemeldet
 	case errors.As(err, &he):
 		switch {
-		case he.Status == 401:
+		case he.Status == 401 || (he.Status == 409 && he.Class == "person_required"):
 			return fenster.ErrNichtAngemeldet
 		case he.Status == 429:
 			return fenster.ErrZuViele

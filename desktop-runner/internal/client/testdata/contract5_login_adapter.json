@@ -1,0 +1,7 @@
+[
+  {"path":"apps/demo/token","request":null,"status":409,"response":{"error":{"class":"person_required","message":"Bitte mit dem eigenen Konto anmelden."}}},
+  {"path":"apps/demo/login","request":{"challenge":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","port":12345,"state":"sssssssssssssssssssssssssssssssssssssssssss"},"status":200,"response":{"authorize_url":"https://idp.example/authorize?a=b&state=c"}},
+  {"path":"apps/demo/session","request":{"code":"synthetic-code","verifier":"vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv"},"status":200,"response":{"app_token":"jnptpc_synthetic-person","expires_at":"2099-01-01T00:00:00Z","mcp_path":"/api/device/v1/mcp","anzeigename":"Gleich","person_gewechselt":true}},
+  {"path":"apps/demo/session","request":{"code":"synthetic-code","verifier":"vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv"},"status":403,"response":{"error":{"class":"kein_zugriff","message":"Kein Zugriff auf diese App. Bitte die Verwaltung kontaktieren."}}},
+  {"path":"apps/demo/session","request":{"code":"synthetic-code","verifier":"vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv"},"status":403,"response":{"error":{"class":"platz_gesperrt","message":"Der Zugang ist gesperrt. Bitte die Lizenzverwaltung kontaktieren."}}}
+]

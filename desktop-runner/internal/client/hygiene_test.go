@@ -80,6 +80,7 @@ func TestCopiedLibraryFunctions(t *testing.T) {
 }
 func TestKeineListenerDownloaderOderPip(t *testing.T) {
 	pipeListeners := 0
+	loopbackListeners := 0
 	err := filepath.WalkDir("../..", func(p string, d os.DirEntry, e error) error {
 		if e != nil {
 			return e
@@ -109,18 +110,30 @@ func TestKeineListenerDownloaderOderPip(t *testing.T) {
 				t.Error("zweiter benannter Pipe-Listener", p)
 			}
 		}
-		for _, bad := range []string{"net.Listen", "http.ListenAndServe", "NewProc(\"CreateNamedPipe", "syscall.CreateNamedPipe", "exec.Command(\"pip", "python -m pip", "import pip", "pip.main", "http.Get(", "http.Post("} {
+		const loopbackFile = "../../internal/fensterio/loopback_windows.go"
+		count := strings.Count(s, "net.Listen")
+		loopbackListeners += count
+		if count != 0 && (filepath.ToSlash(p) != loopbackFile || count != strings.Count(s, `net.Listen("tcp4", "127.0.0.1:0")`)) {
+			t.Error("Loopback nicht exakt gepinnt", p)
+		}
+		if filepath.ToSlash(p) == loopbackFile {
+			checkLoopbackServer(t, p)
+		}
+		for _, bad := range []string{"http.ListenAndServe", "NewProc(\"CreateNamedPipe", "syscall.CreateNamedPipe", "exec.Command(\"pip", "python -m pip", "import pip", "pip.main", "http.Get(", "http.Post("} {
 			if strings.Contains(s, bad) {
 				t.Errorf("verbotener Weg in %s: %s", p, bad)
 			}
 		}
-		if strings.Contains(s, `"net/http"`) && filepath.Base(p) != "http.go" {
+		if strings.Contains(s, `"net/http"`) && filepath.ToSlash(p) != "../../internal/client/http.go" && filepath.ToSlash(p) != loopbackFile {
 			t.Error("zweiter HTTP-Adapter", p)
 		}
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if loopbackListeners != 1 {
+		t.Errorf("genau ein Loopback-Listener erforderlich: %d", loopbackListeners)
 	}
 	if pipeListeners != 1 {
 		t.Fatalf("genau ein benannter Pipe-Listener erforderlich: %d", pipeListeners)

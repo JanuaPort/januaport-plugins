@@ -1,2 +1,3 @@
 * text=auto eol=lf
 contract/golden/* -text
+contract/golden-v5/contract5_login_routes.json -text

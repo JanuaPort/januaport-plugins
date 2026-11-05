@@ -19,9 +19,29 @@ Der Läufer prüft streng: Name `^[a-z0-9_]{1,48}$`, `commit` 64 kleine Hex-Zeic
 (SHA-256-Speichercommit), `path` exakt `apps/<name>`, streng aufsteigend nach Name.
 Pakete kommen über `GET packages/{commit}?path=apps/<name>`. App-Token:
 `POST apps/{name}/token` mit leerem Körper, Antwort `{app_token,expires_at,mcp_path}`
-mit Präfix `jnptpc_`; der Läufer hält es nur im RAM und holt es bei 401 neu.
+mit Präfix `jnptpc_`; der Läufer hält es nur im RAM und holt es in Modus a bei 401 neu.
 `POST mcp` trägt `Authorization` (Gerätetoken) und genau einen `X-Jnpt-App-Token`,
 nie zusätzlich `X-Jnpt-Run-Token`.
+
+K6c/P2 ergänzt Modus b: `/token` → 409 `person_required`, `/login` mit
+`{challenge,port,state}` → `{authorize_url}`, `/session` mit `{code,verifier}` →
+`{app_token,expires_at,mcp_path,anzeigename,person_gewechselt}`. Header und MCP-Pfad
+bleiben gleich. State 43 base64url-Zeichen, Challenge genau 32 dekodierte Byte,
+Port 1024–65535. Fünf Minuten Pending, 60 Sekunden Einmalcode, kein JWT im PC.
+Fehlerrücksprünge mit State und `fehler=kein_zugriff|platz_gesperrt|abgebrochen`,
+niemals Code dazu. Keine Logout-Route. Personenwechsel/Abmelden löschen Browserdaten;
+Name nur native Leiste, maximal 128 Unicode-Zeichen ohne Steuer-/Formatzeichen.
+Fehlendes/null `person_gewechselt` wird defensiv als true behandelt. Ohne lokale
+Anmeldung wird auch bei false neu geladen; nur eine weiterhin angemeldete gleiche
+Person behält Eingaben. `/session`-403 `kein_zugriff` wird lokal als Zeitablauf
+angezeigt; der Callback-Zugriffsfehler behält seinen Text. Beim Öffnen werden
+Browserdaten in beiden Modi gelöscht.
+`internal/client/testdata/contract5_login_adapter.json` prüft konkrete Client-Anfragen.
+Zusätzlich liegt `contract5_login_routes.json` aus dem Kern-Stand `ea50aa7a`
+bytegleich in `golden-v5/` (778 Byte, SHA-256
+`516c7896c791d481ebb7f7747b498819b91d64a62e1ca0627d1aecf508dd8bb5`).
+`TestGoldenV5AusKern` und `SHA256SUMS` prüfen den Spiegel; `.gitattributes` verhindert
+Zeilenenden-Konvertierung für diese Datei. Alte Goldens bleiben unverändert.
 
 ## Server-Vertrag 2
 

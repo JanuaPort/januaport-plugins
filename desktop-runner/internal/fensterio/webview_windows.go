@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/wailsapp/go-webview2/webviewloader"
@@ -47,7 +48,7 @@ type SurfaceConfig struct {
 
 // Surface ist ein natives Fenster mit WebView. Alle Methoden laufen auf dem UI-Thread, der es angelegt hat.
 // Jedes sicherheitsrelevante Ereignis wird nativ gebunden (NavigationStarting, FrameNavigationStarting,
-// NewWindowRequested, DownloadStarting, WebMessageReceived mit Quelle, PermissionRequested, ProcessFailed);
+// NavigationCompleted, NewWindowRequested, DownloadStarting, WebMessageReceived mit Quelle, PermissionRequested, ProcessFailed);
 // scheitert eines, öffnet das Fenster nicht (RunSteps). Dazu kommt WebResourceRequested für alle Anfragen
 // (Schicht 1, fenster.ResourceAllowed) und die Netzsperre im Browserprozess (Schicht 2, fenster.NetworkLockArgs):
 // NavigationStarting bricht die Navigation ab, verhindert aber die Anfrage nicht allein.
@@ -61,6 +62,12 @@ type Surface struct {
 	closed   bool
 	quit     bool // WM_QUIT kam während des Starts und wurde weitergereicht
 	traced   int  // Zahl der Fensternachrichten, die die Sonde schon in der Spur hat
+
+	loginButton, logoutButton, accountLabel uintptr
+	resetting                               bool
+	quietDone                               func(bool)
+	authTimer                               *time.Timer
+	authEpoch                               uintptr
 }
 
 var (
@@ -69,6 +76,8 @@ var (
 	pCreate      = user32.NewProc("CreateWindowExW")
 	pDefProc     = user32.NewProc("DefWindowProcW")
 	pDestroy     = user32.NewProc("DestroyWindow")
+	pSetText     = user32.NewProc("SetWindowTextW")
+	pEnable      = user32.NewProc("EnableWindow")
 	pMove        = user32.NewProc("MoveWindow")
 	pClientRect  = user32.NewProc("GetClientRect")
 	pShow        = user32.NewProc("ShowWindow")
@@ -111,6 +120,9 @@ const (
 func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 	s := &Surface{o: o, cfg: cfg, chromium: edge.NewChromium()}
 	app := o.Name
+	if o.api != nil && o.gateway != nil {
+		o.login = NewLogin(o.gateway, o.Host, o.runLogin, func() { pPost.Call(s.hwnd, wmLoginReady, 0, 0) })
+	}
 	steps := []Step{
 		{"webview2 runtime", func() error { _, err := webviewloader.GetAvailableCoreWebView2BrowserVersionString(""); return err }},
 		{"win32", s.findProcs},
@@ -290,6 +302,9 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 		}},
 		{"bind WebMessageReceived", func() error {
 			h := wv2com.NewHandler(wv2com.IIDWebMessageHandler, func(_, args uintptr) uintptr {
+				if s.resetting || s.closed {
+					return 0
+				}
 				a := wv2com.P(args)
 				source, hr, nilPtr, ok := wv2com.ReadString(a, wv2com.IdxMessageSource)
 				if !ok {
@@ -314,15 +329,20 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 			})
 			return wv2com.AddEvent(s.com(), wv2com.IdxAddWebMessageReceived, h)
 		}},
-		{"diagnose NavigationCompleted", func() error {
-			if s.cfg.Probe == nil {
-				return nil // nur die nativen Sonden schauen zu; im Betrieb gibt es keinen Handler
-			}
+		{"bind NavigationCompleted", func() error {
 			h := wv2com.NewHandler(wv2com.IIDNavigationCompletedHandler, func(_, args uintptr) uintptr {
 				a := wv2com.P(args)
 				success, ok1 := wv2com.GetInt32(a, 3)
 				status, ok2 := wv2com.GetInt32(a, 4)
 				s.trace("NavigationCompleted", fmt.Sprintf("erfolg=%v status=%d lesbar=%v", success != 0, status, ok1 && ok2))
+				if s.quietDone != nil && !s.closed {
+					source, ok := wv2com.GetString(s.com(), wv2com.IdxGetSource)
+					if ok && source == "about:blank" {
+						done := s.quietDone
+						s.quietDone = nil
+						done(ok1 && success != 0)
+					}
+				}
 				return 0
 			})
 			return wv2com.AddEvent(s.com(), wv2com.IdxAddNavigationCompleted, h)
@@ -334,6 +354,21 @@ func NewSurface(o *Opened, cfg SurfaceConfig) (*Surface, error) {
 				return ErrWebView
 			}
 			return v3.SetVirtualHostNameToFolderMapping(host, o.Dir, edge.COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND(edge.COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY))
+		}},
+		{"initial browser data", func() error {
+			done, good := false, false
+			if e := s.ClearBrowsingData(func(ok bool) { done = true; good = ok }); e != nil {
+				return ErrWebView
+			}
+			if e := WaitFor(startFrist, s.pumpOnce, func() (bool, error) {
+				if s.closed || s.quit {
+					return false, ErrBeendet
+				}
+				return done, nil
+			}); e != nil || !good {
+				return ErrWebView
+			}
+			return nil
 		}},
 		{"show", func() error {
 			s.layout()
@@ -423,7 +458,7 @@ func (s *Surface) traceGeometry() {
 func (s *Surface) viewCenterScreen() (x, y int32) {
 	var client winRect
 	pClientRect.Call(s.hwnd, uintptr(unsafe.Pointer(&client)))
-	view, _ := fenster.Layout(int(client.Right-client.Left), int(client.Bottom-client.Top), s.o.TestDevice)
+	view, _ := s.bounds(int(client.Right-client.Left), int(client.Bottom-client.Top))
 	pt := struct{ X, Y int32 }{int32(view.X + view.W/2), int32(view.Y + view.H/2)}
 	pToScreen.Call(s.hwnd, uintptr(unsafe.Pointer(&pt)))
 	return pt.X, pt.Y
@@ -473,7 +508,7 @@ func (s *Surface) trace(event, detail string) {
 func (s *Surface) com() wv2com.Obj { return unsafe.Pointer(s.view) }
 
 func (s *Surface) findProcs() error {
-	for _, p := range []*windows.LazyProc{pRegister, pCreate, pDefProc, pDestroy, pMove, pClientRect, pShow, pPost, pForeground, pLoadCursor} {
+	for _, p := range []*windows.LazyProc{pRegister, pCreate, pDefProc, pDestroy, pMove, pClientRect, pShow, pPost, pForeground, pLoadCursor, pSetText, pEnable} {
 		if err := p.Find(); err != nil {
 			return err
 		}
@@ -522,6 +557,9 @@ func (s *Surface) createWindow() error {
 		}
 		s.bar = b
 	}
+	if s.o.login != nil {
+		return s.createLoginControls(instance)
+	}
 	return nil
 }
 
@@ -532,7 +570,11 @@ func (s *Surface) bindNavigation(addIdx int) error {
 		v := NavVerdict{Cancel: true}
 		if uri, ok := wv2com.GetString(a, wv2com.IdxNavURI); ok {
 			s.trace("NavigationStarting", uri)
-			v = NavigationVerdict(app, uri)
+			if s.resetting {
+				v = NavVerdict{Cancel: uri != "about:blank" || addIdx != wv2com.IdxAddNavigationStarting}
+			} else {
+				v = NavigationVerdict(app, uri)
+			}
 		}
 		if v.Cancel && !wv2com.PutBool(a, wv2com.IdxNavPutCancel, true) {
 			s.requestClose()
@@ -589,7 +631,8 @@ func (s *Surface) layout() {
 	if ok, _, _ := pClientRect.Call(s.hwnd, uintptr(unsafe.Pointer(&r))); ok == 0 {
 		return
 	}
-	view, bar := fenster.Layout(int(r.Right-r.Left), int(r.Bottom-r.Top), s.o.TestDevice)
+	view, bar := s.bounds(int(r.Right-r.Left), int(r.Bottom-r.Top))
+	s.layoutLogin(int(r.Right-r.Left), bar.H)
 	if s.bar != 0 {
 		pMove.Call(s.bar, uintptr(bar.X), uintptr(bar.Y), uintptr(bar.W), uintptr(bar.H), 1)
 	}
@@ -600,6 +643,9 @@ func (s *Surface) layout() {
 func (s *Surface) Pump() {
 	if s.closed || s.view == nil {
 		return
+	}
+	if s.o.login != nil {
+		s.o.login.Pump(s)
 	}
 	for _, b := range s.o.Host.Drain() {
 		if s.cfg.Probe != nil {
@@ -649,6 +695,10 @@ func (s *Surface) finish() {
 		return
 	}
 	s.closed = true
+	if s.authTimer != nil {
+		s.authTimer.Stop()
+	}
+	s.quietDone = nil
 	s.o.Close()
 	surfacesMu.Lock()
 	delete(surfaces, s.hwnd)
@@ -667,10 +717,29 @@ func surfaceProc(hwnd, msg, wp, lp uintptr) uintptr {
 			s.traceMessage(msg, wp, lp)
 		}
 		switch msg {
+		case wmLoginReady:
+			s.Pump()
+			return 0
+		case wmLoginTimeout:
+			if s.resetting && wp == s.authEpoch {
+				s.FailLogin()
+			}
+			return 0
+		case 0x0111: // WM_COMMAND, ausschließlich native Knöpfe
+			if s.o.login != nil && wp>>16 == 0 {
+				switch wp & 0xffff {
+				case loginControlID:
+					s.o.login.Start()
+					s.o.login.Pump(s)
+				case logoutControlID:
+					s.o.login.SignOut(s)
+				}
+			}
+			return 0
 		case wmSize:
 			if s.view != nil {
 				// SIZE_MINIMIZED (1): unsichtbar schalten, sonst sichtbar; ein Fehler lässt sich hier nicht mehr melden.
-				_ = s.chromium.SetVisible(wp != 1)
+				_ = s.chromium.SetVisible(wp != 1 && !s.resetting)
 				s.layout()
 			}
 			return 0

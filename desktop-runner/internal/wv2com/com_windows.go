@@ -27,7 +27,7 @@ const (
 	IdxAddNavigationStarting      = 7
 	IdxAddWebResourceRequested    = 55
 	IdxAddResourceFilter          = 57
-	IdxAddNavigationCompleted     = 15 // nur Diagnose der Sonden
+	IdxAddNavigationCompleted     = 15 // K6c: leeres Dokument vor Profilbereinigung; daneben Sondendiagnose
 	IdxAddFrameNavigationStarting = 17
 	IdxAddWebMessageReceived      = 34
 	IdxAddNewWindowRequested      = 44

@@ -14,11 +14,12 @@ import (
 	"testing"
 )
 
-// Kernreferenzen K6a: Spiegelung aus JanuaPort/januaport, internal/desktop/testdata.
+// Kernreferenzen K6a und K6c P2 (ea50aa7a): Spiegelung aus JanuaPort/januaport, internal/desktop/testdata.
 // Die Bytes wurden kopiert, nicht neu serialisiert (D0-Muster, contract/golden-v5).
 var v5Golden = map[string]string{
 	"manifest_apps_canonical.bin": "8a3e13cf6a20923793f4fb0c60101ba29b7421805fce0fe188b8f573f23964de",
 	"contract5_routes.json":       "d77886162de998051fe75a191b7f0163b7315f543938f43f9db4a50efdd43c28",
+	"contract5_login_routes.json": "516c7896c791d481ebb7f7747b498819b91d64a62e1ca0627d1aecf508dd8bb5",
 }
 
 func TestGoldenV5AusKern(t *testing.T) {
