@@ -10,6 +10,8 @@ Es gelten zusätzlich die Regeln in `../../CLAUDE.md`, insbesondere Invarianten 
   und K6b-2/K6c-Sperren unverändert. `Reader` → `Runtime.Open` übernimmt den geprüften Modus;
   `Runtime.Apps/Watch` → `Surface.UpdateApps` aktualisiert offene Fenster beim nächsten
   Manifestabgleich. Die Sequenz verhindert einen älteren Anzeigestand beim asynchronen Öffnen.
+  Die Startmeldung „Bitte mit dem eigenen Konto anmelden.“ bleibt nach dem ersten `Login.Pump`:
+  `NewLogin` und Control-Anlage nutzen `anmeldung.Message("start")`; nach Abmelden bleibt „Abgemeldet.“.
 - `Login.Start` startet nur Hintergrundarbeit. `login_windows.go` ruft den Gerätekanal
   und den Systembrowser auf. `Surface`/`Login.Pump` führen nur native UI-Arbeit aus.
   App-JavaScript kennt keinen Anmelde- oder Abmeldebefehl. Die Pipe bleibt tokenfrei.
@@ -44,7 +46,9 @@ Es gelten zusätzlich die Regeln in `../../CLAUDE.md`, insbesondere Invarianten 
 ## Belege
 
 `login_test.go`: Fake-View einschließlich gleicher Anzeigenamen, Reihenfolge,
-Fehler und Abmelden. `login_r4_test.go`: laufende und bereits wartende Antworten
+Fehler und Abmelden. `TestLoginStartmeldungBleibtNachPumpUndAbmelden` belegt Startmeldung
+und Meldung nach Abmelden; Mutant `leistentext-start` entfernt die Initialisierung
+in `NewLogin` (lokal ohne GUI/Container). `login_r4_test.go`: laufende und bereits wartende Antworten
 über `Login.Start/Pump` verworfen (A9, Mutanten `login-suspend` und
 `host-suspend-out`), Ablauf am HTTP-Adapter und Wiederanmeldung ohne lokale
 Sitzung. `login_edges_test.go`: alte Antworten, hängendes Gateway,

@@ -2,6 +2,9 @@
 
 ## Unveröffentlicht — Anmeldeleiste nach App-Modus (#1321)
 
+- Startmeldung „Bitte mit dem eigenen Konto anmelden.“ bleibt nach dem ersten
+  `Login.Pump` erhalten: `NewLogin` und Control-Anlage nutzen `anmeldung.Message("start")`.
+  Nach Abmelden weiterhin „Abgemeldet.“; Regressionstest und Mutant `leistentext-start`.
 - Vertrag 5 nimmt `apps[].mode` optional an (a/b/leer, sonst Manifestfehler).
   In Modus a keine Anmeldeleiste, keine Knöpfe/Meldungen; in b und bei fehlendem/leerem
   Feld wie bisher. Neue geprüfte Manifeste aktualisieren auch offene Fenster beim Abgleich.

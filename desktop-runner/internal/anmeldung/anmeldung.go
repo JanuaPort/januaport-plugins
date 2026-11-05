@@ -88,6 +88,8 @@ func DisplayName(s string) string {
 }
 func Message(code string) string {
 	switch code {
+	case "start":
+		return "Bitte mit dem eigenen Konto anmelden."
 	case "kein_zugriff":
 		return "Kein Zugriff auf diese App. Bitte die Verwaltung kontaktieren."
 	case "platz_gesperrt":

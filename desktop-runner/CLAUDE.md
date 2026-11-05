@@ -361,6 +361,10 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     bleiben unverändert. Goldens: `contract/golden-v5/` (Kernbytes), Manifest seit #1321 mit mode,
     SHA-256 `7cfb70018cb3265f39245b43de2e0c64f2859b8be366c4b34509454058656ae6`;
     ältere Vertragsgoldens bleiben bytegleich (`TestGoldenV5AusKern`).
+    Startmeldung der Leiste: „Bitte mit dem eigenen Konto anmelden.“ bleibt beim ersten
+    `Login.Pump` erhalten; `NewLogin` und Control-Anlage nutzen `anmeldung.Message("start")`.
+    Nach Abmelden weiterhin „Abgemeldet.“. Beleg: `TestLoginStartmeldungBleibtNachPumpUndAbmelden`,
+    Mutant `leistentext-start` (lokal ohne GUI/Container).
     **App-Paket:** `AppStore.Ensure/Prepare/Open`. Erst `decodePackage` (Git-IDs, SHA-1DC/SHA-256,
     exakte Objektmenge, Namen), dann die kopierten apphost-Regeln (Modus nur 100644, ≤ 1000 Dateien,
     ≤ 4 MiB, MIME-Liste, Geheimnismuster, keine aktive Markup). **Das CSP-Literal setzt der Läufer selbst

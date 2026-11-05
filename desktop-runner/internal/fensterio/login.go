@@ -49,7 +49,7 @@ type Login struct {
 func (l *Login) Format(s fmt.State, _ rune) { _, _ = fmt.Fprint(s, "Login(***)") }
 
 func NewLogin(g *Gateway, h *Host, run func(context.Context) (client.PersonSession, error), wake func()) *Login {
-	return &Login{gateway: g, host: h, run: run, wake: wake, out: make(chan loginResult, 1)}
+	return &Login{gateway: g, host: h, run: run, wake: wake, out: make(chan loginResult, 1), message: anmeldung.Message("start")}
 }
 func (l *Login) Start() {
 	l.mu.Lock()
