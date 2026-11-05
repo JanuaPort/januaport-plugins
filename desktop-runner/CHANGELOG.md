@@ -1,6 +1,18 @@
 # Changelog
 
-## Unveröffentlicht — Symbol nach Autostart (#1240)
+## 0.5.1 — 2026-11-05 (JanuaPort/januaport#1240)
+
+Ersetzt 0.5.0, die als Pre-Release markiert ist: Die Bedienfeld-Probe mit signierter Exe war rot.
+
+### Upstream-Prüfpunkt
+
+- `wailsapp/go-webview2` v1.0.19 bis v1.0.23: 13 Commits, keine Sicherheitshinweise, nichts übernommen.
+- WebView2-SDK bis 1.0.4314.35 (Runtime 156): keine CVE und kein Advisory zum SDK gefunden. Die Release Notes
+  nennen Härtungen, die mit der Runtime kommen. Unsere Kopie bindet nur COM-Schnittstellen, die Fixes kommen
+  über die sich selbst aktualisierende Runtime. Die Detailliste von SDK 1.0.4314.35 ist nicht gelesen, gemessen
+  ist nur Runtime 156.
+
+### Symbol nach Autostart (#1240)
 
 - Beim ersten Neustart nach `install` blieb das Symbol violett und der Hinweis bei `jnpt.frage` blieb aus, obwohl
   Menü und Pause den echten Zustand zeigten. Weitere Neustarts waren nicht betroffen. Ursache: `NIM_ADD` scheitert bei bereits vorhandenem Symbol
