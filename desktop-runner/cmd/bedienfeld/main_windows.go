@@ -61,7 +61,15 @@ const (
 	showNoActivate   = 4                             // SW_SHOWNOACTIVATE
 	wmEvents         = 0x8001
 	wmTray           = 0x8002
-	trayFlags        = 1 | 2 | 4 // MESSAGE | ICON | TIP, never INFO/balloons.
+	trayFlags        = 1 | 2 | 4 // MESSAGE | ICON | TIP. Kein NIF_INFO: Der Hinweis ist ein eigener NIM_MODIFY (notify).
+)
+
+// Hinweis bei neuer Rückfrage (#1240), die einzige Stelle mit NIF_INFO. Fester Text, nie Inhalt der Rückfrage;
+// ohne Ton, ohne Aktivierung. Der Dialog öffnet weiterhin nur per Klick.
+const (
+	nimModify       = 1
+	nifInfo         = 0x10
+	noticeInfoFlags = 1 | 0x10 // NIIF_INFO | NIIF_NOSOUND
 )
 
 type point struct{ X, Y int32 }
@@ -299,6 +307,9 @@ func (a *application) render() {
 	if ok, _, _ := notifyIcon.Call(op, uintptr(unsafe.Pointer(&n))); ok != 0 {
 		a.tray = true
 	}
+	if a.tray && a.model.TakeNotice() {
+		a.notify()
+	}
 	if a.dialog != 0 && (v.Dialog == nil || !v.Dialog.Visible || v.Dialog.ID != a.dialogID) {
 		h := a.dialog
 		a.dialog = 0
@@ -308,6 +319,15 @@ func (a *application) render() {
 	if a.dialog == 0 && v.Dialog != nil && v.Dialog.Visible {
 		a.openDialog(v.Dialog)
 	}
+}
+
+// notify setzt den Hinweis am vorhandenen Symbol. Nur NIF_INFO, damit Symbol und Tooltip unberührt bleiben.
+func (a *application) notify() {
+	n := notifyData{Window: a.window, ID: 1, Flags: nifInfo, InfoFlags: noticeInfoFlags}
+	n.Size = uint32(unsafe.Sizeof(n))
+	copy(n.Info[:], syscall.StringToUTF16(panel.NoticeText))
+	copy(n.InfoTitle[:], syscall.StringToUTF16(panel.NoticeTitle))
+	notifyIcon.Call(nimModify, uintptr(unsafe.Pointer(&n)))
 }
 
 func (a *application) menu() {

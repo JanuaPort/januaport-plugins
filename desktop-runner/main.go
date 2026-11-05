@@ -20,6 +20,7 @@ import (
 var version = "0.3.0"
 
 func main() {
+	attachConsole()
 	if run(os.Args[1:], os.Stdout) != nil {
 		fmt.Fprintln(os.Stderr, "Desktop-Läufer: Vorgang fehlgeschlagen (E1).")
 		os.Exit(1)

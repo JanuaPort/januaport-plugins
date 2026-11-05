@@ -48,8 +48,25 @@ func TestReleaseUndWindowsCI(t *testing.T) {
 			t.Fatal("Signaturfehler wird nicht abgewiesen", exe)
 		}
 	}
-	if !strings.Contains(buildText, "-H=windowsgui") || !strings.Contains(buildText, "./cmd/bedienfeld") {
-		t.Fatal("Bedienfeld-GUI-Build fehlt")
+	if !strings.Contains(buildText, "./cmd/bedienfeld") {
+		t.Fatal("Bedienfeld-Build fehlt")
+	}
+	// #1240: Beide Exe sind GUI-Programme; als Konsolenprogramm öffnet die Benutzeraufgabe ein Terminalfenster.
+	builds := 0
+	for _, line := range strings.Split(buildText, "\n") {
+		if !strings.Contains(line, "go build") {
+			continue
+		}
+		builds++
+		if !strings.Contains(line, "-H=windowsgui") {
+			t.Fatal("Build ohne -H=windowsgui:", strings.TrimSpace(line))
+		}
+	}
+	if builds != 2 {
+		t.Fatal("erwartet genau zwei Build-Zeilen, gefunden", builds)
+	}
+	if !regexp.MustCompile(`-X main\.version=\$releaseVersion[^\n]*-o out/desktop-runner\.exe`).MatchString(buildText) {
+		t.Fatal("Läufer-Version wird nicht eingebettet")
 	}
 	for _, job := range []string{"build", "publish"} {
 		found := false
