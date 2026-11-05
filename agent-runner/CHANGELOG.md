@@ -1,6 +1,6 @@
 # Changelog
 
-## Unveröffentlicht
+## 0.2.2 — 2026-11-05
 
 JanuaPort/januaport#1338, JanuaPort/januaport#1335.
 
