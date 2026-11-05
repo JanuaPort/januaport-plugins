@@ -1,6 +1,8 @@
 # Changelog
 
-## Unveröffentlicht — GUI-Läufer und Hinweis bei Rückfrage (#1240)
+## 0.5.0 — 2026-11-05 (JanuaPort/januaport#1240, #1321, #1048)
+
+### GUI-Läufer und Hinweis bei Rückfrage (#1240)
 
 - Der Läufer ist ein GUI-Programm (`-H=windowsgui`, `-X main.version` bleibt). Die Benutzeraufgabe öffnet
   bei der Anmeldung kein leeres Terminalfenster mehr; dessen Schließen konnte `run` bis zur nächsten
@@ -19,7 +21,7 @@
 - Nativ zu prüfen (BOX): kein Terminalfenster bei Anmeldung, Ausgaben in PowerShell und cmd, sichtbarer
   Hinweis bei `jnpt.frage`, Verhalten bei Fokus-Assistent.
 
-## Unveröffentlicht — Anmeldeleiste nach App-Modus (#1321)
+### Anmeldeleiste nach App-Modus (#1321)
 
 - Startmeldung „Bitte mit dem eigenen Konto anmelden.“ bleibt nach dem ersten
   `Login.Pump` erhalten: `NewLogin` und Control-Anlage nutzen `anmeldung.Message("start")`.
@@ -33,7 +35,7 @@
   Goldens bleiben unverändert. Native Controls/Manifestwechsel prüft BOX mit
   `TestWindowsWebViewAnmeldeleisteNachModus`; hier keine GUI-Ausführung.
 
-## Unveröffentlicht — K6c P3 (#1048)
+### K6c P3 (#1048)
 
 - Persönliche PC-Anmeldung über nativen Knopf, Systembrowser, PKCE und zeitlich
   begrenzten IPv4-Loopback; Fehlerklassen ausschließlich als feste native Meldung.
@@ -46,7 +48,7 @@
   WebView-Bereinigung einschließlich sessionStorage bleibt bis zur neuen BOX-Sonde
   unbelegt; kein lokaler GUI-Test, kein Release.
 
-## Unreleased
+### Weitere Änderungen seit 0.4.0
 
 - K6b-2, SEC-R4: Netzsperre mit Pflichtargument auch für UDP-Wege, Schalter-Normalisierung, zwei Korrekturen der Kopie, Rückleseprobe der Einstellungen, Fenster schließen bei Entzug einer App.
 - K6b-2 (JanuaPort/januaport#1048): App-Fenster im Bedienfeld (WebView2 über eine angepasste Kopie von
