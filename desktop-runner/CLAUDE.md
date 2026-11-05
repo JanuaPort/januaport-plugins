@@ -30,7 +30,10 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 | internal/platform/security_linux.go, server_linux.go | Linux-HMAC/Dateirechte, Sperre und Server-Konfiguration |
 | container.go, container_engine.go, secrets_linux.go | Docker-CLI, Startwege und Geheimnisgrenze |
 | internal/fenster | Reines Go ohne Netz/Prozess/Datei/Windows (K6b-1): CSP-Literal, Navigation, Nachrichten, Einstellungen, Umschlag, Brücke |
-| internal/fensterio | Adapter zu `fenster`: Gateway (App-Token im RAM, 401 → einmal neu) und Pipe-Wrapper mit zwei Operationen |
+| internal/fensterio | Hinter der Tür des Bedienfelds (K6b-2): Gateway (App-Token im RAM, 401 → einmal neu), Pipe-Wrapper mit zwei Operationen, `Host` (UI-Thread-sicher), `PanelExchange` über die vorhandene Verbindung, `Runtime` (Apps lesen, öffnen), Urteile für native Ereignisse, `Surface` (nur Windows) |
+| internal/wv2com | Nur Windows: dünner COM-Adapter für NavigationStarting, NewWindowRequested, DownloadStarting, Quelle der Webnachricht, ClearBrowsingData |
+| internal/edge | Nur Windows: geprüfte, angepasste Kopie von go-webview2 v1.0.19 `pkg/edge` (MIT, NOTICE): kein `os.Exit`, kein `log.Fatal`, Start mit `Begin`/`Ready`/`Cancel`/`Close` statt `Embed` |
+| internal/client/reader.go | `Reader`: nur lesender Zugriff des Bedienfelds auf Zugangsdaten, geprüftes Manifest und App-Siegel |
 | apptoken.go, appstore.go, appload.go, copied_apphost.go | Vertrag 5 im Client: App-Token, privates Ablegen mit Siegel, Ladeprüfung, markierte apphost-Kopie |
 | contract/golden-v5 | Bytegleicher Kernspiegel von Vertrag 5 (Manifest und Routen) mit SHA256SUMS |
 | probe/k6b_mutations.py | Mutationen K6b-1 im Container mit Go und Python |
@@ -274,10 +277,25 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     separater Windows-Prozess ohne CGO, gebaut mit `-H=windowsgui`.
     `internal/panel`: reines Linux-testbares Modell. `internal/panelio`: I/O.
     `cmd/bedienfeld`: UI-Thread mit LockOSThread und Message-Loop; Pipe-Lesen
-    in Goroutines, Übergabe per PostMessage. Kein Credential/eigener Netzweg.
-    Transitive Importe: kein `net/http`/`internal/client`, `net` nur über Pipe.
-    Benannte Ausnahmeliste `importExceptions` in `TestPanelImportWaechter`
-    leer (K6b später). Win32 via syscall/System32; x/sys/windows nur hinter Pipe.
+    in Goroutinen, Übergabe per PostMessage. **Neu gefasst in K6b-2 (SEC-B1–B4):** Das Bedienfeld
+    als Prozess hält seit den App-Fenstern das Gerätetoken (nur lesend, Reader) und einen Netzweg
+    zum Gateway, aber **nur hinter einer Tür**: `cmd/bedienfeld -> internal/fensterio` ist die einzige
+    benannte Kante. `internal/panel`, `internal/panelio` und `internal/pipe` bleiben strikt ohne
+    `net/http`, `internal/client`, `internal/fensterio` und freies `net`; `importExceptions` in
+    `TestPanelImportWaechter` bleibt leer, der Wächter ist je Wurzel geschnitten (keine Kantenliste),
+    `TestFensterioNurUeberDieTuer` prüft, dass nur `cmd/bedienfeld` die Tür nutzt. Das Bedienfeld selbst
+    importiert weder `internal/client` noch `internal/platform` noch `net/http`
+    (`TestBedienfeldImportiertClientNicht`, `TestPlatformNurHinterDerTuer`). Hinter der Tür gilt B3: aus
+    `internal/client` nur Leser und AppAPI (`TestFensterioRuftNurLeserUndAppAPI`, AST), kein Engine-,
+    Spawn-, Claim-, Schreib- oder Widerrufsaufruf; bei „revoked“ ein fester Fehler, gelöscht wird nichts
+    (`TestRuntimeWiderrufLoeschtNichts`). B1: Die UI-Thread-Dateien rufen weder Gateway noch Brücke noch
+    Zugangsdaten-Lesen noch Pipe-Gespräch (`TestBedienfeldUIThreadOhneNetzUndBruecke`); `Host.Receive`
+    blockiert nie, Gateway und lokaler Pfad haben getrennte Plätze (`TestHostAnhaltenBleibtBeiHaengendemGatewayBedienbar`),
+    ein WebView2-Absturz (`ProcessFailed`) schließt nur das Fenster (`TestHostFailBrichtAbUndNimmtNichtsMehrAn`,
+    nativ `TestWindowsWebViewProzessabsturz`). B4: Die Pipe bleibt tokenfrei; das Token wird erst beim
+    Öffnen einer App gelesen (`TestReaderAppsDekodiertKeinToken`) und steht nie in Env, Kommandozeile,
+    AdditionalBrowserArguments oder Benutzerdatenverzeichnis (`TestWindowsWebViewProzessbaumOhneTraeger`).
+    Win32 via syscall/System32; x/sys/windows nur hinter Pipe und hinter der Tür.
     Ausschließlich `pipe.Dial()` prüft Bildpfad, Authenticode und Benutzer-SID.
     Nichts vor erfolgreicher Prüfung schreiben; kein Ausweichname, Wiederholung
     mit 5–60 Sekunden Abstand. Fünf Sekunden ohne Status oder bei blockiertem
@@ -305,7 +323,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Native Prozesssonde: echte Exe ohne Argumente, PEB/Umgebung ohne `jnpt*`
     (Exe-Name ausgenommen), Handle-Vererbung samt Gegenprobe. Läuft über den
     bestehenden Windows-Job. Kein Tray-Rauchtest/lokaler GUI-Start.
-    L6 bindet Installation/zweite Aufgabe/Release gemeinsam (Invariante 17); HTML/WebView erst K6b.
+    L6 bindet Installation/zweite Aufgabe/Release gemeinsam (Invariante 17); App-Fenster: Invariante 18 (K6b-2).
 
 17. Installation und Release (#1240 L6; Plan-Invariante 19):
     `desktop-runner.exe` und `jnpt-bedienfeld.exe` aus demselben Release im selben
@@ -370,6 +388,185 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     `zustand`, `bis`, `netz`; `Anhalten` gilt erst, wenn der Läufer `angehalten` bestätigt.
     Grenze (SEC K6b (c), Invariante 15): Die Pipe-ACL schützt nicht gegen den WebView2-Hauptprozess.
 
+    **K6b-2 (App-Fenster im Bedienfeld, SEC-B1–B4 und natives Ereignismodell):** Menüeintrag je App
+    (`panel.Model.SetApps`, nur Namen), Öffnen in einer fensterio-Goroutine (`Runtime.OpenAsync`: Manifest
+    prüfen, Siegel prüfen, erst dann Zugangsdaten lesen, `client.NewAPI` mit onRevoke ohne Löschen).
+    `Surface` (nur Windows, UI-Thread): natives Fenster, WebView2 über `internal/edge` (Kopie von go-webview2
+    v1.0.19, siehe unten) plus dünner eigener COM-Adapter `internal/wv2com` für alles, was die Bibliothek nicht durchreicht
+    (Vtable-Positionen und IIDs aus WebView2.h, SDK 1.0.2535.41). **Nativ gebunden, Pflicht, sonst öffnet das
+    Fenster nicht** (`RunSteps`, fester Fehler `webview_nicht_nutzbar`): `NavigationStarting` und
+    `FrameNavigationStarting` (Abbruch der Navigation, auch Redirect und meta refresh; nur `.html`-Seiten der
+    eigenen App laufen; die Anfrage verhindert erst Schicht 1 und 2), `NewWindowRequested` (immer `Handled`, nie ein Fenster; externe https-Links nur über
+    den nativen Ja-Dialog mit Host, dann `ShellExecuteW`), `DownloadStarting` (Cancel und Handled),
+    `WebMessageReceived` mit Quelle (`MessageSource` → `MessageAllowed`), `PermissionRequested` (global
+    Deny), `ProcessFailed` (Fenster schließen, Host abbrechen). Dazu `Settings()` vollständig,
+    `ClearBrowsingData` (A5, ICoreWebView2_13/Profile2), virtueller Host je App mit Zugriff `DENY`,
+    `Layout`: Die WebView bekommt einen Bereich, auf Testgeräten darüber die native Leiste „Test – Testgerät“.
+    Das Benutzerdatenverzeichnis `<Zustand>\webview\<app>` entsteht mit `platform.MkdirPrivate`
+    (private DACL) und wird vom Widerruf des Läufers ohne Verweisen zu folgen gelöscht
+    (`TestRevokeLoeschtWebviewOhneVerweiseZuFolgen`). `WebResourceRequested` ist Schicht 1 (siehe unten). Ein offenes Fenster
+    sperrt die Dateien: Das Bedienfeld schließt das Fenster einer App, sobald sie aus der Liste verschwindet (`CloseMissing`),
+    und die Liste leert sich sofort, wenn die Zustandsdatei fehlt. **Restgrenze:** Löschte der Läufer vor dem Schließen,
+    können Reste von `webview\<app>` bleiben; das Bedienfeld löscht nichts (B3).
+
+    **Start des WebView ist begrenzt (VM-Befund, B1):** Die Bibliothek beendete den Prozess bei jedem Fehler
+    (`os.Exit` im Fehlerrückruf) und wartete in `Embed` ohne Grenze (`GetMessage`); ein Fehlstart hing den
+    UI-Thread ein. `internal/edge` ist deshalb eine Kopie mit festen Abweichungen: Fehler werden gemeldet und
+    gemerkt, der Prozess endet nie; `Embed` ist durch `Begin` (stößt die Umgebung an), `Ready` (fertig oder
+    erster Fehler), `Cancel` (spätere Rückrufe wirkungslos) und `Close` ersetzt; der Controller-Rückruf kehrt bei
+    jedem Fehler zurück und registriert nur Berechtigungen und Prozessabsturz (das Echo der Seitennachrichten,
+    `WebResourceRequested` mit `log.Fatal` und ungenutzte Rückrufe entfallen); ungenutzte Antwort-Erzeugung ist
+    entfernt. `NewSurface` wartet über `WaitFor` höchstens `startFrist` (20 s) und verteilt dabei Nachrichten
+    (`pumpOnce`, WM_QUIT wird für die Hauptschleife erneut eingestellt); bei Fehler oder Frist `Cancel`, fester
+    Fehler, kein Fenster. Vorher prüft der Schritt "com apartment", dass der Thread ein STA ist
+    (`checkThread`); `fensterio.EnterUI` initialisiert COM und das Bedienfeld ruft es direkt nach
+    `LockOSThread` auf (`TestBedienfeldInitialisiertCOMAufDemUIThread`). Tests: `TestWaitForBegrenzt`,
+    `TestStartFristBegrenzt`, `TestEdgeKopieOhneProzessendeUndOhneUnbegrenzteWartezeit`,
+    `TestAdapterPruefteThreadUndWartetBegrenzt`; native Sonden `TestWindowsWebViewOhneCOMOeffnetNicht` und
+    `TestWindowsWebViewFehlstartHaengtNicht` (erzwungener Fehlstart ohne COM). Jede native Sonde läuft auf einem
+    festen Thread mit COM-STA und hat eine eigene Frist (`probeFrist`, 90 s je Sonde und Unterfall): Ein Hänger
+    kostet eine Sonde, nicht den Lauf.
+
+    **Die Kopie `internal/edge` ist Sicherheitskern (SEC-Bedingungen):** (1) Herkunft: `doc.go` nennt Repository,
+    Tag `v1.0.19`, Commit `11c6e567b916645d5fe6df006681f988ac52c13d` und die `go.sum`-Prüfsumme;
+    `internal/edge/upstream-diff.sh` holt das Original, prüft den Commit gegen den Go-Modulproxy und zeigt den
+    Diff (`docker run --rm -v "$PWD:/w" -w /w golang:1.26.10 sh internal/edge/upstream-diff.sh`);
+    `TestEdgeKopieNenntUpstream` hält doc.go, go.mod und go.sum zusammen. (2) Wächter: kein `os.Exit`, kein
+    `log.Fatal`, kein `panic`, keine Endlosschleife, kein `Sleep`/`Wait`, kein `GetMessage`, kein `Embed`, keine
+    Rückkanäle, die das Fenster nicht braucht (`TestEdgeKopieOhneProzessendeUndOhneUnbegrenzteWartezeit`,
+    `TestEdgeKopieOhnePanicEndlosschleifeUndWarten`; Mutanten `edge-exit`, `edge-fatal`, `edge-panic`,
+    `edge-endlosschleife`, `edge-sleep`, `edge-getmessage`, `edge-echo`). (3) Fehlerpfade: Auf jeden
+    `errorCallback` in den Rückrufen der Umgebung und des Controllers folgt ein `return`
+    (`TestEdgeRueckrufeKehrenNachFehlerZurueck`); `Ready` liefert den ersten Fehler, `NewSurface` macht daraus
+    den festen Fehler `webview_nicht_nutzbar` (`RunSteps` verwirft die Ursache), das Fenster bleibt zu, Tray und
+    Pipe stehen; nativ belegt `TestWindowsEdgeControllerFehlerBleibtFehler` (Controller-Start mit Elternfenster 0)
+    und `TestWindowsWebViewFehlstartHaengtNicht` (Umgebung scheitert). (4) Import-Tür: `internal/edge`,
+    `internal/edge/w32` und `internal/wv2com` sind für `panel`, `panelio`, `pipe` und `cmd/bedienfeld` verboten
+    (`TestPanelImportWaechter`), und im ganzen Modul importiert nur `internal/fensterio` die Kopie
+    (`TestEdgeNurVonFensterio`; Mutant `edge-wird-importiert`). (5) **Prüfpunkt je Läufer-Release: Upstream-
+    Sicherheitsfixes.** Vor jedem Release des Läufers prüft der Releasende, ob `wailsapp/go-webview2` oder das
+    WebView2-SDK nach `v1.0.19` Sicherheitsfixes veröffentlicht hat (`upstream-diff.sh` und das Changelog des
+    Originals ansehen, relevant sind besonders `pkg/edge`, `internal/w32` und die COM-Aufrufe); das Ergebnis
+    („nichts relevant“ oder „übernommen in Commit …“) steht im Release-Eintrag. Eine Übernahme ändert Tag,
+    Commit und Prüfsumme in doc.go, go.mod und go.sum zugleich und läuft durch dieselbe SEC-Prüfung wie die
+    Kopie selbst.
+
+    **Lehre aus Sondenlauf 3:** Die CSP (`script-src 'self'`) blockiert Inline-Skripte; Probeseiten liefern ihre
+    Auslöser deshalb als Dateien (`TestWindowsWebViewInlineSkriptBlockiert` belegt es). Der Gateway-Speicher der
+    Sonde wird je Fall geleert, sonst beenden Ereignisse früherer Fälle spätere Warteschleifen sofort und
+    machen Kontrollen blind. Diagnose je Runde (nur Sonden, nie im Betrieb): Spur je Fenster mit Quelle
+    (`fenster.DiagText`: gequotet, begrenzt, Träger maskiert), Urteil `fenster.SourceVerdict` mit festem Grund,
+    `NavigationCompleted` mit Erfolg und Status, Antworten als `fenster.ReplySummary` (ok oder fester Code),
+    verworfene Webnachrichten mit Grund; im Fehlerfall und bei Frist wird alles ausgegeben.
+
+    **Fremdserver-Befund (Sondenlauf 4) und drei Schichten gegen Ausleitung (SEC):** `NavigationStarting`
+    brach `metaRefresh`, `location.href` und fremde Links ab (`NavigationCompleted` status 14), trotzdem kam
+    `GET /ziel.html` am Testserver an. Bis die Ursache bewiesen ist, gilt das als echter Ausleitungsweg. Daher
+    (1) **WebResourceRequested für alles** (`fenster.ResourceAllowed`, Filter `*` über alle Kontexte): nur der
+    eigene virtuelle Host kommt durch (Dokumente zusätzlich mit der `.html`-Regel von `NavigationAllowed`,
+    Unterressourcen nur mit dem Host), alles andere bekommt eine lokale 403-Antwort ohne Netz; scheitert die
+    Antwort, schließt das Fenster. (2) **Netz im Browserprozess aus** (`fenster.BrowserArguments`): totes
+    Proxy-Ziel `0.0.0.0:0` (kein Port, den ein anderes Konto binden kann), `<-loopback>` (auch Loopback geht
+    nicht am Proxy vorbei), `--host-resolver-rules="MAP * ~NOTFOUND"` (DNS aus), kein Träger darin. Der
+    Kommandozeilenwert ist keine harte Grenze: `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` und Richtlinien der
+    Maschine oder des Benutzers können ihn übersteuern (siehe Betriebsarten der Sonde unten;
+    eine Proxy-Richtlinie ist eine Restgrenze von Schicht 2). Deshalb ist Schicht 1 Pflicht. (3)
+    `NavigationStarting` bleibt dritte Schicht. Belegt wird nur nativ: `TestWindowsWebViewFremdserverNull`
+    (17 Wege, Loopback und eigene IPv4-Adresse des Gasts, 0 Anfragen und 0 Verbindungen, sehende Kontrolle) und
+    `TestWindowsWebViewFremdserverUrsache` (ohne Schichten, nur Schicht 1, nur Schicht 2; Sec-Fetch-*,
+    Sec-Purpose, Purpose und Zeitpunkt je Treffer). Auflage SEC (a): Der Schritt `umgebung` entfernt JNPT*-
+    Variablen aus der Umgebung des Bedienfelds, bevor der Browser erbt (`jnptNames`); der Produktpfad des
+    Datenordners (`<Cache>\JanuaPort\desktop-runner\webview\<app>`) trägt kein jnpt, der öffentliche
+    Hostname `*.jnpt.invalid` ist kein Geheimnis und wird in der Sonde nur als solcher ausgenommen und gezählt.
+    **Fail-closed nach Wirkung (SEC-Urteil Lauf 5):** Schicht 2 ist die tragende Sperre, Schicht 1 die Pflicht
+    daneben. (a) Der Schritt `browser pruefen` liest nach dem Start die Kommandozeile des Browserprozesses
+    (`get_BrowserProcessId`, PEB des eigenen Kontos) und verlangt unsere Argumente exakt
+    (`fenster.BrowserCommandLineProblems`: Proxy, Umgehungsliste und Resolver genau einmal mit unserem Wert,
+    `--proxy-pac-url`, `--no-proxy-server` und `--proxy-auto-detect` verboten); sonst bleibt das Fenster zu (fester
+    Fehler, Tray und Halt stehen). Die Meldungen nennen nur Argumentnamen. (b) Jede gesetzte `WEBVIEW2_*`-Variable ist ein Eingriff: Der Schritt `umgebung` lehnt vor allem
+    anderen ab, auch vor dem Entfernen der `JNPT*`-Variablen. Der Go-Lader setzt aber selbst im Paket-Init
+    (`webviewloader/env_create.go:16-19`, `preventEnvAndRegistryOverrides` `:165-176`, nochmals vor jedem
+    Aufruf `:109`) `WEBVIEW2_PIPE_FOR_SCRIPT_DEBUGGER`, `..._ADDITIONAL_BROWSER_ARGUMENTS`,
+    `..._BROWSER_EXECUTABLE_FOLDER`, `..._USER_DATA_FOLDER` auf leer und `..._RELEASE_CHANNEL_PREFERENCE` auf `0`,
+    damit weder Umgebung noch Registry etwas überschreiben (WebView2 prüft auf Vorhandensein, nicht auf den Wert).
+    Darum vergleicht `webview2Findings` die Momentaufnahme vor dem Lader-Init (`internal/envsnap`: nur `os`,
+    Importpfad sortiert vor `github.com/wailsapp`, Go initialisiert seit 1.21 in dieser Reihenfolge; hier darf
+    nichts stehen) mit der Umgebung jetzt (nur diese fünf Namen mit genau diesen Werten sind der erwartete
+    Zustand, jeder andere Name oder Wert ist ein Eingriff). Meldungen tragen Name und Wertlänge, nie den Wert.
+    Dass ein überschriebener Wert dabei unsichtbar bliebe, fängt die Prüfung nach Wirkung ab (a). (c) Spekulatives Laden: **Schicht 1 allein ist nicht
+    dicht**: Mit nur dem Ressourcenfilter lässt `<link rel=prerender>` ein echtes GET durch (Sondenlauf 7). Die
+    Feature-Schalter `Prerender2` und `NoStatePrefetch` wirkten in Runtime 156 nicht und sind entfernt, ebenso
+    `--disable-background-networking` und `--dns-prefetch-disable`, für die keine Messung trägt. Was hält, ist
+    **Schicht 2**: Das Netz im Browserprozess ist aus, und fällt sie aus (die Kommandozeile trägt sie nicht), öffnet
+    das Fenster nicht. Die Ladeprüfung der Läufer-Ablage (`client.spekulativesLaden`) lehnt zusätzlich
+    `<link rel=prerender|prefetch|preconnect|dns-prefetch>` und `<script type=speculationrules>` ab; das ist eine
+    kleine Zusatzschicht gegen statische Seiten, keine Sperre: dynamisch per Skript erzeugte Elemente deckt sie
+    nicht ab. Grenzen von Schicht 2: Sie schützt gegen IT-Richtlinien und Versehen, nicht gegen Prozesse im selben
+    Konto (die bleiben A1). Zwei Richtlinien (`ProxyMode`, `AdditionalBrowserArguments`) wurden gemessen und öffneten
+    sie nicht; ob WebView2 sie überhaupt liest, ist unbelegt. Eine Übersteuerung, die nicht in der Kommandozeile
+    sichtbar wird, erkennt die Prüfung nicht. `JNPT_NATIVE_WEBVIEW_PROBE_MODUS` (`beide`, `nurSchicht1`,
+    `nurSchicht2`) fährt `FremdserverNull` mit genau den gewählten Schichten (etwa unter einer vom Admin gesetzten
+    Richtlinie). Kontrollen je Schicht: `TestWindowsWebViewSchichtenKontrollen`
+    (Seite ohne CSP: ohne Schichten sieht der Server den Abruf; mit nur Schicht 1 meldet die Spur die Anfrage als
+    blockiert und es gibt 0 Treffer, `ok` der Seite zählt dort nicht, weil die lokale 403 einen no-cors-Abruf als
+    geglückt erscheinen lässt; mit nur Schicht 2 scheitert der Abruf im Netz); `TestWindowsWebViewBrowserpruefungFailClosed`
+    (widersprechendes Argument und `WEBVIEW2_*` lassen das Fenster nicht öffnen).
+    **Berechtigungen, Maßstab ist die Wirkung:** `TestWindowsWebViewBerechtigungenAbgelehnt` prüft je Berechtigung, ob die
+    Seite etwas bekommt. Zwischenablage: ein synthetischer Wert liegt vorher in der Zwischenablage des Gasts, die Kontrolle
+    (`zwischenablageKontrolle`, Berechtigungen erlaubt) muss ihn lesen, sonst sagt „erhält nichts“ nichts. Geolocation:
+    Ein Rückruf der Seite (Fehlercode, nie Position) ist der Beleg, Zeitablauf nie; bleibt die Abfrage hängen, ist der
+    Fall rot und nennt die Windows-Standort-Einwilligung. „Ereignis lehnt ab“ (PermissionRequested mit Deny) und „Browser
+    verweigert selbst“ (die Seite erhält nichts, ohne Ereignis) werden getrennt gemeldet; nur das erste belegt die
+    Ereignis-Sperre. Lehren aus Lauf 8: Eine Seite im Hintergrund drosselt Zeitgeber auf 1 s, deshalb wartet die Seite
+    auf den Fokus nach Zeit (5 s), nicht nach Zählern; die Sonde bringt ihr Fenster vorher in den Vordergrund
+    (`forceForeground`, Alt-Trick, nur Sonde, das Ergebnis steht im Protokoll). Steht die Windows-Standort-Einwilligung
+    der Maschine (`HKLM\...\ConsentStore\location`) auf `Deny`, bleibt die Standortabfrage der Seite bei `prompt` hängen, ohne
+    PermissionRequested und ohne Rückruf (Lauf 8); steht sie auf `Allow`, verlangt die Sonde `PermissionRequested art=3`
+    mit Deny und den Rückruf `PERMISSION_DENIED`. Ohne Rückruf bleibt der Fall rot und sagt „unbelegt“.
+    Lauf 10: Zwischenablage und Standort laufen in der Sonde im `click`-Handler der Seite (Nutzeraktivierung und Fokus);
+    die Seite meldet `document.hasFocus()` im Handler (`klick`), und der Host liefert den Klick auf die Fläche des
+    Fensters (im Sekundentakt). Kam nie ein Klick, ist der Fall rot („kein Klick, unbelegt“), nie grün. Ein Fenster im
+    Vordergrund hat noch nicht den Fokus der Seite: Das Fenster gibt ihn der WebView beim Anzeigen und bei `WM_SETFOCUS`
+    (`s.chromium.Focus`, MoveFocus programmatisch; `TestSurfaceGibtDerSeiteDenFokus`), sonst landet Tastatureingabe nicht
+    in der Seite, bis jemand hineinklickt (auch für Nutzer ein Mangel, nicht nur für die Sonde). Die Geolocation-Sonde
+    nennt zusätzlich den Zustand des Dienstes `lfsvc` und die Standort-Einwilligung.
+    **Lauf 12, echter Produktfehler:** Die WebView wurde nie sichtbar geschaltet (`seite_zustand` meldete `hidden` in allen Fällen,
+    Klicks erreichten die Seite nicht, das Fenster blieb weiß). Der Schritt `show` ruft jetzt `Chromium.SetVisible(true)`
+    (`PutIsVisible`) vor dem Fokus auf, bei Fehler öffnet das Fenster nicht; `WM_SIZE` schaltet beim Minimieren unsichtbar und
+    beim Wiederherstellen sichtbar (`TestSurfaceSchaltetDieWebViewSichtbar`). Für alle Sonden gilt: Jede Seite meldet
+    `visibilityState` über `probe.js`, sonst ist die Sonde rot; `TestWindowsWebViewSichtbarMitFarbe` liest dazu im
+    Bildschirmbild die Mitte der Fläche (zwei Farben als Kontrolle). Gefährdet durch `hidden` waren: Berechtigungen
+    (Chromium vertagt Abfragen für unsichtbare Seiten, passt zur hängenden Geolocation), die Vektoren des spekulativen
+    Ladens (Prerender, Prefetch und Preconnect hängen am Zustand der Seite), Zeitgeber (auf 1 s gedrosselt),
+    Eingabe und `hasFocus`, der Prozessbaum (andere Renderer-Prozesse). Das sind die Fälle, die nach dem Fix neu zu fahren sind.
+    **SEC-R4-Auflagen (Fundstelle, Test, Mutant):** F1 Die Netzsperre trägt als Pflichtargument auch die Richtlinie für WebRTC
+    (`NetworkLockArgs`, `BrowserCommandLineProblems`; `TestBrowserArguments`, `TestBrowserCommandLineWebrtcPflicht`;
+    nativ `TestWindowsWebViewWebRTCNull` und die Kontrolle `TestWindowsWebViewWebRTCKontrolle`; Wirkt das Argument in
+    WebView2 nicht, geht es an SEC zurück, es gibt keine Umgehung). F2 Die Kommandozeilenprüfung normalisiert Schalter
+    (`--x`, `-x`, `/x`, Groß- und Kleinschreibung; `TestBrowserCommandLineAndereSchreibweisen`, `TestSplitCommandLine`).
+    F3 Die zwei Aufrufe aus v1.0.19 sind ersetzt (`TestEdgeOhneDieZweiUpstreamFehler`), Ergebnis des Prüfpunkts für
+    v1.0.19 bis v1.0.23 in `internal/edge/doc.go`. F4 `TestWindowsWebViewEinstellungenZurueckgelesen` liest alle 14
+    Einstellungen der Sollliste zurück. F5 Aussagen korrigiert (`TestKeineFalschenAussagen`), der Klartext-Puffer von
+    `credential` wird genullt (`TestStrictUndLoeschenNullt`, `TestReaderIdentityLoeschtDenKlartext`). F6 Das Fenster einer
+    App schließt, wenn sie aus der Liste verschwindet (`CloseMissing`, `TestCloseMissingSchliesstNurVerschwundene`); fehlt
+    die Zustandsdatei, wird die Liste sofort leer. Die Mutanten stehen in `probe/k6b_mutations.py`.
+    Lauf 11: `WM_SETFOCUS` kam während `Close` und traf den geleerten Controller (`Chromium.Focus`); im Bedienfeld hätte das den
+    Prozess samt Halt beendet. Jetzt prüft jede Methode der Kopie, die `e.controller` oder `e.webview` aufruft, das Feld
+    vorher auf nil (`TestEdgeMethodenPruefenControllerUndWebviewAufNil`); ungenutzte Methoden ohne Prüfung sind entfernt.
+    Alle Fensternachrichten in `surfaceProc` (`WM_SIZE` über `SetSize`, `WM_SETFOCUS`, `WM_CLOSE`, `WM_DESTROY`) sind damit
+    gegen das Zeitfenster nach `Close` gesichert; `Pump` und die Ereignishandler prüfen `closed` bzw. den Host. Der
+    Schritt `show` holt das neue Fenster in den Vordergrund (SetForegroundWindow, das Bedienfeld hat gerade die Eingabe
+    des Menüklicks) und gibt der WebView den Fokus. Die Sonde meldet je Fenster die Lage (`Fenster rect=… flaeche_mitte_bildschirm`)
+    und die Eingabenachrichten (`WM_PARENTNOTIFY maustaste`, `WM_LBUTTONDOWN`, `WM_ACTIVATE`, `WM_SETFOCUS`), die Seite die
+    erste Aktivierung (Klick, Maus- oder Zeigertaste, Taste) mit `hasFocus` und ihren Zustand (`seite_zustand`, `fenster_fokus`).
+    Eine verworfene Webnachricht (Quelle nicht lesbar) nennt in der Spur das HRESULT, ob der Zeiger leer war und die
+    Seite, auf der die WebView steht (`wv2com.ReadString`); verworfen wird weiterhin fail-closed, nie zugelassen.
+    Service Worker: `ClearBrowsingData` (Profile2.ClearBrowsingDataAll) wird für Service Worker nativ geprüft
+    (`TestWindowsWebViewServiceWorkerWirdGeloescht`). Läufe der nativen Sonden brauchen `-test.timeout 20m`.
+    Grenzen: alte Fassungen
+    unter `apps\` werden nicht aufgeräumt; die Ereignisse sind unter Linux nur als Urteile geprüft, ihre
+    Bindung belegt allein die native Sonde (`webview_native_windows_test.go`, Opt-in).
+
 ## Benannte Grenzen
 
 Widerruf wird offline erst beim Kontakt sichtbar, bis zur Gnadenfrist kann
@@ -422,6 +619,7 @@ mit PASS ohne SKIP laufen. CI/Kompilierung ersetzen diesen Gate-Beleg nicht.
 | Bedienfeld, Plan 14/15/18, §6.6, H4 | TestPanelZustaende, TestPanelMenueBefehleUndSetupEingabe, TestPanelFrageNurLokal, TestPanelStoerungBleibtBisNeuGeprueftemZustand, TestPanelServerpruefungSperrtBefehle, TestServerpruefungSendetNichtsAmAdapter, TestVerbindungVerwirftAlteBefehleUndBrichtSchreibenAb, TestBlockiertesSchreibenTrotzHeartbeatWirdGetrennt, TestFokusWaechter, TestBedienfeldNurGepruefterDial, TestPanelImportWaechter, TestL4SchemaPflichtfelder, TestH4RoheFragenAmLaeufer, TestH4SkriptTitelAbgewiesen, TestH4RoheFrageGrenzen, TestPanelEingabeAusVerifiziertemManifest; Windows: TestWindowsBedienfeldProzesssonde |
 | Rückfragen intern, L3-Anteil | TestFrageNurLokal, TestFrageFristUndDisconnect, TestPipeFrageAntwortWeiterleitung, TestPipeHaltSchliesstFrage |
 | L5 SEC-R4 F1/H2 | TestL5EndaufnahmeNachHaltUndWandzeit (Anhalten: 0 Aufnahmen/Uploads; Wandzeit: 1, ohne Engine-Sperre), TestL5LaufpinSeparatGebunden (verified gültig, nur Laufpin abweichend); Mutationen completion-halt, completion-wall-context, run-pin-binding |
+| PC-Fenster K6b-2 (SEC B1–B4, native Ereignisse) | fensterio: TestHostReceiveBlockiertNie, TestHostAnhaltenBleibtBeiHaengendemGatewayBedienbar, TestHostFailBrichtAbUndNimmtNichtsMehrAn, TestRuntimeOpenAsyncKehrtSofortZurueck, TestRuntimeSchreibtNichtsInDenZustand, TestRuntimeWiderrufLoeschtNichts, TestRuntimeAppsOhneTraeger, TestPanelExchange*, TestNavigationVerdict, TestNewWindowVerdictIstImmerAbgebrochen, TestDownloadVerdictBrichtImmerAb, TestMessageSource, TestRunStepsHaeltBeimErstenFehlerAn, TestAdapterBindetAlleEreignisse, TestAdapterWendetAlleSettingsAn, TestFensterioRuftNurLeserUndAppAPI, TestBedienfeldImportiertClientNicht, TestPlatformNurHinterDerTuer, TestBedienfeldUIThreadOhneNetzUndBruecke, TestFensterioKeinAbbruchUndKeinPanel; panel: TestPanelImportWaechter, TestFensterioNurUeberDieTuer, TestPanelApp*; client: TestReader*, TestSyncLegtAppsAb, TestRevokeLoeschtWebviewOhneVerweiseZuFolgen, TestAppPrepareNachWiderrufLegtNichtsAb; fenster: TestExternalLink, TestDecide, TestLayout; Windows nativ (Opt-in): TestWindowsWebView* |
 | PC-Fenster K6b-1 (Plan 4c/5, SEC K6b) | fenster: TestCSPExakt, TestNavigationAllowed, TestMessageAllowed, TestSettingsSollliste, TestUmschlagStrikt, TestUmschlagGrenzeGenau256KiB, TestBrueckeAntwortOhneTraeger, TestBrueckeUnerlaubteQuelleBleibtStumm, TestFensterImportWaechter; fensterio: TestLokalGenauZweiOperationen, TestLokalAnhalten, TestGatewayHolTokenEinmalUndSendetNurZweiTraeger, TestGatewayHoltBei401NeuUndWiederholtEinmal, TestGatewayZweite401IstNichtAngemeldet, TestGatewayFehlerOhneTraeger; client: TestGoldenV5AusKern, TestManifestV5StriktAmAdapter, TestAppTokenAmHTTPAdapter, TestAppTokenAntwortStrikt, TestAppRPCAmHTTPAdapter, TestAppPaketGuterFallLegtPrivatAbUndVersiegelt, TestAppSiegelVorJedemOeffnen, TestAppPaketAblehnungenLegenNichtsAb, TestAppCSPWirdEingesetzt, TestAppCSPAbweisungen, TestLeadingCSP, TestAppCSPJedeHTMLDatei, TestAppSiegelDecktEingesetztesLiteral, TestAppOpenPrueftFuehrendesLiteralTrotzNeuemSiegel, TestEnsureHoltPaketUeberHTTPNurEinmal, TestCopiedApphostFunctions |
 | Helfer L5, Plan 3/15/16/18, L3-2/H3 | TestScreenshotNurTestgeraet/roheRahmen, TestErgebnisNurTestauftrag/roheRahmen, client.TestFrageNurLokal (echter Python-Bootstrap), TestL5ErgebnisNullUndGrenzen, TestL5ScreenshotGrenzen, TestL5RahmenStrikt, TestL5BootstrapModule, TestL5TestauftragAmHTTPAdapter, TestKeineListenerDownloaderOderPip, TestScreenshotPNGBufferGrenze, TestScreenshotLinuxStub; Windows nur kompiliert: TestWindowsScreenshotGDI, TestWindowsScreenshotGDIChild, TestWindowsPythonKindOhneBedienfeldPipe |
 
@@ -507,6 +705,8 @@ Nach externer Zwangsbeendigung den betroffenen Guard ausdrücklich prüfen.
 Abschlussbericht ausschließlich im Chat, keine Berichtsdatei im Repository.
 
 SEC-R4 F3 ergänzt Mutanten für Träger in JSON-Escapes und Schlüsseln (`traeger-unescape`, `traeger-schluessel`), `rpc-methode`, `rpc-id`, `rpc-version`, `rpc-ergebnis-und-fehler`, `http-beide-traeger`, `http-app-endpoint`, `http-app-praefix`, `gw-revoked-code`.
+K6b-2 ergänzt Mutanten für Host (`host-*`), Exchange (`exchange-*`), Leser (`reader-*`), Laufzeit (`runtime-*`), Wächter (`ui-thread-liest`, `bedienfeld-importiert-*`, `panel-importiert-fensterio`), die Ereignisurteile und Pflichtschritte (`nav-*`, `neues-fenster-*`, `download-*`, `quelle-ignoriert`, `schritte-*`, `adapter-*`), Links, Layout und App-Menü.
+Native Sonden (nur Test-VM, Opt-in `JNPT_NATIVE_WEBVIEW_PROBE=1`): `go test -c -o fensterio.test.exe ./internal/fensterio` auf dem Build-Rechner, auf der VM `fensterio.test.exe -test.run TestWindowsWebView -test.v`; das Binary braucht dort kein Go, nur die WebView2-Runtime und eine interaktive Sitzung; `PATH` darf kein `jnpt` tragen.
 K6b-1-Mutationen: `python3 probe/k6b_mutations.py [name…]`, im Container `golang:1.26.10` mit
 nachinstalliertem Python (Worktree als Mount, exklusiv). Jeder Mutant muss kompilieren und den
 benannten Test rot machen; Compilerfehler zählen nicht; `finally` stellt die Bytes her. Reine

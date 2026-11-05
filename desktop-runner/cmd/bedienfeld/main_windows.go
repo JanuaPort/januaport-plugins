@@ -7,10 +7,12 @@ import (
 	"context"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
 
+	"github.com/januaport/januaport-plugins/desktop-runner/internal/fensterio"
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/panel"
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/panelio"
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/pipe"
@@ -108,6 +110,20 @@ type application struct {
 	requests       chan panelio.Request
 	generation     uint64
 	cancel         context.CancelFunc
+	ctx            context.Context
+
+	// K6b-2: Apps. Alles Blockierende (Zustand lesen, Gateway, Brücke, Pipe-Gespräch) läuft in fensterio-
+	// Goroutinen; hier stehen nur Kanäle, Karten und der Wecker.
+	rt        *fensterio.Runtime
+	exchange  *fensterio.PanelExchange
+	gen       atomic.Uint64
+	appLists  chan fensterio.AppList
+	opened    chan openResult
+	surfaces  map[string]*fensterio.Surface
+	opening   map[string]bool
+	aux       uintptr
+	auxLink   *fensterio.Link
+	embedding bool
 }
 
 var app *application
@@ -117,10 +133,19 @@ func wide(s string) *uint16 { return syscall.StringToUTF16Ptr(s) }
 func main() {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	// WebView2 verlangt ein COM-STA auf genau diesem Thread; ohne COM öffnet kein App-Fenster (fester Fehler), das Bedienfeld läuft weiter.
+	leave, _ := fensterio.EnterUI()
+	defer leave()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	a := &application{model: panel.New(), icons: map[string]uintptr{}, events: make(chan panelio.Event, 64), requests: make(chan panelio.Request, 32), cancel: cancel}
 	app = a
+	a.ctx = ctx
+	a.appLists = make(chan fensterio.AppList, 4)
+	a.opened = make(chan openResult, 8)
+	a.surfaces = map[string]*fensterio.Surface{}
+	a.opening = map[string]bool{}
+	a.exchange = fensterio.NewPanelExchange(a.sendCommand)
 	a.instance, _, _ = getModuleHandle.Call(0)
 	if a.instance == 0 {
 		return
@@ -154,6 +179,18 @@ func main() {
 	}()
 	if id, _, _ := setTimer.Call(a.window, 1, 200, 0); id == 0 {
 		return
+	}
+	// K6b-2: Apps. Die Laufzeit liest nur (Reader), schreibt nie in den Zustand und löscht bei Widerruf nichts;
+	// Gateway, Brücke und Pipe-Gespräch laufen in Goroutinen von fensterio, nie auf diesem Thread.
+	if rt, err := fensterio.NewWindowsRuntime(a.exchange.Func(), a.wake); err == nil {
+		a.rt = rt
+		go rt.Watch(ctx, 15*time.Second, func(l fensterio.AppList) {
+			select {
+			case a.appLists <- l:
+				a.wake()
+			case <-ctx.Done():
+			}
+		})
 	}
 	if nativeLoadError == nil {
 		go panelio.Run(ctx, pipe.Dial, a.requests, func(e panelio.Event) bool {
@@ -195,9 +232,14 @@ func makeIcon(rgb uint32) uintptr {
 
 func (a *application) apply(e panel.Effects) {
 	if e.Quit {
+		a.closeSurfaces()
+		a.closeAux()
 		a.cancel()
 		destroyWindow.Call(a.window)
 		return
+	}
+	if e.OpenApp != "" {
+		a.openApp(e.OpenApp)
 	}
 	if len(e.Commands) > 0 || e.Reconnect {
 		select {
@@ -229,12 +271,16 @@ func (a *application) eventsReady() {
 				continue
 			}
 			a.generation = e.Generation
+			a.gen.Store(e.Generation)
 			if e.Raw == nil {
+				a.exchange.Reset()
 				a.apply(a.model.Connection(e.State))
 			} else {
+				a.exchange.Deliver(e.Raw)
 				a.apply(a.model.Receive(e.Raw, time.Now()))
 			}
 		default:
+			a.drainApps()
 			return
 		}
 	}
@@ -347,11 +393,19 @@ func windowProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		case 0x21:
 			return 3 // WM_MOUSEACTIVATE -> MA_NOACTIVATE
 		case 0x111: // WM_COMMAND, only a mouse/UIA click on this dialog's button.
+			if hwnd == a.aux && wp>>16 == 0 && lp != 0 && wp&0xffff >= 200 && wp&0xffff < 202 {
+				a.auxCommand(int(wp&0xffff) - 200)
+				return 0
+			}
 			if hwnd == a.dialog && wp>>16 == 0 && lp != 0 && wp&0xffff >= 100 && wp&0xffff < 104 {
 				a.apply(a.model.Answer(int(wp&0xffff)-100, time.Now()))
 			}
 			return 0
 		case 0x10: // WM_CLOSE
+			if hwnd == a.aux {
+				a.closeAux()
+				return 0
+			}
 			if hwnd == a.dialog {
 				a.model.HideDialog()
 				a.render()

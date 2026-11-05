@@ -52,23 +52,29 @@ func TestLokalStatusProjiziertNurZustandBisNetz(t *testing.T) {
 	}
 }
 
+var (
+	anhalten                 = []string{"anhalten"}
+	anhaltenUndDreiMalStatus = []string{"anhalten", "status", "status", "status"}
+)
+
 func TestLokalAnhalten(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		reply []byte
 		err   error
 		want  error
+		sent  []string
 	}{
-		{"angehalten", frame(t, pipe.Message{Type: "zustand", Zustand: "angehalten"}), nil, nil},
-		{"nochArbeitend", frame(t, pipe.Message{Type: "zustand", Zustand: "arbeitet"}), nil, fenster.ErrAbgelehnt},
-		{"pausiertReichtNicht", frame(t, pipe.Message{Type: "zustand", Zustand: "pausiert"}), nil, fenster.ErrAbgelehnt},
-		{"stoerung", frame(t, pipe.Message{Type: "zustand", Zustand: "stoerung"}), nil, fenster.ErrAbgelehnt},
-		{"abgewiesen", frame(t, pipe.Message{Type: "fehler", Code: "abgewiesen"}), nil, fenster.ErrAbgelehnt},
-		{"stoerungsFehler", frame(t, pipe.Message{Type: "fehler", Code: "stoerung"}), nil, fenster.ErrAbgelehnt},
-		{"kaputt", []byte(`{"type":"zustand"}`), nil, fenster.ErrFehler},
-		{"fremderTyp", []byte(`{"type":"frage"}`), nil, fenster.ErrFehler},
-		{"leer", nil, nil, fenster.ErrFehler},
-		{"verbindungsfehler", nil, errors.New("pipe weg: C:\\geheim"), fenster.ErrNichtErreichbar},
+		{"angehalten", frame(t, pipe.Message{Type: "zustand", Zustand: "angehalten"}), nil, nil, anhalten},
+		{"nochArbeitend", frame(t, pipe.Message{Type: "zustand", Zustand: "arbeitet"}), nil, fenster.ErrAbgelehnt, anhaltenUndDreiMalStatus},
+		{"pausiertReichtNicht", frame(t, pipe.Message{Type: "zustand", Zustand: "pausiert"}), nil, fenster.ErrAbgelehnt, anhaltenUndDreiMalStatus},
+		{"stoerung", frame(t, pipe.Message{Type: "zustand", Zustand: "stoerung"}), nil, fenster.ErrAbgelehnt, anhalten},
+		{"abgewiesen", frame(t, pipe.Message{Type: "fehler", Code: "abgewiesen"}), nil, fenster.ErrAbgelehnt, anhalten},
+		{"stoerungsFehler", frame(t, pipe.Message{Type: "fehler", Code: "stoerung"}), nil, fenster.ErrAbgelehnt, anhalten},
+		{"kaputt", []byte(`{"type":"zustand"}`), nil, fenster.ErrFehler, anhalten},
+		{"fremderTyp", []byte(`{"type":"frage"}`), nil, fenster.ErrFehler, anhalten},
+		{"leer", nil, nil, fenster.ErrFehler, anhalten},
+		{"verbindungsfehler", nil, errors.New("pipe weg: C:\\geheim"), fenster.ErrNichtErreichbar, anhalten},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := &recorder{reply: tc.reply, err: tc.err}
@@ -79,7 +85,7 @@ func TestLokalAnhalten(t *testing.T) {
 			if err != nil && (len(err.Error()) > 40 || strings.Contains(err.Error(), "geheim") || strings.Contains(err.Error(), "pipe weg")) {
 				t.Fatalf("Fehlertext trägt Rohdaten: %q", err)
 			}
-			if !reflect.DeepEqual(r.sent, []string{"anhalten"}) {
+			if !reflect.DeepEqual(r.sent, tc.sent) {
 				t.Fatal(r.sent)
 			}
 		})
@@ -128,5 +134,31 @@ func TestLokalGenauZweiOperationen(t *testing.T) {
 	}
 	if len(r.sent) != 3 {
 		t.Fatal(r.sent)
+	}
+}
+
+// Der Läufer sendet neben der Antwort auf einen Befehl jede Sekunde einen Statusrahmen. Ein veralteter
+// Rahmen vor der Antwort darf das Anhalten nicht fälschlich abweisen: Der Wrapper fragt höchstens
+// dreimal mit dem erlaubten Befehl "status" nach.
+func TestLokalAnhaltenNachVeraltetemRahmen(t *testing.T) {
+	replies := [][]byte{
+		frame(t, pipe.Message{Type: "zustand", Zustand: "arbeitet"}),
+		frame(t, pipe.Message{Type: "zustand", Zustand: "arbeitet"}),
+		frame(t, pipe.Message{Type: "zustand", Zustand: "angehalten"}),
+	}
+	var sent []string
+	ex := func(_ context.Context, m pipe.Message) ([]byte, error) {
+		sent = append(sent, m.Type)
+		r := replies[0]
+		if len(replies) > 1 {
+			replies = replies[1:]
+		}
+		return r, nil
+	}
+	if err := NewLokal(ex).Anhalten(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(sent, []string{"anhalten", "status", "status"}) {
+		t.Fatal(sent)
 	}
 }

@@ -30,8 +30,15 @@ func (l *lokal) Status(ctx context.Context) (fenster.Status, error) {
 	return fenster.Status{Zustand: m.Zustand, Bis: m.Bis, Netz: m.Netz}, nil
 }
 
+// Anhalten sendet "anhalten" und gilt erst, wenn der Läufer "angehalten" meldet. Neben der Antwort sendet
+// der Läufer jede Sekunde einen Statusrahmen; ein veralteter Rahmen vor der Antwort zeigt noch den alten
+// Zustand. Deshalb fragt der Wrapper höchstens dreimal mit dem erlaubten Befehl "status" nach, aber nur,
+// solange der Läufer arbeitet oder pausiert. Störung und Fehler gelten sofort als abgelehnt.
 func (l *lokal) Anhalten(ctx context.Context) error {
 	m, err := l.ask(ctx, pipe.Message{Type: "anhalten"})
+	for i := 0; err == nil && i < 3 && (m.Zustand == "arbeitet" || m.Zustand == "pausiert"); i++ {
+		m, err = l.ask(ctx, pipe.Message{Type: "status"})
+	}
 	if err != nil {
 		return err
 	}

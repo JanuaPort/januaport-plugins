@@ -177,6 +177,7 @@ func (e *Engine) Sync(ctx context.Context) (err error) {
 	e.bundle = next
 	e.Config = config
 	e.mu.Unlock()
+	e.ensureApps(ctx, m)
 	return nil
 }
 func sameSet(a, b []string) bool {
@@ -909,6 +910,21 @@ func (e *Engine) applyCancellations(h HeartbeatReply) {
 		}
 		if p != nil {
 			p.Kill()
+		}
+	}
+}
+
+// ensureApps legt die Apps des geprüften Manifests ab (K6b-2). Das ist best effort: Ein Fehler wird nur als
+// fester Logcode vermerkt und bricht den Sync nie ab; ein Widerruf oder Abbruch ist kein App-Fehler. Der
+// nächste Sync versucht es erneut, bereits versiegelte Apps werden nicht noch einmal geholt.
+func (e *Engine) ensureApps(ctx context.Context, m Manifest) {
+	if m.Apps == nil || e.Container != nil {
+		return
+	}
+	store := NewAppStore(e.State)
+	for _, app := range *m.Apps {
+		if err := store.Ensure(ctx, e.API, app); err != nil && ctx.Err() == nil && !errors.Is(err, ErrRevoked) {
+			e.logCode(LogAppFault, 1)
 		}
 	}
 }

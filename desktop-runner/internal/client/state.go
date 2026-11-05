@@ -156,6 +156,11 @@ func (s *State) Save(name string, v any) error {
 	if s.dead {
 		return ErrRevoked
 	}
+	return s.saveLocked(name, v)
+}
+
+// saveLocked schreibt unter bereits gehaltener Sperre (State.Use), damit Ablage und Widerruf serialisiert bleiben.
+func (s *State) saveLocked(name string, v any) error {
 	raw, e := json.Marshal(v)
 	if e != nil {
 		return e

@@ -11,3 +11,11 @@ licensed under the Apache License 2.0. script-runner/seccomp/
 jnpt-sandbox-seccomp.json is derived from it by script-runner/seccomp/derive.py
 (changes: the syscalls of a deny list are removed from the allow rules, and an
 explicit deny rule is prepended).
+
+desktop-runner/ links github.com/wailsapp/go-webview2 v1.0.19 (webviewloader) and contains an
+adapted copy of its pkg/edge and internal/w32 in desktop-runner/internal/edge (MIT License,
+Copyright (c) 2020 John Chadwick, some portions Copyright (c) 2017 Serge
+Zaitsev), a fork of github.com/jchv/go-webview2, and github.com/jchv/go-winloader
+(ISC License, Copyright (c) 2021 John Chadwick) for the WebView2 loader.
+desktop-runner/internal/wv2com uses vtable layouts and interface IDs of the
+Microsoft WebView2 SDK 1.0.2535.41 (WebView2.h) as interface documentation.

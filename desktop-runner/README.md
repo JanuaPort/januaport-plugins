@@ -73,9 +73,61 @@ prüfbare Grundlage, die K6b-2 an das Fenster hängt. Es gibt keinen lokalen Fen
   `nicht_angemeldet`, `nicht_erreichbar`, `umschlag`, `zu_gross`, `zu_viele`) und nie
   einen Träger; Ergebnisse mit Token-Muster werden verworfen.
 
-Offen für K6b-2: WebView2-Adapter und `go-webview2`, `Exchange` über die vorhandene
-Bedienfeld-Verbindung (`panelio`), Benutzerdatenverzeichnis, Hygiene-Ausnahme, Prozessbaum-Sonde,
-externe Links, Release. Mutationen: `probe/k6b_mutations.py` (Container mit Go und Python).
+Der Fensterteil folgt im nächsten Abschnitt (K6b-2). Mutationen: `probe/k6b_mutations.py` (Container mit Go und Python).
+
+## PC-Fenster, Teil 2: App-Fenster im Bedienfeld (K6b-2, ohne Release)
+
+JanuaPort/januaport#1048. Das Bedienfeld zeigt zugewiesene PC-Apps in einem eigenen Fenster mit WebView2.
+Voraussetzung auf dem PC: die **WebView2-Runtime** (Evergreen) und ein Kern mit K6a. Fehlt sie oder eine
+nötige Schnittstelle, öffnet das Fenster nicht und das Bedienfeld meldet das nativ; es gibt keinen Weg ohne die Sperren.
+
+- **Menü:** je zugewiesener App ein Eintrag „App öffnen: <name>“ (aus dem vom Läufer geprüften Manifest).
+  Die Apps legt der Läufer beim Sync ab; das Bedienfeld liest nur (`client.Reader`), schreibt nie in den
+  Zustand und löscht bei einem Widerruf nichts. Das Gerätetoken wird erst beim Öffnen einer App gelesen,
+  steht nie in Umgebung, Kommandozeile oder Benutzerdatenverzeichnis und läuft nie über die Pipe.
+- **Blockiert nie den Halt:** Gateway, Brücke und Pipe-Gespräch laufen in Goroutinen, nie auf dem
+  UI-Thread. Ein hängendes Gateway hält Anhalten nicht auf, ein WebView2-Absturz schließt nur das Fenster.
+- **Native Sperren** (Pflicht, sonst öffnet das Fenster nicht): NavigationStarting/FrameNavigationStarting
+  (nur `.html`-Seiten der eigenen App; Abbruch der Navigation, auch Redirect und meta refresh; die Anfrage selbst sperren Ressourcenfilter und Netzsperre),
+  NewWindowRequested (nie ein Fenster), DownloadStarting (Abbruch), WebMessageReceived mit Quelle,
+  PermissionRequested (Deny), ProcessFailed. Externe `https`-Links öffnen nur nach einem nativen
+  Ja-Dialog mit Host im Standardbrowser. Auf Testgeräten zeigt eine native Leiste „Test – Testgerät“.
+- **Benutzerdatenverzeichnis:** `%LOCALAPPDATA%\JanuaPort\desktop-runner\webview\<app>` mit privater DACL;
+  der Widerruf des Läufers löscht es, ohne Verweisen zu folgen.
+- **Restgrenzen:** Die ACL der Pipe schützt nicht gegen den WebView2-Hauptprozess (gleiches Konto, mittlere
+  Stufe). Die Bibliothek spiegelt jede Seitennachricht an die Seite zurück. Alte App-Fassungen unter
+  `apps\` bleiben liegen. Die nativen Ereignisse sind erst durch die Sonden auf dem Testgerät belegt
+  (`internal/fensterio/webview_native_windows_test.go`).
+
+### Brücke: Aufruf aus der Seite
+
+```js
+// Seite -> Bedienfeld: ein STRING (kein Objekt)
+chrome.webview.postMessage(JSON.stringify({ id: "1", befehl: "werkzeuge", args: {} }));
+
+// Bedienfeld -> Seite: e.data ist ein JSON-String. Nachrichten OHNE "ok" ignorieren.
+chrome.webview.addEventListener("message", (e) => {
+  const m = JSON.parse(e.data);
+  if (typeof m !== "object" || m === null || !("ok" in m)) return;
+  // { id, ok: true, ergebnis } | { id | null, ok: false, fehler: "<code>" }
+});
+```
+
+| `befehl` | `args` | `ergebnis` |
+|---|---|---|
+| `status` | `{}` | `{zustand: "arbeitet" oder "pausiert" oder "angehalten" oder "stoerung", bis?: RFC3339, netz: bool}` |
+| `anhalten` | `{}` | `{}` (erst wenn der Läufer „angehalten“ bestätigt) |
+| `werkzeuge` | `{}` | Ergebnis von `tools/list` des Gateways, z. B. `{tools: [...]}` |
+| `werkzeug` | `{name, arguments}` | Ergebnis von `tools/call`, z. B. `{content: [...], isError?}` |
+
+`id`: String `[A-Za-z0-9_.-]{1,64}`. `name`: `[A-Za-z0-9_.-]{1,128}`, `arguments`: ein Objekt. Höchstens 256 KiB je
+Nachricht, keine unbekannten und keine doppelten Schlüssel. `id` ist in der Antwort `null`, wenn der
+Umschlag nicht lesbar war. **Feste Fehlercodes:** `abgelehnt`, `antwort_ungueltig`, `args`, `befehl`,
+`fehler`, `nicht_angemeldet`, `nicht_erreichbar`, `umschlag`, `zu_gross`, `zu_viele`. Nie ein Fehlertext, nie ein
+Token; ein Ergebnis mit Token-Muster wird zu `antwort_ungueltig`. Zeitgrenze 60 s je Befehl (lokal 5 s), höchstens
+8 Gateway- und 4 lokale Aufrufe gleichzeitig (`zu_viele`). Die Seite sendet kein `fetch` ins Netz
+(`connect-src 'none'`); alles geht über die Brücke. Der Läufer setzt `<meta charset="utf-8">` und die CSP selbst
+ein, Seiten sind nur `https://app-<name mit - statt _>-pc.jnpt.invalid/<pfad>.html` (Einstieg `/index.html`).
 
 ## Skript-Helfer `jnpt` (0.4.0 in Arbeit, L5)
 

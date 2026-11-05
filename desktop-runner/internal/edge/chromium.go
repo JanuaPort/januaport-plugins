@@ -1,0 +1,509 @@
+//go:build windows
+// +build windows
+
+package edge
+
+import (
+	"errors"
+	"fmt"
+	"log"
+	"strings"
+	"sync/atomic"
+	"syscall"
+	"time"
+	"unsafe"
+
+	"github.com/januaport/januaport-plugins/desktop-runner/internal/edge/w32"
+	"golang.org/x/sys/windows"
+)
+
+type Rect = w32.Rect
+
+func globalErrorHandler(err error) {
+	if err != nil {
+		log.Printf("[WebView2 Error] %v\n", err)
+	}
+}
+
+type Chromium struct {
+	hwnd    uintptr
+	padding struct {
+		Left   int32
+		Top    int32
+		Right  int32
+		Bottom int32
+	}
+
+	controller                       *ICoreWebView2Controller
+	webview                          *ICoreWebView2
+	inited                           uintptr
+	cancelled                        uintptr
+	failure                          atomic.Pointer[error]
+	envCompleted                     *iCoreWebView2CreateCoreWebView2EnvironmentCompletedHandler
+	controllerCompleted              *iCoreWebView2CreateCoreWebView2ControllerCompletedHandler
+	webMessageReceived               *iCoreWebView2WebMessageReceivedEventHandler
+	containsFullScreenElementChanged *ICoreWebView2ContainsFullScreenElementChangedEventHandler
+	permissionRequested              *iCoreWebView2PermissionRequestedEventHandler
+	webResourceRequested             *iCoreWebView2WebResourceRequestedEventHandler
+	acceleratorKeyPressed            *ICoreWebView2AcceleratorKeyPressedEventHandler
+	navigationCompleted              *ICoreWebView2NavigationCompletedEventHandler
+	processFailed                    *ICoreWebView2ProcessFailedEventHandler
+
+	environment            *ICoreWebView2Environment
+	webview2RuntimeVersion string
+
+	// Settings
+	Debug                 bool
+	DataPath              string
+	BrowserPath           string
+	AdditionalBrowserArgs []string
+
+	// permissions
+	permissions      map[CoreWebView2PermissionKind]CoreWebView2PermissionState
+	globalPermission *CoreWebView2PermissionState
+
+	// Callbacks
+	MessageCallback                          func(string)
+	MessageWithAdditionalObjectsCallback     func(message string, sender *ICoreWebView2, args *ICoreWebView2WebMessageReceivedEventArgs)
+	WebResourceRequestedCallback             func(request *ICoreWebView2WebResourceRequest, args *ICoreWebView2WebResourceRequestedEventArgs)
+	NavigationCompletedCallback              func(sender *ICoreWebView2, args *ICoreWebView2NavigationCompletedEventArgs)
+	ProcessFailedCallback                    func(sender *ICoreWebView2, args *ICoreWebView2ProcessFailedEventArgs)
+	PermissionCallback                       func(kind CoreWebView2PermissionKind, state CoreWebView2PermissionState)
+	ContainsFullScreenElementChangedCallback func(sender *ICoreWebView2, args *ICoreWebView2ContainsFullScreenElementChangedEventArgs)
+	AcceleratorKeyCallback                   func(uint) bool
+
+	// Error handling
+	globalErrorCallback func(error)
+
+	shuttingDown bool
+
+	// Resize debouncing
+	lastBounds  *w32.Rect
+	resizeTimer *time.Timer
+}
+
+func NewChromium() *Chromium {
+	e := &Chromium{}
+	/*
+	 All these handlers are passed to native code through syscalls with 'uintptr(unsafe.Pointer(handler))' and we know
+	 that a pointer to those will be kept in the native code. Furthermore these handlers als contain pointer to other Go
+	 structs like the vtable.
+	 This violates the unsafe.Pointer rule '(4) Conversion of a Pointer to a uintptr when calling syscall.Syscall.' because
+	 theres no guarantee that Go doesn't move these objects.
+	 AFAIK currently the Go runtime doesn't move HEAP objects, so we should be safe with these handlers. But they don't
+	 guarantee it, because in the future Go might use a compacting GC.
+	 There's a proposal to add a runtime.Pin function, to prevent moving pinned objects, which would allow to easily fix
+	 this issue by just pinning the handlers. The https://go-review.googlesource.com/c/go/+/367296/ should land in Go 1.19.
+	*/
+	e.envCompleted = newICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler(e)
+	e.controllerCompleted = newICoreWebView2CreateCoreWebView2ControllerCompletedHandler(e)
+	e.webMessageReceived = newICoreWebView2WebMessageReceivedEventHandler(e)
+	e.permissionRequested = newICoreWebView2PermissionRequestedEventHandler(e)
+	e.webResourceRequested = newICoreWebView2WebResourceRequestedEventHandler(e)
+	e.acceleratorKeyPressed = newICoreWebView2AcceleratorKeyPressedEventHandler(e)
+	e.navigationCompleted = newICoreWebView2NavigationCompletedEventHandler(e)
+	e.processFailed = newICoreWebView2ProcessFailedEventHandler(e)
+	e.containsFullScreenElementChanged = newICoreWebView2ContainsFullScreenElementChangedEventHandler(e)
+	/*
+		// Pinner seems to panic in some cases as reported on Discord, maybe during shutdown when GC detects pinned objects
+		// to be released that have not been unpinned.
+		// It would also be better to use our ComBridge for this event handlers implementation instead of pinning them.
+		// So all COM Implementations on the go-side use the same code.
+		var pinner runtime.Pinner
+		pinner.Pin(e.envCompleted)
+		pinner.Pin(e.controllerCompleted)
+		pinner.Pin(e.webMessageReceived)
+		pinner.Pin(e.permissionRequested)
+		pinner.Pin(e.webResourceRequested)
+		pinner.Pin(e.acceleratorKeyPressed)
+		pinner.Pin(e.navigationCompleted)
+		pinner.Pin(e.processFailed)
+		pinner.Pin(e.containsFullScreenElementChanged)
+	*/
+	e.permissions = make(map[CoreWebView2PermissionKind]CoreWebView2PermissionState)
+	e.globalErrorCallback = globalErrorHandler
+	return e
+}
+
+func (e *Chromium) ShuttingDown() {
+	e.shuttingDown = true
+}
+
+// errorCallback meldet den Fehler und merkt sich den ersten. Anders als im Original endet der Prozess nie
+// (das Bedienfeld trägt den Halt); wer startet, fragt Ready und öffnet das Fenster dann nicht.
+func (e *Chromium) errorCallback(err error) {
+	e.globalErrorCallback(err)
+	e.failure.CompareAndSwap(nil, &err)
+}
+
+// fail merkt den Fehler, ohne ihn zu melden (der Aufrufer hat es getan oder will es nicht).
+func (e *Chromium) fail(err error) {
+	e.failure.CompareAndSwap(nil, &err)
+}
+
+func (e *Chromium) SetErrorCallback(callback func(error)) {
+	if callback != nil {
+		e.globalErrorCallback = callback
+	}
+}
+
+// Begin stößt die Umgebung an und kehrt sofort zurück. Der Aufrufer verteilt Nachrichten (die Rückrufe
+// kommen auf diesem Thread) und fragt Ready, mit eigener Frist. DataPath ist Pflicht.
+func (e *Chromium) Begin(hwnd uintptr) error {
+	if e.DataPath == "" {
+		return errors.New("kein Datenpfad")
+	}
+	e.hwnd = hwnd
+	browserArgs := strings.Join(e.AdditionalBrowserArgs, " ")
+	if err := createCoreWebView2EnvironmentWithOptions(e.BrowserPath, e.DataPath, e.envCompleted, browserArgs); err != nil {
+		return fmt.Errorf("error calling Webview2Loader: %w", err)
+	}
+	return nil
+}
+
+// Ready sagt, ob der Controller fertig ist, oder liefert den ersten Fehler des Starts.
+func (e *Chromium) Ready() (bool, error) {
+	if p := e.failure.Load(); p != nil {
+		return false, *p
+	}
+	return atomic.LoadUintptr(&e.inited) != 0, nil
+}
+
+// Cancel macht spätere Rückrufe des Starts wirkungslos (nach Frist oder Fehler).
+func (e *Chromium) Cancel() { atomic.StoreUintptr(&e.cancelled, 1) }
+
+// Close schließt den Controller (beendet die Browserprozesse dieses Fensters). Mehrfach aufrufbar.
+func (e *Chromium) Close() {
+	e.Cancel()
+	if c := e.controller; c != nil {
+		e.controller = nil
+		c.vtbl.Close.Call(uintptr(unsafe.Pointer(c)))
+	}
+}
+
+func (e *Chromium) SetPadding(padding Rect) {
+	if e.padding.Left == padding.Left && e.padding.Top == padding.Top &&
+		e.padding.Right == padding.Right && e.padding.Bottom == padding.Bottom {
+
+		return
+	}
+
+	e.padding.Left = padding.Left
+	e.padding.Top = padding.Top
+	e.padding.Right = padding.Right
+	e.padding.Bottom = padding.Bottom
+	e.Resize()
+}
+
+func (e *Chromium) ResizeWithBounds(bounds *Rect) {
+	if e.hwnd == 0 {
+		return
+	}
+
+	bounds.Top += e.padding.Top
+	bounds.Bottom -= e.padding.Bottom
+	bounds.Left += e.padding.Left
+	bounds.Right -= e.padding.Right
+
+	e.SetSize(*bounds)
+}
+
+func (e *Chromium) Resize() {
+	if e.hwnd == 0 {
+		return
+	}
+
+	bounds, err := w32.GetClientRect(e.hwnd)
+	if err != nil {
+		e.errorCallback(err)
+		return
+	}
+
+	e.ResizeWithBounds(&bounds)
+}
+
+func (e *Chromium) QueryInterface(_, _ uintptr) uintptr {
+	return 0
+}
+
+func (e *Chromium) AddRef() uintptr {
+	return 1
+}
+
+func (e *Chromium) Release() uintptr {
+	return 1
+}
+
+func (e *Chromium) EnvironmentCompleted(res uintptr, env *ICoreWebView2Environment) uintptr {
+	if atomic.LoadUintptr(&e.cancelled) != 0 {
+		return 0
+	}
+	if env == nil {
+		err := syscall.Errno(res)
+		log.Printf("[WebView2] Environment creation failed with error code %v: %v\n", res, err)
+		e.errorCallback(fmt.Errorf("failed to create WebView2 environment: %w", err))
+		return res
+	}
+
+	log.Printf("[WebView2] Environment created successfully\n")
+
+	env.vtbl.AddRef.Call(uintptr(unsafe.Pointer(env)))
+	e.environment = env
+
+	err := env.CreateCoreWebView2Controller(e.hwnd, e.controllerCompleted)
+	if err != nil {
+		e.errorCallback(err)
+		return 0
+	}
+	return 0
+}
+
+func (e *Chromium) CreateCoreWebView2ControllerCompleted(res uintptr, controller *ICoreWebView2Controller) uintptr {
+	if atomic.LoadUintptr(&e.cancelled) != 0 {
+		return 0
+	}
+	if int32(res) < 0 || controller == nil {
+		e.errorCallback(fmt.Errorf("error creating controller with %08x: %s", res, syscall.Errno(res)))
+		return 0
+	}
+
+	controller.vtbl.AddRef.Call(uintptr(unsafe.Pointer(controller)))
+	e.controller = controller
+
+	// Try to get ICoreWebView2Controller3 interface for better performance
+	if controller3 := e.controller.GetICoreWebView2Controller3(); controller3 != nil {
+		// Use raw pixels mode for better performance during resize
+		if err := controller3.PutBoundsMode(COREWEBVIEW2_BOUNDS_MODE_USE_RAW_PIXELS); err != nil {
+			e.errorCallback(err)
+			return 0
+		}
+
+		// Disable monitor scale changes since we're using raw pixels
+		if err := controller3.PutShouldDetectMonitorScaleChanges(false); err != nil {
+			e.errorCallback(err)
+			return 0
+		}
+	}
+	var token _EventRegistrationToken
+	webview, err := e.controller.GetCoreWebView2()
+	if err != nil || webview == nil {
+		e.errorCallback(fmt.Errorf("kein CoreWebView2: %v", err))
+		return 0
+	}
+	e.webview = webview
+
+	e.webview.vtbl.AddRef.Call(uintptr(unsafe.Pointer(e.webview)))
+	// Nur das Nötige: Berechtigungen (alles abgelehnt) und Prozessabsturz. Nachrichten, Navigation und
+	// Downloads bindet der Läufer selbst (internal/wv2com); das Original-Echo der Seitennachrichten, der
+	// WebResourceRequested-Handler mit log.Fatal und die übrigen Rückrufe entfallen.
+	if err = e.webview.AddPermissionRequested(e.permissionRequested, &token); err != nil {
+		e.errorCallback(err)
+		return 0
+	}
+	if err = e.webview.AddProcessFailed(e.processFailed, &token); err != nil {
+		e.errorCallback(err)
+		return 0
+	}
+
+	atomic.StoreUintptr(&e.inited, 1)
+
+	return 0
+}
+
+func (e *Chromium) ContainsFullScreenElementChanged(sender *ICoreWebView2, args *ICoreWebView2ContainsFullScreenElementChangedEventArgs) uintptr {
+	if e.ContainsFullScreenElementChangedCallback != nil {
+		e.ContainsFullScreenElementChangedCallback(sender, args)
+	}
+	return 0
+}
+
+func (e *Chromium) MessageReceived(sender *ICoreWebView2, args *ICoreWebView2WebMessageReceivedEventArgs) uintptr {
+	message, err := args.TryGetWebMessageAsString()
+	if err != nil {
+		e.errorCallback(err)
+	}
+
+	if HasCapability(e.webview2RuntimeVersion, GetAdditionalObjects) {
+		obj, err := args.GetAdditionalObjects()
+		if err != nil {
+			e.errorCallback(err)
+		}
+
+		if obj != nil && e.MessageWithAdditionalObjectsCallback != nil {
+			defer obj.Release()
+			e.MessageWithAdditionalObjectsCallback(message, sender, args)
+		} else if e.MessageCallback != nil {
+			e.MessageCallback(message)
+		}
+	} else if e.MessageCallback != nil {
+		e.MessageCallback(message)
+	}
+
+	err = sender.PostWebMessageAsString(message)
+	if err != nil && !errors.Is(err, windows.ERROR_IO_PENDING) {
+		e.errorCallback(err)
+	}
+	return 0
+}
+
+func (e *Chromium) SetPermission(kind CoreWebView2PermissionKind, state CoreWebView2PermissionState) {
+	e.permissions[kind] = state
+}
+
+func (e *Chromium) SetBackgroundColour(R, G, B, A uint8) {
+	controller := e.GetController()
+	controller2 := controller.GetICoreWebView2Controller2()
+
+	backgroundCol := COREWEBVIEW2_COLOR{
+		A: A,
+		R: R,
+		G: G,
+		B: B,
+	}
+
+	// WebView2 only has 0 and 255 as valid values.
+	if backgroundCol.A > 0 && backgroundCol.A < 255 {
+		backgroundCol.A = 255
+	}
+
+	err := controller2.PutDefaultBackgroundColor(backgroundCol)
+	if err != nil {
+		e.errorCallback(err)
+	}
+}
+
+func (e *Chromium) SetGlobalPermission(state CoreWebView2PermissionState) {
+	e.globalPermission = &state
+}
+
+func (e *Chromium) PermissionRequested(_ *ICoreWebView2, args *iCoreWebView2PermissionRequestedEventArgs) uintptr {
+	kind, err := args.GetPermissionKind()
+	result := CoreWebView2PermissionStateDeny // Fehlerpfade lehnen ab, nie die Standardabfrage
+	if err != nil {
+		e.errorCallback(err)
+	} else if e.globalPermission != nil {
+		result = *e.globalPermission
+	} else if r, ok := e.permissions[kind]; ok {
+		result = r
+	} else {
+		result = CoreWebView2PermissionStateDefault
+	}
+	if e.PermissionCallback != nil {
+		e.PermissionCallback(kind, result)
+	}
+	if err = args.PutState(result); err != nil {
+		e.errorCallback(err)
+	}
+	return 0
+}
+
+func (e *Chromium) WebResourceRequested(sender *ICoreWebView2, args *ICoreWebView2WebResourceRequestedEventArgs) uintptr {
+	req, err := args.GetRequest()
+	if err != nil {
+		e.errorCallback(err)
+		return 0
+	}
+	defer req.Release()
+
+	if e.WebResourceRequestedCallback != nil {
+		e.WebResourceRequestedCallback(req, args)
+	}
+	return 0
+}
+
+func (e *Chromium) Environment() *ICoreWebView2Environment {
+	return e.environment
+}
+
+// AcceleratorKeyPressed is called when an accelerator key is pressed.
+// If the AcceleratorKeyCallback method has been set, it will defer handling of the keypress
+// to the callback. That callback returns a bool indicating if the event was handled.
+func (e *Chromium) AcceleratorKeyPressed(sender *ICoreWebView2Controller, args *ICoreWebView2AcceleratorKeyPressedEventArgs) uintptr {
+	if e.AcceleratorKeyCallback == nil {
+		return 0
+	}
+	eventKind, _ := args.GetKeyEventKind()
+	if eventKind == COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN ||
+		eventKind == COREWEBVIEW2_KEY_EVENT_KIND_SYSTEM_KEY_DOWN {
+		virtualKey, _ := args.GetVirtualKey()
+		status, _ := args.GetPhysicalKeyStatus()
+		if !status.WasKeyDown {
+			err := args.PutHandled(e.AcceleratorKeyCallback(virtualKey))
+			if err != nil {
+				e.errorCallback(err)
+			}
+		} else {
+			return 0
+		}
+	}
+	err := args.PutHandled(false)
+	if err != nil {
+		e.errorCallback(err)
+	}
+	return 0
+}
+
+func (e *Chromium) GetSettings() (*ICoreWebViewSettings, error) {
+	if e.webview == nil {
+		return nil, errors.New("keine WebView")
+	}
+	return e.webview.GetSettings()
+}
+
+func (e *Chromium) GetController() *ICoreWebView2Controller {
+	return e.controller
+}
+
+func boolToInt(input bool) int {
+	if input {
+		return 1
+	}
+	return 0
+}
+
+func (e *Chromium) NavigationCompleted(sender *ICoreWebView2, args *ICoreWebView2NavigationCompletedEventArgs) uintptr {
+	if e.NavigationCompletedCallback != nil {
+		e.NavigationCompletedCallback(sender, args)
+	}
+	return 0
+}
+
+func (e *Chromium) ProcessFailed(sender *ICoreWebView2, args *ICoreWebView2ProcessFailedEventArgs) uintptr {
+	if e.ProcessFailedCallback != nil {
+		e.ProcessFailedCallback(sender, args)
+	}
+	return 0
+}
+
+func (e *Chromium) NotifyParentWindowPositionChanged() error {
+	//It looks like the wndproc function is called before the controller initialization is complete.
+	//Because of this the controller is nil
+	if e.controller == nil {
+		return nil
+	}
+	return e.controller.NotifyParentWindowPositionChanged()
+}
+
+// SetVisible schaltet die WebView sichtbar oder unsichtbar (Minimieren). Ohne sichtbare WebView meldet die Seite
+// visibilityState "hidden", drosselt Zeitgeber und bekommt keine Eingabe.
+func (e *Chromium) SetVisible(visible bool) error {
+	if e.controller == nil {
+		return errors.New("kein Controller")
+	}
+	return e.controller.PutIsVisible(visible)
+}
+
+func (e *Chromium) Focus() {
+	// WM_SETFOCUS kommt auch während Close, der Controller ist dann schon weg.
+	if e.controller == nil {
+		return
+	}
+	err := e.controller.MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC)
+	if err != nil {
+		e.errorCallback(err)
+	}
+}
+
+func (e *Chromium) HasCapability(c Capability) bool {
+	return HasCapability(e.webview2RuntimeVersion, c)
+}

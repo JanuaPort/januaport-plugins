@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- K6b-2, SEC-R4: Netzsperre mit Pflichtargument auch für UDP-Wege, Schalter-Normalisierung, zwei Korrekturen der Kopie, Rückleseprobe der Einstellungen, Fenster schließen bei Entzug einer App.
+- K6b-2 (JanuaPort/januaport#1048): App-Fenster im Bedienfeld (WebView2 über eine angepasste Kopie von
+  `go-webview2` v1.0.19 in `internal/edge` und einen dünnen eigenen COM-Adapter), ohne Release. Der Start des
+  WebView ist begrenzt (20 s, fester Fehler, Fenster bleibt zu, kein `os.Exit`), COM-STA auf dem UI-Thread. Menüeintrag je zugewiesener App; Zustand nur
+  lesend (`client.Reader`), Gerätetoken erst beim Öffnen; Gateway, Brücke und Pipe-Gespräch nie auf dem
+  UI-Thread (Halt bleibt bedienbar); Wächter je Wurzel mit der einen Tür `cmd/bedienfeld -> internal/fensterio`.
+  Native Pflichtereignisse NavigationStarting, FrameNavigationStarting, NewWindowRequested, DownloadStarting,
+  WebMessageReceived mit Quelle, PermissionRequested (Deny), ProcessFailed; fehlt eine Schnittstelle, öffnet das
+  Fenster nicht. Nur `.html`-Seiten, externe https-Links nur nach nativem Ja-Dialog, native Testleiste,
+  Benutzerdatenverzeichnis `webview\<app>` mit privater DACL. Der Läufer legt die Apps beim Sync ab
+  (Logcode 10 bei Fehlern). Native Sonden je Ereignis (Opt-in), Brücken-API in der README.
+
 - K6b-1 (JanuaPort/januaport#1048, Hyperfokus #1313 B2), fensterloser Teil des PC-Fensters, ohne
   Fenster und ohne Release. **Windows spricht Vertrag 5** (Header und JSON; Vertrag 4 plus
   `apps:[{name,commit,path}]`); der Läufer braucht einen Kern mit K6a, ältere Caches (v1, v3, v4)
