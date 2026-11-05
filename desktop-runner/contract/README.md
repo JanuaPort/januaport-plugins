@@ -21,6 +21,9 @@ Seit #1321 ist `mode` optional, nur `a`, `b` oder leer; andere Werte werden als
 Manifestfehler abgewiesen. Vertrag bleibt 5. Anmeldeleiste, Knöpfe und Meldungen
 erscheinen nur bei b oder fehlendem/leerem Feld (Verhalten älterer Kerne), bei a
 gar nicht. Neue geprüfte Manifeste aktualisieren auch offene Fenster beim Abgleich.
+Die Startmeldung „Bitte mit dem eigenen Konto anmelden.“ bleibt nach dem ersten
+`Login.Pump` erhalten (`anmeldung.Message("start")` in `NewLogin` und Control-Anlage);
+nach Abmelden bleibt „Abgemeldet.“.
 Dies ist nur Bedienhilfe: Rechte, `/token`, Login-Fluss und K6b-2/K6c-Sperren bleiben
 unverändert. Der bytegleiche Manifestspiegel aus dem Kern-Worktree `jpwt-1321`
 hat SHA-256 `7cfb70018cb3265f39245b43de2e0c64f2859b8be366c4b34509454058656ae6`.

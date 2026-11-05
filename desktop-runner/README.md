@@ -85,6 +85,10 @@ noch Anmelde-/Abmeldeknopf oder Anmeldemeldung. Fehlt `apps[].mode` oder ist es 
 aktualisiert auch offene Fenster beim nächsten Abgleich. Rechte, `/token`, Login-Fluss
 und alle Sperren aus K6b-2/K6c bleiben unverändert; der Modus ist nur Bedienhilfe.
 
+Die Leiste zeigt anfangs „Bitte mit dem eigenen Konto anmelden.“ auch nach dem
+ersten `Login.Pump`. `NewLogin` und die native Control-Anlage verwenden dafür
+`anmeldung.Message("start")`. Nach Abmelden bleibt die Meldung „Abgemeldet.“.
+
 Bei `nicht_angemeldet` in einer Modus-b-App startet **Anmelden** in der nativen
 Leiste den Systembrowser. Dort das eigene Konto wählen und die Bestätigungsseite
 prüfen. Danach zum App-Fenster zurückkehren. Die Leiste zeigt das Konto; Fehler
@@ -141,6 +145,8 @@ keinen Browser. Mutationen: `python probe/k6c_mutations.py` mit `k6cp3-test`
 (anderer eigener Container über `JNPT_MUTATION_CONTAINER`, für #1321 `j1321p-mode`).
 `leiste-immer` prüft ausschließlich das echte Surface-Layout ohne GUI;
 `app-mode-ungueltig` entfernt die Feldprüfung am HTTP-/Manifestadapter.
+`leistentext-start` entfernt die Startmeldung aus `NewLogin`; der Regressionstest
+`TestLoginStartmeldungBleibtNachPumpUndAbmelden` wird rot (lokal ohne GUI/Container).
 Das lokale Adapter-Golden ergänzt den bytegleichen P2-Kernspiegel aus ea50aa7a:
 `contract/golden-v5/contract5_login_routes.json`, geprüft durch `TestGoldenV5AusKern` und `SHA256SUMS`.
 Der Manifestspiegel enthält ab #1321 `mode` (SHA-256

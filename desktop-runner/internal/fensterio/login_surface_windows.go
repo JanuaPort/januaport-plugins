@@ -6,6 +6,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/januaport/januaport-plugins/desktop-runner/internal/anmeldung"
 	"github.com/januaport/januaport-plugins/desktop-runner/internal/fenster"
 	"golang.org/x/sys/windows"
 )
@@ -32,7 +33,7 @@ func (s *Surface) createLoginControls(instance uintptr) error {
 	if s.loginButton == 0 || s.logoutButton == 0 || s.accountLabel == 0 {
 		return ErrWebView
 	}
-	s.Account("", "Bitte mit dem eigenen Konto anmelden.", false, false)
+	s.Account("", anmeldung.Message("start"), false, false)
 	return nil
 }
 func (s *Surface) bounds(w, h int) (fenster.Rect, fenster.Rect) {

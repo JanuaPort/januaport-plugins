@@ -15,6 +15,7 @@ CONTAINER = os.environ.get("JNPT_MUTATION_CONTAINER", "k6cp3-test")
 
 # name, file, old, new, package, test, windows-only standard Go adapter
 CASES = [
+    ("leistentext-start", "fensterio/login.go", ', message: anmeldung.Message("start")', '', "fensterio", "TestLoginStartmeldungBleibtNachPumpUndAbmelden", True),
     ("leiste-immer", "fensterio/runtime.go", 'return o.Mode != "a"', 'return true', "fensterio", "TestSurfaceAnmeldeleisteNachModus", True),
     ("app-mode-ungueltig", "client/manifest.go", 'a.Mode != "" && a.Mode != "a" && a.Mode != "b"', 'false', "client", "TestManifestAppModeAmHTTPAdapter", False),
     ("anzeige-alter-stand", "fensterio/login_surface_windows.go", 'l.ManifestSeq < s.o.ManifestSeq', 'false', "fensterio", "TestSurfaceAnzeigemodusVerwirftAltenStand", True),

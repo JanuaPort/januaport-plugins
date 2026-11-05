@@ -47,6 +47,23 @@ func (v *loginView) Account(name, message string, busy, signed bool) {
 }
 func (v *loginView) FailLogin() { v.events = append(v.events, "fail") }
 
+func TestLoginStartmeldungBleibtNachPumpUndAbmelden(t *testing.T) {
+	l := NewLogin(NewGateway(nil, "demo"), nil, nil, nil)
+	defer l.Close()
+	v := &loginView{}
+	l.Pump(v)
+	if v.message != "Bitte mit dem eigenen Konto anmelden." || v.name != "" || v.signed {
+		t.Errorf("erster Pump: name=%q message=%q signed=%v", v.name, v.message, v.signed)
+	}
+	l.SignOut(v)
+	v.quiet(true)
+	v.clear(true)
+	l.Pump(v)
+	if v.message != "Abgemeldet." || v.name != "" || v.signed {
+		t.Errorf("Pump nach Abmelden: name=%q message=%q signed=%v", v.name, v.message, v.signed)
+	}
+}
+
 func personForTest(t *testing.T) client.PersonSession {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
