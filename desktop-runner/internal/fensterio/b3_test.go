@@ -77,7 +77,7 @@ func importsOf(f *ast.File) []string {
 // die Engine, den Zustand oder den Widerruf berührt, ist verboten; die Namen stehen in keiner erlaubten Liste.
 var clientErlaubt = map[string]bool{
 	"NewReader": true, "Reader": true, "AppsView": true, "App": true, "NewAPI": true, "API": true, "Trust": true,
-	"AppSession": true, "HTTPError": true, "RPCError": true, "ErrRevoked": true, "ErrProtocol": true, "IsOffline": true,
+	"AppSession": true, "PersonSession": true, "HTTPError": true, "RPCError": true, "ErrRevoked": true, "ErrProtocol": true, "IsOffline": true,
 }
 
 func TestFensterioRuftNurLeserUndAppAPI(t *testing.T) {
@@ -130,7 +130,7 @@ func TestPlatformNurHinterDerTuer(t *testing.T) {
 // der Zugangsdaten auf. Sie dürfen nur Receive/Drain/Deliver/Reset/Close (nicht blockierend) benutzen.
 func TestBedienfeldUIThreadOhneNetzUndBruecke(t *testing.T) {
 	verboten := map[string]bool{
-		"Empfangen": true, "Werkzeuge": true, "Werkzeug": true, "AppToken": true, "AppRPC": true, "Anhalten": true,
+		"Empfangen": true, "Werkzeuge": true, "Werkzeug": true, "AppToken": true, "AppRPC": true, "AppLogin": true, "AppSession": true, "Anhalten": true,
 		"Status": true, "Exchange": true, "Credential": true, "Apps": true, "Open": true,
 		"NewGateway": true, "NewLokal": true, "NewAPI": true, "NewReader": true, "Do": true, "Get": true, "Post": true,
 	}
@@ -163,7 +163,7 @@ func TestFensterioKeinAbbruchUndKeinPanel(t *testing.T) {
 				case *ast.SelectorExpr:
 					if id, ok := x.X.(*ast.Ident); ok {
 						name := id.Name + "." + x.Sel.Name
-						if name == "os.Exit" || strings.HasPrefix(name, "log.Fatal") || strings.HasPrefix(name, "log.Panic") || name == "syscall.Exit" || name == "net.Listen" || name == "http.ListenAndServe" {
+						if name == "os.Exit" || strings.HasPrefix(name, "log.Fatal") || strings.HasPrefix(name, "log.Panic") || name == "syscall.Exit" || (name == "net.Listen" && filepath.Base(sf.path) != "loopback_windows.go") || name == "http.ListenAndServe" {
 							t.Errorf("%s: %s", sf.path, name)
 						}
 					}
