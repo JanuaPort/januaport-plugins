@@ -122,8 +122,8 @@ Worker nach Wechsel und Abmelden. Hier nur cross-kompiliert, keine GUI gestartet
 Die bestehenden WebRTC-, Netz- und Prozessbaumsonden bleiben Pflicht.
 Go-HTTP-Tests `TestLoopback*` und `TestLoginVomKnopfBisSessionAmAdapter` öffnen
 keinen Browser. Mutationen: `python probe/k6c_mutations.py` mit `k6cp3-test`.
-Ein lokales Adapter-Golden ist vorhanden; der bytegleiche P2-Kernspiegel
-`contract5_login_routes.json` samt SHA fehlt noch als Eingabe.
+Das lokale Adapter-Golden ergänzt den bytegleichen P2-Kernspiegel aus ea50aa7a:
+`contract/golden-v5/contract5_login_routes.json`, geprüft durch `TestGoldenV5AusKern` und `SHA256SUMS`.
 
 ## PC-Fenster, Teil 2: App-Fenster im Bedienfeld (K6b-2, ohne Release)
 

@@ -6,7 +6,7 @@
   begrenzten IPv4-Loopback; Fehlerklassen ausschließlich als feste native Meldung.
 - Personenwechsel über `person_gewechselt`, Browserdaten bei Wechsel/Abmelden
   löschen und alte Antworten verwerfen. B1–B4 und Browser-Netzsperren unverändert.
-- Lokales Adapter-Golden; originaler P2-Kernspiegel noch nicht geliefert.
+- Lokales Adapter-Golden und bytegleicher P2-Kernspiegel aus ea50aa7a mit SHA-Wächter.
   WebView-Bereinigung einschließlich sessionStorage bleibt bis zur neuen BOX-Sonde
   unbelegt; kein lokaler GUI-Test, kein Release.
 

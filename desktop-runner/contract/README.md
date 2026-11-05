@@ -32,9 +32,12 @@ Fehlerrücksprünge mit State und `fehler=kein_zugriff|platz_gesperrt|abgebroche
 niemals Code dazu. Keine Logout-Route. Personenwechsel/Abmelden löschen Browserdaten;
 Name nur native Leiste, maximal 128 Unicode-Zeichen ohne Steuer-/Formatzeichen.
 Fehlendes/null `person_gewechselt` wird defensiv als true behandelt.
-`internal/client/testdata/contract5_login_adapter.json` ist ein lokales Adapter-Golden
-nach dem eingefügten P2-Vertrag, kein bytegleicher Kernspiegel. Für den Spiegel fehlt
-noch die originale Datei `contract5_login_routes.json` samt SHA. Alte Goldens bleiben unverändert.
+`internal/client/testdata/contract5_login_adapter.json` prüft konkrete Client-Anfragen.
+Zusätzlich liegt `contract5_login_routes.json` aus dem Kern-Stand `ea50aa7a`
+bytegleich in `golden-v5/` (778 Byte, SHA-256
+`516c7896c791d481ebb7f7747b498819b91d64a62e1ca0627d1aecf508dd8bb5`).
+`TestGoldenV5AusKern` und `SHA256SUMS` prüfen den Spiegel; `.gitattributes` verhindert
+Zeilenenden-Konvertierung für diese Datei. Alte Goldens bleiben unverändert.
 
 ## Server-Vertrag 2
 

@@ -1,0 +1,7 @@
+[
+  {"path":"apps/demo/token","body":"","status":409,"response":{"error":{"class":"person_required","message":"Bitte mit dem eigenen Konto anmelden."}}},
+  {"path":"apps/demo/login","body":"{}","status":400,"response":{"error":{"class":"invalid","message":"Die Anfrage ist ungültig."}}},
+  {"path":"apps/demo/login","body":"LOGIN","status":200,"response":{"authorize_url":"AUTHORIZE-URL"}},
+  {"path":"apps/demo/session","body":"{}","status":403,"response":{"error":{"class":"kein_zugriff","message":"Kein Zugriff auf diese App. Bitte die Verwaltung kontaktieren."}}},
+  {"path":"apps/demo/session","body":"SESSION","status":200,"response":{"app_token":"APP-TOKEN","expires_at":"EXPIRY","mcp_path":"/api/device/v1/mcp","anzeigename":"ACCOUNT-NAME","person_gewechselt":true}}
+]

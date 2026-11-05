@@ -588,7 +588,8 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Details/Tests: [fensterio/CLAUDE.md](internal/fensterio/CLAUDE.md).
     `TestWindowsWebViewPersonenwechselUndAbmelden` und `TestWindowsWebViewAnmeldeknopf` sind neue opt-in-Sonden für BOX,
     hier nur kompiliert. Lokales Adapter-Golden `internal/client/testdata/contract5_login_adapter.json`;
-    bytegleicher P2-Kernspiegel noch offen, die Quelldatei wurde nicht geliefert.
+    bytegleicher P2-Kernspiegel aus ea50aa7a in `contract/golden-v5/contract5_login_routes.json`,
+    SHA-geprüft durch `TestGoldenV5AusKern` und `SHA256SUMS`, mit `-text` gegen autocrlf geschützt.
 
 ## Benannte Grenzen
 

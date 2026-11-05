@@ -12,8 +12,8 @@ import (
 	"testing"
 )
 
-// Lokales Adapter-Golden nach k6-vertrag5/P2. Kein behaupteter bytegleicher
-// Kernspiegel: contract5_login_routes.json wurde nicht mit dem Auftrag geliefert.
+// Lokales Adapter-Golden nach k6-vertrag5/P2 mit konkreten Client-Anfragen.
+// Den bytegleichen Kernspiegel prüft zusätzlich TestGoldenV5AusKern.
 func TestPCLoginAdapterGolden(t *testing.T) {
 	b, e := os.ReadFile("testdata/contract5_login_adapter.json")
 	if e != nil {
