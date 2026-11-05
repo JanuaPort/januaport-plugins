@@ -105,6 +105,13 @@ des Endes, eine HTTP-Antwort kann dann ausbleiben.
 Für `error/rejected` lautet der feste Satz: „Der Modell-Durchgang hat die
 Anfrage des Agenten-Läufers abgewiesen.“
 
+Ein Werkzeug-Fehler (`isError`, auch ungültiges JSON) geht als Daten an das Modell,
+das sich erholen darf. Endet das Modell, und im letzten Werkzeug-Schritt scheiterte
+mindestens ein Aufruf, endet der Lauf `error/tools`: Der Lauf gilt nicht als
+erfolgreich, und eine Kette, die ihn aufgerufen hat, stoppt. Ein Lauf ohne Aufruf
+und ein Fehler mit erfolgreichem Folgeschritt bleiben `ok`. Bei `limit` nennt der
+feste Satz die Grenze (Schritte, Werkzeug-Aufrufe, Tokens, Laufzeit, Anbieterfilter).
+
 Vertrag und neue Ende-Beispiele: [contract/README.md](contract/README.md).
 Die Tests benutzen ausschließlich einen lokalen Fake-Kern, keine Live-Modellaufrufe.
 Mutationsproben: `probe/mutations.py` und `probe/openai_mutations.py`

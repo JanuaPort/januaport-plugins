@@ -120,12 +120,14 @@ andere MCP-Blöcke werden zum oben genannten festen Platzhalter.
 Bei syntaktisch ungültigen oder nicht objektförmigen `arguments` erfolgt
 kein MCP-Werkzeugaufruf. Die korrelierte tool-Nachricht enthält den festen
 Text „Werkzeug-Eingabe ist kein gültiges JSON-Objekt.“; der Aufrufversuch
-zählt lokal gegen das Werkzeugbudget. Das entspricht der Fehlerergebnis-
+zählt lokal gegen das Werkzeugbudget und gilt als gescheiterter Aufruf
+(Ende `error/tools`, siehe unten). Das entspricht der Fehlerergebnis-
 Semantik von MCP, ohne ein im OpenAI-Vertrag unbekanntes `is_error`-Feld.
 Im Anthropic-Pfad weist die vorhandene Inhaltsprüfung ungültiges `input`
 bereits beim Lesen der Modellantwort ab.
 
-`stop` ohne Werkzeugaufrufe beendet mit `ok`; `tool_calls` führt die
+`stop` ohne Werkzeugaufrufe beendet mit `ok` (oder `error/tools`, wenn der letzte
+Werkzeug-Schritt scheiterte); `tool_calls` führt die
 aufgelisteten Werkzeuge aus; `length` ergibt `limit/tokens_out`. Leere
 `choices`, unbekannte Stop-Gründe und unzulässige Nachrichten ergeben
 `error/gateway`. `content_filter` nutzt die bestehende Ende-Klasse `limit`
@@ -152,12 +154,13 @@ den Feldwechsel aus #1228. Die Ende-Vorschläge stehen ebenfalls in `proposed/`:
 
 | Datei | Ende / Detail |
 |---|---|
-| `run_agent_response_limit.json` | limit / steps |
+| `run_agent_response_limit.json` | limit / steps (Satz nennt die Grenze Schritte) |
 | `run_agent_response_provider.json` | error / provider |
 | `run_agent_response_rejected.json` | error / rejected |
 | `run_agent_response_cancelled.json` | cancelled |
 | `run_agent_response_revoked.json` | revoked |
 | `run_agent_response_error.json` | error / gateway |
+| `run_agent_response_tools.json` | error / tools (letzter Werkzeug-Schritt gescheitert, JanuaPort/januaport#1338) |
 | `run_log_ok.json` | Inhaltfreies Lauf-Protokoll, Dauer für Vergleich auf 0 gesetzt |
 
 Fehler-Ergebnisse tragen `isError: true`, `steps` und optional `detail`.
@@ -172,6 +175,37 @@ Für `error/rejected` gilt unabhängig vom abgewiesenen Feld der feste Satz:
 unveränderliche Kern-Golden `model_error_rejected.json` enthält weiterhin
 den alten Durchgangstext; dieser wird verworfen, nicht als Läuferantwort benutzt.
 
+Werkzeug-Fehler (JanuaPort/januaport#1338): Ein Werkzeug-Ergebnis mit `isError: true`
+und der feste Fehler bei ungültigem JSON gehen weiter als Daten an das Modell. Endet
+das Modell, und im letzten Werkzeug-Schritt scheiterte mindestens ein Aufruf, endet
+der Lauf `error` mit dem Detail `tools` (`proposed/run_agent_response_tools.json`).
+Maßgeblich ist nur der letzte Werkzeug-Schritt: Ein Fehler, nach dem ein Schritt ohne
+Fehler folgt, bleibt `ok`, ebenso ein Lauf ohne Aufruf. Die Wertung liest nur
+`isError`, nie Inhalte, und kommt nie vom Modell. Bewusst hingenommen sind
+Falsch-Rot (letzte Abfrage ergibt „nicht gefunden“ als Fehler, das Modell antwortet
+richtig) und Rest-Grün (früher gescheiterter Schreibaufruf, danach erfolgreiches
+Lesen); beides lässt sich nur mit einer Inhaltsprüfung unterscheiden. Contract 1 und
+die Ende-Klassen bleiben. Ein älterer Kern kennt das Detail nicht, lässt es weg
+und behält `error`, also nie Grün; ein älterer Läufer verhält sich
+wie bisher.
+
+Feste Sätze je Detail (JanuaPort/januaport#1335): Bei `limit` nennt der Satz die
+Grenze, bei `error/tools` den Werkzeug-Fehler; das Detail selbst steht nie im Satz.
+
+| Ende / Detail | Satz |
+|---|---|
+| limit / steps | Der Agenten-Lauf hat die Grenze für Schritte erreicht und ist beendet. |
+| limit / tool_calls | Der Agenten-Lauf hat die Grenze für Werkzeug-Aufrufe erreicht und ist beendet. |
+| limit / tokens_in | Der Agenten-Lauf hat die Grenze für Eingabe-Tokens erreicht und ist beendet. |
+| limit / tokens_out | Der Agenten-Lauf hat die Grenze für Ausgabe-Tokens erreicht und ist beendet. |
+| limit / wall | Der Agenten-Lauf hat die Grenze für die Laufzeit erreicht und ist beendet. |
+| limit / content_filter | Der Modellanbieter hat die Antwort gefiltert; der Agenten-Lauf ist beendet. |
+| limit / anderes | Der Agenten-Lauf hat eine seiner Grenzen erreicht und ist beendet. |
+| error / tools | Der Agenten-Lauf ist beendet, weil im letzten Werkzeug-Schritt ein Aufruf gescheitert ist. |
+
+Der Kern übersetzt die Sätze in eigene (Antwort und Audit des Kerns nennen dieselbe
+Grenze); der Satz des Läufers erreicht den Aufrufer nie unverändert.
+
 Beide ausgehenden HTTP-Pfade begrenzen Antwortkörper im Bearer-Transport auf
 4 MiB. Diese Sperre gilt beim Lesen und benötigt keinen Fristablauf. Vor
 `session.Close()` wird der Lauf-Kontext abgebrochen, auch nach erfolgreichem
@@ -181,5 +215,5 @@ Das Lauf-Log enthält zusätzlich optional `detail`: ausschließlich das feste,
 bereits klassifizierte Ende-Detail, keine Anbietertexte oder unbekannten Werte.
 Bei Erfolg fehlt das Feld; `run_log_ok.json` bleibt byte-identisch.
 
-Die sechs Ende-Beispiele sind Vorschläge für den Kern, keine nachträgliche
+Die sieben Ende-Beispiele sind Vorschläge für den Kern, keine nachträgliche
 Änderung seines gelieferten Vertrags. Eine Live-Abnahme steht aus.
