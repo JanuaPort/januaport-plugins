@@ -1,5 +1,16 @@
 # Changelog
 
+## Unveröffentlicht — Symbol nach Autostart (#1240)
+
+- Nach Neustart mit Autostart blieb das Symbol violett und der Hinweis bei `jnpt.frage` blieb aus, obwohl
+  Menü und Pause den echten Zustand zeigten. Ursache: `NIM_ADD` scheitert bei bereits vorhandenem Symbol
+  (`TaskbarCreated`), `tray` blieb falsch, und jedes weitere `render()` scheiterte ebenso; `NIM_MODIFY` und
+  die Prüfung des Hinweises liefen nie. Jetzt versucht `panel.TrayUpdate` bei Scheitern die jeweils andere
+  Operation (ADD ↔ MODIFY), auch ein nach Explorer-Neustart verlorenes Symbol kommt zurück, und `tray` ist
+  wahr, sobald eine gelingt. `trayFlags`, `notify()` und der Hinweis-Zweig bleiben unverändert.
+- Mutanten `tray-no-second-attempt`, `tray-false-after-second`, `tray-render-ignores-update`. Nativ zu prüfen
+  (BOX): Symbol grün nach Neustart mit Autostart, hinterher Hinweis bei `jnpt.frage`.
+
 ## 0.5.0 — 2026-11-05 (JanuaPort/januaport#1240, #1321, #1048)
 
 ### GUI-Läufer und Hinweis bei Rückfrage (#1240)
