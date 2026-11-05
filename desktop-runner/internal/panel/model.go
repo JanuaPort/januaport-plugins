@@ -12,6 +12,13 @@ import (
 
 const FaultText = "Störung. Anhalten: abmelden oder über den Admin halten lassen."
 
+// Hinweis bei neuer Rückfrage (#1240): Er steht sichtbar auf dem Bildschirm und trägt deshalb weder Titel noch
+// Text der Rückfrage noch den Pin-Namen. Der Inhalt bleibt in Menü und Dialog.
+const (
+	NoticeTitle = "JanuaPort"
+	NoticeText  = "JanuaPort braucht eine Antwort"
+)
+
 type ConnectionState int
 
 const (
@@ -45,7 +52,10 @@ type Model struct {
 	connected, checked, ready, fault bool
 	status                           pipe.Message
 	dialog                           *Dialog
-	apps                             []string
+	// noticeFor merkt den Dialog, für den der Hinweis noch aussteht. Der Zeiger statt der Frage-ID: Skripte
+	// zählen ihre IDs je Prozess ab "1", eine gleiche ID kann also eine neue Frage sein.
+	noticeFor *Dialog
+	apps      []string
 }
 
 func New() *Model { return &Model{fault: true} }
@@ -106,6 +116,7 @@ func (m *Model) Receive(raw []byte, now time.Time) Effects {
 		// A second question is not displayed. The runner also rejects it in Go.
 		if m.ready && !m.fault && m.status.Zustand != "angehalten" && m.dialog == nil {
 			m.dialog = &Dialog{ID: v.ID, Title: "JanuaPort – " + v.Titel, Text: v.Text, Options: append([]string(nil), v.Optionen...), Deadline: now.Add(time.Duration(v.FristS) * time.Second)}
+			m.noticeFor = m.dialog
 		}
 	case "frage_weg":
 		if m.dialog != nil && m.dialog.ID == v.ID {
@@ -114,6 +125,15 @@ func (m *Model) Receive(raw []byte, now time.Time) Effects {
 	}
 	return Effects{}
 }
+
+// TakeNotice meldet genau einmal je angezeigter neuer Rückfrage, dass ein Hinweis fällig ist. Ist die
+// Frage vor dem Abholen weggefallen (Entfernung, Frist, Anhalten, Trennung), gibt es keinen Hinweis mehr.
+func (m *Model) TakeNotice() bool {
+	due := m.noticeFor != nil && m.noticeFor == m.dialog
+	m.noticeFor = nil
+	return due
+}
+
 func (m *Model) Tick(now time.Time) Effects {
 	if m.dialog != nil && !now.Before(m.dialog.Deadline) {
 		m.dialog = nil
