@@ -589,6 +589,10 @@ Anhalten beendet den Job-Baum. Prozesse, die ein Skript außerhalb über WMI,
 Aufgabenplanung oder COM gestartet hat, überleben. Bei gesperrter Sitzung zeigt
 auch ein Screenshot den Sperrbildschirm.
 
+Prüfpunkt je Läufer-Release: `TestWindowsWebViewWebRTCNull` samt Kontrolle läuft auf dem Testgerät gegen die aktuelle
+WebView2-Runtime. Die Kommandozeilenprüfung sieht nur das Argument, nicht seine Wirkung, und die Runtime aktualisiert
+sich selbst; ein Bestehen gilt deshalb nur für die gemessene Fassung.
+
 G-L3: Vor dem ersten Geräte-Rollout müssen die nativen Opt-in-Proben mit
 `JNPT_NATIVE_TOKEN_PROBES=1` und die Bedienfeld-Prozesssonde auf dem Testgerät
 mit PASS ohne SKIP laufen. CI/Kompilierung ersetzen diesen Gate-Beleg nicht.
