@@ -1,5 +1,24 @@
 # Changelog
 
+## Unveröffentlicht — GUI-Läufer und Hinweis bei Rückfrage (#1240)
+
+- Der Läufer ist ein GUI-Programm (`-H=windowsgui`, `-X main.version` bleibt). Die Benutzeraufgabe öffnet
+  bei der Anmeldung kein leeres Terminalfenster mehr; dessen Schließen konnte `run` bis zur nächsten
+  Anmeldung beenden. `TestReleaseUndWindowsCI` prüft beide Build-Zeilen, Mutanten `runner-build-console`
+  und `panel-build-console`.
+- `pair`, `install`, `status`, `uninstall` und Fehlaufrufe hängen sich bei fehlenden Standard-Handles an die
+  Konsole des Aufrufers (`AttachConsole`, `CONOUT$`); Umleitungen bleiben unangetastet, `run` hängt sich nie
+  an, Exit-Codes und Ausgaben unverändert. Linux-Server unverändert (No-op).
+- Betrieb: PowerShell wartet auf ein GUI-Programm nicht, die Befehle in der README laufen mit `| Out-Host`.
+  `run` im Vordergrund hat keine Konsole; Strg+C beendet ihn nicht mehr (Ende: Abmelden oder Prozess beenden).
+- Das Bedienfeld meldet eine neue Rückfrage (`jnpt.frage`) mit einem Windows-Hinweis am Symbol
+  (`NIF_INFO`, ohne Ton), festem Titel „JanuaPort“ und festem Text „JanuaPort braucht eine Antwort“, genau
+  einmal je neuer Rückfrage. Weder Titel noch Text der Rückfrage noch Pin-Name erscheinen darin. Keine
+  Aktivierung, der Dialog öffnet weiterhin nur per Klick. `trayFlags` bleibt ohne INFO.
+- Nicht verändert: Dialog, Rechte, Vertrag, Task-XML, Installationslogik, Pipe-Schema, Neustart nach Absturz.
+- Nativ zu prüfen (BOX): kein Terminalfenster bei Anmeldung, Ausgaben in PowerShell und cmd, sichtbarer
+  Hinweis bei `jnpt.frage`, Verhalten bei Fokus-Assistent.
+
 ## Unveröffentlicht — Anmeldeleiste nach App-Modus (#1321)
 
 - Startmeldung „Bitte mit dem eigenen Konto anmelden.“ bleibt nach dem ersten

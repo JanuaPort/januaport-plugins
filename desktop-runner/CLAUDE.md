@@ -16,6 +16,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 | Pfad | Inhalt |
 |---|---|
 | main.go | CLI und feste Fehlerausgaben |
+| console.go, console_windows.go, console_other.go | GUI-Läufer (`-H=windowsgui`): reine Entscheidung `planConsole`, Windows-Anschluss an die Konsole des Aufrufers, No-op sonst (Invariante 19) |
 | internal/client/http.go | Einziger HTTP-Client-Adapter, E3, Tokenrollen, Widerruf (Server-Ausnahme K6c: fensterio/loopback_windows.go) |
 | manifest.go, copied_contract.go | Manifest/Kanonisierung/Ed25519, Gitobjekte/SHA-1DC, Cron/IANA |
 | environment.go, copied_lock.go, copied_zip.go | Allowlist, Wheels, Entpacken und Umgebungsseal |
@@ -315,7 +316,8 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     „Test“ nur auf Testgeräten, Beenden nur des Bedienfelds. `bis` lokal;
     offline + Fristablauf → „offline, Frist abgelaufen“. Graue Setups nur bei
     `braucht_eingabe:true` mit „braucht Eingabe“ ergänzen.
-    Fenster erst nach Klick, kein Hotkey/Toast/Sprechblase/Autostart-Code.
+    Fenster erst nach Klick, kein Hotkey/Toast/Autostart-Code; die einzige Sprechblase ist der feste
+    Hinweis bei neuer Rückfrage (Invariante 19, #1240 A2).
     Dialog „JanuaPort – <titel>“, statischer Text, 2–4 gewöhnliche Knöpfe,
     `WS_EX_NOACTIVATE`, `SW_SHOWNOACTIVATE`, kein `BS_DEFPUSHBUTTON`, kein
     Anfangsfokus/SetForegroundWindow/SetFocus/SetActiveWindow. Höchstens einer
@@ -341,7 +343,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     passendem Bildpfad und Benutzer-SID. Der Läufer läuft gegebenenfalls weiter.
     Install/Update/Uninstall öffnen keinen DPAPI-Zustand: Halt, Credential und
     unbestätigte Ergebnisse bleiben erhalten. Kein Start der Exe bei Installation.
-    Release baut beide ohne CGO, Bedienfeld mit `-H=windowsgui`; vorhandene Azure-
+    Release baut beide ohne CGO und mit `-H=windowsgui` (Invariante 19); vorhandene Azure-
     Signatur für beide, je Exe Existenz und `signtool verify /pa` als Pflicht.
     SHA256SUMS und Provenance binden beide finalen signierten Dateien.
     `TestReleaseUndWindowsCI`, Install-Paartests und `probe/l6_mutations.py`;
@@ -608,6 +610,36 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     bytegleicher P2-Kernspiegel aus ea50aa7a in `contract/golden-v5/contract5_login_routes.json`,
     SHA-geprüft durch `TestGoldenV5AusKern` und `SHA256SUMS`, mit `-text` gegen autocrlf geschützt.
 
+19. GUI-Läufer und Hinweis bei neuer Rückfrage (#1240 A2, nur Windows):
+    **Warum GUI.** Die Exe 0.4.0 war ein Konsolenprogramm (PE-Subsystem 3): Die Benutzeraufgabe öffnete
+    bei jeder Anmeldung ein leeres Terminalfenster, dessen Schließen `run` bis zur nächsten Anmeldung
+    beendete. Beide Exe werden deshalb mit `-H=windowsgui` gebaut (`TestReleaseUndWindowsCI` prüft jede
+    `go build`-Zeile, Mutanten `runner-build-console`/`panel-build-console`); `-X main.version` bleibt.
+    **Konsolenanschluss** (`console.go`, `console_windows.go`, `console_other.go`): `attachConsole()` ist die
+    erste Anweisung von `main()`. Die reine Funktion `planConsole(args, stdoutValid, stderrValid)` entscheidet:
+    `run` (jedes `args[0] == "run"`) hängt sich nie an; gültige Standard-Handles (Pipe oder Datei, z. B. `| Out-Host`,
+    Installtest, Umleitung) bleiben unangetastet; je fehlendem Handle (NULL, ungültig, `FILE_TYPE_UNKNOWN`)
+    wird `AttachConsole(ATTACH_PARENT_PROCESS)` aufgerufen und nur dieser Kanal auf `CONOUT$` gesetzt. Jeder
+    Fehler läuft still weiter, der Exit-Code ändert sich nie. Nicht-Windows-Builds (Linux-Server) sind ein No-op.
+    **Folgen für den Betrieb:** Eine GUI-Exe in einer Shell wird nicht abgewartet (PowerShell: `| Out-Host`);
+    `run` im Vordergrund hat keine Konsole, Strg+C erreicht ihn nicht mehr (Ende: Abmelden oder
+    Prozess beenden; `uninstall` beendet nur das Bedienfeld, Invariante 17). `GenerateConsoleCtrlEvent` und eine Konsole als Voraussetzung gibt es im Code nicht;
+    Kindprozesse laufen weiter mit `CREATE_NO_WINDOW` und expliziten Pipe-Handles (`process_windows.go`).
+    **Hinweis.** Neue Rückfrage (`jnpt.frage`) öffnet kein Fenster. Damit der Mensch sie nicht verpasst, meldet
+    `Model.TakeNotice()` genau einmal je angezeigter neuer Rückfrage einen fälligen Hinweis; `render()` setzt ihn
+    unter `a.tray && TakeNotice()` als eigenen `NIM_MODIFY` mit `NIF_INFO` (`notify`, `NIIF_INFO|NIIF_NOSOUND`).
+    Text fest im Code (`panel.NoticeTitle` „JanuaPort“, `panel.NoticeText` „JanuaPort braucht eine Antwort“),
+    **nie** Titel, Text oder Pin der Rückfrage, weil der Hinweis sichtbar auf dem Bildschirm steht; der Inhalt
+    bleibt in Menü und Dialog. Der Zeiger auf den Dialog, nicht die Frage-ID, trägt die Einmaligkeit (IDs
+    zählt jedes Skript ab „1“). Entfällt die Frage vor dem Abholen (Entfernung, Frist, Anhalten, Trennung),
+    gibt es keinen Hinweis; eine zweite, nicht angezeigte Frage meldet nichts. `trayFlags` bleibt
+    `1 | 2 | 4`; NIF_INFO steht nur in `notify`. Weiterhin keine Aktivierung, kein `SetForegroundWindow`,
+    `WS_EX_NOACTIVATE` bleibt, der Dialog öffnet nur per Klick. Wächter: `TestFokusWaechter`
+    (Flags nur `trayFlags` in `render`, `nifInfo` nur in `notify`), `TestHinweisNurAnEinerStelle` (fester Text,
+    ein `NIM_MODIFY`, `notify` einmal in `render` unter `TakeNotice`), Modelltests `TestHinweis*`; Mutanten
+    `balloon-flag`, `balloon-in-render`, `notice-*` in `probe/l4_mutations.py`. Ob Windows den Hinweis zeigt
+    (Fokus-Assistent, Benachrichtigungseinstellungen), ist nur nativ prüfbar.
+
 ## Benannte Grenzen
 
 Widerruf wird offline erst beim Kontakt sichtbar, bis zur Gnadenfrist kann
@@ -663,6 +695,7 @@ mit PASS ohne SKIP laufen. CI/Kompilierung ersetzen diesen Gate-Beleg nicht.
 | Hygiene | TestLoggerDeckelUndFesteCodes, TestStriktesJSONAmAdapter, TestFrameGrenzen, TestReleaseUndWindowsCI |
 | Pipe B1/B2, L3-1/L3-2, H1–H3 (#1240 L3) | TestPipeDACLStruktur, TestPipeBesetztStartetOhnePipe, TestClientPrueftServerbild, TestPipeBefehleGeschlossen, TestPipeGolden, TestPipeRoheRahmenAmLaeufer, TestPipeOhneTraeger, TestSetupStartNurAusManifest, TestSetupStartAmPipeHTTPAdapter, TestSetupHaltWaerendHTTP, TestSetupVeralteteFreigabeStartetNicht, TestSetupFreigabeDirektVorSpawn, TestSetupSperrtUndBrichtClaimAb, TestSetupSperrtAndereStartwege, TestSetupDirektesExecuteBleibtGesperrt, TestSetupFehlerNieOfflineNachmelden, TestPipeHaltBefehle, TestSkriptRoheTestfunktionenBleibenGesperrt, TestPipeKindHandleListe; native Windows-Sonden siehe README „Lokale Pipe“ |
 | Bedienfeld, Plan 14/15/18, §6.6, H4 | TestPanelZustaende, TestPanelMenueBefehleUndSetupEingabe, TestPanelFrageNurLokal, TestPanelStoerungBleibtBisNeuGeprueftemZustand, TestPanelServerpruefungSperrtBefehle, TestServerpruefungSendetNichtsAmAdapter, TestVerbindungVerwirftAlteBefehleUndBrichtSchreibenAb, TestBlockiertesSchreibenTrotzHeartbeatWirdGetrennt, TestFokusWaechter, TestBedienfeldNurGepruefterDial, TestPanelImportWaechter, TestL4SchemaPflichtfelder, TestH4RoheFragenAmLaeufer, TestH4SkriptTitelAbgewiesen, TestH4RoheFrageGrenzen, TestPanelEingabeAusVerifiziertemManifest; Windows: TestWindowsBedienfeldProzesssonde |
+| GUI-Läufer und Hinweis, Invariante 19 (#1240 A2) | TestKonsolenplan, TestMainHaengtKonsoleZuerstAn, TestReleaseUndWindowsCI, TestHinweisFesterText, TestHinweisEinmalJeNeuerFrage, TestHinweisNurFuerAngezeigteFrage, TestHinweisNurAnEinerStelle, TestFokusWaechter; Windows: TestHandleBenutzbar (nativ) |
 | Rückfragen intern, L3-Anteil | TestFrageNurLokal, TestFrageFristUndDisconnect, TestPipeFrageAntwortWeiterleitung, TestPipeHaltSchliesstFrage |
 | L5 SEC-R4 F1/H2 | TestL5EndaufnahmeNachHaltUndWandzeit (Anhalten: 0 Aufnahmen/Uploads; Wandzeit: 1, ohne Engine-Sperre), TestL5LaufpinSeparatGebunden (verified gültig, nur Laufpin abweichend); Mutationen completion-halt, completion-wall-context, run-pin-binding |
 | PC-Fenster K6b-2 (SEC B1–B4, native Ereignisse) | fensterio: TestHostReceiveBlockiertNie, TestHostAnhaltenBleibtBeiHaengendemGatewayBedienbar, TestHostFailBrichtAbUndNimmtNichtsMehrAn, TestRuntimeOpenAsyncKehrtSofortZurueck, TestRuntimeSchreibtNichtsInDenZustand, TestRuntimeWiderrufLoeschtNichts, TestRuntimeAppsOhneTraeger, TestPanelExchange*, TestNavigationVerdict, TestNewWindowVerdictIstImmerAbgebrochen, TestDownloadVerdictBrichtImmerAb, TestMessageSource, TestRunStepsHaeltBeimErstenFehlerAn, TestAdapterBindetAlleEreignisse, TestAdapterWendetAlleSettingsAn, TestFensterioRuftNurLeserUndAppAPI, TestBedienfeldImportiertClientNicht, TestPlatformNurHinterDerTuer, TestBedienfeldUIThreadOhneNetzUndBruecke, TestFensterioKeinAbbruchUndKeinPanel; panel: TestPanelImportWaechter, TestFensterioNurUeberDieTuer, TestPanelApp*; client: TestReader*, TestSyncLegtAppsAb, TestRevokeLoeschtWebviewOhneVerweiseZuFolgen, TestAppPrepareNachWiderrufLegtNichtsAb; fenster: TestExternalLink, TestDecide, TestLayout; Windows nativ (Opt-in): TestWindowsWebView* |

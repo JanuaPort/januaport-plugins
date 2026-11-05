@@ -344,8 +344,13 @@ fehlen diese, endet der Prozess ohne Anzeige und ohne Panic.
 Plan-Invariante 14: Fenster erst nach Klick auf „Rückfrage anzeigen“;
 Titel „JanuaPort – <titel>“, statischer Text und 2–4 gewöhnliche Knöpfe.
 `WS_EX_NOACTIVATE`, `SW_SHOWNOACTIVATE`, kein Default-Knopf, Anfangsfokus,
-`SetForegroundWindow`, `SetFocus` oder `SetActiveWindow`. Keine Toasts,
-Sprechblasen oder Hotkeys. Höchstens ein Dialog; zweite Frage nicht anzeigen.
+`SetForegroundWindow`, `SetFocus` oder `SetActiveWindow`. Keine Toasts oder Hotkeys.
+Die einzige Sprechblase ist der Hinweis bei einer neuen Rückfrage (#1240): ein
+Windows-Hinweis am Symbol (`NIF_INFO`, ohne Ton) mit festem Titel „JanuaPort“ und festem
+Text „JanuaPort braucht eine Antwort“, genau einmal je neuer Rückfrage. Er trägt weder Titel
+noch Text der Rückfrage noch den Pin-Namen, weil er sichtbar auf dem Bildschirm steht; der
+Inhalt bleibt in Menü und Dialog. Er aktiviert nichts und öffnet den Dialog nicht.
+Höchstens ein Dialog; zweite Frage nicht anzeigen.
 `frage_weg`, Anhalten, Trennung und Frist schließen ohne Antwort. X verbirgt
 die Frage bis zum erneuten Klick oder Fristende.
 UIA-Skripte desselben Benutzers können das Bedienfeld bedienen;
@@ -535,12 +540,17 @@ lokalen Halt-Zustand. Nach jedem Tausch der Exe-Dateien `install` erneut aufrufe
 damit beide Autostarteinträge zu den neuen Dateien passen.
 Eine administrative Konsole ist nicht erforderlich.
 
+Beide Exe sind GUI-Programme (`-H=windowsgui`, #1240): Die Benutzeraufgabe öffnet kein
+Terminalfenster. `pair`, `install`, `status` und `uninstall` hängen sich an die Konsole des
+Aufrufers, wenn die Ausgabe nicht umgeleitet ist. PowerShell wartet auf ein GUI-Programm nicht
+und zeigt den Prompt vor dessen Ausgabe; `| Out-Host` lässt es warten.
+
 ~~~powershell
-.\desktop-runner.exe pair --url https://anlage.example --code 0123456789abcdef.ABCD-EFGH-JKMN
-.\desktop-runner.exe install
-.\desktop-runner.exe status
-.\desktop-runner.exe run        # Vordergrund, Strg+C beendet den Betrieb
-.\desktop-runner.exe uninstall  # entfernt Autostart beider Exe, beendet das Bedienfeld
+.\desktop-runner.exe pair --url https://anlage.example --code 0123456789abcdef.ABCD-EFGH-JKMN | Out-Host
+.\desktop-runner.exe install | Out-Host
+.\desktop-runner.exe status | Out-Host
+.\desktop-runner.exe run        # Dauerbetrieb ohne Konsole; Ende: Abmelden oder Stop-Process -Name desktop-runner
+.\desktop-runner.exe uninstall | Out-Host  # entfernt Autostart beider Exe, beendet das Bedienfeld
 ~~~
 
 Den einmaligen, 15 Minuten gültigen Kopplungscode erzeugt die Anlage.
@@ -705,7 +715,7 @@ Werkzeugrechte braucht, nimmt getrennte Geräte bzw. getrennte Konten.
 $env:CGO_ENABLED='0'
 $env:GOOS='windows'
 $env:GOARCH='amd64'
-go build -trimpath -o desktop-runner.exe .
+go build -trimpath -ldflags=-H=windowsgui -o desktop-runner.exe .
 go build -trimpath -ldflags=-H=windowsgui -o jnpt-bedienfeld.exe ./cmd/bedienfeld
 go vet ./...
 go test ./...
@@ -725,8 +735,7 @@ einzeln, verlangt echte rote Tests und stellt Quellen byte-genau wieder her;
 nur bei exklusivem Zugriff ausführen. task-standard-user.ps1 erzeugt nur auf
 GitHub-Runnern ein temporäres Standardkonto.
 
-Tag desktop-runner-vX.Y.Z: beide Exe ohne CGO bauen, Bedienfeld mit
-`-H=windowsgui`, dann Pflicht-Signatur beider Dateien über Azure
+Tag desktop-runner-vX.Y.Z: beide Exe ohne CGO und mit `-H=windowsgui` bauen, dann Pflicht-Signatur beider Dateien über Azure
 OIDC/Microsoft Artifact Signing im Environment release-signing (nur für Tags
 desktop-runner-v* freigegeben), danach je Exe Existenzprüfung und
 `signtool verify /pa`. SHA256SUMS und Provenance binden beide finalen signierten
