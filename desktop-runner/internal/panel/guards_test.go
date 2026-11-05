@@ -223,6 +223,39 @@ func TestFokusWaechter(t *testing.T) {
 			t.Error("Stil nicht am Adapter verwendet", name)
 		}
 	}
+	// #1240: trayFlags bleibt ohne NIF_INFO. Der Hinweis (nifInfo) steht genau einmal, in notify, mit eigenem
+	// NIM_MODIFY; kein anderer Ort setzt Flags des Symbols (TestHinweisNurAnEinerStelle prüft Inhalt und Einmaligkeit).
+	allowedFlags := map[string]string{"render": "trayFlags", "notify": "nifInfo"}
+	infoUses := 0
+	for name, fn := range funcs {
+		ast.Inspect(fn, func(n ast.Node) bool {
+			switch x := n.(type) {
+			case *ast.KeyValueExpr:
+				if key, ok := x.Key.(*ast.Ident); ok && key.Name == "Flags" {
+					if v, ok := x.Value.(*ast.Ident); !ok || v.Name != allowedFlags[name] {
+						t.Errorf("Flags des Symbols in %s: nur trayFlags (render) oder nifInfo (notify)", name)
+					}
+				}
+			case *ast.AssignStmt:
+				for _, lhs := range x.Lhs {
+					if sel, ok := lhs.(*ast.SelectorExpr); ok && sel.Sel.Name == "Flags" {
+						t.Errorf("Flags des Symbols nachträglich gesetzt in %s", name)
+					}
+				}
+			case *ast.Ident:
+				if x.Name == "nifInfo" {
+					infoUses++
+					if name != "notify" {
+						t.Errorf("NIF_INFO außerhalb von notify: %s", name)
+					}
+				}
+			}
+			return true
+		})
+	}
+	if infoUses > 1 {
+		t.Error("NIF_INFO mehr als einmal verwendet")
+	}
 }
 
 func TestBedienfeldNurGepruefterDial(t *testing.T) {

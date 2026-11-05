@@ -22,6 +22,8 @@ CASES = [
     ("panel-excluded-from-azure-signing", RELEASE, "files-folder-filter: exe", "files-folder-filter: desktop-runner.exe", "client", "TestReleaseUndWindowsCI"),
     ("panel-missing-in-provenance", RELEASE, "            release/jnpt-bedienfeld.exe", "", "client", "TestReleaseUndWindowsCI"),
     ("panel-build-removed", RELEASE, '          go build -trimpath -ldflags "-s -w -H=windowsgui" -o out/jnpt-bedienfeld.exe ./cmd/bedienfeld', "          # panel build removed", "client", "TestReleaseUndWindowsCI"),
+    ("runner-build-console", RELEASE, "-s -w -H=windowsgui -X main.version", "-s -w -X main.version", "client", "TestReleaseUndWindowsCI"),
+    ("panel-build-console", RELEASE, '-s -w -H=windowsgui" -o out/jnpt-bedienfeld.exe', '-s -w" -o out/jnpt-bedienfeld.exe', "client", "TestReleaseUndWindowsCI"),
 ]
 
 
