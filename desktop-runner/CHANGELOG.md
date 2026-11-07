@@ -2,6 +2,13 @@
 
 ## Unveröffentlicht
 
+## 0.5.2 — 2026-11-07 (JanuaPort/januaport#1340)
+
+### Upstream-Prüfpunkt
+
+- `wailsapp/go-webview2` nach v1.0.23: kein Tag, kein Commit, kein Advisory (letzter Commit 13.11.2025).
+- WebView2-SDK: neuestes weiter 1.0.4314.35, keine Advisories. Gemessen ist nur Runtime 156.
+
 ### Werkzeugaufruf im Lauf (JanuaPort/januaport#1340)
 
 - Der Lauf-Token-Zweig von `mcp` schickt jetzt `Accept: application/json, text/event-stream`. Ohne beide Werte
