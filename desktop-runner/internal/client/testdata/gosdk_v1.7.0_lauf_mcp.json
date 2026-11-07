@@ -1,0 +1,25 @@
+{
+  "sdk": "github.com/modelcontextprotocol/go-sdk v1.7.0",
+  "aufnahme": "Wegwerf-Programm jp1340a-golden: mcp.NewStreamableHTTPHandler, Stateless true, ohne JSONResponse, MaxRequestBodyBytes 8 MiB, Werkzeug sendet vor dem Ergebnis Log- und Progress-Benachrichtigung; Anfrage tools/call mit id 7",
+  "request_id": 7,
+  "sse_mit_accept": {
+    "accept_sent": "application/json, text/event-stream",
+    "body": "event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\",\"params\":{\"data\":\"vorab\",\"level\":\"info\"}}\n\nevent: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\",\"params\":{\"progressToken\":\"p1\",\"progress\":1,\"total\":2}}\n\nevent: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"echo\\\":\\\"hallo\\\"}\"}],\"structuredContent\":{\"echo\":\"hallo\"}}}\n\n",
+    "headers": {
+      "Cache-Control": "no-cache, no-transform",
+      "Connection": "keep-alive",
+      "Content-Type": "text/event-stream"
+    },
+    "status": 200
+  },
+  "ohne_accept": {
+    "accept_sent": "",
+    "body": "Accept must contain both 'application/json' and 'text/event-stream'\n",
+    "headers": {
+      "Content-Length": "68",
+      "Content-Type": "text/plain; charset=utf-8",
+      "X-Content-Type-Options": "nosniff"
+    },
+    "status": 400
+  }
+}
