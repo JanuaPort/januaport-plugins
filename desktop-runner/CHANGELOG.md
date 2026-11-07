@@ -1,5 +1,20 @@
 # Changelog
 
+## Unveröffentlicht
+
+### Werkzeugaufruf im Lauf (JanuaPort/januaport#1340)
+
+- Der Lauf-Token-Zweig von `mcp` schickt jetzt `Accept: application/json, text/event-stream`. Ohne beide Werte
+  weist das go-sdk des Kerns mit 400 ab; Pins mit `tools` konnten deshalb kein Gateway-Werkzeug aufrufen.
+- Der Läufer liest die SSE-Antwort (`Cache-Control: no-cache, no-transform`, kein `Mcp-Session-Id`): Er
+  überspringt Benachrichtigungen und nimmt das erste Ereignis, das die Antwort auf die eigene `id` ist, und prüft
+  sie wie bisher streng. Fremde `id`, ein Strom ohne Antwort oder mehr als 8 MiB insgesamt sind Protokollfehler.
+  `application/json` mit `no-store` bleibt auf diesem Zweig gültig.
+- Die gelockerte `Cache-Control`-Regel gilt nur für `text/event-stream` auf diesem Zweig. Alle anderen
+  Endpunkte und der App-Zweig bleiben unverändert strikt; Kern-Stand und Vertrag bleiben unverändert.
+- Vertragstest gegen die Aufnahme des echten go-sdk v1.7.0 (`testdata/gosdk_v1.7.0_lauf_mcp.json`); die Aufnahme
+  bestätigt zugleich, dass eine Anfrage ohne `Accept` mit 400 abgewiesen wird.
+
 ## 0.5.1 — 2026-11-05 (JanuaPort/januaport#1240)
 
 Ersetzt 0.5.0, die als Pre-Release markiert ist: Die Bedienfeld-Probe mit signierter Exe war rot.
