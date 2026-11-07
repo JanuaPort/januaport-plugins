@@ -32,6 +32,10 @@ Die signierte Jobfreigabe wird für späteres Ergebnis-Replay separat mit DPAPI
 gespeichert und vor dem Senden erneut geprüft. Der Kern begrenzt Bilder auf fünf
 und auf laufende Tests beziehungsweise zwei Minuten nach deren Ende.
 
+Der Werkzeugaufruf des Laufs (`mcp` mit Lauf-Token) schickt `Accept: application/json, text/event-stream`
+und liest die SSE-Antwort des Kerns (go-sdk stateless, `Cache-Control: no-cache, no-transform`); die
+Geräte-Token-Wege und der App-Zweig bleiben bei `application/json` mit `no-store` (#1340).
+
 L1 enthält Adapter und K8; L2 ergänzt den lokalen Halt im Engine.
 L3 ergänzt Pipe und Setup-Zulassung, L4 das native Bedienfeld.
 L5 ergänzt den `jnpt`-Helfer und die Go-seitig freigegebene Bildschirmaufnahme.

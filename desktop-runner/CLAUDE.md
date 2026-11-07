@@ -18,6 +18,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 | main.go | CLI und feste Fehlerausgaben |
 | console.go, console_windows.go, console_other.go | GUI-Läufer (`-H=windowsgui`): reine Entscheidung `planConsole`, Windows-Anschluss an die Konsole des Aufrufers, No-op sonst (Invariante 19) |
 | internal/client/http.go | Einziger HTTP-Client-Adapter, E3, Tokenrollen, Widerruf (Server-Ausnahme K6c: fensterio/loopback_windows.go) |
+| internal/client/sse.go | Liest die SSE-Antwort des Lauf-Zweigs von `mcp` bis zur ersten Nicht-Benachrichtigung (Invariante 1, #1340) |
 | manifest.go, copied_contract.go | Manifest/Kanonisierung/Ed25519, Gitobjekte/SHA-1DC, Cron/IANA |
 | environment.go, copied_lock.go, copied_zip.go | Allowlist, Wheels, Entpacken und Umgebungsseal |
 | engine.go, halt.go, bootstrap.py | Gemeinsamer Laufplatz, Takt, Claim/Start, lokaler Halt, Rahmenkanal/MCP |
@@ -49,6 +50,17 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 1. Nur Pins am Ausführungsort `geraet:<id>`, keine `lokal`-Pins. Weg B:
    Gerät holt alles ab, keine Verbindung von der Anlage zum Gerät.
    `/api/device/v1/`, Contract-Header je Anfrage, no-store je Antwort.
+   Einzige Ausnahme (#1340): Auf dem Lauf-Token-Zweig von `mcp` schickt der Läufer
+   `Accept: application/json, text/event-stream` und nimmt zusätzlich genau
+   `text/event-stream` mit `Cache-Control: no-cache, no-transform` an (so schreibt
+   go-sdk v1.7.0 stateless); `application/json` mit no-store bleibt gültig. Der Läufer
+   liest den Strom (`sse.go`), überspringt Benachrichtigungen (`method` ohne `id`) und
+   verlangt als erstes anderes Ereignis die Antwort auf die eigene `id`; fremde `id`,
+   Strom ohne Antwort, `Mcp-Session-Id` und mehr als 8 MiB insgesamt sind
+   `ErrProtocol`. Auf jedem anderen Endpunkt und auf dem App-Zweig (`requestApp` mit
+   App-Token, nur `application/json`, no-store, kein Strom-Accept) ist
+   `text/event-stream` ein Protokollfehler. Schutz: `lauf_accept_test.go` gegen die
+   Aufnahme `testdata/gosdk_v1.7.0_lauf_mcp.json` des echten SDK.
    Läufer-Token überall **außer `pair`**, dort kein Authorization-Header.
    Standard LAN/Tunnel, öffentlich nur Opt-in mit Allowlist und Bremse (C2).
 2. Kopplung ersetzt die manuelle Tokenübergabe: Code 15 min/einmalig/60 Bit,

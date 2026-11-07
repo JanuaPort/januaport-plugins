@@ -137,8 +137,24 @@ func (a *API) request(ctx context.Context, method, endpoint string, body any, se
 
 // requestApp trägt höchstens einen zweiten Träger: Lauf-Token oder App-Token, nie beide.
 func (a *API) requestApp(ctx context.Context, method, endpoint string, body any, seq uint64, runToken, appToken string, max int) ([]byte, int, error) {
+	b, status, _, e := a.exchange(ctx, method, endpoint, body, seq, runToken, appToken, max)
+	return b, status, e
+}
+
+const (
+	// Der Lauf-Zweig von mcp (Lauf-Token) wird vom go-sdk stateless und ohne JSON-Antwort
+	// als SSE bedient und verlangt beide Accept-Werte (#1340). Nur dort, und nur für
+	// text/event-stream, gilt sdkStreamCache statt no-store.
+	laufAccept     = "application/json, text/event-stream"
+	eventStreamCT  = "text/event-stream"
+	sdkStreamCache = "no-cache, no-transform"
+)
+
+// exchange ist der eine HTTP-Weg. Der dritte Rückgabewert ist der geprüfte Inhaltstyp der
+// 200-Antwort; nur API.MCP wertet ihn aus.
+func (a *API) exchange(ctx context.Context, method, endpoint string, body any, seq uint64, runToken, appToken string, max int) ([]byte, int, string, error) {
 	if a.revoked.Load() {
-		return nil, 0, ErrRevoked
+		return nil, 0, "", ErrRevoked
 	}
 	var reader io.Reader
 	if body != nil {
@@ -148,18 +164,18 @@ func (a *API) requestApp(ctx context.Context, method, endpoint string, body any,
 			raw, e = json.Marshal(body)
 		}
 		if e != nil || len(raw) > 8<<20 {
-			return nil, 0, ErrProtocol
+			return nil, 0, "", ErrProtocol
 		}
 		reader = bytes.NewReader(raw)
 	}
 	req, e := http.NewRequestWithContext(ctx, method, a.base+endpoint, reader)
 	if e != nil {
-		return nil, 0, ErrProtocol
+		return nil, 0, "", ErrProtocol
 	}
 	req.Header.Set("X-Jnpt-Desktop-Contract", strconv.Itoa(a.Contract()))
 	if endpoint != "pair" {
 		if a.token == "" {
-			return nil, 0, ErrProtocol
+			return nil, 0, "", ErrProtocol
 		}
 		req.Header.Set("Authorization", "Bearer "+a.token)
 	}
@@ -174,19 +190,20 @@ func (a *API) requestApp(ctx context.Context, method, endpoint string, body any,
 	}
 	if runToken != "" {
 		if endpoint != "mcp" || appToken != "" || strings.ContainsAny(runToken, "\r\n") {
-			return nil, 0, ErrProtocol
+			return nil, 0, "", ErrProtocol
 		}
 		req.Header.Set("X-Jnpt-Run-Token", runToken)
+		req.Header.Set("Accept", laufAccept)
 	}
 	if appToken != "" {
 		if endpoint != "mcp" || !strings.HasPrefix(appToken, appTokenPrefix) || strings.ContainsAny(appToken, "\r\n") {
-			return nil, 0, ErrProtocol
+			return nil, 0, "", ErrProtocol
 		}
 		req.Header.Set(appTokenHeader, appToken)
 	}
 	res, e := a.http.Do(req)
 	if e != nil {
-		return nil, 0, e
+		return nil, 0, "", e
 	}
 	defer res.Body.Close()
 	if res.StatusCode >= 400 {
@@ -194,7 +211,7 @@ func (a *API) requestApp(ctx context.Context, method, endpoint string, body any,
 	}
 	b, e := io.ReadAll(io.LimitReader(res.Body, int64(max)+1))
 	if e != nil || len(b) > max {
-		return nil, res.StatusCode, ErrProtocol
+		return nil, res.StatusCode, "", ErrProtocol
 	}
 	// Revocation is handled before all ordinary response-shape checks.
 	if res.StatusCode == 401 && endpoint != "pair" {
@@ -207,20 +224,25 @@ func (a *API) requestApp(ctx context.Context, method, endpoint string, body any,
 			a.revoked.Store(true)
 			if a.onRevoke != nil {
 				if e = a.onRevoke(); e != nil {
-					return nil, 401, e
+					return nil, 401, "", e
 				}
 			}
-			return nil, 401, ErrRevoked
+			return nil, 401, "", ErrRevoked
 		}
 	}
-	if res.Header.Get("Cache-Control") != "no-store" || res.Header.Get("Mcp-Session-Id") != "" {
-		return nil, res.StatusCode, ErrProtocol
+	stream := runToken != "" && endpoint == "mcp" && res.StatusCode == 200 && res.Header.Get("Content-Type") == eventStreamCT
+	cache := "no-store"
+	if stream {
+		cache = sdkStreamCache
+	}
+	if res.Header.Get("Cache-Control") != cache || res.Header.Get("Mcp-Session-Id") != "" {
+		return nil, res.StatusCode, "", ErrProtocol
 	}
 	if res.StatusCode == 204 {
 		if len(b) != 0 {
-			return nil, 204, ErrProtocol
+			return nil, 204, "", ErrProtocol
 		}
-		return b, 204, nil
+		return b, 204, "", nil
 	}
 	if res.StatusCode >= 400 {
 		var v struct {
@@ -230,21 +252,21 @@ func (a *API) requestApp(ctx context.Context, method, endpoint string, body any,
 			} `json:"error"`
 		}
 		if strict(b, &v) != nil {
-			return nil, res.StatusCode, ErrProtocol
+			return nil, res.StatusCode, "", ErrProtocol
 		}
-		return nil, res.StatusCode, &HTTPError{res.StatusCode, v.Error.Class}
+		return nil, res.StatusCode, "", &HTTPError{res.StatusCode, v.Error.Class}
 	}
 	if res.StatusCode != 200 {
-		return nil, res.StatusCode, ErrProtocol
+		return nil, res.StatusCode, "", ErrProtocol
 	}
 	expectedType := "application/json"
 	if strings.HasPrefix(endpoint, "packages/") {
 		expectedType = "application/vnd.jnpt.gitobjects.v1"
 	}
-	if res.Header.Get("Content-Type") != expectedType {
-		return nil, 200, ErrProtocol
+	if !stream && res.Header.Get("Content-Type") != expectedType {
+		return nil, 200, "", ErrProtocol
 	}
-	return b, 200, nil
+	return b, 200, res.Header.Get("Content-Type"), nil
 }
 func (a *API) Pair(ctx context.Context, code, version string) (PairReply, error) {
 	var out PairReply
@@ -379,9 +401,14 @@ func (a *API) MCP(ctx context.Context, token string, id int64, name string, args
 		Name      string          `json:"name"`
 		Arguments json.RawMessage `json:"arguments"`
 	}{name, args}}
-	b, _, e := a.request(ctx, "POST", "mcp", body, 0, token, 8<<20)
+	b, _, ctype, e := a.exchange(ctx, "POST", "mcp", body, 0, token, "", 8<<20)
 	if e != nil {
 		return nil, e
+	}
+	if ctype == eventStreamCT {
+		if b, e = firstSSEReply(b); e != nil {
+			return nil, e
+		}
 	}
 	var reply struct {
 		JSONRPC string          `json:"jsonrpc"`
