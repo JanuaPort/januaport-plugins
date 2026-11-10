@@ -1,4 +1,4 @@
-"""#1237, 0.3.1: one consent with all four scopes. A second consent with a different set is not offered.
+"""#1237, 0.3.1: one consent with all scopes (five since 0.4.0, B3). A second consent with a different set is not offered.
 
 LinkedIn: "If you request a different scope than the previously granted scope, all the previous
 access tokens are invalidated." (authorization-code-flow, Access Token Scopes and Lifetime). The
@@ -38,7 +38,7 @@ class GrantConsent(unittest.TestCase):
                 code = exc.code
         return code, output.getvalue(), errors.getvalue()
 
-    def test_one_authorization_requests_exactly_the_four_scopes(self):
+    def test_one_authorization_requests_exactly_the_five_scopes(self):
         out = self.run_consent()
         self.assertEqual(len(self.seen), 1)
         self.assertEqual(self.seen[0][s.SCOPE], [GRANT])
@@ -58,7 +58,8 @@ class GrantConsent(unittest.TestCase):
 
     def test_a_different_set_in_the_answer_ends_the_consent_without_a_vault_json(self):
         for answer in ('r_organization_social,rw_organization_admin', 'w_organization_social,w_organization_social_feed',
-                       ','.join(GRANT_LIST[:3]), GRANT_COMMA + ',r_ads', '', GRANT_COMMA.replace(',', ';')):
+                       ','.join(GRANT_LIST[:3]), ','.join(GRANT_LIST[:4]), GRANT_COMMA + ',r_ads', '',
+                       GRANT_COMMA.replace(',', ';')):
             with self.subTest(answer=answer):
                 self.fake.token_body[s.SCOPE] = answer
                 code, output, errors = self.cli('--gesamt')
@@ -82,7 +83,7 @@ class GrantConsent(unittest.TestCase):
             self.assertIn(scope, errors)
 
     def test_without_gesamt_nothing_happens(self):
-        # The old read-only line must not silently ask for four scopes or for two: it stops.
+        # The old read-only line must not silently ask for five scopes or for two: it stops.
         code, output, errors = self.cli()
         self.assertEqual((code, output, errors), (2, '', 'ungueltige_argumente\n'))
         self.assertEqual(self.seen, [])

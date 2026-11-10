@@ -49,6 +49,10 @@ TS = 'test_token_state.SharedState.'
 SL = 'test_post_server.LogCanary.'
 GC = 'test_post_consent.GrantConsent.'
 SC = 'test_oauth_toleranz.StoredCredential.'
+# Stufe B3 (#1237, 0.4.0): cut c-6747016143, SEC c-6747087768 S1-S4/K2-K5, T1 c-6759978021.
+KD = 'test_kommentare_domain.'
+KA = 'test_kommentare_adapter.'
+KS = 'test_kommentare_server.'
 MUTANTS = [
     ('bridge-key', 'server.py', 'if not authorized:', 'if False:', B+'test_bridge_missing_wrong_duplicate_never_reach_adapter'),
     ('duplicate-auth', 'server.py', 'if len(header) != 1:', 'if not header:', B+'test_bridge_missing_wrong_duplicate_never_reach_adapter'),
@@ -183,7 +187,7 @@ MUTANTS = [
     ('sec-200-token', 'server.py', "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=200)\n            return web.json_response(payload, status=exc.status)", "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=exc.status)\n            return web.json_response(payload, status=exc.status)", 'test_sec_outcome.Outcome.test_expired_token_is_definite_before_any_linkedin_request'),
     ('sec-200-refresh', 'server.py', "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=200)\n            return web.json_response(payload, status=exc.status)", "                payload['nicht_ausgefuehrt'] = True\n                return web.json_response(payload, status=exc.status)\n            return web.json_response(payload, status=exc.status)", 'test_sec_outcome.Outcome.test_refresh_rejection_is_definite_without_a_business_write'),
     ('sec-gate-no-result', 'server.py', "header_checked and code != 'nicht_freigegeben'", 'header_checked', 'test_sec_outcome.Outcome.test_invalid_header_and_hash_are_409_without_either_outcome_field'),
-    ('sec-bridge-before-result', 'server.py', "write_route and header_checked and code != 'nicht_freigegeben'", "write_route and code != 'nicht_freigegeben'", 'test_sec_outcome.Outcome.test_bridge_failure_never_becomes_a_200_nonexecution_result'),
+    ('sec-bridge-before-result', 'server.py', "(write_route or reply_route) and header_checked and code != 'nicht_freigegeben'", "(write_route or reply_route) and code != 'nicht_freigegeben'", 'test_sec_outcome.Outcome.test_bridge_failure_never_becomes_a_200_nonexecution_result'),
     ('sec-marker-after-permit', 'post_adapter.py', '        self.permit()  # server-process grant before every LinkedIn attempt, failures included\n        self.timeout = timeout\n        if before_send is not None:\n            before_send()  # after local quota checks, immediately before possible provider effect', '        if before_send is not None:\n            before_send()\n        self.permit()\n        self.timeout = timeout', 'test_sec_outcome.Outcome.test_http_daily_cap_before_first_attempt_is_definite_for_every_write'),
     ('sec-fixture-preview-crlf', 'tests/data/linkedin_vorschau_beispiel.json', '{\n  "eintrag_id"', '{\r\n  "eintrag_id"', 'test_fixture_bytes.FixtureBytes.test_json_fixtures_use_lf'),
     ('sec-fixture-golden-crlf', 'tests/data/hash_golden.json', '[\n  {', '[\r\n  {', 'test_fixture_bytes.FixtureBytes.test_json_fixtures_use_lf'),
@@ -202,12 +206,12 @@ MUTANTS = [
     ('b3-plan-path-guard', 'redaktion.py', "    return tuple(check_datei(v) for v in value)", "    return tuple(value)", DE+'test_fields_are_strings_json_lists_and_objects_fail_closed'),
     ('b3-pseudonym-guard', 'redaktion.py', "if any(mark in fields.get(name, '') for mark in PSEUDONYM):", 'if False:', DE+'test_pseudonymised_fields_are_never_posted'),
     # #1237, 0.3.1: ONE grant in ONE place. LinkedIn voids earlier tokens on a different scope set.
-    ('g1-grant-without-read', 'source_contract.py', 'GRANT_SCOPES = SCOPES + WRITE_SCOPES', 'GRANT_SCOPES = WRITE_SCOPES', D+'test_grant_is_exactly_the_read_and_the_write_scopes'),
-    ('g1-grant-without-write', 'source_contract.py', 'GRANT_SCOPES = SCOPES + WRITE_SCOPES', 'GRANT_SCOPES = SCOPES', GC+'test_one_authorization_requests_exactly_the_four_scopes'),
-    ('g1-write-scope', 'source_contract.py', "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed')", "WRITE_SCOPES = ('w_organization_social',)", GC+'test_one_authorization_requests_exactly_the_four_scopes'),
-    ('g1-write-scope-extra', 'source_contract.py', "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed')", "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed', 'r_ads')", GC+'test_one_authorization_requests_exactly_the_four_scopes'),
+    ('g1-grant-without-read', 'source_contract.py', 'GRANT_SCOPES = SCOPES + WRITE_SCOPES + COMMUNITY_SCOPES', 'GRANT_SCOPES = WRITE_SCOPES + COMMUNITY_SCOPES', D+'test_grant_is_exactly_the_read_and_the_write_scopes'),
+    ('g1-grant-without-write', 'source_contract.py', 'GRANT_SCOPES = SCOPES + WRITE_SCOPES + COMMUNITY_SCOPES', 'GRANT_SCOPES = SCOPES + COMMUNITY_SCOPES', GC+'test_one_authorization_requests_exactly_the_five_scopes'),
+    ('g1-write-scope', 'source_contract.py', "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed')", "WRITE_SCOPES = ('w_organization_social',)", GC+'test_one_authorization_requests_exactly_the_five_scopes'),
+    ('g1-write-scope-extra', 'source_contract.py', "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed')", "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed', 'r_ads')", GC+'test_one_authorization_requests_exactly_the_five_scopes'),
     ('g1-write-scope-table', 'source_contract.py', "WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed')", "WRITE_SCOPES = ('w_organization_social_feed',)", PC+'test_endpoint_table_is_exactly_the_reviewed_one'),
-    ('g1-consent-scope-string', 'tools/zustimmung.py', "s.STATE: state, s.SCOPE: ' '.join(s.GRANT_SCOPES)}", "s.STATE: state, s.SCOPE: ' '.join(s.SCOPES)}", GC+'test_one_authorization_requests_exactly_the_four_scopes'),
+    ('g1-consent-scope-string', 'tools/zustimmung.py', "s.STATE: state, s.SCOPE: ' '.join(s.GRANT_SCOPES)}", "s.STATE: state, s.SCOPE: ' '.join(s.SCOPES)}", GC+'test_one_authorization_requests_exactly_the_five_scopes'),
     ('g1-consent-answer-required', 'tools/zustimmung.py', 'scope_required=True)', 'scope_required=False)', GC+'test_an_answer_without_scope_ends_the_consent_without_a_vault_json'),
     ('g1-answer-scope-check', 'oauth.py', 'if scope_required and s.SCOPE not in raw:', 'if False:', T+'ScopeSeparators.test_consent_answer_must_name_the_scopes_it_grants'),
     ('g1-consent-json-scope', 'tools/zustimmung.py', "result.update({s.CLIENT_ID: client_id, s.CLIENT_SECRET: client_secret, s.SCOPE: ' '.join(s.GRANT_SCOPES)})", 'result.update({s.CLIENT_ID: client_id, s.CLIENT_SECRET: client_secret})', GC+'test_vault_json_is_what_the_service_loads'),
@@ -216,14 +220,14 @@ MUTANTS = [
     ('g1-schreiben-back', 'tools/zustimmung.py', "    parser.add_argument('--gesamt',", "    parser.add_argument('--schreiben', action='store_true')\n    parser.add_argument('--gesamt',", GC+'test_schreiben_is_gone_and_cannot_create_a_second_grant'),
     ('g1-identity-any-set', 'oauth.py', 'if scope_set(data[s.SCOPE]) != set(s.GRANT_SCOPES):', 'if False:', SC+'test_any_other_scope_set_fails_closed'),
     ('g1-identity-superset', 'oauth.py', 'if scope_set(data[s.SCOPE]) != set(s.GRANT_SCOPES):', 'if not scope_set(data[s.SCOPE]) >= set(s.GRANT_SCOPES):', SC+'test_any_other_scope_set_fails_closed'),
-    ('g1-identity-read-half', 'oauth.py', 'if scope_set(data[s.SCOPE]) != set(s.GRANT_SCOPES):', 'if not scope_set(data[s.SCOPE]) >= set(s.SCOPES):', ST+'test_identity_requires_exactly_the_four_scopes'),
+    ('g1-identity-read-half', 'oauth.py', 'if scope_set(data[s.SCOPE]) != set(s.GRANT_SCOPES):', 'if not scope_set(data[s.SCOPE]) >= set(s.SCOPES):', ST+'test_identity_requires_exactly_the_five_scopes'),
     ('g1-identity-scope-optional', 'oauth.py', "    required = {s.CLIENT_ID, s.CLIENT_SECRET, s.ACCESS_TOKEN, 'access_expires_at', s.SCOPE}\n    optional = {s.REFRESH_TOKEN, 'refresh_expires_at'}\n    if not isinstance(data, dict) or not required <= data.keys() or set(data) - required - optional:\n        raise ValueError('invalid_identity')\n    if scope_set(data[s.SCOPE]) != set(s.GRANT_SCOPES):", "    required = {s.CLIENT_ID, s.CLIENT_SECRET, s.ACCESS_TOKEN, 'access_expires_at'}\n    optional = {s.REFRESH_TOKEN, 'refresh_expires_at', s.SCOPE}\n    if not isinstance(data, dict) or not required <= data.keys() or set(data) - required - optional:\n        raise ValueError('invalid_identity')\n    if s.SCOPE in data and scope_set(data[s.SCOPE]) != set(s.GRANT_SCOPES):", SC+'test_a_grant_from_before_0_3_1_without_scope_fails_closed'),
     ('g1-old-place-back', 'server.py', 'GATEWAY_TOKEN_PATH = "/run/secrets/gateway/runtime-key"', 'GATEWAY_TOKEN_PATH = "/run/secrets/gateway/runtime-key"\nPOST_IDENTITY_PATH = "/run/secrets/post-oauth/runtime-key"', ST+'test_the_second_place_is_gone_from_the_service'),
     ('g1-old-place-opened', 'server.py', '        token = read_gateway_token(token_path)\n', '        Path(token_path).with_name("runtime-key").open("rb").close()\n        token = read_gateway_token(token_path)\n', ST+'test_a_leftover_file_in_the_old_place_has_no_effect'),
     # #1237, 0.3.1: ONE token state in the server process; a path keeps its own quota and transport.
     ('g2-lock', 'oauth.py', '        with self.lock:\n', '        if True:\n', TU+'test_concurrent_callers_renew_once'),
     ('g2-published-in-one-step', 'oauth.py', 'self.data = {**self.data, **update}', 'self.data.update(update)', TU+'test_a_renewal_is_published_in_one_step'),
-    ('g2-one-state-in-serve', 'server.py', 'WritePool(cfg, tokens, token)', 'WritePool(cfg, Tokens(dict(tokens.data)), token)', TU+'test_serve_wires_one_state_into_both_pools'),
+    ('g2-one-state-in-serve', 'server.py', 'WritePool(cfg, tokens, token)', 'WritePool(cfg, Tokens(dict(tokens.data)), token)', TU+'test_serve_wires_one_state_into_all_three_pools'),
     ('g2-read-transport-pays', 'workers.py', 'self.transport = transport_factory(self._permit)', 'self.transport = transport_factory(lambda: None)', TS+'test_only_the_path_that_renews_pays_for_the_renewal'),
     ('g2-write-transport-pays', 'post_pool.py', 'self.transport = transport_factory(self._permit_http)', 'self.transport = transport_factory(lambda: None)', TS+'test_only_the_path_that_renews_pays_for_the_renewal'),
     ('g2-read-cap-on-renewal', 'workers.py', 'self.transport = transport_factory(self._permit)', 'self.transport = transport_factory(lambda: None)', TS+'test_a_spent_read_quota_stops_only_the_read_path'),
@@ -285,12 +289,63 @@ MUTANTS = [
 
     ('secret-control-character', 'tools/zustimmung.py', "if any(unicodedata.category(char) == 'Cc' for char in value):", 'if False:', C+'test_control_character_in_secret_is_rejected_with_german_message_and_nothing_is_sent'),
 
+    # --- Stufe B3 (#1237, 0.4.0) -------------------------------------------------------------
+    ('b3-scope-set-five', 'source_contract.py', 'GRANT_SCOPES = SCOPES + WRITE_SCOPES + COMMUNITY_SCOPES', 'GRANT_SCOPES = SCOPES + WRITE_SCOPES', KD+'Scopes.test_the_grant_is_exactly_five_scopes_and_the_fifth_reads_the_feed'),
+    ('b3-scope-set-six', 'source_contract.py', "COMMUNITY_SCOPES = ('r_organization_social_feed',)", "COMMUNITY_SCOPES = ('r_organization_social_feed', 'r_member_social_feed')", KD+'Scopes.test_the_grant_is_exactly_five_scopes_and_the_fifth_reads_the_feed'),
+    ('b3-old-grant-accepted', 'oauth.py', 'if scope_set(data[s.SCOPE]) != set(s.GRANT_SCOPES):', 'if not scope_set(data[s.SCOPE]) >= set(s.SCOPES + s.WRITE_SCOPES):', ST+'test_identity_requires_exactly_the_five_scopes'),
+    ('b3-stats-reader-feed-scope', 'source_contract.py', "SCOPES = ('rw_organization_admin', 'r_organization_social')", "SCOPES = ('rw_organization_admin', 'r_organization_social', 'r_organization_social_feed')", KD+'Scopes.test_the_statistics_reader_never_names_a_feed_scope'),
+    ('b3-stats-reader-endpoints', 'linkedin_adapter.py', 'if endpoint not in (s.PAGE, s.FOLLOWERS, s.SHARES, s.POSTS, s.NETWORK):', 'if False:', KD+'Scopes.test_the_statistics_adapter_cannot_reach_a_comment_endpoint'),
+    ('b3-foreign-post', 'community_adapter.py', ' or post.get(s.AUTHOR) != self.cfg.organization', '', KA+'Reply.test_foreign_draft_old_and_unknown_posts_are_refused_before_any_write'),
+    ('b3-old-post', 'community_adapter.py', 'if created < self.now_ms() - k.POST_MAX_TAGE * k.DAY_MS:', 'if False:', KA+'Reply.test_foreign_draft_old_and_unknown_posts_are_refused_before_any_write'),
+    ('b3-parent-of-another-post', 'community_adapter.py', "        if parent is None:\n            raise ReportError(422, 'kommentar_unbekannt')", "        if False:\n            raise ReportError(422, 'kommentar_unbekannt')", KA+'Reply.test_a_comment_of_another_post_is_unknown_here'),
+    ('b3-parent-by-org', 'community_adapter.py', "        if self.von_uns(parent.actor):\n            raise ReportError(422, 'von_uns')", "        if False:\n            raise ReportError(422, 'von_uns')", KA+'Reply.test_a_comment_of_the_organization_or_of_our_people_is_never_answered'),
+    ('b3-own-people', 'community_adapter.py', 'return actor == self.cfg.organization or actor in self.own', 'return actor == self.cfg.organization', KA+'Reply.test_a_comment_of_the_organization_or_of_our_people_is_never_answered'),
+    ('b3-second-level', 'community_adapter.py', "        if parent.eltern:\n            raise ReportError(422, 'ebene')", "        if False:\n            raise ReportError(422, 'ebene')", KA+'Reply.test_only_top_level_comments_second_level_is_refused'),
+    ('b3-deleted-parent', 'community_adapter.py', "        if parent.geloescht:\n            raise ReportError(422, 'kommentar_geloescht')", "        if False:\n            raise ReportError(422, 'kommentar_geloescht')", KA+'Reply.test_a_deleted_parent_is_refused'),
+    ('b3-blind-reply', 'community_adapter.py', '        if parent.text is None:', '        if False:', KA+'Reply.test_a_comment_whose_text_was_withheld_is_never_answered_blind'),
+    ('b3-second-reply', 'community_adapter.py', "        if self._beantwortet(parent, req.post_urn):\n            raise ReportError(422, 'wiederholt')", "        if False:\n            raise ReportError(422, 'wiederholt')", KA+'Reply.test_a_second_reply_is_wiederholt_checked_live'),
+    ('b3-summary-instead-of-live', 'community_adapter.py', '        if self._beantwortet(parent, req.post_urn):', '        if parent.antworten != 0 and self._beantwortet(parent, req.post_urn):', KA+'Reply.test_the_summary_never_replaces_the_live_reply_read'),
+    ('b3-same-author-same-post', 'community_adapter.py', 'sibling.actor == parent.actor and self._beantwortet(sibling, req.post_urn)', 'False', KA+'Reply.test_one_reply_per_author_and_post'),
+    ('b3-incomplete-listing', 'community_adapter.py', "        if not complete:\n            raise ReportError(422, 'zu_viele_kommentare')", "        if False:\n            raise ReportError(422, 'zu_viele_kommentare')", KA+'Reply.test_an_incomplete_listing_or_unreadable_replies_refuse'),
+    ('b3-unreadable-listing', 'community_adapter.py', "        if unreadable:\n            # The author of an unreadable comment", "        if False:\n            # The author of an unreadable comment", KA+'Reply.test_any_unreadable_comment_under_the_post_refuses_because_its_author_is_unknown'),
+    ('b3-check-ceiling', 'community_adapter.py', '        self.ceiling = HTTP_JE_ANTWORT - 2', '        self.ceiling = None', KA+'Reply.test_the_pre_checks_have_their_own_http_ceiling'),
+    ('b3-author-is-org', 'community_adapter.py', 'body = {s.ACTOR: self.cfg.organization,', 'body = {s.ACTOR: parent.actor,', KA+'Reply.test_reply_as_the_organization_to_exactly_this_comment'),
+    ('b3-closed-endpoints', 'community_adapter.py', '        if op not in s.COMMUNITY_ENDPOINTS:\n            raise', '        if False:\n            raise', KA+'Reply.test_closed_endpoint_list_before_http'),
+    ('b3-adapter-rechecks-text', 'community_adapter.py', '        k.pruefen(req)  # again', '        pass  # again', KA+'Reply.test_text_and_anlass_are_checked_again_before_any_http'),
+    ('b3-unclear-after-write', 'community_adapter.py', 'exc.nicht_ausgefuehrt = not self.schreibversuch', 'exc.nicht_ausgefuehrt = True', KA+'Reply.test_a_failure_after_the_write_request_is_unclear'),
+    ('b3-anlass-enum', 'kommentare.py', '    if req.anlass not in ANLAESSE:', '    if False:', KD+'ReplyInput.test_anlass_is_one_of_three_fixed_values'),
+    ('b3-text-length', 'kommentare.py', 'TEXT_MIN, TEXT_MAX = 1, 600', 'TEXT_MIN, TEXT_MAX = 1, 6000', KD+'TextRules.test_length'),
+    ('b3-text-link', 'kommentare.py', '    if _LINK.search(folded):', '    if False:', KD+'TextRules.test_links_and_domains'),
+    ('b3-text-mention', 'kommentare.py', "    if '@' in folded or 'urn:li:' in folded:", '    if False:', KD+'TextRules.test_mentions_urns_and_at_signs_also_fullwidth'),
+    ('b3-text-price', 'kommentare.py', '    if _PREIS.search(folded):', '    if False:', KD+'TextRules.test_prices_and_percentages'),
+    ('b3-text-percent', 'kommentare.py', '    if _PROZENT.search(folded):', '    if False:', KD+'TextRules.test_prices_and_percentages'),
+    ('b3-text-nfkc', 'kommentare.py', "folded = unicodedata.normalize('NFKC', text).casefold()", 'folded = text.lower()', KD+'TextRules.test_mentions_urns_and_at_signs_also_fullwidth'),
+    ('b3-person-canary', 'kommentare.py', "    item = {'kommentar_urn': kommentar.urn,", "    item = {'actor': kommentar.actor, 'kommentar_urn': kommentar.urn,", KA+'Comments.test_person_canary_no_author_name_headline_or_person_urn_in_the_output'),
+    ('b3-mention-drops-text', 'kommentare.py', "    mention = bool(attributes) or 'urn:li:' in text.lower() or '@[' in text", '    mention = False', KA+'Comments.test_mentions_drop_the_text'),
+    ('b3-key-object-id', 'kommentare.py', '    if element.get(s.OBJECT) not in (', '    if False and element.get(s.OBJECT) not in (', KA+'Comments.test_unreadable_elements_are_only_counted'),
+    ('b3-t1-digits-only', 'kommentare.py', r"KOMMENTAR_URN = re.compile(r'urn:li:comment:\(urn:li:activity:([0-9]{1,30}),([0-9]{1,30})\)')", r"KOMMENTAR_URN = re.compile(r'urn:li:comment:\(urn:li:activity:([0-9]{1,30}),([^)]{1,100})\)')", KA+'DailyList.test_t1_canary_links_only_fixed_notes_and_the_text_urn_only_counted'),
+    ('b3-t1-list-canary', 'community_adapter.py', "lists['offen'].append(k.link_kommentar(kommentar.activity, kommentar.cid))", "lists['offen'].append(k.link_kommentar(kommentar.activity, kommentar.cid) + ' ' + str(kommentar.text))", KA+'DailyList.test_t1_canary_links_only_fixed_notes_and_the_text_urn_only_counted'),
+    ('b3-queue-spacing', 'community_pool.py', '                    if wait > 0:\n                        await asyncio.sleep(wait)', '                    if False:\n                        await asyncio.sleep(wait)', KS+'Queue.test_replies_run_one_after_another_with_spacing_and_a_short_queue'),
+    ('b3-queue-capacity', 'community_pool.py', '        if self.reihe.locked() and self.wartend >= REPLY_WARTEND_MAX:', '        if False:', KS+'Queue.test_replies_run_one_after_another_with_spacing_and_a_short_queue'),
+    ('b3-lock-ten-minutes', 'community_pool.py', '        if key in self.inflight or key in self.locks:', '        if key in self.inflight:', KS+'Queue.test_one_comment_is_locked_while_in_flight_and_ten_minutes_after_sending'),
+    ('b3-lock-in-flight', 'community_pool.py', '        if key in self.inflight or key in self.locks:', '        if key in self.locks:', KS+'Queue.test_one_comment_is_locked_while_in_flight_and_ten_minutes_after_sending'),
+    ('b3-pool-unclear-after-write', 'community_pool.py', '            exc.nicht_ausgefuehrt = not job.write_started', '            exc.nicht_ausgefuehrt = True', KS+'Queue.test_a_job_over_its_budget_after_sending_is_unclear_and_locks'),
+    ('b3-read-never-writes', 'community_pool.py', "                if not job.antwort:\n                    raise ReportError(500, 'lesen_schreibt')", "                if False:\n                    raise ReportError(500, 'lesen_schreibt')", KS+'Boundary.test_a_read_job_never_gets_a_write_permit'),
+    ('b3-http-budget', 'community_pool.py', '            if self.http.get(day, 0) >= COMMUNITY_HTTP_PER_DAY:', '            if False:', KS+'NoPluginCounter.test_the_http_budget_of_the_path_protects_linkedin_not_the_reply_count'),
+    ('b3-plugin-brake-back', 'community_pool.py', "        self.inflight.add(key)\n", "        if len(self.locks) >= 5:\n            raise nicht_ausgefuehrt(429, 'schreib_tageslimit')\n        self.inflight.add(key)\n", KS+'NoPluginCounter.test_six_replies_under_one_post_all_go_out'),
+    ('b3-log-canary-trace', 'community_pool.py', "        LOG.info('spur kommentar=%s post=%s code=%s anlass=%s antwort=%s doppelt=%d', job.req.kommentar_urn,", "        LOG.info('spur kommentar=%s post=%s code=%s anlass=%s antwort=%s doppelt=%d ' + job.req.text.replace('%', ''), job.req.kommentar_urn,", KS+'LogCanary.test_real_service_log_has_no_comment_text_reply_text_or_person'),
+    ('b3-log-canary-job', 'community_pool.py', '    logging.disable(logging.CRITICAL)  # no library or request logging inside a job: comment text lives here', '    pass', KS+'LogCanary.test_real_service_log_has_no_comment_text_reply_text_or_person'),
+    ('b3-bridge', 'server.py', '                check_bridge(request, key)\n                if parts[3] == "reply":', '                pass\n                if parts[3] == "reply":', KS+'Boundary.test_bridge_methods_routes_and_body_before_any_call'),
+    ('b3-reply-200-before-dispatch', 'server.py', 'reply_route = request.path == "/v1/linkedin-kommentare/reply" and request.method == "POST"', 'reply_route = False', KS+'Boundary.test_reply_refusals_after_the_bridge_are_200_nicht_ausgefuehrt'),
+    ('b3-template-enum', 'entwurf/linkedin-seite-community.yaml', 'enum: [dank, sachfrage_zum_post, gespraech_anbieten]', 'enum: [dank, sachfrage_zum_post, gespraech_anbieten, beschwerde]', 'test_template_entwurf.TemplateDraft.test_anlass_is_the_exact_enum'),
+    ('b3-template-cap', 'entwurf/linkedin-seite-community.yaml', '    daily_cap: 8\n', '    daily_cap: 20\n', 'test_template_entwurf.TemplateDraft.test_reply_is_a_write_with_daily_cap_8_attempts_and_without_freigabe'),
 ]
 
 
 def fingerprint():
     return {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
-            for directory in ('linkedin_seite', 'tools', 'tests') for p in (ROOT/directory).rglob('*') if p.is_file() and p.suffix in ('.py', '.json')}
+            for directory in ('linkedin_seite', 'tools', 'tests', 'entwurf') for p in (ROOT/directory).rglob('*')
+            if p.is_file() and p.suffix in ('.py', '.json', '.yaml')}
 
 
 def main():
@@ -308,9 +363,9 @@ def main():
     for name, module, before, after, test in MUTANTS:
         with tempfile.TemporaryDirectory(prefix='.mutation-', dir=ROOT) as temporary:
             probe = Path(temporary)
-            for directory in ('linkedin_seite', 'tests', 'tools'):
+            for directory in ('linkedin_seite', 'tests', 'tools', 'entwurf'):
                 shutil.copytree(ROOT/directory, probe/directory, ignore=shutil.ignore_patterns('__pycache__'))
-            path = probe/module if module.startswith(('tools/', 'tests/')) else probe/'linkedin_seite'/module
+            path = probe/module if module.startswith(('tools/', 'tests/', 'entwurf/')) else probe/'linkedin_seite'/module
             text = path.read_text(encoding='utf-8')
             if text.count(before) != (2 if name == 'f4-golden-changed' else 1):
                 raise RuntimeError('mutation anchor changed: '+name)

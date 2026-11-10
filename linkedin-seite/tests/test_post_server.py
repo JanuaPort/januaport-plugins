@@ -19,7 +19,7 @@ from linkedin_seite import source_contract as s
 from linkedin_seite.domain import Config, ReportError
 from linkedin_seite.post_pool import WRITE_ACTIONS_PER_DAY
 from linkedin_seite.safe_http import SafeAppRunner
-from support import Fake, GRANT, GRANT_COMMA, GRANT_LIST, identity, read_pool
+from support import Fake, GRANT, GRANT_0_3_1, GRANT_COMMA, GRANT_LIST, identity, read_pool
 from support_post import (FakeGateway, FakeLinkedIn, GATEWAY_TOKEN, PNG, MiB, config,
                           mp4, new_id, record, write_identity, write_pool)
 
@@ -255,14 +255,14 @@ class Background(Service):
 class Tokens(unittest.TestCase):
     """#1237, 0.3.1: one grant in one place; the old second place has no effect any more."""
 
-    def test_identity_requires_exactly_the_four_scopes(self):
+    def test_identity_requires_exactly_the_five_scopes(self):
         good = identity()
         self.assertEqual(oauth.validate_identity(dict(good)), good)
         self.assertEqual(oauth.validate_identity(dict(good, scope=GRANT_COMMA))[s.SCOPE], GRANT_COMMA)
         without = {key: value for key, value in good.items() if key != s.SCOPE}
         for bad in (without, dict(good, scope='rw_organization_admin r_organization_social'),
                     dict(good, scope='w_organization_social w_organization_social_feed'),
-                    dict(good, scope=' '.join(GRANT_LIST[:3])), dict(good, scope=GRANT + ' r_ads'),
+                    dict(good, scope=' '.join(GRANT_LIST[:3])), dict(good, scope=GRANT_0_3_1), dict(good, scope=GRANT + ' r_ads'),
                     dict(good, scope=''), dict(good, scope=list(GRANT_LIST))):
             with self.subTest(bad=bad.get(s.SCOPE)), self.assertRaises(ValueError):
                 oauth.validate_identity(bad)

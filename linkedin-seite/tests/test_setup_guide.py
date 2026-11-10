@@ -19,7 +19,8 @@ class SetupGuide(unittest.TestCase):
             self.assertRegex(link, r'^https://')
 
     def test_admin_scopes_role_callback_and_pipe(self):
-        for phrase in ('rw_organization_admin r_organization_social w_organization_social w_organization_social_feed',
+        for phrase in ('rw_organization_admin r_organization_social w_organization_social w_organization_social_feed '
+                       'r_organization_social_feed',
                        'Seiten-Admin-Rolle', 'http://localhost:8765/linkedin/callback', '127.0.0.1',
                        'jnpt credential set --name plugin-linkedin-seite-oauth',
                        'nicht im Container', 'Passwortmanager', '--secret-stdin', '--pkce'):

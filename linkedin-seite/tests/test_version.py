@@ -48,14 +48,22 @@ class Version(unittest.TestCase):
         self.assertIsNotNone(section)
         self.assertIn('#1306', section.group(0))
 
-    def test_the_one_grant_ships_consistently_as_0_3_1(self):
-        self.assertEqual(self.versions(), ('0.3.1',)*3)
-        self.assertIn('org.opencontainers.image.version="0.3.1"', self.read('Dockerfile'))
-        self.assertIn("'version': '0.3.1'", self.read('linkedin_seite/gateway.py'))
+    def test_the_one_grant_ships_from_0_3_1_with_its_changelog_entry(self):
+        self.assertGreaterEqual(triple(self.versions()[2]), (0, 3, 1))
         section = re.search(r'^## 0\.3\.1 — .*?(?=^## |\Z)', self.read('CHANGELOG.md'), re.M | re.S)
         self.assertIsNotNone(section)
         for phrase in ('JanuaPort/januaport#1237', '--gesamt', 'plugin-linkedin-seite-oauth', 'GRANT_SCOPES',
                        'plugin-linkedin-seite-post-oauth', 'Serverprozess'):
+            self.assertIn(phrase, section.group(0))
+
+    def test_stage_b3_ships_consistently_as_0_4_0(self):
+        self.assertEqual(self.versions(), ('0.4.0',)*3)
+        self.assertIn('org.opencontainers.image.version="0.4.0"', self.read('Dockerfile'))
+        self.assertIn("'version': '0.4.0'", self.read('linkedin_seite/gateway.py'))
+        section = re.search(r'^## 0\.4\.0 — .*?(?=^## |\Z)', self.read('CHANGELOG.md'), re.M | re.S)
+        self.assertIsNotNone(section)
+        for phrase in ('JanuaPort/januaport#1237', 'Stufe B3', 'r_organization_social_feed', 'linkedin-seite-community',
+                       'comments', 'reply', 'tagesliste', 'daily_cap', '--gesamt', 'Versuche', 'T1'):
             self.assertIn(phrase, section.group(0))
 
 

@@ -126,17 +126,19 @@ class OneState(unittest.TestCase):
         self.hammer(pool._permit_http)
         self.assertEqual(pool.http[DAY], 40)
 
-    def test_serve_wires_one_state_into_both_pools(self):
+    def test_serve_wires_one_state_into_all_three_pools(self):
         with tempfile.TemporaryDirectory() as temp:
             ident, token = Path(temp, 'oauth'), Path(temp, 'token')
             ident.write_text(json.dumps(identity()), encoding='utf-8')
             token.write_bytes(GATEWAY_TOKEN.encode())
-            pool, writes = server.build_pools(config(1), ident, token)
+            pool, writes, community = server.build_pools(config(1), ident, token)
             self.assertIs(pool.tokens, writes.tokens)
+            self.assertIs(pool.tokens, community.tokens)  # B3 (0.4.0): the community path renews the same state
             token.unlink()
-            pool, writes = server.build_pools(config(1), ident, token)
+            pool, writes, community = server.build_pools(config(1), ident, token)
             self.assertIsNone(writes)
             self.assertIsInstance(pool.tokens, Tokens)
+            self.assertIs(community.tokens, pool.tokens)  # needs no gateway token: no Redaktionsplan (S1)
 
 
 class Recording:

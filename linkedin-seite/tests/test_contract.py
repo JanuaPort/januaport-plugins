@@ -39,9 +39,10 @@ class Contract(unittest.TestCase):
         self.assertEqual(parse_request('posts', [('limit', '1')]).limit, 1)
 
     def test_grant_is_exactly_the_read_and_the_write_scopes(self):
-        # #1237: both meanings stay named; what LinkedIn is asked for is their union, nothing else.
+        # #1237: the three meanings stay named; what LinkedIn is asked for is their union, nothing else.
         self.assertEqual(s.SCOPES, ('rw_organization_admin', 'r_organization_social'))
         self.assertEqual(s.WRITE_SCOPES, ('w_organization_social', 'w_organization_social_feed'))
+        self.assertEqual(s.COMMUNITY_SCOPES, ('r_organization_social_feed',))
         self.assertEqual(s.GRANT_SCOPES, GRANT_LIST)
 
     def test_runtime_paths_and_missing_invalid_identity(self):
