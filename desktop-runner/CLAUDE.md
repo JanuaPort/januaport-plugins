@@ -37,7 +37,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 | internal/edge | Nur Windows: geprüfte, angepasste Kopie von go-webview2 v1.0.19 `pkg/edge` (MIT, NOTICE): kein `os.Exit`, kein `log.Fatal`, Start mit `Begin`/`Ready`/`Cancel`/`Close` statt `Embed` |
 | internal/client/reader.go | `Reader`: nur lesender Zugriff des Bedienfelds auf Zugangsdaten, geprüftes Manifest und App-Siegel |
 | apptoken.go, applogin.go, appstore.go, appload.go, copied_apphost.go | Vertrag 5 im Client: App-Token, privates Ablegen mit Siegel, Ladeprüfung, markierte apphost-Kopie |
-| appprune.go | Entzug (#1342): räumt nach jedem erfolgreich geprüften Abgleich Ablage, WebView-Profil und Siegel nicht mehr zugewiesener Apps ab (Invariante 20) |
+| appprune.go | Entzug (#1342): räumt nach jedem Sync und im Heartbeat-Takt Ablage, WebView-Profil und Siegel nicht mehr zugewiesener Apps gegen das gespeicherte, geprüfte Manifest ab (Invariante 20) |
 | contract/golden-v5 | Bytegleicher Kernspiegel von Vertrag 5 (Manifest und Routen) mit SHA256SUMS |
 | probe/k6b_mutations.py | Mutationen K6b-1 im Container mit Go und Python |
 | internal/testfixture | Synthetische Gitpakete nur für Tests |
@@ -658,11 +658,18 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Operation (ADD/MODIFY), folgt die andere, weil das Symbol beim ersten Neustart nach `install` schon da sein
     kann; sonst bliebe `tray` falsch und `TakeNotice` würde nie geprüft (Test `TestTrayUpdateVersuche`).
 
-20. Entzug von Apps (#1342, Windows): Nach **jedem erfolgreich geprüften** Abgleich (`Engine.Sync` nach
-    Signatur-, Geräte-, Sequenz- und Vertragsprüfung, nach dem Laden der Pakete und dem Speichern des Manifests) räumt
-    `pruneApps` (`appprune.go`) vor `ensureApps` ab, was nicht mehr als App im Manifest steht. Nie nach
-    Offline-, Parse-, Signatur-, Lese- oder Sequenzfehlern und nie bei einem Sync, der vorher scheitert; Server
-    (Vertrag 2, `apps` fehlt) räumen nichts ab. **Pfade nur aus lokaler Aufzählung:** Der Läufer zählt die direkten
+20. Entzug von Apps (#1342, Windows): `pruneStored` (`appprune.go`) räumt ab, was nicht mehr als App im
+    **zuletzt erfolgreich geprüften, gespeicherten** Manifest steht (`e.view()`, dieselbe Quelle wie die Läufe,
+    erneut mit `VerifyManifest` geprüft). Es läuft (1) nach jedem erfolgreichen `Engine.Sync` (nach Signatur-,
+    Geräte-, Sequenz- und Vertragsprüfung, Laden der Pakete und Speichern des Manifests) vor `ensureApps` und
+    (2) **im Takt des Heartbeats** in `Run` (alle 60 s, rein lokal, auch offline und ohne neue Sequenz). Grund für
+    (2), der Hauptfall: Der Entzug kommt mit einem neuen Manifest, der Sync räumt sofort ab, das Bedienfeld erfährt
+    es erst danach und schließt das Fenster (`CloseMissing`); zum Zeitpunkt des Sync ist `webview\<app>` also
+    typischerweise noch gesperrt, und der Takt löscht es beim nächsten Durchlauf. Keine Netzanfrage. Ist das
+    gespeicherte Manifest leer oder nicht prüfbar (Signatur, Gerät, Format), wird nichts gelöscht; nie nach
+    Offline-, Parse-, Signatur-, Lese- oder Sequenzfehlern eines Sync (der speichert dann nichts Neues); Server
+    (Vertrag 2, `apps` fehlt) räumen nichts ab. Das Manifest wird unter `State.Use` gelesen, damit der Takt keine
+    App löscht, die ein gleichzeitiges `Prepare` gerade gegen ein neueres Manifest ablegt. **Pfade nur aus lokaler Aufzählung:** Der Läufer zählt die direkten
     Einträge von `<Zustand>\apps` und `<Zustand>\webview` selbst auf (`os.ReadDir`), nie aus Servernamen. Gelöscht
     wird nur ein Eintrag mit gültigem App-Namen (`fenster.ValidAppName`, wie im Manifest), der nicht im geprüften
     Manifest steht. Ungültige Namen (`.prepare-*`, Großbuchstaben, Punkte, Trenner), fremde Dateien und alle
@@ -674,23 +681,25 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     **Sperre statt Verlust:** Alle Löschschritte laufen unter `State.Use` (wie `AppStore.Prepare`), also
     serialisiert gegen Prepare und Widerruf. Ist ein Ordner gesperrt (Fenster, WebView2-Prozess), bleibt er liegen,
     der Abgleich geht weiter und scheitert nicht, Läufe laufen weiter; im Log steht nur der feste Code `10 2`
-    (Code 10 `LogAppFault`, n=1 Ablage, n=2 Aufräumen). Der nächste erfolgreich geprüfte Abgleich versucht es
-    erneut. Reihenfolge: erst Ablage, dann Siegel (nur wenn `apps\<name>` weg ist), dann Profil. So trifft eine
+    (Code 10 `LogAppFault`, n=1 Ablage, n=2 Aufräumen), **nur beim ersten Fehlschlag in Folge** (`pruneFault`,
+    kein Spam im Takt; nach einem Erfolg wieder scharf). Der nächste Takt versucht es erneut. Reihenfolge: erst Ablage, dann Siegel (nur wenn `apps\<name>` weg ist), dann Profil. So trifft eine
     zurückkehrende App nie auf eine Ablage ohne Siegel (`refused/hash`, Invariante „nie stilles Reparieren“).
     **Rückkehr:** Kommt die App ins Manifest zurück, lädt `ensureApps` sie wie beim ersten Mal; das WebView-Profil
     beginnt leer, eine Anmeldung muss neu erfolgen. **Das Manifest entscheidet:** Auch eine gestoppte App, die
     kurz fehlt, wird abgeräumt (das Profil ist nur ein Zwischenspeicher, die Daten liegen im Kern). **Nicht im
     Umfang:** alte Commits einer weiter zugewiesenen App (`apps\<name>\<commit>`), der Widerruf des Geräts
     (`State.Revoke` löscht weiter alles), das Bedienfeld (löscht nichts, schließt nur Fenster per `CloseMissing`).
-    **Grenzen:** Der Zeitpunkt ist der nächste erfolgreich geprüfte Abgleich (neue Sequenz, Neustart);
-    wiederholt der Kern dieselbe Sequenz, scheitert `Sync` an der Sequenzprüfung und räumt nicht ab. Ein zum
+    **Grenzen:** Der Takt ist der Heartbeat (60 s); ein gesperrter Ordner bleibt höchstens bis zum Durchlauf nach
+    der Entsperrung liegen, auch ohne neue Sequenz. Ein zum
     Teil gelöschter `apps\<name>\<commit>` (Sperre mittendrin) lässt eine zurückkehrende App mit `refused/hash`
     stehen, bis er weg ist. Die Tests simulieren die Sperre unter Windows mit einem offenen Dateigriff ohne
     `FILE_SHARE_DELETE`, sonst mit Rechteentzug; ein laufendes `msedgewebview2.exe` ist nicht belegt (Beleg auf
     dem Testgerät). Tests: `TestEntzugRaeumtAppProfilUndSiegelAb`, `TestRueckkehrLaedtDieAppNeuMitLeeremProfil`,
     `TestAufraeumenLoeschtNurGueltigeNamen`, `TestVerweisUnterAppsUndWebviewWirdNichtVerfolgt`,
     `TestVerweisAlsAppsOderWebviewWurzelBleibtUnberuehrt`, `TestKeinLoeschenBeiGescheitertemOderUngeprueftemAbgleich`,
-    `TestGesperrterOrdnerBleibtUndWirdBeimNaechstenAbgleichGeloescht`, `TestAufraeumenLaeuftUnterZustandssperreOhneRemoveAll`.
+    `TestGesperrterOrdnerBleibtUndWirdBeimNaechstenAbgleichGeloescht`, `TestAufraeumenLaeuftUnterZustandssperreOhneRemoveAll`, `TestTaktRaeumtGesperrtenOrdnerOhneNeueSequenzAb`,
+    `TestTaktLoeschtNurGegenPruefbaresGespeichertesManifest`, `TestTaktOhneEntzugLaesstAllesUndLogtNichts`,
+    `TestRunRuftDenAufraeumtaktAuf`.
 21. Ad-hoc holt das Manifest nach (#1343): Ist die lokale Manifest-Sequenz kleiner als `manifest_seq` des Auftrags,
     ruft `adhoc` genau **einmal** `Sync` auf, liest den Stand neu und prüft Pin (Name, Commit, Pfad, Algorithmus)
     und Sequenz mit denselben Regeln wie zuvor; erst danach gilt `refused/manifest`. Vorbild ist der

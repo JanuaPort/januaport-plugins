@@ -183,12 +183,15 @@ nötige Schnittstelle, öffnet das Fenster nicht und das Bedienfeld meldet das n
 
 ### App-Entzug (#1342)
 
-Nach jedem erfolgreich geprüften Manifest-Abgleich räumt der Läufer Apps ab, die nicht mehr im Manifest stehen:
+Nach jedem erfolgreich geprüften Manifest-Abgleich und danach im Takt des Heartbeats (alle 60 s, lokal, ohne
+Netz und ohne neue Sequenz) räumt der Läufer Apps ab, die nicht mehr im zuletzt geprüften, gespeicherten Manifest
+stehen:
 `apps\<name>`, `webview\<name>` (das WebView-Profil) und das App-Siegel. Er zählt die Ordner lokal auf und
 löscht nur Einträge mit gültigem App-Namen; andere Einträge bleiben unberührt, Symlinks und Junctions werden nur als
-Verweis entfernt, nie verfolgt. Nach Offline-, Parse-, Signatur- oder Lesefehlern löscht er nichts. Ist ein Ordner
-gesperrt (Fenster oder WebView2-Prozess noch offen), bleibt er liegen und der nächste geprüfte Abgleich versucht es
-erneut; im Log steht nur der feste Code `10 2`. Kommt die App zurück, lädt der Läufer sie neu und das Profil beginnt
+Verweis entfernt, nie verfolgt. Ist das gespeicherte Manifest leer oder nicht prüfbar, löscht er nichts. Ist ein Ordner
+gesperrt (Fenster oder WebView2-Prozess noch offen, typisch direkt nach dem Entzug, weil das Bedienfeld das Fenster
+erst danach schließt), bleibt er liegen und der nächste Takt versucht es erneut; im Log steht nur beim ersten
+Fehlschlag der feste Code `10 2`. Kommt die App zurück, lädt der Läufer sie neu und das Profil beginnt
 leer (Anmeldung neu). Das Manifest entscheidet auch bei einer gestoppten App, die kurz fehlt. Nicht betroffen sind
 alte Commits einer weiter zugewiesenen App und der Widerruf des Geräts (der löscht weiter den gesamten Zustand).
 
