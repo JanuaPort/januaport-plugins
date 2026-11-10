@@ -13,22 +13,51 @@ import (
 // errAppBereich: apps\ oder webview\ ist kein echtes Verzeichnis (Verweis, Datei). Darin wird nichts gelöscht.
 var errAppBereich = errors.New("app_bereich")
 
-// pruneApps räumt nach einem erfolgreich geprüften Abgleich (#1342) alles ab, was nicht mehr im Manifest steht:
-// Ablage unter apps\, WebView-Profil unter webview\ und die App-Siegel. Das Manifest entscheidet, auch bei
-// kurz fehlenden Apps; das Profil ist nur ein Zwischenspeicher. Best effort: Ein Fehler (typisch: Fenster
-// noch offen, Dateien gesperrt) stoppt weder Abgleich noch Läufe, wird nur als fester Logcode vermerkt, und der
-// nächste Abgleich versucht es erneut. Aufgerufen wird nie nach Offline-, Parse-, Signatur- oder Lesefehlern.
-func (e *Engine) pruneApps(m Manifest) {
-	if m.Apps == nil || e.Container != nil {
+// pruneStored räumt gegen das zuletzt erfolgreich geprüfte, gespeicherte Manifest ab (#1342): nach jedem Sync und im
+// Takt des Heartbeats, auch bei unveränderter Sequenz. Der Entzug kommt mit einem neuen Manifest, das Fenster
+// schließt das Bedienfeld aber erst danach; zum Zeitpunkt des Sync ist das Profil deshalb oft noch gesperrt und der
+// Takt löscht es später. Keine Netzanfrage: Quelle ist dieselbe wie bei den Läufen (e.view()). Ist das Manifest
+// leer oder nicht prüfbar (Signatur, Gerät, Format), wird nichts gelöscht.
+func (e *Engine) pruneStored() {
+	if e.Container != nil {
 		return
 	}
-	keep := make(map[string]bool, len(*m.Apps))
-	for _, app := range *m.Apps {
-		keep[app.Name] = true
+	// Das Manifest wird unter der Zustandssperre gelesen: Ein Prepare derselben Sperre sieht damit nie ein älteres
+	// Manifest als das, gegen das es abgelegt hat, und der Takt löscht keine frisch abgelegte App.
+	err := e.State.Use(func() error {
+		m, ok := e.storedManifest()
+		if !ok || m.Apps == nil {
+			return nil
+		}
+		keep := make(map[string]bool, len(*m.Apps))
+		for _, app := range *m.Apps {
+			keep[app.Name] = true
+		}
+		return pruneWithdrawn(e.State.Root, keep)
+	})
+	e.notePruneResult(err)
+}
+
+func (e *Engine) storedManifest() (Manifest, bool) {
+	b := e.view()
+	if len(b.Manifest.Envelope.Manifest) == 0 {
+		return Manifest{}, false
 	}
-	// Unter der Zustandssperre wie AppStore.Prepare: kein Rennen mit Prepare oder Revoke.
-	err := e.State.Use(func() error { return pruneWithdrawn(e.State.Root, keep) })
-	if err != nil && !errors.Is(err, ErrRevoked) {
+	m, err := VerifyManifest(b.Manifest.Envelope, e.Credential.Pubkey, e.Credential.DeviceID, 0)
+	return m, err == nil
+}
+
+// notePruneResult loggt den festen Code `10 2` nur beim ersten Fehlschlag in Folge, nicht bei jedem Takt. Ein
+// Widerruf ist kein App-Fehler.
+func (e *Engine) notePruneResult(err error) {
+	if errors.Is(err, ErrRevoked) {
+		return
+	}
+	e.mu.Lock()
+	first := err != nil && !e.pruneFault
+	e.pruneFault = err != nil
+	e.mu.Unlock()
+	if first {
 		e.logCode(LogAppFault, 2)
 	}
 }

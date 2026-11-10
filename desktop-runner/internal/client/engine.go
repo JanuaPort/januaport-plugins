@@ -42,6 +42,7 @@ type Engine struct {
 	activeDone      chan struct{}
 	cancel          context.CancelFunc
 	syncErr         error
+	pruneFault      bool // guarded by mu; letzter Aufräumversuch scheiterte (Log nur beim ersten Mal)
 	halt            haltState
 	haltLoaded      bool
 	haltFault       bool
@@ -177,7 +178,7 @@ func (e *Engine) Sync(ctx context.Context) (err error) {
 	e.bundle = next
 	e.Config = config
 	e.mu.Unlock()
-	e.pruneApps(m)
+	e.pruneStored()
 	e.ensureApps(ctx, m)
 	return nil
 }
@@ -813,6 +814,7 @@ func (e *Engine) Run(ctx context.Context) error {
 			}
 			h, err := e.API.Heartbeat(ctx, Heartbeat{e.API.Contract(), e.isReady(), e.Version, seq})
 			e.observePanelNetwork(err)
+			e.pruneStored() // lokal, auch offline: räumt entzogene Apps nach, deren Ordner beim Sync noch gesperrt war
 			if err == nil {
 				e.applyCancellations(h)
 				if h.ManifestSeqCurrent > seq {
