@@ -51,6 +51,8 @@ const (
 	unregistered registration = iota
 	registered
 	failed
+	// duplicate: Dieselbe Taste steht in mehr als einer App (SEC D1). Sie wird für keine angemeldet.
+	duplicate
 )
 
 type hotkeyEntry struct {
@@ -92,6 +94,17 @@ func (m *Model) SetHotkeys(list []Hotkey) {
 			m.hk.entries = append(m.hk.entries, hotkeyEntry{Hotkey: h})
 		}
 	}
+	// Der Kern weist Doppel nur innerhalb eines Manifests ab. Steht eine Taste in zwei Apps, gewönne sonst die zuerst
+	// angemeldete, und das gewohnte Kürzel startete das Setup einer neu zugewiesenen App: Beide bleiben gesperrt.
+	count := map[string]int{}
+	for _, e := range m.hk.entries {
+		count[e.Key]++
+	}
+	for i := range m.hk.entries {
+		if count[m.hk.entries[i].Key] > 1 {
+			m.hk.entries[i].state = duplicate
+		}
+	}
 	if p := m.hk.pending; p != nil && !m.hasHotkey(p.Hotkey) {
 		m.hk.pending = nil
 	}
@@ -107,6 +120,7 @@ func (m *Model) hasHotkey(h Hotkey) bool {
 }
 
 // Hotkeys liefert die gültigen Kürzel in der Reihenfolge ihrer Kennung: Die Kennung i+1 gehört zum Eintrag i.
+// Auch doppelte Tasten stehen darin; SyncHotkeys meldet sie nicht an.
 func (m *Model) Hotkeys() []Hotkey {
 	out := make([]Hotkey, len(m.hk.entries))
 	for i, e := range m.hk.entries {
@@ -118,7 +132,7 @@ func (m *Model) Hotkeys() []Hotkey {
 // HotkeyRegistered meldet das Ergebnis der Anmeldung beim System. Ein Fehler (zum Beispiel 1409) macht das Kürzel
 // zum sichtbaren Menühinweis „belegt“; es löst dann nichts aus.
 func (m *Model) HotkeyRegistered(i int, ok bool) {
-	if i < 0 || i >= len(m.hk.entries) {
+	if i < 0 || i >= len(m.hk.entries) || m.hk.entries[i].state == duplicate {
 		return
 	}
 	m.hk.entries[i].state = failed
@@ -132,6 +146,9 @@ func (m *Model) HotkeyRegistered(i int, ok bool) {
 func (m *Model) SyncHotkeys(unregister func(id int), register func(id int, key string) error) {
 	m.ReleaseHotkeys(unregister)
 	for i, e := range m.hk.entries {
+		if e.state == duplicate {
+			continue
+		}
 		id := i + 1
 		err := register(id, e.Key)
 		m.HotkeyRegistered(i, err == nil)
@@ -148,7 +165,9 @@ func (m *Model) ReleaseHotkeys(unregister func(id int)) {
 	}
 	m.hk.osIDs = nil
 	for i := range m.hk.entries {
-		m.hk.entries[i].state = unregistered
+		if m.hk.entries[i].state != duplicate {
+			m.hk.entries[i].state = unregistered
+		}
 	}
 }
 
@@ -233,15 +252,23 @@ func (m *Model) rejectReason(pin, setup string) (code, text string) {
 
 func (m *Model) rejecting() bool { return m.hk.now.Before(m.hk.rejectUntil) }
 
-// belegtItems sind die Menühinweise zu Kürzeln, die das System nicht angemeldet hat.
+// belegtItems sind die Menühinweise zu Kürzeln ohne Anmeldung: vom System abgelehnt („belegt“) oder in zwei Apps („gesperrt (doppelt)“).
 func (m *Model) belegtItems() []Item {
 	var out []Item
 	seen := map[string]bool{}
 	for _, e := range m.hk.entries {
-		if e.state == failed && !seen[e.Key] {
-			seen[e.Key] = true
-			out = append(out, Item{"hotkey:" + e.Key, "Kürzel belegt: " + e.Key, false})
+		if seen[e.Key] {
+			continue
 		}
+		switch e.state {
+		case failed:
+			out = append(out, Item{"hotkey:" + e.Key, "Kürzel belegt: " + e.Key, false})
+		case duplicate:
+			out = append(out, Item{"hotkey:" + e.Key, "Kürzel gesperrt (doppelt): " + e.Key, false})
+		default:
+			continue
+		}
+		seen[e.Key] = true
 	}
 	return out
 }
