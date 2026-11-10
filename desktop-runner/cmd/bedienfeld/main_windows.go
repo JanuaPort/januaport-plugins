@@ -171,7 +171,8 @@ func main() {
 		return
 	}
 	defer destroyWindow.Call(a.window)
-	for color, rgb := range map[string]uint32{"green": 0x26935c, "yellow": 0xe0a124, "red": 0xcf3b3b, "purple": 0x913fc4} {
+	// orange: ein Tastenkürzel wurde abgewiesen (5 s, #1240 F-T).
+	for color, rgb := range map[string]uint32{"green": 0x26935c, "yellow": 0xe0a124, "red": 0xcf3b3b, "purple": 0x913fc4, "orange": 0xe8731a} {
 		a.icons[color] = makeIcon(rgb)
 		if a.icons[color] == 0 {
 			return
@@ -180,6 +181,8 @@ func main() {
 	}
 	id, _, _ := registerMessage.Call(uintptr(unsafe.Pointer(wide("TaskbarCreated"))))
 	a.taskbarCreated = uint32(id)
+	a.initHotkeys()
+	defer a.releaseHotkeys()
 	a.render()
 	defer func() {
 		n := notifyData{Window: a.window, ID: 1}
@@ -409,9 +412,12 @@ func windowProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 				a.menu()
 			}
 			return 0
-		case 0x113: // WM_TIMER
-			a.model.Tick(time.Now())
-			a.render()
+		case 0x113: // WM_TIMER: Tick, wartender Tastendruck (PollHotkey ruft Tick), Anzeige
+			a.apply(a.model.PollHotkey(time.Now()))
+			a.hotkeyBeep()
+			return 0
+		case wmHotkey:
+			a.model.PressHotkey(int(wp), time.Now())
 			return 0
 		case 0x21:
 			return 3 // WM_MOUSEACTIVATE -> MA_NOACTIVATE
