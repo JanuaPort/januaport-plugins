@@ -75,8 +75,9 @@ func importsOf(f *ast.File) []string {
 
 // B3: Das Bedienfeld ruft aus internal/client nur Zugangsdaten-Lesen und die AppAPI-Methoden. Alles, was
 // die Engine, den Zustand oder den Widerruf berührt, ist verboten; die Namen stehen in keiner erlaubten Liste.
+// Hotkey (#1240 F-T) ist ein reiner Datentyp der App-Liste: drei Zeichenketten, kein Zugriff auf Zustand oder Netz.
 var clientErlaubt = map[string]bool{
-	"NewReader": true, "Reader": true, "AppsView": true, "App": true, "NewAPI": true, "API": true, "Trust": true,
+	"NewReader": true, "Reader": true, "AppsView": true, "App": true, "Hotkey": true, "NewAPI": true, "API": true, "Trust": true,
 	"AppSession": true, "PersonSession": true, "HTTPError": true, "RPCError": true, "ErrRevoked": true, "ErrProtocol": true, "IsOffline": true,
 }
 
