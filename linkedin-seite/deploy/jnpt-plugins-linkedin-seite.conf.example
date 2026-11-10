@@ -11,7 +11,7 @@
 #                            (Stelle plugin-linkedin-seite; derselbe Wert steht
 #                            in der Connector-Credential linkedin-seite)
 #   linkedin-seite-oauth  runtime-key = das OAuth-JSON des EINEN Grants für Lesen und
-#                            Schreiben (Stelle plugin-linkedin-seite-oauth, vier Scopes,
+#                            Schreiben (Stelle plugin-linkedin-seite-oauth, fünf Scopes seit 0.4.0,
 #                            Zustimmungsskript mit --gesamt am PO-Rechner, stdout per
 #                            Pipe in die Betreiber-CLI)
 # Stufe B1 (#1237), optional — ohne ihn läuft Stufe A, Schreiben ist aus:

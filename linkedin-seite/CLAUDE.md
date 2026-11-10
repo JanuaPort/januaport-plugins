@@ -1,8 +1,9 @@
-# linkedin-seite 0.3.1 — Modulvertrag (#1306 F4, #1237)
+# linkedin-seite 0.4.0 — Modulvertrag (#1306 F4, #1237)
 
 Privater Python-REST-Beisteller, Apache 2.0. PO 29.10.2026 Option (a): Stufe A (Lesen); seit
-0.2.0 Stufe B1 (Posten nach Freigabe, SEC c-6575359082 und c-6575837332). Synthetisch geprüft,
-Live-Abnahme offen. Kein eigener MCP-Server; für B1 ein eigener, nur lesender MCP-Client.
+0.2.0 Stufe B1 (Posten nach Freigabe, SEC c-6575359082 und c-6575837332); seit 0.4.0 Stufe B3
+(Kommentare lesen und als Organisation beantworten, ohne Einzelfreigabe; Abschnitt unten). Synthetisch
+geprüft, Live-Abnahme offen. Kein eigener MCP-Server; für B1 ein eigener, nur lesender MCP-Client.
 Root-CLAUDE.md war im Ausgangscheckout nicht vorhanden.
 
 - `domain.py`: fail-closed Konfiguration, Organisation ausschließlich Betreiberwert;
@@ -13,7 +14,9 @@ Root-CLAUDE.md war im Ausgangscheckout nicht vorhanden.
   Kommentar „aus Herstellerdoku, live zu belegen“. `SCOPES` = was der Lesepfad braucht
   (`rw_organization_admin r_organization_social`), `WRITE_SCOPES` = was der Schreibpfad braucht
   (`w_organization_social` + `w_organization_social_feed`, Kommentar, Comments API 202610),
-  `GRANT_SCOPES` = ihre Vereinigung, der eine Grant (0.3.1). Geschlossene `WRITE_ENDPOINTS` (Methode, Pfad je
+  `COMMUNITY_SCOPES` = was der Kommentar-Pfad zusätzlich braucht (`r_organization_social_feed`, 0.4.0),
+  `GRANT_SCOPES` = die Vereinigung aller drei, der eine Grant (0.3.1), genau fünf Werte (0.4.0).
+  `SCOPES` nennt nie einen `*_feed`-Scope (SEC K5). Geschlossene `WRITE_ENDPOINTS` (Methode, Pfad je
   Operation, Doku-URL je Zeile), `UPLOAD_HOSTS`/`UPLOAD_PATH_PREFIX`, `UPLOAD_TOKEN` je Upload-Art,
   Video-Teilgröße, Status-Takt und Höchstzeit, Umfrage-Grenzen, reservierte Little-Text-Zeichen.
 - `linkedin_adapter.py`: fünf feste REST-Endpunkte, nur einzelne GETs, kein BATCH_GET.
@@ -230,3 +233,75 @@ Gemeinsame JSON-Fixtures sind LF-Dateien. Root-.gitattributes enthält
 und die reine Checkout-Konvertierung geprüft; der Kern wird nicht geändert. CI ohne den
 Kern-Worktree verwendet dieselben fest eingetragenen SHA-256-Werte. Dies betrifft nur
 Dateizeilenenden der Fixtures, niemals Normalisierung der freizugebenden Texte.
+
+## Stufe B3: Kommentare unter eigenen Posts (0.4.0, #1237)
+
+Verbindlich: Schnitt c-6747016143, SEC-PASS c-6747087768 (S1–S4, K2–K5), SEC T1 c-6759978021 zur
+Tagesliste, PO c-6759929959. Rangfolge SEC/PO vor Schnitt vor Plan c-6746942607. Eigene Kern-Vorlage
+`linkedin-seite-community` (Entwurf `entwurf/linkedin-seite-community.yaml`, portiert CONNECTOR), eigene
+Route `/v1/linkedin-kommentare/`, derselbe Bridge-Key (SEC Frage 4: kein zweiter).
+
+- `kommentare.py`: reiner Vertrag ohne IO. Eingaben (`parse_comments`, `parse_reply`, `parse_tagesliste`),
+  `ANLAESSE` (`dank`, `sachfrage_zum_post`, `gespraech_anbieten`, S2), `TEXT_REGELN` als feste geordnete
+  Liste mit je eigenem Code, geprüft auf einer NFKC+casefold-Kopie, gesendet wird der Text unverändert.
+  URN-Muster mit Ziffern in jedem ID-Teil (T1), `kommentar_aus` verifiziert ein Element: `commentUrn` in
+  Activity-Form, `id` = dessen Kommentar-Teil, `object` = diese Activity oder genau der gelistete Post;
+  sonst `nicht_lesbar`. `ausgabe` ist die einzige Projektion nach außen: nie `actor`, Name, Headline,
+  Personen-URN, Erwähnung oder Bild. Links baut das Plugin selbst aus Ziffern (`link_kommentar`,
+  `link_antwort`). `MERKMALE` sind feste Werte. Eigene Personen (`kommentare.eigene_personen` in der
+  Konfiguration) zählen als „von uns“ und werden nie ausgegeben oder geloggt.
+- `community_adapter.py`: läuft je Aufruf in einem eigenen spawn-Prozess. Nur `COMMUNITY_ENDPOINTS`
+  (Post holen, Posts listen, Kommentare eines Posts, Antworten eines Kommentars, Antwort anlegen);
+  kein Löschen, kein Bearbeiten, keine Reaktion, keine Profilabfrage. Zugehörigkeit nur über die Liste
+  genau dieses Posts. `reply` prüft vor dem Senden live: eigener veröffentlichter Post höchstens 30 Tage
+  (K2), Liste vollständig (`zu_viele_kommentare`) und ganz lesbar (`kommentare_nicht_lesbar`, sonst
+  wäre ein Verfasser unbekannt), Eltern gelistet (`kommentar_unbekannt`), oberste
+  Ebene (`ebene`), nicht gelöscht, nicht von uns, Text nicht zurückgehalten (`erwaehnung_im_kommentar`),
+  keine eigene Antwort (`wiederholt`, immer live gelesen, nie aus `commentsSummary`), keine eigene
+  Antwort an denselben Verfasser unter diesem Post (`verfasser_beantwortet`). Je Aufruf eigene
+  HTTP-Decke (`comments` 25, `tagesliste` 40, `reply` 12, Prüfungen zwei darunter). Autor ist immer
+  `cfg.organization`. Der POST trägt genau `actor`, `object` (Post), `parentComment`, `message.text`.
+  Nach dem Senden Nachlesen: `antwort_urn` aus `x-restli-id` (Ziffern), `doppelt`, `nachgelesen`.
+- `community_pool.py`: ein spawn-Prozess je Aufruf, Token über die Pipe, Permit vor jeder Anfrage, im
+  Job ist Logging abgeschaltet. **Kein Antwort-Zähler** (S3): der Deckel ist `daily_cap: 8` am Werkzeug
+  `reply` im Kern und zählt Versuche. Gezählt werden nur LinkedIn-HTTP-Versuche des Pfads (60/UTC-Tag,
+  `kommentare_http_tageslimit`), wie bei Lesen (50) und Schreiben (45). Antworten laufen in einer
+  Warteschlange im Prozess (asyncio-Sperre, FIFO, höchstens ein Wartender, gezählt über `in_reihe` statt
+  über `reihe.locked()`, das zwischen Freigabe und Aufwecken frei aussieht), 60 s Abstand zwischen
+  Sendeversuchen (`last_send`, gesetzt beim IPC `write`), Sperre 10 Minuten je `kommentar_urn` ab dem
+  Sendeversuch und solange ein Aufruf für ihn läuft. Ablehnungen vor dem Senden sperren und verzögern
+  nicht. Ein Lese-Job bekommt nie ein `write` (`lesen_schreibt`). Nach dem Start besitzt der Job die
+  Warteschlange; sein Supervisor gibt sie frei, ein abgebrochener Request stoppt keinen Sendeversuch. Der
+  Supervisor fängt jede unerwartete Ausnahme (`worker_failed`), sonst bliebe die Anfrage offen und der
+  Lese-Platz dauerhaft belegt; ein Job, der nicht startet, ist bewiesen nicht ausgeführt.
+- `server.py`: `COMMUNITY_ROUTES` (`comments` GET, `tagesliste` GET, `reply` POST). Bridge zuerst; danach
+  ist jede bewiesene Ablehnung von `reply` HTTP 200 mit `nicht_ausgefuehrt` und festem Code, nach dem
+  Dispatch nur mit IPC-Nachweis ohne Sendeversuch. `build_pools` liefert drei Pools auf einem
+  `Tokens`-Objekt; der Community-Pool nimmt keinen Gateway-Token.
+
+Invarianten B3: Scope-Menge genau fünf; Statistik-Leser ohne `*_feed`, sein Adapter erreicht
+`socialActions` nicht (das Token selbst trägt alle fünf, Trennung auf Anfrage-Ebene). Keine Persistenz,
+kein Cache: Sperren und Abstand nur im RAM eines Prozesses. Kommentartext nie im Log; die Spur je
+Antwort trägt nur URNs, Code, `anlass` und `doppelt`. Die Tagesliste trägt nur Links und feste Merkmale
+(T1), `anlass` ist mangels Speicher nicht rekonstruierbar und fehlt. Kein Gateway, kein Redaktionsplan
+im Community-Pfad (S1). Die B1-Freigabe für `create_comment` ist unverändert.
+
+Aktivierungsregel (S1, T2): Das Antwort-Token trägt genau `linkedin-seite-community:comments`,
+`linkedin-seite-community:reply` und `linkedin-seite:posts`, sonst nichts. `tagesliste` liegt am
+Redaktions-Token, nie `comments` dort. Not-Aus: der PO entzieht `linkedin-seite-community:reply` in der
+Admin-Oberfläche; danach der Widerruf bei LinkedIn.
+
+Bewusste Grenzen: Sperre und Abstand überleben keinen Neustart; danach hält nur das Live-Nachlesen,
+und das steht unter LinkedIns Lesekonsistenz. Ein Prozess, ein Server: mehr Instanzen hebeln die
+Warteschlange aus. `commentsSummary` kann nachlaufen: in `comments` und `tagesliste` darf ein frisch
+beantworteter Kommentar kurz als offen stehen, `reply` liest immer live. Lesen 50 + Schreiben 45 +
+Kommentare 60 liegt über den 100 Aufrufen je Mitglied und Tag im Development Tier.
+
+Pflichtmutanten B3 (`b3-*` in `tests/mutations.py`): fremder/alter Post, Eltern eines anderen Posts,
+Eltern von uns oder eigener Person, zweite Ebene, gelöscht, blinde Antwort, Zweitantwort, Summary statt
+Live-Lesen, gleicher Verfasser, unvollständige Liste, Prüfdecke, Autor, geschlossene Endpunkte, Text-
+und Anlass-Wiederholung, unklar nach dem Senden (Adapter und Pool), Anlass-Enum, Länge, Link, Erwähnung,
+NFKC, Preis, Prozent, Personen-, Log- und Tageslisten-Kanarienvogel, T1-Ziffern, Schlüssel object+id,
+Abstand, Warteschlange, Sperre und In-Flight, Lese-Job ohne Schreibrecht, HTTP-Deckel, kein Antwort-
+Zähler, Bridge, 200 vor dem Dispatch, Fünf-Scope-Menge, Statistik-Leser mit `_feed`-Scope und Endpunkt,
+Vorlagen-Enum und `daily_cap`.

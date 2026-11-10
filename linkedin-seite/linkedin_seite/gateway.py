@@ -18,7 +18,7 @@ from .domain import ReportError, strict_json
 from .oauth import NoRedirect
 
 PROTOCOL_VERSION = '2025-11-25'
-CLIENT_INFO = {'name': 'januaport-linkedin-seite', 'version': '0.3.1'}
+CLIENT_INFO = {'name': 'januaport-linkedin-seite', 'version': '0.4.0'}
 SESSION_HEADER = 'Mcp-Session-Id'
 SMALL_ANSWER = 1024 * 1024
 TIMEOUT = 15

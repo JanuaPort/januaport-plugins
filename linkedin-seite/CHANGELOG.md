@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.4.0 — 2026-11-10
+
+- JanuaPort/januaport#1237, **Stufe B3**: Kommentare unter eigenen Posts lesen und als Organisation
+  beantworten, ohne Einzelfreigabe. Verbindlich: Schnitt c-6747016143, SEC-PASS c-6747087768 (S1–S4,
+  K2–K5), SEC T1 c-6759978021 zur Tagesliste, PO-Antworten c-6759929959.
+- **Fünfter Scope** `r_organization_social_feed` (`COMMUNITY_SCOPES`); `GRANT_SCOPES` hat jetzt genau
+  fünf Werte, `oauth.py` prüft die Menge exakt, `tools/zustimmung.py --gesamt` fordert die fünf an. Ein
+  JSON mit den vier Scopes von 0.3.1 startet nicht mehr: **neue Zustimmung nötig** (Ablauf in SETUP.md).
+  `SCOPES` (Statistik-Leser) nennt nie einen `*_feed`-Scope (K5); das Access-Token trägt alle fünf.
+- **Neue Vorlage `linkedin-seite-community`**, Route `/v1/linkedin-kommentare/`, drei Werkzeuge:
+  `comments` (lesen, unbeantwortete Drittkommentare oberster Ebene unter einem eigenen Post, höchstens
+  30 Tage alt, neueste zuerst, Fortsetzungsmarke, ohne Verfasser, Name, Personen-URN, Erwähnung, Bild),
+  `reply` (schreiben als Organisation, `anlass` aus `dank`, `sachfrage_zum_post`, `gespraech_anbieten`)
+  und `tagesliste` (lesen, nur Links aus geprüften IDs, feste Merkmale, T1). Entwurf der Kern-Vorlage
+  unter `entwurf/linkedin-seite-community.yaml` für CONNECTOR: `reply` mit `write: true` ohne
+  Freigabe-Block, `daily_cap: 8` **Versuche** (S3), `anlass` als `enum` (S2), `text` in `redact_params`.
+- `reply` prüft live und ohne Speicher: eigener Post, Kommentar in der Liste genau dieses Posts, oberste
+  Ebene (`ebene`), nicht von uns (`von_uns`), nicht gelöscht, keine eigene Antwort (`wiederholt`), keine
+  eigene Antwort an denselben Verfasser unter diesem Post (`verfasser_beantwortet`), feste Textregeln.
+  Ablehnung als HTTP 200 mit `nicht_ausgefuehrt` und festem Code; nach dem Sendeversuch unklar.
+  Warteschlange im Prozess mit 60 s Abstand, Sperre 10 Minuten je Kommentar, Nachlesen nach dem Senden
+  mit `doppelt`. **Kein Antwort-Zähler im Plugin**: die Bremsen 20/Tag und 5/Post entfallen, der Deckel
+  liegt allein im Kern. Der Community-Pfad hat wie Lesen und Schreiben einen eigenen
+  HTTP-Tagesdeckel (60 LinkedIn-Versuche), der das LinkedIn-Kontingent schützt.
+- Kommentartexte nur im Arbeitsspeicher eines Aufrufs, nie im Log; Log-, Personen- und
+  Tageslisten-Kanarienvögel. Kein Gateway-Zugang und kein Redaktionsplan im Community-Pfad (S1).
+- Synthetisch verifiziert; Live-Abnahme offen (Form von `parentComment`, Verhalten auf zwei Ebenen,
+  Weblink-Form, Lesen über `r_organization_social_feed` als Seiten-Admin).
+
 ## 0.3.1 — 2026-11-04
 
 - JanuaPort/januaport#1237, Befund GATE 03.11.: Nach der zweiten Zustimmung (nur Schreib-Scopes)
