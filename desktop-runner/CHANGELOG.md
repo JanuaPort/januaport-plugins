@@ -22,6 +22,16 @@
   aus wie UI-Automation. Ein Siegel, das ein älterer Läufer ohne `tasten` angelegt hat, bekommt Kürzel erst mit der nächsten
   App-Fassung. Das signierte Geräte-Manifest und der Vertrag (Fassung 5) bleiben unverändert.
 
+### Setups am Arbeitsplatz (JanuaPort/januaport#1354)
+
+- **Setup im Bedienfeld ohne Leerlaufbedingung:** Auf einem Arbeitsplatz (`idle`) war ein Setup aus dem Tray nie
+  startbar, weil schon der Klick den Leerlauf auf null setzt. Ein vom Menschen im Bedienfeld gestartetes Setup ist
+  jetzt von der Leerlaufbedingung ausgenommen. Aktive Sitzung, Konto, Halt und Pause, Netz, Umgebung und die
+  Serverprüfung der Pipe bleiben; fehlt Konto oder Sitzung, lautet die Ablehnung weiter `refused/account`.
+  Zeitplan- und Ad-hoc-Läufe bleiben unter `refused/idle`. Das Merkmal „aus dem Bedienfeld“ lebt nur im Kontext
+  des Pipe-Wegs, nie im Draht, Zustand oder Journal; nach einem Neustart gilt wieder die volle Startregel.
+  Kein Vertragswechsel, der Kern bleibt unverändert.
+
 ## 0.5.3 — 2026-11-10 (JanuaPort/januaport#1342, JanuaPort/januaport#1343)
 
 ### Upstream-Prüfpunkt

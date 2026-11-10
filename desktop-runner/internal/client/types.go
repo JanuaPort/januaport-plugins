@@ -241,6 +241,17 @@ func startRefusal(s Session, c Config) error {
 	return ErrAccount
 }
 
+// localStartRefusal ist die Startregel für einen Lauf, den der Mensch im Bedienfeld selbst auslöst
+// (#1354): Der Klick setzt den Leerlauf auf null, also entfällt nur die Leerlaufbedingung. Aktive
+// Sitzung und Konto bleiben Pflicht; fehlen sie, lautet die Ablehnung account, nie idle.
+func localStartRefusal(s Session, c Config) error {
+	c.StartPolicy.Mode = "always"
+	if Ready(s, c, true) {
+		return nil
+	}
+	return ErrAccount
+}
+
 // Launch has no run-token member; it is also used by the real Windows adapter.
 type Launch struct {
 	Dir  string

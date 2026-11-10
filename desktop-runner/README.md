@@ -335,7 +335,8 @@ Tray: grün „Arbeitet“, gelb „Pausiert“, rot „Angehalten“, violett �
 abgewiesenen Tastenkürzel (#1240).
 Menü: Zustand, Pause 15 min / 1 h / bis Weiter, Weiter, Anhalten/Fortsetzen,
 Manifest-Setups, auf Testgeräten „Test“ als Anzeige, Beenden nur des Bedienfelds.
-Gesperrte Setups sind grau; nur `braucht_eingabe:true` ergänzt „braucht Eingabe“.
+Gesperrte Setups sind grau; nur `braucht_eingabe:true` ergänzt „braucht Eingabe“. Ein Setup im Bedienfeld
+braucht keinen Leerlauf (#1354, Invariante 11); Konto, Sitzung, Halt und Pause sperren weiter.
 `bis` erscheint als lokale Uhrzeit, offline + Fristablauf als
 „offline, Frist abgelaufen“.
 
@@ -659,6 +660,11 @@ jedem Prozessstart, Lauf-Verzeichnis und Laufmarker. **Voraussetzung: ein Kern
 mit #1245 K** (nimmt `idle` an); der Kern wird vor dem Läufer aktualisiert. Ein
 alter Kern antwortet 400 und der Läufer verwirft das Ergebnis nach zehn
 Versuchen gezählt (siehe „Ergebnisse“); er deutet `idle` nie in `account` um.
+**Ausnahme (JanuaPort/januaport#1354):** Ein Setup, das der Mensch im Bedienfeld startet, braucht den Leerlauf nicht,
+denn schon der Klick setzt ihn auf null. Aktive Sitzung, Konto gleich `expected_account`, Halt und Pause, Netz,
+vorhandene Umgebung und die Serverprüfung der Pipe gelten unverändert; fehlt Konto oder Sitzung, lautet die
+Ablehnung `account`. Zeitplan- und Ad-hoc-Läufe bleiben unter `idle`. Das Merkmal „aus dem Bedienfeld“ gibt es nur
+im Arbeitsspeicher, nicht im Draht und nicht über einen Neustart hinweg.
 Heartbeat alle 60 Sekunden: nur contract, ready, runner_version, manifest_seq.
 
 Ed25519, eigene Geräte-ID und steigende Sequenz sichern das Manifest.

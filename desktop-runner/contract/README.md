@@ -443,6 +443,8 @@ Gerätedaten im Körper. Der Kern nimmt `idle` ab der Version mit #1245 K an (gl
 Tabelle wie die übrigen Details, kein Neuversuch außerhalb der Zeitplanregeln). Ein
 älterer Kern antwortet `400 invalid`; der Läufer deutet nie in `account` um, sondern
 verwirft das Ergebnis nach zehn 400-Antworten gezählt (siehe „Erst nach 204“).
+Ein Setup, das der Mensch im Bedienfeld startet, ist von der Leerlaufbedingung ausgenommen und liefert
+nie `refused/idle` (JanuaPort/januaport#1354); fehlt Konto oder Sitzung, bleibt es `refused/account`.
 Das Gerät kann `expired`/`lost`/`denied` nicht per `runs/result` setzen
 (`400 invalid`). Ein Heartbeat-Abbruch führt zu Prozessabbruch und `cancelled`.
 Die Sync-Ablehnung **Klasse `manifest`** ist keine zusätzliche Ende-Klasse.

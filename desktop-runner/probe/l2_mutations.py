@@ -29,7 +29,7 @@ CASES = [
     ("spawn-check-before-lock", "engine.go", 'e.mu.Lock()\n\t// L2-1: this check and Spawn must remain in the same critical section.\n\tif e.haltedLocked(time.Now()) {', 'e.mu.Lock()\n\tblocked := e.haltedLocked(time.Now())\n\te.mu.Unlock()\n\te.mu.Lock()\n\tif blocked {', "TestHaltZwischenClaimUndSpawn"),
     ("resume-catchup", "halt.go", '|| !slot.After(e.haltThrough)', '|| false', "TestFortsetzenHoltNichtsNach"),
     ("resume-starts", "halt.go", 'return e.setHaltLocked(h, now)', 'if state == "arbeitet" && e.API != nil { _, _ = e.API.Start(context.Background(), Result{RunKey: "demo/daily/2026-11-03T10:00:00Z", ManifestSeq: 1}) }; return e.setHaltLocked(h, now)', "TestHaltBefehleStartenNie"),
-    ("resume-account-bypass", "engine.go", 'if why := startRefusal(s, config); why != nil {', 'if why := startRefusal(s, config); why != nil && false {', "TestHaltBefehleStartenNie"),
+    ("resume-account-bypass", "engine.go", 'why = startRefusal(s, config)', 'why = nil', "TestHaltBefehleStartenNie"),
     ("pause-weakens-stop", "halt.go", 'if state == "pausiert" && e.halt.State == "angehalten" {', 'if false {', "TestHaltBefehleStartenNie"),
     ("pause-minutes", "halt.go", 'if minutes != 0 && minutes != 15 && minutes != 60 {', 'if false {', "TestHaltBefehleStartenNie"),
     ("halt-command-schema", "halt.go", 'if !h.valid() || e.Container != nil {', 'if e.Container != nil {', "TestHaltBefehleStartenNie"),

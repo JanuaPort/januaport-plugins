@@ -143,6 +143,19 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Nie `idle` → `account` umdeuten (auch nicht für alte Kerne). Release-Hinweis:
     setzt einen Kern mit #1245 K voraus (er nimmt `idle` an); ein alter Kern
     antwortet 400, das Ergebnis staut nicht (Invariante 9).
+    **Ausnahme Bedienfeld (#1354):** Ein Setup, das der Mensch im Bedienfeld startet, ist von der
+    Leerlaufbedingung ausgenommen (der Klick setzt den Leerlauf auf 0). `localStartRefusal` ist
+    `startRefusal` mit erzwungenem Modus `always`: aktive Sitzung und Konto bleiben Pflicht, fehlen sie,
+    lautet die Antwort `account`, nie `idle`; Halt, Pause, Netz, Umgebung und Serverprüfung der Pipe
+    gelten unverändert. Sie greift an drei Stellen: `Startbar` im Zustand (`panelStatus`), die
+    Zulassung in `startPanelSetup` und in `executeReserved`, dort nur wenn der Kontext das
+    Bedienfeld-Merkmal trägt (`isPanelRun`, unexportierter Kontextschlüssel `panelPermitKey`, den allein
+    `startPanelSetup` setzt). Zeitplan, Ad hoc und jeder Lauf ohne diesen Kontext bleiben unter
+    `startRefusal`. Das Merkmal ist kein JSON-Feld, steht in keinem Zustands-, Journal- oder Drahttyp und
+    überlebt keinen Neustart (SEC A1: nach einem Neustart gilt für einen reservierten oder geclaimten Lauf
+    wieder `refused/idle`). Wächter: `TestWaechterNurPipeWegSetztBedienfeldMerkmal`,
+    `TestWaechterBedienfeldMerkmalNieSerialisierbar`, `TestNeustartNachSetupGiltWiederIdle`. Neue
+    Aufrufer von `localStartRefusal` oder neue Setzer des Merkmals sind ein Gate-Befund.
 12. Lauf-TEMP (#1245 L, Befund 6): Je Lauf ein neues, leeres Verzeichnis
     `%LOCALAPPDATA%\JanuaPort\desktop-runner\tmp\<RunID>\` (RunID = SHA-256 des
     Lauf-Schlüssels, genau 64 kleine Hex-Zeichen, vor jedem Pfad geprüft). Es ist
@@ -288,6 +301,8 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Unbenannte/unlesbare Pipe-Endpunkte werden bei der Namensabfrage übersprungen;
     Erkennung der Eltern-Pipe, absichtlich vererbtes Handle und eine eigene
     Python-Kontrollpipe sichern die Sonden gegen falsch grüne Ergebnisse.
+    Setup-Start über die Pipe (`setup_start`): Die Startregel ohne Leerlauf (`localStartRefusal`,
+    #1354, Invariante 11) gilt nur für diesen Weg; das Merkmal bleibt im Kontext, nie im Draht.
 
 16. Bedienfeld (#1240 L4; Plan-Invarianten 14/15/18): `jnpt-bedienfeld.exe`,
     separater Windows-Prozess ohne CGO, gebaut mit `-H=windowsgui`.
