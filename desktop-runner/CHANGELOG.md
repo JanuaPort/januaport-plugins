@@ -2,6 +2,13 @@
 
 ## Unveröffentlicht
 
+## 0.5.3 — 2026-11-10 (JanuaPort/januaport#1342, JanuaPort/januaport#1343)
+
+### Upstream-Prüfpunkt
+
+- `wailsapp/go-webview2` nach v1.0.23: nichts Neues, kein Advisory.
+- Gemessen ist nur WebView2-Runtime 156.0.4314.58, Runtime 157 ist nur vorgeladen.
+
 ### Läufer-Reste aus #1313
 
 - **App-Entzug räumt auf (JanuaPort/januaport#1342):** Nach jedem erfolgreich geprüften Manifest-Abgleich und danach
