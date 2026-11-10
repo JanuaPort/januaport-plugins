@@ -567,3 +567,37 @@ func TestAbgleichMeldetAnmeldefehlerAnsModell(t *testing.T) {
 		t.Fatal("Hinweis bleibt nach erfolgreicher Anmeldung")
 	}
 }
+
+// Der verworfene zweite Druck verlängert das Warten nicht und tauscht das Ziel nicht aus: Es gilt der erste Druck,
+// mit seiner Frist (Mutant: zweiter Druck überschreibt den ersten).
+func TestZweiterDruckAendertWederFristNochZiel(t *testing.T) {
+	m, keys := hotkeyModel(t, func(s *pipe.Message) {
+		s.Setups = []pipe.Setup{{Pin: "demo", Setup: "ansicht", Label: "A", Startbar: true}, {Pin: "demo", Setup: "drucken", Label: "B", Startbar: true}}
+	})
+	second := Hotkey{Key: "Strg+Alt+F6", Pin: "demo", Setup: "drucken"}
+	m.SetHotkeys([]Hotkey{hotkeyDemo, second})
+	m.HotkeyRegistered(0, true)
+	m.HotkeyRegistered(1, true)
+	keys.down = true
+	m.PressHotkey(1, now)
+	m.PressHotkey(2, now.Add(1500*time.Millisecond))
+	// Die Frist des ersten Drucks läuft nach zwei Sekunden ab, nicht 2 s nach dem zweiten Druck.
+	if e := m.PollHotkey(now.Add(HotkeyWait)); len(e.Commands) != 0 || !m.TakeBeep() {
+		t.Fatalf("Frist durch den zweiten Druck verlängert: %+v", e)
+	}
+	// Löst der Mensch rechtzeitig, startet das Setup des ersten Drucks, nie das des zweiten.
+	m2, keys2 := hotkeyModel(t, func(s *pipe.Message) {
+		s.Setups = []pipe.Setup{{Pin: "demo", Setup: "ansicht", Label: "A", Startbar: true}, {Pin: "demo", Setup: "drucken", Label: "B", Startbar: true}}
+	})
+	m2.SetHotkeys([]Hotkey{hotkeyDemo, second})
+	m2.HotkeyRegistered(0, true)
+	m2.HotkeyRegistered(1, true)
+	keys2.down = true
+	m2.PressHotkey(1, now)
+	m2.PressHotkey(2, now.Add(300*time.Millisecond))
+	keys2.down = false
+	e := m2.PollHotkey(now.Add(600 * time.Millisecond))
+	if len(e.Commands) != 1 || e.Commands[0].Setup != "ansicht" {
+		t.Fatalf("zweiter Druck hat das Ziel getauscht: %+v", e)
+	}
+}
