@@ -277,8 +277,13 @@ Elternkomponenten (`..`), unklare relative Pfade und Variablen (`$VAR`, `${VAR}`
 auch mit Default). Der Wächter interpoliert keine Prozessumgebung. Projektlokale
 `./…`-Pfade ohne Elternkomponenten werden gegen den dokumentierten Ablageort
 `/opt/jnpt/plugins/script-runner/` aufgelöst; `./seccomp:/x` bleibt beim
-Vermittler und Abholer erlaubt. Benannte Volumes und `security_opt`-Profilpfade
-sind keine Bind-Quellen. Die echte Compose bleibt unverändert und sauber.
+Vermittler und Abholer erlaubt. **Laufwerksquellen (#1246):** Genau ein
+ASCII-Buchstabe (`a-z`, `A-Z`) vor dem ersten Doppelpunkt und direkt danach
+`\` oder `/` gilt ebenfalls fail-closed als Host-Pfad, etwa `C:\x:/p`,
+`c:/run/jnpt:/run/jnpt` und `D:\:/d`. Das erfasst bewusst auch einbuchstabige
+Volumes wie `c:/x`. Mehrbuchstabige benannte Volumes und Linux-Pfade behalten
+ihr Verhalten; `security_opt`-Profilpfade sind keine Bind-Quellen.
+Die echte Compose bleibt unverändert und sauber.
 
 | Invariante | Test am Adapter |
 |---|---|
@@ -294,6 +299,7 @@ sind keine Bind-Quellen. Die echte Compose bleibt unverändert und sauber.
 | Fehlende Liste: INFO nur bei Wechsel, weiter fail-closed; sonst WARN je Takt | `TestStorageMissingListLogsOnlyTransitionsAtAdapter`, `TestStorageErrorsWarnEveryTickAtAdapter` |
 | Eltern-Mounts und Einzelschlüssel gesperrt | `TestKeyMountParentsAtComposeAdapter`, `TestKeyMountComparisonUsesComponents` |
 | Unaufgelöste relative/variable Bind-Quellen gesperrt; projektlokale sichere Quelle bleibt erlaubt | `TestUnresolvedKeyMountSourcesAtComposeAdapter`, `TestSafeProjectRelativeMountAtAuthorizedServices`, `TestShippedComposeIsClean` |
+| Laufwerksquellen und mehrdeutige einbuchstabige Volumes gesperrt, je Schlüssel mit Eigentümerausnahme; mehrbuchstabige Volumes und Linux-Pfade unverändert | `TestWindowsDriveKeyMountSourcesAtComposeAdapter` (vier Dienste, einschließlich Apphost-Schlüsselbefund) |
 
 Der Vermittler holt als Bote in einer eigenen Goroutine alle 60 s die Liste
 mit seinem vorhandenen Plugin-Runtime-Key über
@@ -526,8 +532,9 @@ nicht von `isolation` ab; `/healthz` behält seine lokale Sandbox-Bedeutung.
 8. **R8 — kein Weg zurück.** Kein `push`, kein `receive-pack` im Code
    (Wächter `TestNoPushPathInSource`). Der Deploy-Key hängt nur im abholer.
    B3/H6 sperrt auch Eltern-Mounts, Einzelschlüssel und nicht sicher auflösbare
-   relative/variable Bind-Quellen (Details oben); `runner-pins.pub` teilt
-   diesen Ordner. Für Speicher gilt die unabhängige B1-Prüfung oben.
+   relative/variable Bind-Quellen sowie Laufwerksquellen (Details oben);
+   `runner-pins.pub` teilt diesen Ordner. Für Speicher gilt die unabhängige
+   B1-Prüfung oben.
 9. **Compose ist Vertrag §6, der Wächter prüft deny by default.**
    `internal/hygiene` dekodiert mit `KnownFields(true)`: Jeder Schlüssel, den
    das Struct nicht kennt, ist ein Verstoß — das Struct kennt genau die
