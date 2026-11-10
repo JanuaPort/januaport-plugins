@@ -107,7 +107,12 @@ WRITE_SCOPES = ('w_organization_social', 'w_organization_social_feed')
 #   https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow
 #   "If you request a different scope than the previously granted scope, all the previous access
 #   tokens are invalidated." Seen 03.11.2026: read access denied after the second consent.
-GRANT_SCOPES = SCOPES + WRITE_SCOPES
+# Stufe B3 (#1237, 0.4.0): reading comments under own posts. D_COMMENTS Permissions:
+#   "r_organization_social_feed | Retrieve organizations' posts, comments, and reactions."
+# Replies as the organization need w_organization_social_feed, already in WRITE_SCOPES.
+# The statistics path (SCOPES) never names a *_feed scope (SEC K5); the token itself carries all five.
+COMMUNITY_SCOPES = ('r_organization_social_feed',)
+GRANT_SCOPES = SCOPES + WRITE_SCOPES + COMMUNITY_SCOPES
 # Closed list: operation -> (method, path below API_ROOT). Nothing else is ever sent to LinkedIn.
 WRITE_ENDPOINTS = {
     'post_create': ('POST', 'posts'),                                   # D_POSTS 201, x-restli-id
@@ -179,3 +184,36 @@ OBJECT = 'object'
 MESSAGE = 'message'
 MESSAGE_TEXT = 'text'
 LITTLE_RESERVED = '|{}@[]()<>#\\*_~'
+
+# --- Stufe B3 (#1237, 0.4.0): comments under own posts, replies as the organization ---------
+# Cut c-6747016143, SEC c-6747087768 S1-S4, T1 c-6759978021. Aus Herstellerdoku 202610, live zu belegen:
+#   D_COMMENTS (above): Comment URN "urn:li:comment:(urn:li:activity:<id>,<id>)"; "Get Comments on Shares"
+#   GET socialActions/{shareUrn|ugcPostUrn}/comments; "Get Comments on Comments" GET socialActions/{commentUrn}/comments;
+#   "Create a Comment on a Comment" POST socialActions/{commentUrn}/comments with "parentComment"
+#   ("composite URN, which is comprised of the activityUrn and parent comment ID") and "object" = share/ugcPost.
+#   Edit section: the URN built from the request target "is not a reliable identifier"; "An accurate key for a
+#   comment can always be constructed from the comment's object field ... and its ID" -> we key on object+id
+#   (object = the activity of commentUrn, or the listed post itself; see kommentare.kommentar_aus).
+#   D_POSTS: GET posts/{encoded postUrn} (author, createdAt, lifecycleState) and GET posts?q=author (as Stufe A).
+# Closed list: operation -> (method, path below API_ROOT). No delete, no edit, no reaction, no profile lookup.
+COMMUNITY_ENDPOINTS = {
+    'post_get': ('GET', 'posts/{urn}'),
+    'posts_list': ('GET', 'posts'),
+    'comments_list': ('GET', 'socialActions/{urn}/comments'),   # {urn} = own post (share/ugcPost)
+    'replies_list': ('GET', 'socialActions/{urn}/comments'),    # {urn} = top-level comment
+    'reply_create': ('POST', 'socialActions/{urn}/comments'),   # {urn} = parent comment, 201 + x-restli-id
+}
+# Which URN kind each templated operation accepts in its path; anything else is refused before HTTP.
+COMMUNITY_URN = {'post_get': 'post', 'comments_list': 'post', 'replies_list': 'kommentar', 'reply_create': 'kommentar'}
+COMMENT_URN = 'commentUrn'
+COMMENT_CREATED = 'created'   # comments: {actor, time}; posts use createdAt (CREATED)
+PARENT_COMMENT = 'parentComment'
+LAST_MODIFIED = 'lastModified'
+TIME = 'time'
+COMMENTS_SUMMARY = 'commentsSummary'
+AGGREGATED_COMMENTS = 'aggregatedTotalComments'
+# Not documented; a comment carrying it as true is treated as deleted (fail closed), [A].
+DELETED = 'deleted'
+TOTAL = 'total'
+# Rest.li collection paging, not shown in D_COMMENTS: count/start as the Posts finder, [A].
+LIST_COUNT = 100

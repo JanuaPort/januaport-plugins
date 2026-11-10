@@ -157,7 +157,7 @@ def main():
     # Required, not implied: an old command line must stop here, not silently ask LinkedIn for another
     # scope set. A different set voids the tokens granted before it (#1237).
     parser.add_argument('--gesamt', action='store_true', required=True,
-                        help='Der einzige Modus: eine Zustimmung mit allen vier Scopes, '
+                        help='Der einzige Modus: eine Zustimmung mit allen fuenf Scopes, '
                              'Ausgabe nur in plugin-linkedin-seite-oauth.')
     args = parser.parse_args()
     timer = None
