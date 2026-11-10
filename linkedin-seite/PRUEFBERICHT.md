@@ -107,7 +107,16 @@ Secret-Scan wie `secret-scan.yml` (gitleaks 8.30.1, `.gitleaks.toml`) über die 
 Funde. Ein erster Scan fand im roten Testprotokoll ein synthetisches Token aus einer Assertion; es ist
 geschwärzt, bevor etwas gepusht wurde.
 
-Die Zeitgrenze des Jobs `unit` beträgt 15 Minuten; bei 11:53 plus Installation bleiben gut zwei Minuten Luft.
+Die Zeitgrenze des Jobs `unit` betrug 15 Minuten; bei 11:53 plus Installation blieben gut zwei Minuten
+Luft. Ein eigener Commit (`ci(linkedin-seite)`) hebt sie auf 20 Minuten an; das Gate kann ihn getrennt
+beurteilen oder verwerfen.
+
+Spiegel des Jobs `image`: `docker build` aus `linkedin-seite/Dockerfile`, dann die Suite im Image als
+65532, read-only, ohne Netz, `--cap-drop ALL`, `no-new-privileges`, 512 MiB, 1 CPU, 32 PIDs, kleines
+tmpfs: **367 Tests grün, 68 übersprungen** (README, SETUP, Workflows, PO-Skript und Vorlagen-Entwurf
+sind dort nicht eingehängt), 274 s. Abweichung: lokal mit `--security-opt seccomp=unconfined`, weil
+Docker Desktop das Standardprofil nicht lädt (`errno 524` beim Laden des Filters); in der CI gilt das
+Standardprofil.
 
 ### Invariante → Nachweis
 

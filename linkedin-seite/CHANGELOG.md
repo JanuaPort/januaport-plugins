@@ -28,6 +28,8 @@
   Tageslisten-Kanarienvögel. Kein Gateway-Zugang und kein Redaktionsplan im Community-Pfad (S1).
 - Synthetisch verifiziert; Live-Abnahme offen (Form von `parentComment`, Verhalten auf zwei Ebenen,
   Weblink-Form, Lesen über `r_organization_social_feed` als Seiten-Admin).
+- CI: Zeitgrenze des Jobs `unit` von 15 auf 20 Minuten. Suite und Mutationen brauchen jetzt rund
+  11:53 ohne Installation (gemessen: 367 Tests in 219 Sekunden, 266 Mutanten in 493 Sekunden).
 
 ## 0.3.1 — 2026-11-04
 
