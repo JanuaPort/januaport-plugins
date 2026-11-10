@@ -368,9 +368,10 @@ func checkCommon(name string, s service) []string {
 
 // exposesKey compares Linux host path components. Parent mounts expose the
 // key directory too; child mounts may expose an individual key (SEC B3/H6).
-// Unknown bind sources fail closed; checkCommon exempts each key's owner.
+// Unknown bind sources, including Windows drives, fail closed; checkCommon
+// exempts each key's owner.
 func exposesKey(mount, protected string) bool {
-	source, _, ok := strings.Cut(mount, ":")
+	source, rest, ok := strings.Cut(mount, ":")
 	// Do not interpolate using the test process's environment. In particular,
 	// ${VAR:-default} contains a colon before the actual mount separator.
 	if strings.Contains(source, "$") {
@@ -378,6 +379,12 @@ func exposesKey(mount, protected string) bool {
 	}
 	if !ok {
 		return false
+	}
+	if len(source) == 1 && ((source[0] >= 'a' && source[0] <= 'z') || (source[0] >= 'A' && source[0] <= 'Z')) &&
+		(strings.HasPrefix(rest, "\\") || strings.HasPrefix(rest, "/")) {
+		// The first colon belongs to a Windows drive, not a named volume.
+		// This host path cannot be resolved safely here (also C:/target).
+		return true
 	}
 	if !path.IsAbs(source) {
 		if strings.HasPrefix(source, "./") && !strings.Contains(source, "\\") && !slices.Contains(strings.Split(source, "/"), "..") {
