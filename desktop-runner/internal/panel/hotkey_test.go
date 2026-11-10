@@ -428,28 +428,82 @@ func TestHotkeyNameWieMenueKennungBleibtSetup(t *testing.T) {
 	}
 }
 
-// Zwei Apps mit derselben Taste: Beide stehen in der Liste; die zweite Anmeldung schlägt im System fehl und
-// zeigt „belegt“, wie ein fremdes Programm. Es gibt keinen eigenen Laufzeitpfad dafür.
+// SEC D1: Dieselbe Taste in zwei Apps desselben Geräts sperrt beide. Es gewinnt nicht die App, die zuerst angemeldet
+// wird: Sonst startete der gewohnte Griff das Setup einer neu zugewiesenen App. Keine der beiden wird angemeldet,
+// das Menü nennt die Taste „gesperrt (doppelt)“, nie still.
 func TestDoppeltesKuerzelAnZweiAppsWirdWieFremdesBehandelt(t *testing.T) {
 	m, keys := hotkeyModel(t, func(s *pipe.Message) {
 		s.Setups = []pipe.Setup{{Pin: "demo", Setup: "ansicht", Label: "A", Startbar: true}, {Pin: "zwei", Setup: "ansicht", Label: "B", Startbar: true}}
 	})
 	second := Hotkey{Key: "Strg+Alt+F5", Pin: "zwei", Setup: "ansicht"}
-	m.SetHotkeys([]Hotkey{hotkeyDemo, second})
-	if len(m.Hotkeys()) != 2 {
-		t.Fatalf("Liste: %v", m.Hotkeys())
+	other := Hotkey{Key: "Strg+Alt+F6", Pin: "demo", Setup: "ansicht"}
+	sys := &fakeOS{taken: map[string]bool{}, holding: map[int]string{}}
+	m.SetHotkeys([]Hotkey{hotkeyDemo, second, other})
+	m.SyncHotkeys(sys.unregister, sys.register)
+	if !reflect.DeepEqual(sys.calls, []string{"an3"}) || !reflect.DeepEqual(sys.holding, map[int]string{3: "Strg+Alt+F6"}) {
+		t.Fatalf("doppelte Taste wurde angemeldet: %v %v", sys.calls, sys.holding)
 	}
+	it, ok := findItem(m, "hotkey:Strg+Alt+F5")
+	if !ok || it.Enabled || !strings.Contains(it.Text, "gesperrt (doppelt)") || !strings.Contains(it.Text, "Strg+Alt+F5") {
+		t.Fatalf("Hinweis fehlt oder ist falsch: %+v %v", it, ok)
+	}
+	if n := countItems(m, "hotkey:"); n != 1 {
+		t.Fatalf("%d Hinweise statt einem", n)
+	}
+	// Auch eine verirrte Erfolgsmeldung macht keine der beiden startbar.
 	m.HotkeyRegistered(0, true)
-	m.HotkeyRegistered(1, false)
-	if _, ok := findItem(m, "hotkey:Strg+Alt+F5"); !ok {
-		t.Fatal("zweites Kürzel nicht als belegt gezeigt")
+	m.HotkeyRegistered(1, true)
+	for _, id := range []int{1, 2} {
+		m.PressHotkey(id, now)
+		keys.down = false
+		if e := m.PollHotkey(now.Add(200 * time.Millisecond)); len(e.Commands) != 0 {
+			t.Fatalf("Kennung %d startet trotz doppelter Taste: %+v", id, e)
+		}
+	}
+	// Die unbeteiligte Taste bleibt nutzbar.
+	m.PressHotkey(3, now.Add(time.Second))
+	if e := m.PollHotkey(now.Add(time.Second + 200*time.Millisecond)); len(e.Commands) != 1 {
+		t.Fatalf("unbeteiligte Taste: %+v", e)
+	}
+}
+
+// Gegenfall zu D1: Wird eine der beiden Apps entzogen, meldet sich die verbliebene beim nächsten Abgleich an.
+func TestDoppeltesKuerzelNachEntzugEinerAppWirdAngemeldet(t *testing.T) {
+	m, keys := hotkeyModel(t, func(s *pipe.Message) {
+		s.Setups = []pipe.Setup{{Pin: "demo", Setup: "ansicht", Label: "A", Startbar: true}, {Pin: "zwei", Setup: "ansicht", Label: "B", Startbar: true}}
+	})
+	second := Hotkey{Key: "Strg+Alt+F5", Pin: "zwei", Setup: "ansicht"}
+	sys := &fakeOS{taken: map[string]bool{}, holding: map[int]string{}}
+	m.SetHotkeys([]Hotkey{hotkeyDemo, second})
+	m.SyncHotkeys(sys.unregister, sys.register)
+	if len(sys.holding) != 0 {
+		t.Fatalf("angemeldet trotz Doppel: %v", sys.holding)
+	}
+	// Die erste App wird entzogen.
+	sys.calls = nil
+	m.SetHotkeys([]Hotkey{second})
+	m.SyncHotkeys(sys.unregister, sys.register)
+	if !reflect.DeepEqual(sys.holding, map[int]string{1: "Strg+Alt+F5"}) {
+		t.Fatalf("verbliebene App nicht angemeldet: %v", sys.holding)
+	}
+	if _, ok := findItem(m, "hotkey:Strg+Alt+F5"); ok {
+		t.Fatal("Hinweis bleibt nach dem Entzug")
 	}
 	m.PressHotkey(1, now)
 	keys.down = false
-	e := m.PollHotkey(now.Add(200 * time.Millisecond))
-	if len(e.Commands) != 1 || e.Commands[0].Pin != "demo" {
-		t.Fatalf("erstes Kürzel: %+v", e)
+	if e := m.PollHotkey(now.Add(200 * time.Millisecond)); len(e.Commands) != 1 || e.Commands[0].Pin != "zwei" {
+		t.Fatalf("verbliebenes Kürzel: %+v", e)
 	}
+}
+
+func countItems(m *Model, prefix string) int {
+	n := 0
+	for _, i := range m.View().Menu {
+		if strings.HasPrefix(i.ID, prefix) {
+			n++
+		}
+	}
+	return n
 }
 
 // Das Kernversprechen gilt auch, wenn die Taste ein Setup meint, dessen Klick der Mensch gerade nicht sieht.
