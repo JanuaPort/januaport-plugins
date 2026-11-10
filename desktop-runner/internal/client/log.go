@@ -20,7 +20,7 @@ const (
 	LogOfflineExpired // K8: Offline-Start verweigert (Frist oder Werkzeugbindung)
 	LogHaltFault      // L2-2: Halt-Datei unlesbar/ungültig oder Speicherung fehlgeschlagen
 	LogPipeFault      // L3 B2: Pipe fehlt/besetzt; Läufer läuft weiter ohne Ausweichnamen
-	LogAppFault       // K6b-2: App-Paket konnte nicht abgelegt oder geprüft werden (Sync läuft weiter)
+	LogAppFault       // K6b-2: n=1 App-Paket nicht abgelegt oder geprüft, n=2 (#1342) Aufräumen entzogener Apps unvollständig; Sync läuft weiter
 )
 
 type Logger struct {

@@ -2,6 +2,22 @@
 
 ## Unveröffentlicht
 
+### Läufer-Reste aus #1313
+
+- **App-Entzug räumt auf (JanuaPort/januaport#1342):** Nach jedem erfolgreich geprüften Manifest-Abgleich und danach
+  im Takt des Heartbeats (lokal, ohne Netz, auch ohne neue Sequenz) löscht der Läufer Ablage (`apps\<name>`), WebView-Profil (`webview\<name>`) und Siegel von Apps, die nicht mehr im
+  Manifest stehen. Aufgezählt wird lokal, gelöscht nur bei gültigem App-Namen, Verweise (Symlink, Junction)
+  werden nie verfolgt, die Schreibvorgänge laufen unter der Zustandssperre. Ein gesperrter Ordner (das Fenster
+  schließt erst nach dem Sync) bleibt bis zum nächsten Takt liegen; ein Fehler stoppt weder Abgleich noch Läufe und
+  steht nur beim ersten Fehlschlag als fester Logcode `10 2` im Log. Ist das gespeicherte Manifest leer oder nicht
+  prüfbar, wird nichts gelöscht. Kommt die App zurück,
+  wird sie neu geladen, das Profil beginnt leer. Alte Commits einer weiter zugewiesenen App und der Widerruf des
+  Geräts bleiben unverändert.
+- **Ad-hoc-Auftrag holt das Manifest nach (JanuaPort/januaport#1343):** Trägt der Auftrag eine neuere
+  Manifest-Sequenz als der lokale Stand, gleicht der Läufer einmal ab und prüft dann erneut; erst danach gilt
+  `refused/manifest`. Ein frisch vergebener Pin wird so nicht mehr abgelehnt, nur weil der Takt noch nicht
+  aufgeholt hat. Fehlt der Pin bei passender Sequenz, gibt es kein Nachholen; es bleibt bei einem Abgleich je Auftrag.
+
 ## 0.5.2 — 2026-11-07 (JanuaPort/januaport#1340)
 
 ### Upstream-Prüfpunkt
