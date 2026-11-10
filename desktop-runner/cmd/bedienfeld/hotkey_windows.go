@@ -42,8 +42,8 @@ const (
 )
 
 var (
-	errHotkeyKey    = errors.New("Kürzel nicht erlaubt")
-	errHotkeyFailed = errors.New("Kürzel nicht anmeldbar")
+	errHotkeyKey    = errors.New("tastenkürzel nicht erlaubt")
+	errHotkeyFailed = errors.New("tastenkürzel nicht anmeldbar")
 )
 
 // registerHotkey meldet Strg+Alt+F<n> an. Nur die zwölf erlaubten Tasten erreichen das System.
@@ -110,6 +110,6 @@ func (a *application) releaseHotkeys() {
 // hotkeyBeep spielt den Systemton einer Abweisung: ohne Fenster, ohne Fokus, ohne Sprechblase.
 func (a *application) hotkeyBeep() {
 	if a.model.TakeBeep() {
-		messageBeep.Call(0)
+		_, _, _ = messageBeep.Call(0)
 	}
 }

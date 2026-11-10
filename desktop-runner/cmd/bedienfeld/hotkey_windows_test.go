@@ -23,7 +23,7 @@ func messageOnlyWindow(t *testing.T) uintptr {
 	if r == 0 {
 		t.Skipf("Kein Fenster nur für Nachrichten möglich (kein Desktop oder keine Fensterstation): %v", err)
 	}
-	t.Cleanup(func() { destroyWindow.Call(r) })
+	t.Cleanup(func() { _, _, _ = destroyWindow.Call(r) })
 	return r
 }
 

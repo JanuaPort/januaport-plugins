@@ -205,7 +205,7 @@ func (m *Model) reject(now time.Time, code, text string) {
 
 // rejectReason benennt nur, warum Choose nichts getan hat. Entschieden hat Choose.
 func (m *Model) rejectReason(pin, setup string) (code, text string) {
-	if !(m.connected && m.ready && !m.fault) {
+	if !m.connected || !m.ready || m.fault {
 		return rejectFault, "Störung"
 	}
 	var found *pipe.Setup
