@@ -238,6 +238,40 @@ class Queue(Service):
         self.assertEqual(len(self.li.replies_posted()), 1)
 
 
+class ReplyReturnsAList(JobCommunityAdapter):
+    """A job whose answer is not the agreed object: the server must not hang on it."""
+
+    def reply(self, req):
+        return ['kein', 'objekt']
+
+
+class Robustness(Service):
+    async def test_an_unexpected_job_answer_ends_the_request_and_frees_the_queue(self):
+        community = self.community_pool(adapter=ReplyReturnsAList)
+        client = TestClient(SafeTestServer(server.create_app(self.cfg, KEY.encode(), self.pool, None, community)))
+        await client.start_server()
+        data = lambda urn: json.dumps({'post_urn': self.post, 'kommentar_urn': urn, 'text': 'Danke', 'anlass': 'dank'})
+        try:
+            for _ in range(2):  # the second call proves the queue was freed
+                reply = await asyncio.wait_for(client.post('/v1/linkedin-kommentare/reply', headers=AUTH,
+                                                           data=data(self.li.comment(self.post))), 20)
+                self.assertEqual((reply.status, await reply.json()),
+                                 (200, {'error': 'worker_failed', 'nicht_ausgefuehrt': True}))
+            self.assertEqual((community.in_reihe, community.inflight, community.reihe.locked()), (0, set(), False))
+        finally:
+            await client.close()
+
+    async def test_a_job_that_cannot_start_is_definitely_not_executed(self):
+        comment = self.li.comment(self.post)
+
+        def broken(*args, **kwargs):
+            raise OSError('no process')
+        self.community._start = broken
+        self.assertEqual(await self.reply(comment), (200, {'error': 'worker_failed', 'nicht_ausgefuehrt': True}))
+        self.assertEqual((self.community.in_reihe, self.community.inflight, self.community.reihe.locked()), (0, set(), False))
+        self.assertEqual(self.li.calls, [])
+
+
 class NoPluginCounter(Service):
     """S3: the cap lives in the core (daily_cap 8 attempts). The plugin counts no replies, no per-post brake."""
 
