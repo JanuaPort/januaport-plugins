@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- JanuaPort/januaport#1246: Die Hygiene-Prüfung erkennt Windows-Laufwerksquellen
+  (`C:\…:/ziel`, `c:/…`) als Host-Pfad und meldet sie fail-closed, statt sie
+  als benanntes Volume `C` durchzulassen. Tabellentest über alle vier Dienste.
+
 ## 0.4.2 — 2026-11-05 (JanuaPort/januaport#1317)
 
 - **Image:** `sha256:72f1b40524fc6939fbd94c5674de4da24cd8c9ac621c0e19b0129fd10ab30da7` (Index, nur `linux/amd64`; arm64-Ausnahme siehe 0.3.1, JanuaPort/januaport#928; Release-Lauf 41995354612)
