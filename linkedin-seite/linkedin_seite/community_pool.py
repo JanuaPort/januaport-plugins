@@ -110,7 +110,7 @@ class CommunityPool:
         self.inflight = set()    # kommentar_urn of calls queued or running
         self.last_send = None
         self.reihe = asyncio.Lock()
-        self.wartend = 0
+        self.in_reihe = 0        # reply calls running or waiting in the queue
         self.lesen = None
         self.lesen_rate = deque()
         self.jobs = set()
@@ -161,16 +161,15 @@ class CommunityPool:
             del self.locks[urn]
         if key in self.inflight or key in self.locks:
             raise nicht_ausgefuehrt(429, 'gesperrt')
-        if self.reihe.locked() and self.wartend >= REPLY_WARTEND_MAX:
+        # Counted explicitly, not via reihe.locked(): between a release and the wake-up of the next
+        # waiter the lock looks free, and a third call would slip in behind the second.
+        if self.in_reihe > REPLY_WARTEND_MAX:
             raise nicht_ausgefuehrt(429, 'antwort_warteschlange_voll')
         self.inflight.add(key)
+        self.in_reihe += 1
         job = None
         try:
-            self.wartend += 1
-            try:
-                await self.reihe.acquire()  # FIFO; a cancel while waiting sends nothing
-            finally:
-                self.wartend -= 1
+            await self.reihe.acquire()  # FIFO; a cancel while waiting sends nothing
             try:
                 if self.last_send is not None:
                     wait = self.last_send + self.abstand - self.monotonic()
@@ -178,12 +177,16 @@ class CommunityPool:
                         await asyncio.sleep(wait)
                 if self.closed:
                     raise nicht_ausgefuehrt(503, 'service_stopping')
-                job = self._start(req, self.budgets['antwort'])
+                try:
+                    job = self._start(req, self.budgets['antwort'])
+                except Exception:
+                    raise nicht_ausgefuehrt(502, 'worker_failed') from None  # no process, no send attempt
             except BaseException:
                 self.reihe.release()
                 raise
         finally:
             if job is None:
+                self.in_reihe -= 1
                 self.inflight.discard(key)
         # From here the job owns the queue and the in-flight mark: its supervisor releases both. A cancelled
         # request does not stop it, so a send attempt always completes its read back and its lock.
@@ -258,10 +261,13 @@ class CommunityPool:
         except asyncio.CancelledError:
             self._finish_error(job, ReportError(503, 'service_stopping'))
             raise
+        except Exception:  # anything unexpected still ends the waiting request and frees the slot
+            self._finish_error(job, ReportError(502, 'worker_failed'))
         finally:
             self._kill(job)
             self.jobs.discard(job)
             if job.antwort:
+                self.in_reihe -= 1
                 self.inflight.discard(job.req.kommentar_urn)
                 self.reihe.release()
 
