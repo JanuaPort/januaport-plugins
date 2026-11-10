@@ -712,14 +712,22 @@ func (e *Engine) adhoc(ctx context.Context, j Job) error {
 	if err != nil {
 		return e.report(refused(r, ErrManifest))
 	}
-	var pin *Pin
-	for _, p := range m.Pins {
-		if p.Pin == j.Pin && p.Commit == j.Commit && p.Path == j.Path && p.Algo == j.Algo {
-			x := p
-			pin = &x
-			break
+	if m.Seq < j.ManifestSeq {
+		// Der Auftrag trägt eine neuere Sequenz als der lokale Stand: einmal nachholen (#1343), nie in einer
+		// Schleife. Ohne das wäre ein frisch vergebener Pin abgelehnt, bis der Takt aufholt.
+		e.syncErr = e.Sync(ctx)
+		if e.syncErr != nil {
+			return e.report(refused(r, ErrManifest))
+		}
+		if !time.Now().Before(deadline) {
+			return e.report(finish(r, "internal", ""))
+		}
+		b = e.view()
+		if m, err = ParseManifest(b.Manifest.Envelope.Manifest); err != nil {
+			return e.report(refused(r, ErrManifest))
 		}
 	}
+	pin := findJobPin(m, j)
 	if pin == nil || m.Seq < j.ManifestSeq {
 		return e.report(refused(r, ErrManifest))
 	}
@@ -745,6 +753,16 @@ func (e *Engine) adhoc(ctx context.Context, j Job) error {
 		return e.report(finish(r, "internal", ""))
 	}
 	return e.report(e.Execute(ctx, r, env, j.Input, start.RunToken, j.Limits.WallS, j.Limits.ToolCalls))
+}
+
+// findJobPin sucht den Pin, den der Auftrag nach Name, Commit, Pfad und Algorithmus meint.
+func findJobPin(m Manifest, j Job) *Pin {
+	for _, p := range m.Pins {
+		if p.Pin == j.Pin && p.Commit == j.Commit && p.Path == j.Path && p.Algo == j.Algo {
+			return &p
+		}
+	}
+	return nil
 }
 func (e *Engine) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
