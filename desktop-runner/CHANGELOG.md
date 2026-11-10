@@ -2,7 +2,13 @@
 
 ## Unveröffentlicht
 
-### Tastenkürzel für Setups im Bedienfeld (JanuaPort/januaport#1240 F-T, ohne Release, ohne Beleg am Gerät)
+## 0.5.4 — 2026-11-10 (JanuaPort/januaport#1354, JanuaPort/januaport#1240)
+
+### Upstream-Prüfpunkt
+
+- `wailsapp/go-webview2` unverändert, 0 Advisories (BOX, JanuaPort/januaport#1354 c-6773924868).
+
+### Tastenkürzel für Setups im Bedienfeld (JanuaPort/januaport#1240 F-T, ohne Beleg am Gerät)
 
 - **Ein Kürzel tut, was der Menüklick tut:** Die Kürzel stehen im Feld `tasten` der `jnpt.app.json` der App
   (`taste`, `pin`, `setup`); erlaubt sind nur `Strg+Alt+F1` bis `Strg+Alt+F12`. Der Läufer prüft das Feld beim Ablegen der App
