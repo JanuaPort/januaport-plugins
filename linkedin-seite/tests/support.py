@@ -17,11 +17,15 @@ from linkedin_seite.workers import WorkerPool
 
 ORG = 'urn:li:organization:123456'
 CFG = Config.from_dict({'organization': ORG, 'linkedin_version': '202610'})
-# The one grant (#1237, 0.3.1) as an independent literal: the vault JSON carries it space separated,
-# LinkedIn answers comma separated and in its own order (02.11.2026).
-GRANT_LIST = ('rw_organization_admin', 'r_organization_social', 'w_organization_social', 'w_organization_social_feed')
+# The one grant (#1237, 0.3.1; five scopes since 0.4.0, B3) as an independent literal: the vault JSON carries
+# it space separated, LinkedIn answers comma separated and in its own order (02.11.2026).
+GRANT_LIST = ('rw_organization_admin', 'r_organization_social', 'w_organization_social', 'w_organization_social_feed',
+              'r_organization_social_feed')
 GRANT = ' '.join(GRANT_LIST)
-GRANT_COMMA = 'w_organization_social_feed,r_organization_social,rw_organization_admin,w_organization_social'
+GRANT_COMMA = ('w_organization_social_feed,r_organization_social,r_organization_social_feed,rw_organization_admin,'
+               'w_organization_social')
+# The grant of 0.3.1 (four scopes): since 0.4.0 it is not this grant any more and must fail closed.
+GRANT_0_3_1 = ' '.join(GRANT_LIST[:4])
 
 
 def identity(port=123, days=60, refresh=False):

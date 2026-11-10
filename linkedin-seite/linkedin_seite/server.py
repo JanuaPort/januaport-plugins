@@ -11,6 +11,7 @@ import time
 from aiohttp import web
 from .domain import Config, ReportError, parse_request, encode_response, strict_json, REPORTS
 from .redaktion import ROUTES as POST_ROUTES, VORSCHAU, FREIGABE_HEADER, parse_freigabe, parse_vorschau, parse_write
+from . import kommentare
 from .workers import WorkerPool
 
 LOG = logging.getLogger("linkedin_seite")
@@ -25,6 +26,9 @@ IDENTITY_PATH = "/run/secrets/oauth/runtime-key"
 GATEWAY_TOKEN_PATH = "/run/secrets/gateway/runtime-key"
 POST_PREFIX = ["v1", "linkedin-post"]
 MAX_POST_BODY = 1024
+# Stufe B3 (#1237, 0.4.0): own prefix, own core template linkedin-seite-community, three tools.
+COMMUNITY_PREFIX = ["v1", "linkedin-kommentare"]
+COMMUNITY_ROUTES = {"comments": "GET", "tagesliste": "GET", "reply": "POST"}
 
 
 def read_key(path):
@@ -62,14 +66,18 @@ def load_write_side(cfg, token_path=GATEWAY_TOKEN_PATH):
 
 
 def build_pools(cfg, identity_path=IDENTITY_PATH, token_path=GATEWAY_TOKEN_PATH):
-    """Both pools on ONE Tokens object (#1237): two on one refresh token would race."""
+    """All pools on ONE Tokens object (#1237): two on one refresh token would race.
+
+    The community pool (B3) takes no gateway token: replies need no editorial plan (SEC S1).
+    """
+    from .community_pool import CommunityPool
     from .oauth import Tokens, load_identity
     from .post_pool import WritePool
 
     tokens = Tokens(load_identity(identity_path))
     token, reason = load_write_side(cfg, token_path)
     LOG.info("schreiben=%s", reason)
-    return WorkerPool(cfg, tokens), WritePool(cfg, tokens, token) if token else None
+    return WorkerPool(cfg, tokens), WritePool(cfg, tokens, token) if token else None, CommunityPool(cfg, tokens)
 
 
 def check_bridge(request, key):
@@ -85,18 +93,37 @@ def check_bridge(request, key):
         raise ReportError(403, "bridge_forbidden")
 
 
-async def bounded_body(request):
-    if request.content_length is not None and request.content_length > MAX_POST_BODY:
+async def bounded_body(request, limit=MAX_POST_BODY):
+    if request.content_length is not None and request.content_length > limit:
         raise ReportError(400, "request_too_large")
     raw = b""
     async for chunk in request.content.iter_chunked(1024):
         raw += chunk
-        if len(raw) > MAX_POST_BODY:
+        if len(raw) > limit:
             raise ReportError(400, "request_too_large")
     return raw
 
 
-def create_app(cfg, key, pool, write_pool=None):
+async def until_done(request, coroutine):
+    """Run a pool call and cancel it when the client goes away (aiohttp does not cancel handlers)."""
+    task = asyncio.create_task(coroutine)
+    try:
+        while not task.done():
+            if request.transport is None or request.transport.is_closing():
+                task.cancel()
+                raise asyncio.CancelledError()
+            await asyncio.wait({task}, timeout=0.025)
+        return await task
+    finally:
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+
+def create_app(cfg, key, pool, write_pool=None, community_pool=None):
     @web.middleware
     async def warnings(request, handler):
         response = await handler(request)
@@ -113,6 +140,7 @@ def create_app(cfg, key, pool, write_pool=None):
         code = "ok"
         route = "unknown"
         write_route = request.path.startswith("/v1/linkedin-post/") and request.method == "POST"
+        reply_route = request.path == "/v1/linkedin-kommentare/reply" and request.method == "POST"
         dispatched = False
         header_checked = False
         try:
@@ -151,6 +179,27 @@ def create_app(cfg, key, pool, write_pool=None):
                 if extra:
                     payload = encode_response({**json.loads(payload), **extra})
                 return web.Response(status=status, body=payload, content_type="application/json")
+            if len(parts) == 4 and parts[1:3] == COMMUNITY_PREFIX and parts[3] in COMMUNITY_ROUTES:
+                # Stufe B3 (#1237): after a valid bridge every definite refusal of reply is HTTP 200
+                # with nicht_ausgefuehrt; after dispatch only with the IPC proof of no send attempt.
+                route = "linkedin-kommentare/" + parts[3]
+                if request.method != COMMUNITY_ROUTES[parts[3]]:
+                    raise ReportError(405, "method_not_allowed")
+                check_bridge(request, key)
+                if parts[3] == "reply":
+                    header_checked = True
+                    req = kommentare.parse_reply(await bounded_body(request, kommentare.MAX_REPLY_BODY))
+                else:
+                    if request.body_exists:
+                        raise ReportError(400, "unexpected_body")
+                    pairs = list(request.query.items())
+                    req = (kommentare.parse_comments(pairs) if parts[3] == "comments"
+                           else kommentare.parse_tagesliste(pairs))
+                if community_pool is None:
+                    raise ReportError(503, "kommentare_nicht_eingerichtet")
+                dispatched = True
+                payload = await until_done(request, community_pool.run(req))
+                return web.Response(body=payload, content_type="application/json")
             if len(parts) != 4 or parts[1:3] != ["v1", "linkedin"] or parts[3] not in REPORTS:
                 raise ReportError(404, "route_not_found")
             source, report = parts[2:]
@@ -161,26 +210,12 @@ def create_app(cfg, key, pool, write_pool=None):
             if request.can_read_body:
                 raise ReportError(400, "unexpected_body")
             req = parse_request(report, list(request.query.items()))
-            task = asyncio.create_task(pool.run(req))
-            try:
-                while not task.done():
-                    if request.transport is None or request.transport.is_closing():
-                        task.cancel()
-                        raise asyncio.CancelledError()
-                    await asyncio.wait({task}, timeout=0.025)
-                payload = await task
-            finally:
-                if not task.done():
-                    task.cancel()
-                    try:
-                        await task
-                    except asyncio.CancelledError:
-                        pass
+            payload = await until_done(request, pool.run(req))
             return web.Response(body=payload, content_type="application/json")
         except ReportError as exc:
             code = exc.code
             payload = {"error": code}
-            if (write_route and header_checked and code != 'nicht_freigegeben'
+            if ((write_route or reply_route) and header_checked and code != 'nicht_freigegeben'
                     and (not dispatched or getattr(exc, 'nicht_ausgefuehrt', False))):
                 payload['nicht_ausgefuehrt'] = True
                 return web.json_response(payload, status=200)
@@ -191,7 +226,7 @@ def create_app(cfg, key, pool, write_pool=None):
         except Exception:
             code = "internal_error"
             payload = {"error": code}
-            if write_route and header_checked and not dispatched:
+            if (write_route or reply_route) and header_checked and not dispatched:
                 payload['nicht_ausgefuehrt'] = True
                 return web.json_response(payload, status=200)
             return web.json_response(payload, status=503)
@@ -211,6 +246,8 @@ def create_app(cfg, key, pool, write_pool=None):
     app.router.add_route("*", "/{tail:.*}", fallback)
 
     async def cleanup(app):
+        if community_pool is not None:
+            await community_pool.close()
         if write_pool is not None:
             await write_pool.close()
         await pool.close()
@@ -235,10 +272,10 @@ def serve():
     key = load_runtime_files()
     # Exact plugin-network IPv4 is provisioned by the operator, never 0.0.0.0.
     bind = bind_ip(os.environ.get("LINKEDIN_SEITE_BIND_IP", ""))
-    pool, write_pool = build_pools(cfg)
+    pool, write_pool, community_pool = build_pools(cfg)
     from .safe_http import serve_app
 
-    asyncio.run(serve_app(create_app(cfg, key, pool, write_pool), bind))
+    asyncio.run(serve_app(create_app(cfg, key, pool, write_pool, community_pool), bind))
 
 
 def main():

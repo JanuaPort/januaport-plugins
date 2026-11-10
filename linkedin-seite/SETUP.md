@@ -1,4 +1,4 @@
-# LinkedIn-Seite 0.3.1 einrichten — Stufe A und Stufe B1
+# LinkedIn-Seite 0.4.0 einrichten — Stufe A, Stufe B1 und Stufe B3
 
 Diese Anleitung führt den Admin durch LinkedIn-Zustimmung und Tresoreintrag. Der Betreiber
 installiert vorher den Beisteller, legt die beiden Tresor-Stellen an und setzt den Bridge-Key.
@@ -11,9 +11,9 @@ Die API-Formen und der Live-Zugriff müssen vor produktiver Freigabe geprüft we
    Community-Management-Zugang einschließlich Development Tier bei LinkedIn beantragen.
    Die zustimmende Person braucht die passende **Seiten-Admin-Rolle** dieser Organisation.
 2. In der App exakt die Redirect-URI `http://localhost:8765/linkedin/callback` eintragen.
-3. Genau die vier Scopes `rw_organization_admin r_organization_social w_organization_social w_organization_social_feed`
-   freigeben lassen. Sie stehen im Produkt „Community Management API“. **Ein** Grant trägt Lesen
-   und Schreiben. Der benötigte Admin-Scope hat bei LinkedIn keine Read-only-Alternative. Die
+3. Genau die fünf Scopes `rw_organization_admin r_organization_social w_organization_social w_organization_social_feed r_organization_social_feed`
+   freigeben lassen. Sie stehen im Produkt „Community Management API“. **Ein** Grant trägt Lesen,
+   Schreiben und seit 0.4.0 die Kommentare (`r_organization_social_feed`, Stufe B3). Der benötigte Admin-Scope hat bei LinkedIn keine Read-only-Alternative. Die
    Lese-Routen senden deshalb nur feste GETs; geschrieben wird nur über die Schreibrouten von
    Stufe B1, nach Freigabe im Kern.
 4. Client-ID und Client-Secret bereithalten. Organisations-ID/URN und eine unterstützte
@@ -74,13 +74,13 @@ einschalten; ohne diesen Beleg gilt der vertrauliche Client-Code-Tausch ohne PKC
 Anschließend meldet stderr **„Refresh-Token: ja“** oder **„Refresh-Token: nein“**.
 LinkedIn liefert die gewährten Scopes kommagetrennt und die Laufzeiten gelegentlich knapp
 über dem Höchstwert (beobachtet: Refresh-Token 59 Sekunden über 365 Tagen). Das Skript und
-der Dienst akzeptieren Komma oder Leerraum als Trenner, verlangen aber genau die vier
+der Dienst akzeptieren Komma oder Leerraum als Trenner, verlangen aber genau die fünf
 gepinnten Scopes, und deckeln eine Überschreitung bis zu einem Tag auf 60 bzw. 365 Tage.
 Alles darüber hinaus wird als unerwartete Antwort abgewiesen; die Frist wird nie verlängert.
 Nennt die Antwort auf die Zustimmung keine Scopes, bricht das Skript ohne JSON ab.
 
 Die Tresor-Stelle `plugin-linkedin-seite-oauth` enthält JSON mit `client_id`, `client_secret`,
-`access_token`, `access_expires_at`, `scope` (die vier Werte) und, falls LinkedIn sie liefert,
+`access_token`, `access_expires_at`, `scope` (die fünf Werte) und, falls LinkedIn sie liefert,
 gemeinsam `refresh_token`, `refresh_expires_at`. Ablaufwerte sind ISO-8601-Zeitstempel mit Zeitzone.
 Ohne `scope` oder mit einer anderen Menge startet der Dienst nicht (`startup_failed`).
 Der Dienst bekommt ausschließlich eine RAM-Datei im read-only Mount; der Betreiber muss
@@ -143,7 +143,7 @@ Wer schon getrennt für Lesen und Schreiben zugestimmt hat, stellt in dieser Rei
 2. **Version 0.3.1 einspielen** (Betreiber): Image, `docker-compose.yml`, die Path-Unit aus `deploy/`
    und `systemctl daemon-reload`. Bis Schritt 3 endet der Dienst mit `startup_failed`, weil das alte
    JSON kein `scope` trägt. Das ist gewollt.
-3. **Neu zustimmen** (PO): die Zeile mit `--gesamt` von oben. LinkedIn zeigt den Dialog mit allen vier
+3. **Neu zustimmen** (PO): die Zeile mit `--gesamt` von oben. LinkedIn zeigt den Dialog mit allen
    Scopes, stderr meldet `Refresh-Token: ja` (bei „nein“ gilt die 60-Tage-Regel unten). Das JSON geht
    nach `plugin-linkedin-seite-oauth`, die Path-Unit erzeugt den Container neu, im Log steht
    `schreiben=an`.
@@ -221,3 +221,52 @@ der Beisteller liest keine Stimmen. Ein Post-Entwurf (DRAFT) über die Schnittst
 nicht möglich. Rückbau: `schreiben` aus der Konfiguration nehmen und die Stelle
 `plugin-linkedin-seite-gateway` leeren. Das Token behält dabei seine Schreib-Scopes; sie enden erst
 mit dem Widerruf bei LinkedIn, und einen Grant nur zum Lesen gibt es seit 0.3.1 nicht mehr.
+
+## Umstieg auf fünf Scopes (von 0.3.1)
+
+Version 0.4.0 verlangt den fünften Scope `r_organization_social_feed`. Ein JSON mit den vier Scopes von
+0.3.1 startet nicht mehr (`startup_failed`), deshalb braucht es eine neue Zustimmung. Termin über
+INB-LEAD, **nicht** vor einem anstehenden Post: bis Schritt 3 gehen weder Lesen noch Posten.
+
+1. **Autorisierung bei LinkedIn widerrufen** (PO, im eigenen LinkedIn-Konto).
+2. **Version 0.4.0 einspielen** (Betreiber): Image und `docker-compose.yml`; bis Schritt 3 endet der
+   Dienst mit `startup_failed`. Das ist gewollt.
+3. **Neu zustimmen** (PO): die Zeile mit `--gesamt` von oben. LinkedIn zeigt den Dialog mit allen fünf
+   Scopes, stderr nennt sie und meldet `Refresh-Token: ja` oder `nein`. Das JSON geht nach
+   `plugin-linkedin-seite-oauth`, die Path-Unit erzeugt den Container neu.
+4. **Lese-Beweis:** Ein Lesewerkzeug (etwa `posts`) liefert Zahlen statt `source_access_denied`, im Log
+   steht `schreiben=an`. Erst danach den ersten Kommentar-Lauf.
+
+## Stufe B3: Kommentare beantworten
+
+Ab Version 0.4.0 liest das Inbound-Team Kommentare unter eigenen Posts und antwortet als Organisation,
+ohne Klick des PO je Antwort (Vorlage `linkedin-seite-community`, Werkzeuge `comments`, `reply`,
+`tagesliste`). Der Dienst prüft jede Antwort vorher live bei LinkedIn: eigener Post höchstens 30 Tage
+alt, Kommentar oberster Ebene genau dieses Posts, nicht von uns, noch nicht von uns beantwortet, und
+demselben Verfasser unter diesem Post noch nicht geantwortet. Er sendet höchstens alle 60 Sekunden eine
+Antwort. Der Tagesdeckel steht im Kern: 8 Versuche je Tag am Werkzeug `reply`, auch abgelehnte zählen.
+Hochgesetzt wird er nur auf Wort des PO.
+
+**Rechte am Antwort-Token** (in der Admin-Oberfläche von JanuaPort, genau diese drei, sonst nichts):
+`linkedin-seite-community:comments`, `linkedin-seite-community:reply` und `linkedin-seite:posts`. Kein
+Gedächtnis, keine Kartei, keine Ablage, keine Mail, kein weiteres Schreibwerkzeug, kein Redaktionsplan.
+Kein anderes Token bekommt `linkedin-seite-community:comments`. Das Recht
+`linkedin-seite-community:tagesliste` gehört an das Redaktions-Token: die Liste trägt nur Links und
+keinen fremden Text.
+
+**Not-Aus (PO selbst):** In der Admin-Oberfläche von JanuaPort am Antwort-Token das Recht
+`linkedin-seite-community:reply` entziehen. Das wirkt sofort und braucht keinen Techniker; danach
+antwortet `reply` mit 403. Lesen geht weiter. Vor dem ersten echten Lauf einmal üben. Als letzter
+Schritt bleibt der Widerruf der Autorisierung bei LinkedIn (dann geht auch alles andere nicht mehr).
+
+**Tagesliste:** einmal am Tag `tagesliste`, Empfänger ist der PO. Sie enthält nur Links: eigene Antworten
+der letzten 24 Stunden, offene Kommentare der letzten 30 Tage, `doppelt` und
+`nach_antwort_bearbeitet`. Eine Fehlantwort löscht der PO direkt bei LinkedIn; der Dienst löscht nichts.
+
+**Optional, Betreiber:** In `config.json` unter `kommentare.eigene_personen` die Personen-URNs eigener
+Leute eintragen (etwa des PO), in der Form `urn:li:person:…`, wie LinkedIn sie im Feld `actor` liefert.
+Ihre Kommentare und Antworten zählen dann als „von uns“, damit die Firma
+nicht ein zweites Mal antwortet. Der Dienst ermittelt diese URNs nicht und gibt sie nie aus.
+
+**KI-Hinweis:** Laut PO-Entscheid steht einmal im Seitenprofil, dass Antworten auf Kommentare teils
+ein KI-Team schreibt; nicht unter jeder Antwort.
