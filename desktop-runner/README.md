@@ -331,7 +331,8 @@ Eigener Benutzerprozess; L6 installiert beide Exe aus demselben signierten
 Release im selben Ordner mit jeweils einer Anmelde-Aufgabe. Ein unsignierter Branch-Build besteht absichtlich
 die Serverprüfung nicht.
 
-Tray: grün „Arbeitet“, gelb „Pausiert“, rot „Angehalten“, violett „Störung“.
+Tray: grün „Arbeitet“, gelb „Pausiert“, rot „Angehalten“, violett „Störung“, fünf Sekunden orange nach einem
+abgewiesenen Tastenkürzel (#1240).
 Menü: Zustand, Pause 15 min / 1 h / bis Weiter, Weiter, Anhalten/Fortsetzen,
 Manifest-Setups, auf Testgeräten „Test“ als Anzeige, Beenden nur des Bedienfelds.
 Gesperrte Setups sind grau; nur `braucht_eingabe:true` ergänzt „braucht Eingabe“.
@@ -362,7 +363,8 @@ fehlen diese, endet der Prozess ohne Anzeige und ohne Panic.
 Plan-Invariante 14: Fenster erst nach Klick auf „Rückfrage anzeigen“;
 Titel „JanuaPort – <titel>“, statischer Text und 2–4 gewöhnliche Knöpfe.
 `WS_EX_NOACTIVATE`, `SW_SHOWNOACTIVATE`, kein Default-Knopf, Anfangsfokus,
-`SetForegroundWindow`, `SetFocus` oder `SetActiveWindow`. Keine Toasts oder Hotkeys.
+`SetForegroundWindow`, `SetFocus` oder `SetActiveWindow`. Keine Toasts. Hotkeys gibt es nur für
+Setups, genau wie unter „Tastenkürzel für Setups“ beschrieben (#1240 F-T).
 Die einzige Sprechblase ist der Hinweis bei einer neuen Rückfrage (#1240): ein
 Windows-Hinweis am Symbol (`NIF_INFO`, ohne Ton) mit festem Titel „JanuaPort“ und festem
 Text „JanuaPort braucht eine Antwort“, genau einmal je neuer Rückfrage. Er trägt weder Titel
@@ -373,6 +375,40 @@ Höchstens ein Dialog; zweite Frage nicht anzeigen.
 die Frage bis zum erneuten Klick oder Fristende.
 UIA-Skripte desselben Benutzers können das Bedienfeld bedienen;
 endgültig für den Baum ist nur Anhalten.
+
+**Tastenkürzel für Setups (#1240 F-T).** Ein Tastenkürzel tut genau das, was der Klick auf den Setup-Eintrag im
+Infobereich-Menü tut, mit derselben Prüfung (`panel.Model.Choose("setup:<pin>/<setup>")`): Es gibt keinen zweiten Weg.
+Erlaubt sind nur `Strg+Alt+F1` bis `Strg+Alt+F12`. Die Kürzel stehen im Feld `tasten` der `jnpt.app.json` der App
+(Liste aus `taste`, `pin`, `setup`); der Kern lässt keine andere Taste zu, der Läufer prüft das Feld beim Ablegen
+der App noch einmal, das Bedienfeld ein drittes Mal (Namen im Muster `^[a-z0-9_]{1,48}$`, damit kein Eintrag je eine andere
+Menü-Kennung wie `exit` oder `pause0` erzeugt). Der Läufer legt `tasten` im verschlüsselten Siegel der App ab, nie im
+Ordner der WebView, und liefert es nur bei gültigem Siegel. Das Bedienfeld meldet die Kürzel mit `RegisterHotKey` und
+`MOD_NOREPEAT` an, ausschließlich in `cmd/bedienfeld/hotkey_windows.go`, am versteckten Fenster des UI-Threads. Bei jedem Abgleich
+der App-Liste meldet es alle Kürzel ab und neu an; einen eigenen Entzugspfad gibt es nicht, und beim Beenden gibt es alle frei.
+Eine App, die aus dem Manifest fällt, verliert mit dem Siegel ihre Kürzel beim nächsten Abgleich.
+
+Ablauf eines Drucks: `WM_HOTKEY` ruft nur das Modell (`PressHotkey`), das den Druck vormerkt. Im 200-ms-Zeitgeber wartet
+`PollHotkey`, bis Strg, Alt, Shift und Win losgelassen sind (höchstens zwei Sekunden, nie mit `Sleep` im Nachrichtenzweig),
+und ruft dann `Choose` auf. Ein zweiter Druck während des Wartens wird verworfen, nicht vorgemerkt. Sind die Tasten nach zwei
+Sekunden noch gedrückt, wird abgewiesen, und der Druck startet später nie nachträglich.
+
+Abweisung (leere Befehle aus `Choose`, zum Beispiel offline, beschäftigt, pausiert, angehalten, Setup nicht im Manifest, Störung):
+ein Systemton (`MessageBeep`) und für fünf Sekunden ein orangefarbenes Symbol mit dem Tooltip
+„Kürzel abgewiesen (K<n>): <Grund>“, wobei `K1` Störung, `K2` angehalten, `K3` pausiert, `K4` offline, `K5` beschäftigt,
+`K6` braucht Eingabe, `K7` Setup nicht verfügbar und `K8` Umschalttasten noch gedrückt bedeutet. Keine Sprechblase, kein Fenster,
+kein Fokuswechsel; eine Störung bleibt violett. Schlägt die Anmeldung eines Kürzels fehl (zum Beispiel Fehler 1409), steht im
+Menü ein deaktivierter Hinweis „Kürzel belegt: Strg+Alt+F<n>“, nie still. Steht dieselbe Taste in zwei Apps desselben
+Geräts, wird sie für keine der beiden angemeldet (beide gesperrt); das Menü zeigt „Kürzel gesperrt (doppelt): Strg+Alt+F<n>“.
+Wird eine der Apps entzogen, meldet sich die verbliebene beim nächsten Abgleich an.
+
+Grenzen, ehrlich: Die Erkennung „belegt“ findet nur systemweit angemeldete Kürzel. Wertet ein Fachprogramm ein
+Kürzel in seinem eigenen Fenster aus (etwa Strg+Alt+F5 zum Drucken), gelingt `RegisterHotKey` trotzdem, und das gewohnte
+Kürzel startet dann das Setup; der Admin prüft die Kürzel des Fachprogramms vor der Vergabe. Auf dem gesperrten Bildschirm
+(sicherer Desktop) kommt kein `WM_HOTKEY` an, es löst nichts aus. RDP und Citrix im Vollbild fangen Strg+Alt-Kürzel ab; sie
+gehen in die entfernte Sitzung. Terminalserver werden nicht unterstützt. Ein Skript, das Tasten mit `SendInput` sendet, löst
+Kürzel aus wie UI-Automation (dieselbe Grenze wie beim Bedienen des Menüs). Eine App, deren Siegel ein älterer Läufer ohne
+`tasten` angelegt hat, bekommt Kürzel erst mit der nächsten App-Fassung, weil der Läufer das Paket nicht neu holt.
+Der echte Tastendruck und die Prüfung „kein Fokusraub“ sind nur auf dem Testgerät belegbar, nicht in der CI.
 
 Prüfung: `python probe/l4_mutations.py`, exklusiver Container `l4-test`
 (Go 1.26.10), Linux-Race-Tests, Linux-/Windows-vet, GUI-Cross-Build und D0.

@@ -52,13 +52,15 @@ type Runtime struct {
 	reader *client.Reader
 }
 
-// AppList sind Namen/Anzeigemodi und Sequenz des geprüften Manifests sowie das Testgerät-Signal.
-// Kein Token, kein Pfad; Modi bleiben hinter fensterio, panel erhält nur Namen.
+// AppList sind Namen/Anzeigemodi und Sequenz des geprüften Manifests sowie das Testgerät-Signal und die
+// Tastenkürzel der Apps (#1240 F-T, nur aus gültigem Siegel). Kein Token, kein Pfad; Modi bleiben hinter
+// fensterio, panel erhält nur Namen und Kürzel.
 type AppList struct {
 	Names       []string
 	Modes       map[string]string
 	ManifestSeq uint64
 	TestDevice  bool
+	Hotkeys     []client.Hotkey
 }
 
 func NewRuntime(cfg RuntimeConfig) (*Runtime, error) {
@@ -87,6 +89,7 @@ func (r *Runtime) Apps() (AppList, error) {
 	for _, a := range v.Apps {
 		l.Names = append(l.Names, a.Name)
 		l.Modes[a.Name] = a.Mode
+		l.Hotkeys = append(l.Hotkeys, r.reader.Hotkeys(a)...)
 	}
 	return l, nil
 }
@@ -187,7 +190,7 @@ func Watch(ctx context.Context, interval time.Duration, read func() (AppList, er
 		switch err {
 		case nil:
 			failures = 0
-			if !have || !slices.Equal(l.Names, last.Names) || !maps.Equal(l.Modes, last.Modes) || l.ManifestSeq != last.ManifestSeq || l.TestDevice != last.TestDevice {
+			if !have || !slices.Equal(l.Names, last.Names) || !maps.Equal(l.Modes, last.Modes) || l.ManifestSeq != last.ManifestSeq || l.TestDevice != last.TestDevice || !slices.Equal(l.Hotkeys, last.Hotkeys) {
 				last, have = l, true
 				emit(l)
 			}

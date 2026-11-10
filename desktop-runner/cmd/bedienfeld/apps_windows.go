@@ -48,6 +48,7 @@ func (a *application) drainApps() {
 				s.UpdateApps(l)
 			}
 			a.model.SetApps(l.Names)
+			a.applyHotkeys(l)
 			a.render()
 		case r := <-a.opened:
 			a.handleOpened(r)

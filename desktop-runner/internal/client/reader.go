@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 )
 
 // Reader liest den Zustand eines laufenden Läufers, ohne ihn zu verändern (SEC K6b-2 B3). Das Bedienfeld
@@ -115,6 +116,23 @@ func (r *Reader) Apps() (AppsView, error) {
 		return AppsView{}, ErrManifest
 	}
 	return AppsView{Apps: append([]App(nil), *m.Apps...), ManifestSeq: m.Seq, TestDevice: m.TestDevice}, nil
+}
+
+// Hotkeys liefert die Tastenkürzel der App nur bei gültigem Siegel: Siegel lesbar und passend zu Name und Commit,
+// Ordner stimmt mit dem Siegel überein (derselbe Prüfweg wie OpenApp), Kürzel erneut in der Grammatik des Kerns.
+// Jeder Mangel ergibt keine Kürzel, nie eine Teilmenge. Eine App ohne Kürzel kostet nur das Lesen des Siegels.
+func (r *Reader) Hotkeys(app App) []Hotkey {
+	if !validAppEntry(app) {
+		return nil
+	}
+	var seal appSeal
+	if err := r.Load(sealName(app), &seal); err != nil || seal.Name != app.Name || seal.Commit != app.Commit || len(seal.Hotkeys) == 0 || !validHotkeys(seal.Hotkeys) {
+		return nil
+	}
+	if _, err := openApp(r.root, r, app); err != nil {
+		return nil
+	}
+	return slices.Clone(seal.Hotkeys)
 }
 
 // OpenApp prüft das Siegel und liefert den Ordner; derselbe Weg wie AppStore.Open.

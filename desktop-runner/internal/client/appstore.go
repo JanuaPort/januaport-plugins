@@ -23,6 +23,9 @@ type appSeal struct {
 	Name   string     `json:"name"`
 	Commit string     `json:"commit"`
 	Files  []FileSeal `json:"files"`
+	// Hotkeys sind die geprüften Tastenkürzel der App (#1240 F-T). Sie liegen im verschlüsselten Zustand, nie im
+	// Ordner der WebView; das Bedienfeld liest sie nur bei gültigem Siegel (Reader.Hotkeys).
+	Hotkeys []Hotkey `json:"tasten,omitempty"`
 }
 
 func validAppEntry(app App) bool {
@@ -102,6 +105,10 @@ func (s *AppStore) Prepare(raw []byte, app App) error {
 	if err != nil {
 		return ErrHash
 	}
+	// Ein unlesbares oder ungültiges Feld tasten sperrt nur die Kürzel, nie die App: Der Kern prüft dieselbe Grammatik,
+	// und ein Fenster ist wichtiger als ein Tastenkürzel.
+	hotkeys, _ := parseHotkeys(files["jnpt.app.json"])
+	delete(files, "jnpt.app.json")
 	return s.state.Use(func() error {
 		base := filepath.Join(s.state.Root, "apps", app.Name)
 		if err := os.MkdirAll(base, 0o700); err != nil {
@@ -129,7 +136,7 @@ func (s *AppStore) Prepare(raw []byte, app App) error {
 		if _, err = os.Lstat(dest); err == nil {
 			return ErrHash
 		}
-		if err = s.state.saveLocked(sealName(app), appSeal{Name: app.Name, Commit: app.Commit, Files: seal}); err != nil {
+		if err = s.state.saveLocked(sealName(app), appSeal{Name: app.Name, Commit: app.Commit, Files: seal, Hotkeys: hotkeys}); err != nil {
 			return err
 		}
 		return os.Rename(stage, dest)

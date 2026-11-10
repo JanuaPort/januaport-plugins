@@ -95,7 +95,9 @@ func loadAppPackage(b []byte, app App) (map[string][]byte, error) {
 					return fmt.Errorf("%s: csp", file)
 				}
 			}
-			if path.Base(file) != "jnpt.app.json" {
+			// Die jnpt.app.json der Wurzel bleibt in der Rückgabe: Prepare liest daraus tasten (#1240) und legt sie
+			// nie im Ordner der WebView ab. Eine tiefer liegende Datei dieses Namens wird wie bisher verworfen.
+			if path.Base(file) != "jnpt.app.json" || file == "jnpt.app.json" {
 				files[file] = content
 			}
 		}

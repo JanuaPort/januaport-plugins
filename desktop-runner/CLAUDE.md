@@ -35,7 +35,8 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 | internal/fensterio | Hinter der Tür des Bedienfelds (K6b-2): Gateway (App-Token im RAM, Modus a: 401 → einmal neu; Modus b: nativer Login), Pipe-Wrapper mit zwei Operationen, `Host` (UI-Thread-sicher), `PanelExchange` über die vorhandene Verbindung, `Runtime` (Apps lesen, öffnen), Urteile für native Ereignisse, `Surface` (nur Windows) |
 | internal/wv2com | Nur Windows: dünner COM-Adapter für NavigationStarting, NewWindowRequested, DownloadStarting, Quelle der Webnachricht, ClearBrowsingData |
 | internal/edge | Nur Windows: geprüfte, angepasste Kopie von go-webview2 v1.0.19 `pkg/edge` (MIT, NOTICE): kein `os.Exit`, kein `log.Fatal`, Start mit `Begin`/`Ready`/`Cancel`/`Close` statt `Embed` |
-| internal/client/reader.go | `Reader`: nur lesender Zugriff des Bedienfelds auf Zugangsdaten, geprüftes Manifest und App-Siegel |
+| internal/client/reader.go | `Reader`: nur lesender Zugriff des Bedienfelds auf Zugangsdaten, geprüftes Manifest und App-Siegel; `Reader.Hotkeys` liefert Tastenkürzel nur bei gültigem Siegel |
+| internal/client/apphotkeys.go, internal/panel/hotkey.go, cmd/bedienfeld/hotkey_windows.go | Tastenkürzel für Setups (#1240 F-T, Invariante 22): strenges Parsen von `tasten`, Modell (Taste gleich Klick, Warten, Abweisung), Windows-Anmeldung als einzige Stelle für `RegisterHotKey` |
 | apptoken.go, applogin.go, appstore.go, appload.go, copied_apphost.go | Vertrag 5 im Client: App-Token, privates Ablegen mit Siegel, Ladeprüfung, markierte apphost-Kopie |
 | appprune.go | Entzug (#1342): räumt nach jedem Sync und im Heartbeat-Takt Ablage, WebView-Profil und Siegel nicht mehr zugewiesener Apps gegen das gespeicherte, geprüfte Manifest ab (Invariante 20) |
 | contract/golden-v5 | Bytegleicher Kernspiegel von Vertrag 5 (Manifest und Routen) mit SHA256SUMS |
@@ -329,8 +330,8 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     „Test“ nur auf Testgeräten, Beenden nur des Bedienfelds. `bis` lokal;
     offline + Fristablauf → „offline, Frist abgelaufen“. Graue Setups nur bei
     `braucht_eingabe:true` mit „braucht Eingabe“ ergänzen.
-    Fenster erst nach Klick, kein Hotkey/Toast/Autostart-Code; die einzige Sprechblase ist der feste
-    Hinweis bei neuer Rückfrage (Invariante 19, #1240 A2).
+    Fenster erst nach Klick, kein Toast/Autostart-Code, ein Hotkey nur für Setups und nur über Invariante 22
+    (#1240 F-T); die einzige Sprechblase ist der feste Hinweis bei neuer Rückfrage (Invariante 19, #1240 A2).
     Dialog „JanuaPort – <titel>“, statischer Text, 2–4 gewöhnliche Knöpfe,
     `WS_EX_NOACTIVATE`, `SW_SHOWNOACTIVATE`, kein `BS_DEFPUSHBUTTON`, kein
     Anfangsfokus/SetForegroundWindow/SetFocus/SetActiveWindow. Höchstens einer
@@ -674,7 +675,9 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     wird nur ein Eintrag mit gültigem App-Namen (`fenster.ValidAppName`, wie im Manifest), der nicht im geprüften
     Manifest steht. Ungültige Namen (`.prepare-*`, Großbuchstaben, Punkte, Trenner), fremde Dateien und alle
     anderen Bereiche (`envs`, `tmp`, `packages`) bleiben unberührt. Entfernt werden `apps\<name>` (alle Commits),
-    `webview\<name>` und die Siegel `app-<name>-<commit>` (`sealOwner`, aus dem lokalen Wurzelverzeichnis).
+    `webview\<name>` und die Siegel `app-<name>-<commit>` (`sealOwner`, aus dem lokalen Wurzelverzeichnis). Mit dem
+    Siegel entfallen die Kürzel der App (Invariante 22): `Reader.Hotkeys` liefert sie nur bei gültigem Siegel, und das Bedienfeld
+    meldet beim nächsten Abgleich alle ab und neu an, ohne eigenen Entzugspfad.
     **Kein Verweis wird verfolgt:** Gelöscht wird mit `removeTree` (Lstat-Rekursion, kein `os.RemoveAll`); ist ein
     Eintrag selbst Symlink oder Junction, verliert nur der Verweis, nie sein Ziel. Ist `apps\` oder `webview\`
     selbst kein echtes Verzeichnis, wird darin nichts gelöscht (Logcode `10 2`).
@@ -707,6 +710,48 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Signatur, Sequenz). Läuft `StartBy` beim Nachholen ab, endet der Auftrag wie bisher (`internal`). Passt die
     Sequenz und fehlt nur der Pin, gibt es kein Nachholen; es gibt keine Schleife und kein Kernfeld.
     Tests: `TestAdhocHoltVeraltetesManifestEinmalNach`.
+22. Tastenkürzel für Setups (#1240 F-T, nur Windows): Ein Kürzel tut genau das, was der Klick auf den Setup-Eintrag im
+    Infobereich-Menü tut. **Einziger Weg:** `Model.PollHotkey` ruft `Choose("setup:"+pin+"/"+setup)`, also dieselbe Prüfung
+    (online, nicht beschäftigt, nicht pausiert, nicht angehalten, Setup im geprüften Manifest, keine freien Felder); eine
+    zweite Freigabeprüfung oder ein direkter Befehl wäre ein Gate-Befund (`TestTasteGleichKlick`: `Effects(Taste) ==
+    Effects(Klick)` für online, offline, beschäftigt, pausiert, angehalten, braucht Eingabe, Setup nicht im Manifest, Störung;
+    Mutant `taste-ohne-freigabepruefung`). **Quelle:** Feld `tasten` der `jnpt.app.json` (Liste `{taste, pin, setup}`), im
+    Kern zugelassen als Strg+Alt+F1 bis F12, jede Taste einmal, Namen `^[a-z0-9_]{1,48}$`. `loadAppPackage` hält die
+    Wurzel-`jnpt.app.json` zurück, `AppStore.Prepare` parst `tasten` mit `parseHotkeys` (kanonisches JSON ohne doppelte
+    Schlüssel, geschlossene Einträge, dieselbe Grammatik) und legt es im `appSeal` im verschlüsselten Zustand ab, **nie im
+    Ordner der WebView** (`TestTastenVersiegeltUndNichtImWebViewOrdner`, `appstore_test.go` „jnpt.app.json wurde abgelegt“).
+    Ein ungültiges Feld sperrt nur die Kürzel, nicht die App. `Reader.Hotkeys` liefert die Kürzel nur bei gültigem Siegel
+    (Name, Commit, Ordner gleich Siegel wie bei `OpenApp`, Grammatik erneut) und nie eine Teilmenge; `Runtime.Apps` füllt
+    `AppList.Hotkeys` daraus, `Watch` meldet auch eine Änderung allein der Kürzel (`client.Hotkey` steht in der B3-Liste
+    `clientErlaubt`: reiner Datentyp). Ein Siegel aus einem älteren Läufer kennt `tasten` nicht; es gibt kein Nachholen. **S2:**
+    `Model.SetHotkeys` prüft Taste (`HotkeyNumber`) und beide Namen noch einmal und verwirft Einträge außerhalb; so entsteht nie ein
+    anderer Befehl als `setup_start` (kein `exit`, `app:`, Pause, Anhalten). **Anmeldung:** nur `cmd/bedienfeld/hotkey_windows.go`
+    (`registerHotKey`/`unregisterHotKey` je genau eine Aufrufstelle), am Fenster des UI-Threads, immer mit
+    `hotkeyModifiers = MOD_ALT|MOD_CONTROL|MOD_NOREPEAT` (0x4003); kein Shift, kein Win, keine frei wählbaren Modifier.
+    `Model.SyncHotkeys` meldet bei **jedem** Abgleich alle ab und neu an (Entzug und Änderung laufen denselben Weg,
+    Invariante 20), `ReleaseHotkeys` beim Beenden. Schlägt eine Anmeldung fehl (zum Beispiel 1409), steht im Menü der
+    deaktivierte Hinweis „Kürzel belegt: <Taste>“, nie still (`HotkeyRegistered`; Mutant `anmeldefehler-verschluckt`).
+    **D1 (SEC):** Steht dieselbe Taste in mehr als einer App desselben Geräts (der Kern weist Doppel nur innerhalb eines
+    Manifests ab), meldet `SyncHotkeys` sie für **keine** App an; beide sind gesperrt und das Menü zeigt „Kürzel gesperrt
+    (doppelt): <Taste>“, nie still. Es gewinnt also nicht die zuerst angemeldete App. Wird eine der Apps entzogen, meldet sich
+    die verbliebene beim nächsten Abgleich an (`TestDoppeltesKuerzelAnZweiAppsWirdWieFremdesBehandelt`,
+    `TestDoppeltesKuerzelNachEntzugEinerAppWirdAngemeldet`; Mutant `doppelpruefung-entfernt`). **Ablauf eines Drucks (S3):** `WM_HOTKEY` ruft nur `Model.PressHotkey` und kehrt zurück; das Warten auf
+    das Loslassen von Strg, Alt, Shift und Win (`GetAsyncKeyState`, in `hotkey_windows.go`) läuft über den 200-ms-Zeitgeber
+    (`PollHotkey`), höchstens `HotkeyWait` = 2 s, **nie mit `Sleep`**. Ein zweiter Druck während des Wartens wird
+    verworfen, es gibt keine Warteschlange; nach 2 s mit gedrückten Tasten wird abgewiesen und nie nachträglich gestartet. Fehlt die
+    Tastenabfrage, gilt sie als gedrückt (fail-closed). **Abweisung** (leere `Commands` aus `Choose`): `MessageBeep` und fünf
+    Sekunden (`RejectShow`) das orangefarbene Symbol mit Tooltip „Kürzel abgewiesen (K<n>): <Grund>“ (feste Codes K1
+    Störung, K2 angehalten, K3 pausiert, K4 offline, K5 beschäftigt, K6 braucht Eingabe, K7 Setup nicht verfügbar, K8
+    Umschalttasten noch gedrückt); **keine Sprechblase** (`TakeNotice` bleibt falsch), kein Fenster, kein Fokus, kein
+    Menüeintrag; eine Störung bleibt violett. **Wächter:** `TestHotkeyWaechter*` (`hotkey_guard_test.go`): `RegisterHotKey` und
+    `UnregisterHotKey` je genau einmal und nur in `hotkey_windows.go`, `MOD_NOREPEAT` (0x4000) gesetzt und sonst nur Strg+Alt,
+    der `WM_HOTKEY`-Zweig ruft nur das Modell, kein `Sleep` in `hotkey_windows.go`, keine Fokus- oder Fenster-API dort;
+    `TestFokusWaechter` behält alle übrigen Verbote (`SetForegroundWindow`, `SetFocus`, `SetActiveWindow`, `MessageBoxW`,
+    NIF_INFO nur in `notify`). Native Proben: `hotkey_windows_test.go` (anmelden, zweite Anmeldung 1409, abmelden, neu
+    anmelden, an einem Fenster nur für Nachrichten; ohne Desktop mit Begründung übersprungen). **Grenzen:** „belegt“
+    findet nur systemweit angemeldete Kürzel, nicht die, die ein Programm in seinem eigenen Fenster auswertet; der gesperrte
+    Bildschirm löst nichts aus; RDP und Citrix im Vollbild fangen Strg+Alt-Kürzel ab; Terminalserver sind nicht unterstützt;
+    `SendInput` löst Kürzel aus wie UI-Automation. Der echte Tastendruck und „kein Fokusraub“ sind nur auf dem Testgerät belegbar.
 
 ## Benannte Grenzen
 
@@ -764,6 +809,7 @@ mit PASS ohne SKIP laufen. CI/Kompilierung ersetzen diesen Gate-Beleg nicht.
 | Pipe B1/B2, L3-1/L3-2, H1–H3 (#1240 L3) | TestPipeDACLStruktur, TestPipeBesetztStartetOhnePipe, TestClientPrueftServerbild, TestPipeBefehleGeschlossen, TestPipeGolden, TestPipeRoheRahmenAmLaeufer, TestPipeOhneTraeger, TestSetupStartNurAusManifest, TestSetupStartAmPipeHTTPAdapter, TestSetupHaltWaerendHTTP, TestSetupVeralteteFreigabeStartetNicht, TestSetupFreigabeDirektVorSpawn, TestSetupSperrtUndBrichtClaimAb, TestSetupSperrtAndereStartwege, TestSetupDirektesExecuteBleibtGesperrt, TestSetupFehlerNieOfflineNachmelden, TestPipeHaltBefehle, TestSkriptRoheTestfunktionenBleibenGesperrt, TestPipeKindHandleListe; native Windows-Sonden siehe README „Lokale Pipe“ |
 | Bedienfeld, Plan 14/15/18, §6.6, H4 | TestPanelZustaende, TestPanelMenueBefehleUndSetupEingabe, TestPanelFrageNurLokal, TestPanelStoerungBleibtBisNeuGeprueftemZustand, TestPanelServerpruefungSperrtBefehle, TestServerpruefungSendetNichtsAmAdapter, TestVerbindungVerwirftAlteBefehleUndBrichtSchreibenAb, TestBlockiertesSchreibenTrotzHeartbeatWirdGetrennt, TestFokusWaechter, TestBedienfeldNurGepruefterDial, TestPanelImportWaechter, TestL4SchemaPflichtfelder, TestH4RoheFragenAmLaeufer, TestH4SkriptTitelAbgewiesen, TestH4RoheFrageGrenzen, TestPanelEingabeAusVerifiziertemManifest; Windows: TestWindowsBedienfeldProzesssonde |
 | GUI-Läufer und Hinweis, Invariante 19 (#1240 A2) | TestKonsolenplan, TestMainHaengtKonsoleZuerstAn, TestReleaseUndWindowsCI, TestHinweisFesterText, TestHinweisEinmalJeNeuerFrage, TestHinweisNurFuerAngezeigteFrage, TestHinweisNurAnEinerStelle, TestFokusWaechter; Windows: TestHandleBenutzbar (nativ) |
+| Tastenkürzel, Invariante 22 (#1240 F-T) | panel: TestTasteGleichKlick, TestAbweisungOhneSprechblaseOderFenster, TestAbweisungSymbolFuenfSekundenUndEinTon, TestAbweisungUeberdecktStoerungNicht, TestZweiterDruckWaehrendDesWartensIstVerworfen, TestDruckNachAbschlussWirdWiederAngenommen, TestStartErstNachLoslassenDerUmschalttasten, TestUmschalttastenNachZweiSekundenWeisenAb, TestOhneTastenzustandWirdAbgewiesen, TestAppWegfallGibtKuerzelFrei, TestWartenderDruckUeberlebtEntzugNicht, TestAnmeldefehlerZeigtBelegtImMenue, TestHotkeyNamenAusserhalbDesMustersErzeugenKeinenBefehl, TestAbgleichMeldetAllesAbUndNeuAn, TestAbgleichMeldetAnmeldefehlerAnsModell, TestFreigebenBeimBeenden, TestHotkeyWaechterAnmeldungNurAnEinerStelle, TestHotkeyWaechterNoRepeatUndFesteModifier, TestHotkeyWaechterZweigRuftNurDasModellAuf, TestHotkeyWaechterKeinSleep, TestHotkeyWaechterDateiOeffnetNichts; client: TestParseHotkeysStreng, TestTastenVersiegeltUndNichtImWebViewOrdner, TestManipuliertesTastenImPaketScheitertAmHash, TestTastenOhneGueltigesSiegelGebenKeinKuerzel, TestAppOhneTastenOderOhneManifestHatKeineKuerzel; fensterio: TestAppListeTraegtKuerzelNurBeiGueltigemSiegel, TestAppListeKuerzelFallenMitDerAppWeg, TestWatchMeldetAenderungDerKuerzel; Windows-CI nativ: TestWindowsHotkeyAnmeldenDoppeltAbmeldenNeu, TestWindowsHotkeyNurErlaubteTasten |
 | Rückfragen intern, L3-Anteil | TestFrageNurLokal, TestFrageFristUndDisconnect, TestPipeFrageAntwortWeiterleitung, TestPipeHaltSchliesstFrage |
 | L5 SEC-R4 F1/H2 | TestL5EndaufnahmeNachHaltUndWandzeit (Anhalten: 0 Aufnahmen/Uploads; Wandzeit: 1, ohne Engine-Sperre), TestL5LaufpinSeparatGebunden (verified gültig, nur Laufpin abweichend); Mutationen completion-halt, completion-wall-context, run-pin-binding |
 | PC-Fenster K6b-2 (SEC B1–B4, native Ereignisse) | fensterio: TestHostReceiveBlockiertNie, TestHostAnhaltenBleibtBeiHaengendemGatewayBedienbar, TestHostFailBrichtAbUndNimmtNichtsMehrAn, TestRuntimeOpenAsyncKehrtSofortZurueck, TestRuntimeSchreibtNichtsInDenZustand, TestRuntimeWiderrufLoeschtNichts, TestRuntimeAppsOhneTraeger, TestPanelExchange*, TestNavigationVerdict, TestNewWindowVerdictIstImmerAbgebrochen, TestDownloadVerdictBrichtImmerAb, TestMessageSource, TestRunStepsHaeltBeimErstenFehlerAn, TestAdapterBindetAlleEreignisse, TestAdapterWendetAlleSettingsAn, TestFensterioRuftNurLeserUndAppAPI, TestBedienfeldImportiertClientNicht, TestPlatformNurHinterDerTuer, TestBedienfeldUIThreadOhneNetzUndBruecke, TestFensterioKeinAbbruchUndKeinPanel; panel: TestPanelImportWaechter, TestFensterioNurUeberDieTuer, TestPanelApp*; client: TestReader*, TestSyncLegtAppsAb, TestRevokeLoeschtWebviewOhneVerweiseZuFolgen, TestAppPrepareNachWiderrufLegtNichtsAb; fenster: TestExternalLink, TestDecide, TestLayout; Windows nativ (Opt-in): TestWindowsWebView* |

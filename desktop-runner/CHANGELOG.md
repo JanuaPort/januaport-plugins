@@ -2,6 +2,26 @@
 
 ## Unveröffentlicht
 
+### Tastenkürzel für Setups im Bedienfeld (JanuaPort/januaport#1240 F-T, ohne Release, ohne Beleg am Gerät)
+
+- **Ein Kürzel tut, was der Menüklick tut:** Die Kürzel stehen im Feld `tasten` der `jnpt.app.json` der App
+  (`taste`, `pin`, `setup`); erlaubt sind nur `Strg+Alt+F1` bis `Strg+Alt+F12`. Der Läufer prüft das Feld beim Ablegen der App
+  streng und legt es im verschlüsselten Siegel ab, nie im Ordner der WebView; das Bedienfeld bekommt es nur bei gültigem Siegel.
+  Ein Druck führt nach dem Loslassen von Strg, Alt, Shift und Win (höchstens zwei Sekunden, über den Zeitgeber, nie mit `Sleep`)
+  zu `Choose("setup:<pin>/<setup>")`, also zur Prüfung des Menüklicks. Ein zweiter Druck während des Wartens wird verworfen.
+- **Anmeldung:** nur in `cmd/bedienfeld/hotkey_windows.go` mit `RegisterHotKey` und `MOD_NOREPEAT`. Bei jedem Abgleich werden
+  alle Kürzel ab- und neu angemeldet; fällt eine App weg, werden ihre Kürzel frei. Schlägt eine Anmeldung fehl (zum Beispiel 1409),
+  zeigt das Menü „Kürzel belegt“. Steht dieselbe Taste in zwei Apps desselben Geräts, wird sie für keine angemeldet (beide
+  gesperrt, Menühinweis „gesperrt (doppelt)“); nach dem Entzug einer der Apps meldet sich die verbliebene beim nächsten Abgleich an. Der Wächter `TestFokusWaechter` verbietet `RegisterHotKey` nicht mehr, `TestHotkeyWaechter*`
+  verengen auf diese eine Stelle.
+- **Abweisung:** Ein abgewiesener Druck (offline, beschäftigt, pausiert, angehalten, Setup fehlt, Störung, Umschalttasten
+  nach zwei Sekunden noch gedrückt) gibt einen Systemton und fünf Sekunden ein orangefarbenes Symbol mit festem Code im
+  Tooltip. Keine Sprechblase, kein Fenster, kein Fokuswechsel.
+- **Grenzen:** Die Erkennung „belegt“ findet nur systemweit angemeldete Kürzel. Auf dem gesperrten Bildschirm löst nichts
+  aus; RDP und Citrix im Vollbild fangen Strg+Alt-Kürzel ab; Terminalserver werden nicht unterstützt; `SendInput` löst Kürzel
+  aus wie UI-Automation. Ein Siegel, das ein älterer Läufer ohne `tasten` angelegt hat, bekommt Kürzel erst mit der nächsten
+  App-Fassung. Das signierte Geräte-Manifest und der Vertrag (Fassung 5) bleiben unverändert.
+
 ## 0.5.3 — 2026-11-10 (JanuaPort/januaport#1342, JanuaPort/januaport#1343)
 
 ### Upstream-Prüfpunkt

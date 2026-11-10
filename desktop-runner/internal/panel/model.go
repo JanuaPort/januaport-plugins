@@ -56,6 +56,7 @@ type Model struct {
 	// zählen ihre IDs je Prozess ab "1", eine gleiche ID kann also eine neue Frage sein.
 	noticeFor *Dialog
 	apps      []string
+	hk        hotkeys // Tastenkürzel für Setups (#1240 F-T), siehe hotkey.go
 }
 
 func New() *Model { return &Model{fault: true} }
@@ -135,6 +136,9 @@ func (m *Model) TakeNotice() bool {
 }
 
 func (m *Model) Tick(now time.Time) Effects {
+	if now.After(m.hk.now) {
+		m.hk.now = now
+	}
 	if m.dialog != nil && !now.Before(m.dialog.Deadline) {
 		m.dialog = nil
 	}
@@ -173,8 +177,9 @@ func (m *Model) View() Display {
 	}
 	paused := m.status.Zustand == "pausiert"
 	halted := m.status.Zustand == "angehalten"
+	status := v.Tooltip
 	v.Menu = []Item{
-		{"status", v.Tooltip, false},
+		{"status", status, false},
 		{"pause15", "Pausieren 15 min", available && !halted},
 		{"pause60", "Pausieren 1 h", available && !halted},
 		{"pause0", "Pausieren bis Weiter", available && !halted},
@@ -198,10 +203,16 @@ func (m *Model) View() Display {
 		v.Dialog = &d
 		v.Menu = append(v.Menu, Item{"frage", "Rückfrage anzeigen", available})
 	}
+	v.Menu = append(v.Menu, m.belegtItems()...)
 	for _, n := range m.apps {
 		v.Menu = append(v.Menu, Item{"app:" + n, "App öffnen: " + n, true})
 	}
 	v.Menu = append(v.Menu, Item{"exit", "Beenden des Bedienfelds", true})
+	// Eine Störung bleibt violett mit ihrem festen Text; die Abweisung eines Kürzels überdeckt sie nicht.
+	if !m.fault && m.rejecting() {
+		v.Color = "orange"
+		v.Tooltip = "Kürzel abgewiesen (" + m.hk.rejectCode + "): " + m.hk.rejectText
+	}
 	return v
 }
 

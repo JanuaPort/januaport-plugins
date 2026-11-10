@@ -136,6 +136,8 @@ func TestFensterioNurUeberDieTuer(t *testing.T) {
 	}
 }
 
+// TestFokusWaechter hält die Fokus- und Aktivierungsverbote. RegisterHotKey/UnregisterHotKey sind seit #1240 F-T
+// nicht mehr verboten, sondern auf genau eine Stelle verengt: TestHotkeyWaechter (hotkey_guard_test.go).
 func TestFokusWaechter(t *testing.T) {
 	dir := filepath.Join("..", "..", "cmd", "bedienfeld")
 	files, err := filepath.Glob(filepath.Join(dir, "*.go"))
@@ -161,7 +163,7 @@ func TestFokusWaechter(t *testing.T) {
 			case *ast.BasicLit:
 				if x.Kind == token.STRING {
 					v, _ := strconv.Unquote(x.Value)
-					for _, bad := range []string{"SetForegroundWindow", "SetFocus", "SetActiveWindow", "RegisterHotKey", "MessageBoxW"} {
+					for _, bad := range []string{"SetForegroundWindow", "SetFocus", "SetActiveWindow", "MessageBoxW"} {
 						if v == bad {
 							t.Error("Fokus-API", v)
 						}
