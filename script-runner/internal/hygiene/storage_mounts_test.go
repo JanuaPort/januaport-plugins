@@ -1,6 +1,7 @@
 package hygiene
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -85,6 +86,42 @@ func TestUnresolvedKeyMountSourcesAtComposeAdapter(t *testing.T) {
 					}
 					if !found {
 						t.Errorf("missing %q for %s: %v", reason, source, findings)
+					}
+				}
+			})
+		}
+	}
+}
+
+// Drive sources are unresolved host paths, including ambiguous one-letter
+// volumes. Assert each key finding through the real YAML adapter (#1246).
+func TestWindowsDriveKeyMountSourcesAtComposeAdapter(t *testing.T) {
+	for _, tc := range []struct {
+		mount   string
+		exposes bool
+	}{
+		{`C:\x:/p`, true},
+		{`c:/run/jnpt:/run/jnpt`, true},
+		{`D:\:/d`, true},
+		{`c:/x`, true},
+		{`daten:/x`, false},
+		{`/srv/x:/x`, false},
+		{`C:relative:/p`, false},
+		{`7:/x`, false},
+		{`Ä:/x`, false},
+	} {
+		for _, svc := range []string{mediator, fetcher, sandbox, initializer} {
+			t.Run(svc+"/"+tc.mount, func(t *testing.T) {
+				findings := CheckCompose(composeWithExtraMount(t, svc, tc.mount))
+				for _, key := range []struct{ owner, reason string }{
+					{mediator, "Schlüsselordner des vermittlers eingehängt"},
+					{fetcher, "Deploy-Key eingehängt"},
+					{apphost, "Apphost-Schlüsselordner eingehängt"},
+				} {
+					want := tc.exposes && svc != key.owner
+					finding := svc + ": " + key.reason
+					if got := slices.Contains(findings, finding); got != want {
+						t.Errorf("finding %q = %t, want %t for %q: %v", finding, got, want, tc.mount, findings)
 					}
 				}
 			})
