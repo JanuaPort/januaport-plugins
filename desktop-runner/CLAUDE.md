@@ -24,7 +24,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 | engine.go, halt.go, bootstrap.py | Gemeinsamer Laufplatz, Takt, Claim/Start, lokaler Halt, Rahmenkanal/MCP |
 | state.go, replace_* | Atomare OS-geschützte Dateien, Journal/Marker/Slot-Transaktion, Löschung |
 | runtemp.go | Lauf-TEMP: RunID/RunTemps, Anlegen nur neu, Aufräumen/Besen ohne Reparse-Punkte, Kind-Umgebung |
-| log.go | Geschlossene numerische Codes (1–9), 5 × 1 MiB |
+| log.go | Geschlossene numerische Codes (1–10), 5 × 1 MiB; Code 10: n=1 Ablage, n=2 Aufräumen (Invariante 20) |
 | cmd/bedienfeld, internal/panel, internal/panelio | Nativer Tray-Prozess, reines Modell und getrennter Pipe-I/O-Adapter |
 | internal/pipe, internal/client/pipe.go | Lokales Schema, Windows-Pipe, Serverprüfung, Setup-Zulassung und interne Rückfragen |
 | internal/platform/*_windows.go | DPAPI/ACL (SecureRoot, MkdirPrivate), WTS/LastInput, suspendierter Prozess/Job Object, COM/HKCU |
@@ -37,6 +37,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 | internal/edge | Nur Windows: geprüfte, angepasste Kopie von go-webview2 v1.0.19 `pkg/edge` (MIT, NOTICE): kein `os.Exit`, kein `log.Fatal`, Start mit `Begin`/`Ready`/`Cancel`/`Close` statt `Embed` |
 | internal/client/reader.go | `Reader`: nur lesender Zugriff des Bedienfelds auf Zugangsdaten, geprüftes Manifest und App-Siegel |
 | apptoken.go, applogin.go, appstore.go, appload.go, copied_apphost.go | Vertrag 5 im Client: App-Token, privates Ablegen mit Siegel, Ladeprüfung, markierte apphost-Kopie |
+| appprune.go | Entzug (#1342): räumt nach jedem erfolgreich geprüften Abgleich Ablage, WebView-Profil und Siegel nicht mehr zugewiesener Apps ab (Invariante 20) |
 | contract/golden-v5 | Bytegleicher Kernspiegel von Vertrag 5 (Manifest und Routen) mit SHA256SUMS |
 | probe/k6b_mutations.py | Mutationen K6b-1 im Container mit Go und Python |
 | internal/testfixture | Synthetische Gitpakete nur für Tests |
@@ -95,7 +96,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
    `refused/offline`. Werkzeuge brauchen Box/Lauf-Token. Deterministischer
    `run_key = pin/schedule/UTC-Slot`; Online-Start mit Werkzeugen über
    `runs/start`, Standbindung per `X-Jnpt-Manifest-Seq`, veraltet 409 manifest.
-   Ad-hoc bleibt claim → jobs/start; Job liefert seine Freigabe-manifest_seq.
+   Ad-hoc bleibt claim → jobs/start; Job liefert seine Freigabe-manifest_seq und holt ein älteres lokales Manifest einmal nach (Invariante 21).
    Windows K8: Pinfrist vor Gerätefrist, auch längere Pinfristen. Atomare
    DPAPI-Datei `clock`, fortgeschrieben bei Sync, Takt und Offline-Start. Während
    des Prozesses läuft die Marke monoton weiter; nach Neustart gilt mindestens
@@ -390,7 +391,8 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     `<Zustand>\apps\<name>\<commit>\`; das Siegel (Pfad, Größe, SHA-256, auch gegen zusätzliche Dateien
     und Verweise) liegt im verschlüsselten Zustand und wird vor **jedem** `Open` geprüft. Nie
     stilles Reparieren: Eine vorhandene, nicht zum Siegel passende Ablage ergibt `refused/hash`
-    ohne erneuten Abruf. Widerruf löscht über `State.Revoke` auch `apps\`.
+    ohne erneuten Abruf. Widerruf löscht über `State.Revoke` auch `apps\`; den Entzug einzelner Apps räumt der
+    Läufer nach geprüftem Abgleich ab (Invariante 20).
     **App-Token:** `API.AppToken` (`POST apps/{name}/token`, leerer Körper) und `API.AppRPC` (nur
     `tools/list`, `tools/call`) senden `Authorization` (Gerätetoken) plus genau einen
     `X-Jnpt-App-Token`, nie `X-Jnpt-Run-Token`. `AppSession` hat keinen Getter und druckt sich nie.
@@ -432,7 +434,8 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     (`TestRevokeLoeschtWebviewOhneVerweiseZuFolgen`). `WebResourceRequested` ist Schicht 1 (siehe unten). Ein offenes Fenster
     sperrt die Dateien: Das Bedienfeld schließt das Fenster einer App, sobald sie aus der Liste verschwindet (`CloseMissing`),
     und die Liste leert sich sofort, wenn die Zustandsdatei fehlt. **Restgrenze:** Löschte der Läufer vor dem Schließen,
-    können Reste von `webview\<app>` bleiben; das Bedienfeld löscht nichts (B3).
+    können Reste von `webview\<app>` bleiben; das Bedienfeld löscht nichts (B3), der Läufer räumt sie beim nächsten
+    geprüften Abgleich ab (Invariante 20).
 
     **Start des WebView ist begrenzt (VM-Befund, B1):** Die Bibliothek beendete den Prozess bei jedem Fehler
     (`os.Exit` im Fehlerrückruf) und wartete in `Embed` ohne Grenze (`GetMessage`); ein Fehlstart hing den
@@ -654,6 +657,47 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     **Symbol nach Autostart:** `render()` setzt `a.tray` aus `panel.TrayUpdate(a.tray, …)`: Scheitert die erste
     Operation (ADD/MODIFY), folgt die andere, weil das Symbol beim ersten Neustart nach `install` schon da sein
     kann; sonst bliebe `tray` falsch und `TakeNotice` würde nie geprüft (Test `TestTrayUpdateVersuche`).
+
+20. Entzug von Apps (#1342, Windows): Nach **jedem erfolgreich geprüften** Abgleich (`Engine.Sync` nach
+    Signatur-, Geräte-, Sequenz- und Vertragsprüfung, nach dem Laden der Pakete und dem Speichern des Manifests) räumt
+    `pruneApps` (`appprune.go`) vor `ensureApps` ab, was nicht mehr als App im Manifest steht. Nie nach
+    Offline-, Parse-, Signatur-, Lese- oder Sequenzfehlern und nie bei einem Sync, der vorher scheitert; Server
+    (Vertrag 2, `apps` fehlt) räumen nichts ab. **Pfade nur aus lokaler Aufzählung:** Der Läufer zählt die direkten
+    Einträge von `<Zustand>\apps` und `<Zustand>\webview` selbst auf (`os.ReadDir`), nie aus Servernamen. Gelöscht
+    wird nur ein Eintrag mit gültigem App-Namen (`fenster.ValidAppName`, wie im Manifest), der nicht im geprüften
+    Manifest steht. Ungültige Namen (`.prepare-*`, Großbuchstaben, Punkte, Trenner), fremde Dateien und alle
+    anderen Bereiche (`envs`, `tmp`, `packages`) bleiben unberührt. Entfernt werden `apps\<name>` (alle Commits),
+    `webview\<name>` und die Siegel `app-<name>-<commit>` (`sealOwner`, aus dem lokalen Wurzelverzeichnis).
+    **Kein Verweis wird verfolgt:** Gelöscht wird mit `removeTree` (Lstat-Rekursion, kein `os.RemoveAll`); ist ein
+    Eintrag selbst Symlink oder Junction, verliert nur der Verweis, nie sein Ziel. Ist `apps\` oder `webview\`
+    selbst kein echtes Verzeichnis, wird darin nichts gelöscht (Logcode `10 2`).
+    **Sperre statt Verlust:** Alle Löschschritte laufen unter `State.Use` (wie `AppStore.Prepare`), also
+    serialisiert gegen Prepare und Widerruf. Ist ein Ordner gesperrt (Fenster, WebView2-Prozess), bleibt er liegen,
+    der Abgleich geht weiter und scheitert nicht, Läufe laufen weiter; im Log steht nur der feste Code `10 2`
+    (Code 10 `LogAppFault`, n=1 Ablage, n=2 Aufräumen). Der nächste erfolgreich geprüfte Abgleich versucht es
+    erneut. Reihenfolge: erst Ablage, dann Siegel (nur wenn `apps\<name>` weg ist), dann Profil. So trifft eine
+    zurückkehrende App nie auf eine Ablage ohne Siegel (`refused/hash`, Invariante „nie stilles Reparieren“).
+    **Rückkehr:** Kommt die App ins Manifest zurück, lädt `ensureApps` sie wie beim ersten Mal; das WebView-Profil
+    beginnt leer, eine Anmeldung muss neu erfolgen. **Das Manifest entscheidet:** Auch eine gestoppte App, die
+    kurz fehlt, wird abgeräumt (das Profil ist nur ein Zwischenspeicher, die Daten liegen im Kern). **Nicht im
+    Umfang:** alte Commits einer weiter zugewiesenen App (`apps\<name>\<commit>`), der Widerruf des Geräts
+    (`State.Revoke` löscht weiter alles), das Bedienfeld (löscht nichts, schließt nur Fenster per `CloseMissing`).
+    **Grenzen:** Der Zeitpunkt ist der nächste erfolgreich geprüfte Abgleich (neue Sequenz, Neustart);
+    wiederholt der Kern dieselbe Sequenz, scheitert `Sync` an der Sequenzprüfung und räumt nicht ab. Ein zum
+    Teil gelöschter `apps\<name>\<commit>` (Sperre mittendrin) lässt eine zurückkehrende App mit `refused/hash`
+    stehen, bis er weg ist. Die Tests simulieren die Sperre unter Windows mit einem offenen Dateigriff ohne
+    `FILE_SHARE_DELETE`, sonst mit Rechteentzug; ein laufendes `msedgewebview2.exe` ist nicht belegt (Beleg auf
+    dem Testgerät). Tests: `TestEntzugRaeumtAppProfilUndSiegelAb`, `TestRueckkehrLaedtDieAppNeuMitLeeremProfil`,
+    `TestAufraeumenLoeschtNurGueltigeNamen`, `TestVerweisUnterAppsUndWebviewWirdNichtVerfolgt`,
+    `TestVerweisAlsAppsOderWebviewWurzelBleibtUnberuehrt`, `TestKeinLoeschenBeiGescheitertemOderUngeprueftemAbgleich`,
+    `TestGesperrterOrdnerBleibtUndWirdBeimNaechstenAbgleichGeloescht`, `TestAufraeumenLaeuftUnterZustandssperreOhneRemoveAll`.
+21. Ad-hoc holt das Manifest nach (#1343): Ist die lokale Manifest-Sequenz kleiner als `manifest_seq` des Auftrags,
+    ruft `adhoc` genau **einmal** `Sync` auf, liest den Stand neu und prüft Pin (Name, Commit, Pfad, Algorithmus)
+    und Sequenz mit denselben Regeln wie zuvor; erst danach gilt `refused/manifest`. Vorbild ist der
+    Zeitplan-Pfad bei `409 manifest`. Die Fehlerklasse bleibt `manifest`, auch wenn der Sync selbst scheitert (Netz,
+    Signatur, Sequenz). Läuft `StartBy` beim Nachholen ab, endet der Auftrag wie bisher (`internal`). Passt die
+    Sequenz und fehlt nur der Pin, gibt es kein Nachholen; es gibt keine Schleife und kein Kernfeld.
+    Tests: `TestAdhocHoltVeraltetesManifestEinmalNach`.
 
 ## Benannte Grenzen
 

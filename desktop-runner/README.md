@@ -66,7 +66,7 @@ prüfbare Grundlage, die K6b-2 an das Fenster hängt. Es gibt keinen lokalen Fen
   ohne sauberes `<head>` wird abgewiesen, `Open` prüft das führende Literal erneut. Die apphost-CSP wird
   nicht übernommen. Ablage privat unter `<Zustand>\apps\<name>\<commit>\`, Siegel (Pfad,
   Größe, SHA-256) im verschlüsselten Zustand, Prüfung vor **jedem** Öffnen, nie stilles
-  Reparieren. Widerruf löscht Ablage und Siegel mit dem Zustand.
+  Reparieren. Widerruf löscht Ablage und Siegel mit dem Zustand. Entzug einzelner Apps: siehe „App-Entzug“.
 - **App-Token:** `POST apps/{name}/token`, nur im RAM (`fensterio.Gateway`), in Modus a bei 401 genau
   einmal neu geholt. Modus b verlangt den nativen Anmeldeweg unten. Das Token hat keinen Getter und druckt sich nie.
 - **Fenster-Policy (`internal/fenster`, reines Go):** exaktes CSP-Literal,
@@ -175,11 +175,22 @@ nötige Schnittstelle, öffnet das Fenster nicht und das Bedienfeld meldet das n
   PermissionRequested (Deny), ProcessFailed. Externe `https`-Links öffnen nur nach einem nativen
   Ja-Dialog mit Host im Standardbrowser. Auf Testgeräten zeigt eine native Leiste „Test – Testgerät“.
 - **Benutzerdatenverzeichnis:** `%LOCALAPPDATA%\JanuaPort\desktop-runner\webview\<app>` mit privater DACL;
-  der Widerruf des Läufers löscht es, ohne Verweisen zu folgen.
+  der Widerruf des Läufers und der Entzug der App (siehe „App-Entzug“) löschen es, ohne Verweisen zu folgen.
 - **Restgrenzen:** Die ACL der Pipe schützt nicht gegen den WebView2-Hauptprozess (gleiches Konto, mittlere
   Stufe). Die Bibliothek spiegelt jede Seitennachricht an die Seite zurück. Alte App-Fassungen unter
   `apps\` bleiben liegen. Die nativen Ereignisse sind erst durch die Sonden auf dem Testgerät belegt
   (`internal/fensterio/webview_native_windows_test.go`).
+
+### App-Entzug (#1342)
+
+Nach jedem erfolgreich geprüften Manifest-Abgleich räumt der Läufer Apps ab, die nicht mehr im Manifest stehen:
+`apps\<name>`, `webview\<name>` (das WebView-Profil) und das App-Siegel. Er zählt die Ordner lokal auf und
+löscht nur Einträge mit gültigem App-Namen; andere Einträge bleiben unberührt, Symlinks und Junctions werden nur als
+Verweis entfernt, nie verfolgt. Nach Offline-, Parse-, Signatur- oder Lesefehlern löscht er nichts. Ist ein Ordner
+gesperrt (Fenster oder WebView2-Prozess noch offen), bleibt er liegen und der nächste geprüfte Abgleich versucht es
+erneut; im Log steht nur der feste Code `10 2`. Kommt die App zurück, lädt der Läufer sie neu und das Profil beginnt
+leer (Anmeldung neu). Das Manifest entscheidet auch bei einer gestoppten App, die kurz fehlt. Nicht betroffen sind
+alte Commits einer weiter zugewiesenen App und der Widerruf des Geräts (der löscht weiter den gesamten Zustand).
 
 ### Brücke: Aufruf aus der Seite
 
@@ -616,7 +627,8 @@ Ablehnungen erhalten alten Stand und Gnadenfrist. Lokaler Fünf-Feld-Cron
 verwendet robfig/cron/v3 und eingebettete IANA-Zeitzonendaten. Eine Minute vor
 fälligen Slots werden Manifest und geänderte Pakete synchronisiert.
 Slot und Laufmarker werden gemeinsam dauerhaft gespeichert. Verpasste Minuten
-bilden keinen Rückstau. Ad-hoc-Aufträge kommen über jobs/claim; beide Laufarten
+bilden keinen Rückstau. Ad-hoc-Aufträge kommen über jobs/claim; ist das lokale Manifest älter als die
+Sequenz des Auftrags, holt der Läufer es einmal nach, bevor er `refused/manifest` meldet. Beide Laufarten
 teilen einen Platz. Offline laufen nur werkzeuglose Pins, wenn
 <code>max(Uhr, persistente Uhrmarke) - letzter erfolgreicher Sync &lt; grace_hours</code>.
 Die Pinfrist hat Vorrang vor der Gerätefrist (1–72 Stunden, auch längere Fristen).
