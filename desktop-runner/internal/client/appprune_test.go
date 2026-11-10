@@ -487,3 +487,104 @@ func TestAufraeumenLaeuftUnterZustandssperreOhneRemoveAll(t *testing.T) {
 		t.Fatalf("State.Use: %d, os.RemoveAll: %d, removeTree: %d", uses, removeAll, removeTreeCalls)
 	}
 }
+
+// Hauptfall (#1342): Der Entzug kommt mit einem neuen Manifest, der Sync räumt sofort ab, das Fenster ist dann noch
+// offen. Der Takt wiederholt das Abräumen gegen das gespeicherte Manifest, ohne neue Sequenz und ohne Netz.
+func TestTaktRaeumtGesperrtenOrdnerOhneNeueSequenzAb(t *testing.T) {
+	b := zweiAppsAbgelegt(t)
+	freigeben := sperreOrdner(t, b.path("webview", "zweite"))
+	if err := b.sync(2, b.demo); err != nil {
+		t.Fatal(err)
+	}
+	b.srv.Close() // der Takt braucht kein Netz
+	b.e.pruneStored()
+	b.e.pruneStored()
+	if !b.exists("webview", "zweite", "Default", "Cookies") {
+		t.Fatal("trotz Sperre gelöscht")
+	}
+	if b.log() != "10 2\n" {
+		t.Fatalf("Log: %q, erwartet genau eine Zeile (kein Spam bei Wiederholung)", b.log())
+	}
+	freigeben()
+	b.e.pruneStored()
+	if b.exists("webview", "zweite") || b.exists("apps", "zweite") || len(b.seals("zweite")) != 0 {
+		t.Fatal("nach Freigabe vom Takt nicht gelöscht")
+	}
+	if b.log() != "10 2\n" {
+		t.Fatalf("Log nach Erfolg: %q", b.log())
+	}
+	if !b.exists("webview", "demo", "Default", "Cookies") || !b.exists("apps", "demo", b.demo.Commit, "index.html") {
+		t.Fatal("zugewiesene App angefasst")
+	}
+}
+
+// Ohne prüfbares gespeichertes Manifest löscht der Takt nichts.
+func TestTaktLoeschtNurGegenPruefbaresGespeichertesManifest(t *testing.T) {
+	_, fremderKey, _ := ed25519.GenerateKey(nil)
+	for _, tc := range []struct {
+		name  string
+		praep func(b *pruneBed)
+	}{
+		{"kein Manifest gespeichert", func(b *pruneBed) { b.e.bundle = Bundle{} }},
+		{"Signatur von fremdem Schlüssel", func(b *pruneBed) {
+			raw := encode(b.manifest(2, b.demo))
+			can, _ := canonical(raw)
+			b.e.bundle.Manifest.Envelope = SignedManifest{Manifest: raw, Sig: base64.StdEncoding.EncodeToString(ed25519.Sign(fremderKey, can))}
+		}},
+		{"Manifest nicht lesbar", func(b *pruneBed) {
+			raw := []byte(`{"unbekannt":1}`)
+			can, _ := canonical(raw)
+			b.e.bundle.Manifest.Envelope = SignedManifest{Manifest: raw, Sig: base64.StdEncoding.EncodeToString(ed25519.Sign(b.key, can))}
+		}},
+		{"anderes Gerät", func(b *pruneBed) {
+			m := b.manifest(2, b.demo)
+			m.DeviceID = "fremd"
+			raw := encode(m)
+			can, _ := canonical(raw)
+			b.e.bundle.Manifest.Envelope = SignedManifest{Manifest: raw, Sig: base64.StdEncoding.EncodeToString(ed25519.Sign(b.key, can))}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := zweiAppsAbgelegt(t)
+			tc.praep(b)
+			b.e.pruneStored()
+			if !b.exists("apps", "zweite", b.zweite.Commit, "index.html") || !b.exists("webview", "zweite", "Default", "Cookies") || len(b.seals("zweite")) != 1 {
+				t.Fatal("ohne prüfbares Manifest gelöscht")
+			}
+		})
+	}
+}
+
+// Das gespeicherte Manifest ist dasselbe, das der Sync zuletzt geprüft hat: Ist nichts zu löschen, passiert nichts
+// und es wird nichts geloggt.
+func TestTaktOhneEntzugLaesstAllesUndLogtNichts(t *testing.T) {
+	b := zweiAppsAbgelegt(t)
+	b.e.pruneStored()
+	if !b.exists("apps", "zweite", b.zweite.Commit, "index.html") || !b.exists("webview", "demo") || b.log() != "" {
+		t.Fatalf("Takt ohne Entzug veränderte etwas: log %q", b.log())
+	}
+}
+
+// Der Takt ist im Heartbeat-Zweig von Run verdrahtet.
+func TestRunRuftDenAufraeumtaktAuf(t *testing.T) {
+	f, err := parser.ParseFile(token.NewFileSet(), "engine.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, d := range f.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || fn.Name.Name != "Run" {
+			continue
+		}
+		ast.Inspect(fn, func(n ast.Node) bool {
+			if sel, ok := n.(*ast.SelectorExpr); ok && sel.Sel.Name == "pruneStored" {
+				found = true
+			}
+			return true
+		})
+	}
+	if !found {
+		t.Fatal("Run ruft pruneStored nicht auf")
+	}
+}
