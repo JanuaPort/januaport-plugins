@@ -731,8 +731,11 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     `Model.SyncHotkeys` meldet bei **jedem** Abgleich alle ab und neu an (Entzug und Änderung laufen denselben Weg,
     Invariante 20), `ReleaseHotkeys` beim Beenden. Schlägt eine Anmeldung fehl (zum Beispiel 1409), steht im Menü der
     deaktivierte Hinweis „Kürzel belegt: <Taste>“, nie still (`HotkeyRegistered`; Mutant `anmeldefehler-verschluckt`).
-    Zwei Apps mit derselben Taste behandelt das System wie ein fremdes Programm: Die zweite Anmeldung scheitert und zeigt
-    „belegt“. **Ablauf eines Drucks (S3):** `WM_HOTKEY` ruft nur `Model.PressHotkey` und kehrt zurück; das Warten auf
+    **D1 (SEC):** Steht dieselbe Taste in mehr als einer App desselben Geräts (der Kern weist Doppel nur innerhalb eines
+    Manifests ab), meldet `SyncHotkeys` sie für **keine** App an; beide sind gesperrt und das Menü zeigt „Kürzel gesperrt
+    (doppelt): <Taste>“, nie still. Es gewinnt also nicht die zuerst angemeldete App. Wird eine der Apps entzogen, meldet sich
+    die verbliebene beim nächsten Abgleich an (`TestDoppeltesKuerzelAnZweiAppsWirdWieFremdesBehandelt`,
+    `TestDoppeltesKuerzelNachEntzugEinerAppWirdAngemeldet`; Mutant `doppelpruefung-entfernt`). **Ablauf eines Drucks (S3):** `WM_HOTKEY` ruft nur `Model.PressHotkey` und kehrt zurück; das Warten auf
     das Loslassen von Strg, Alt, Shift und Win (`GetAsyncKeyState`, in `hotkey_windows.go`) läuft über den 200-ms-Zeitgeber
     (`PollHotkey`), höchstens `HotkeyWait` = 2 s, **nie mit `Sleep`**. Ein zweiter Druck während des Wartens wird
     verworfen, es gibt keine Warteschlange; nach 2 s mit gedrückten Tasten wird abgewiesen und nie nachträglich gestartet. Fehlt die

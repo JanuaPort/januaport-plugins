@@ -11,7 +11,8 @@
   zu `Choose("setup:<pin>/<setup>")`, also zur Prüfung des Menüklicks. Ein zweiter Druck während des Wartens wird verworfen.
 - **Anmeldung:** nur in `cmd/bedienfeld/hotkey_windows.go` mit `RegisterHotKey` und `MOD_NOREPEAT`. Bei jedem Abgleich werden
   alle Kürzel ab- und neu angemeldet; fällt eine App weg, werden ihre Kürzel frei. Schlägt eine Anmeldung fehl (zum Beispiel 1409),
-  zeigt das Menü „Kürzel belegt“. Der Wächter `TestFokusWaechter` verbietet `RegisterHotKey` nicht mehr, `TestHotkeyWaechter*`
+  zeigt das Menü „Kürzel belegt“. Steht dieselbe Taste in zwei Apps desselben Geräts, wird sie für keine angemeldet (beide
+  gesperrt, Menühinweis „gesperrt (doppelt)“); nach dem Entzug einer der Apps meldet sich die verbliebene beim nächsten Abgleich an. Der Wächter `TestFokusWaechter` verbietet `RegisterHotKey` nicht mehr, `TestHotkeyWaechter*`
   verengen auf diese eine Stelle.
 - **Abweisung:** Ein abgewiesener Druck (offline, beschäftigt, pausiert, angehalten, Setup fehlt, Störung, Umschalttasten
   nach zwei Sekunden noch gedrückt) gibt einen Systemton und fünf Sekunden ein orangefarbenes Symbol mit festem Code im

@@ -397,7 +397,9 @@ ein Systemton (`MessageBeep`) und für fünf Sekunden ein orangefarbenes Symbol 
 „Kürzel abgewiesen (K<n>): <Grund>“, wobei `K1` Störung, `K2` angehalten, `K3` pausiert, `K4` offline, `K5` beschäftigt,
 `K6` braucht Eingabe, `K7` Setup nicht verfügbar und `K8` Umschalttasten noch gedrückt bedeutet. Keine Sprechblase, kein Fenster,
 kein Fokuswechsel; eine Störung bleibt violett. Schlägt die Anmeldung eines Kürzels fehl (zum Beispiel Fehler 1409), steht im
-Menü ein deaktivierter Hinweis „Kürzel belegt: Strg+Alt+F<n>“, nie still.
+Menü ein deaktivierter Hinweis „Kürzel belegt: Strg+Alt+F<n>“, nie still. Steht dieselbe Taste in zwei Apps desselben
+Geräts, wird sie für keine der beiden angemeldet (beide gesperrt); das Menü zeigt „Kürzel gesperrt (doppelt): Strg+Alt+F<n>“.
+Wird eine der Apps entzogen, meldet sich die verbliebene beim nächsten Abgleich an.
 
 Grenzen, ehrlich: Die Erkennung „belegt“ findet nur systemweit angemeldete Kürzel. Wertet ein Fachprogramm ein
 Kürzel in seinem eigenen Fenster aus (etwa Strg+Alt+F5 zum Drucken), gelingt `RegisterHotKey` trotzdem, und das gewohnte
