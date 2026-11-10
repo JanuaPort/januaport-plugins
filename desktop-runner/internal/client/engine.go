@@ -177,6 +177,7 @@ func (e *Engine) Sync(ctx context.Context) (err error) {
 	e.bundle = next
 	e.Config = config
 	e.mu.Unlock()
+	e.pruneApps(m)
 	e.ensureApps(ctx, m)
 	return nil
 }

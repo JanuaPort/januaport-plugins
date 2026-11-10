@@ -12,7 +12,8 @@ import (
 
 // AppStore legt App-Pakete (Vertrag 5) privat unter <Zustand>/apps/<name>/<commit>/ ab, versiegelt sie
 // und prüft das Siegel vor jedem Öffnen. Das Siegel liegt im verschlüsselten Zustand, nicht neben den
-// Dateien; der Widerruf löscht Ablage und Siegel mit dem gesamten Zustand. Nur der Läufer schreibt;
+// Dateien; der Widerruf löscht Ablage und Siegel mit dem gesamten Zustand, der Entzug einer App räumt
+// pruneApps ab (appprune.go). Nur der Läufer schreibt;
 // das Bedienfeld liest über Reader.OpenApp denselben Prüfweg (openApp).
 type AppStore struct{ state *State }
 
