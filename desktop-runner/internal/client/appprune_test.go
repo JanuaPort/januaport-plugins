@@ -588,3 +588,45 @@ func TestRunRuftDenAufraeumtaktAuf(t *testing.T) {
 		t.Fatal("Run ruft pruneStored nicht auf")
 	}
 }
+
+// SEC B1 (#1342): Ein gültig signiertes Manifest ohne Feld apps (m.Apps == nil, Vertrag 4) löscht nichts. Beim Sync
+// scheitert schon die Vertragsprüfung, im Takt (pruneStored) ist es allein die Wache m.Apps == nil.
+func TestManifestOhneAppsFeldLoeschtNichts(t *testing.T) {
+	ohneApps := func(b *pruneBed, seq uint64) SignedManifest {
+		m := b.manifest(seq)
+		m.Apps, m.Contract = nil, 4
+		raw := encode(m)
+		can, _ := canonical(raw)
+		return SignedManifest{Manifest: raw, Sig: base64.StdEncoding.EncodeToString(ed25519.Sign(b.key, can))}
+	}
+	steht := func(t *testing.T, b *pruneBed) {
+		t.Helper()
+		for _, p := range [][]string{{"apps", "zweite", b.zweite.Commit, "index.html"}, {"webview", "zweite", "Default", "Cookies"}, {"apps", "demo", b.demo.Commit, "index.html"}, {"webview", "demo", "Default", "Cookies"}} {
+			if !b.exists(p...) {
+				t.Errorf("%v gelöscht", p)
+			}
+		}
+		if len(b.seals("zweite")) != 1 || len(b.seals("demo")) != 1 {
+			t.Error("Siegel gelöscht")
+		}
+	}
+	t.Run("Sync", func(t *testing.T) {
+		b := zweiAppsAbgelegt(t)
+		b.signed.Store(ptr(ohneApps(b, 2)))
+		if err := b.e.Sync(context.Background()); err == nil {
+			t.Fatal("Sync hätte den alten Vertrag ablehnen müssen")
+		}
+		steht(t, b)
+	})
+	t.Run("Takt", func(t *testing.T) {
+		b := zweiAppsAbgelegt(t)
+		b.e.bundle.Manifest.Envelope = ohneApps(b, 2)
+		if _, ok := b.e.storedManifest(); !ok {
+			t.Fatal("Ausgangslage: Manifest müsste gültig signiert und prüfbar sein")
+		}
+		b.e.pruneStored()
+		steht(t, b)
+	})
+}
+
+func ptr[T any](v T) *T { return &v }
