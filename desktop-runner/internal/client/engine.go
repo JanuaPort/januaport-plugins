@@ -287,7 +287,15 @@ func (e *Engine) executeReserved(ctx context.Context, r Result, env Environment,
 	if err != nil {
 		return refused(r, ErrAccount)
 	}
-	if why := startRefusal(s, config); why != nil {
+	// Nur der Pipe-Weg setzt das Merkmal im Kontext (nie im Draht oder Zustand); Zeitplan, Ad hoc
+	// und jeder Lauf nach einem Neustart bleiben unter der vollen Startregel einschließlich idle.
+	var why error
+	if isPanelRun(ctx) {
+		why = localStartRefusal(s, config)
+	} else {
+		why = startRefusal(s, config)
+	}
+	if why != nil {
 		return refused(r, why)
 	}
 	if !safeName(env.Dir) || env.Dir != envKey(env.Origin) || env.Origin.Commit != r.Commit {

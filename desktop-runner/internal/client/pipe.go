@@ -47,7 +47,7 @@ func (e *Engine) panelStatus() panel.Message {
 	ready := false
 	if e.Session != nil {
 		session, err := e.Session()
-		ready = err == nil && startRefusal(session, b.Config) == nil
+		ready = err == nil && localStartRefusal(session, b.Config) == nil
 	}
 	now := time.Now()
 	if !m.Netz {
@@ -246,7 +246,7 @@ func (e *Engine) startPanelSetup(ctx context.Context, pin, setup string) error {
 	if err != nil {
 		return ErrAccount
 	}
-	if err = startRefusal(session, b.Config); err != nil {
+	if err = localStartRefusal(session, b.Config); err != nil {
 		return err
 	}
 	// Last local authorization point before the request; reject a halt transition
@@ -312,6 +312,13 @@ type panelPermitKey struct{}
 type panelPermit struct {
 	envelope    SignedManifest
 	haltVersion uint64
+}
+
+// isPanelRun sagt, ob der Lauf aus dem Bedienfeld kommt. Der Schlüssel ist ein unexportierter Typ,
+// den allein startPanelSetup in den Kontext legt; er lebt nur im Arbeitsspeicher.
+func isPanelRun(ctx context.Context) bool {
+	_, ok := ctx.Value(panelPermitKey{}).(panelPermit)
+	return ok
 }
 
 // Called in Execute's existing spawn critical section. A withdrawal or a
