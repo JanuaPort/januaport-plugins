@@ -1,6 +1,7 @@
-"""B1 mutation evidence. Run against a disposable Go container mounting this repo.
+"""B1 mutation evidence. Run locally or in a disposable Go container.
 
 python agent-runner/probe/mutations.py jnpt1099-b1-check
+Local #1371 cases: python agent-runner/probe/mutations.py local '#1371'
 B1.1 only: append B1.1 as the optional case filter.
 Every source edit is restored in finally. No golden file is modified.
 The report goes to <tmp>/agent-runner-mutations/, never into the repo.
@@ -11,7 +12,7 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTAINER = sys.argv[1]
+CONTAINER = sys.argv[1] if len(sys.argv) > 1 else "local"
 A = "internal/anthropic/adapter.go"
 C = "internal/runner/contract.go"
 G = "internal/runner/gateway.go"
@@ -21,6 +22,13 @@ W = "../.github/workflows/agent-runner-release.yml"
 
 # label, Go test regex, edits (path, original, replacement)
 CASES = [
+    ("#1371 Antwortgrenze wieder 1024", "TestTokenBudgetAtAdapter", [("internal/runner/conversation.go", 'const MaxTokensPerAnswer = 8192', 'const MaxTokensPerAnswer = 1024')]),
+    ("#1371 Antwortgrenze entfernt", "TestTokenBudgetAtAdapter", [(L, 'min(MaxTokensPerAnswer, remainingTokensOut)', 'remainingTokensOut')]),
+    ("#1371 Restbudget ignoriert", "TestTokenBudgetAtAdapter", [(L, 'min(MaxTokensPerAnswer, remainingTokensOut)', 'MaxTokensPerAnswer')]),
+    ("#1371 Verbrauch ignoriert", "TestTokenBudgetAtAdapter", [(L, 'remainingTokensOut -= max(0, response.TokensOut)', 'remainingTokensOut -= 0')]),
+    ("#1371 Erschoepfungsabbruch entfernt", "TestTokenBudgetAtAdapter", [(L, 'if remainingTokensOut <= 0 {', 'if false {')]),
+    ("#1371 Negativer Verbrauch erhoeht Budget", "TestTokenBudgetAtAdapter", [(L, 'remainingTokensOut -= max(0, response.TokensOut)', 'remainingTokensOut -= response.TokensOut')]),
+    ("#1371 Antwortlimit ignoriert", "TestAnswerLimitStopAtAdapter", [(L, 'if response.Stop == "max_tokens" {', 'if false && response.Stop == "max_tokens" {')]),
     ("model im Body", "TestThinkingAndCache|TestLoopGoldenThinkingAndLog", [(A, 'type Request struct {', 'type Request struct {\n Model string `json:"model"`')]),
     ("stream im Body", "TestThinkingAndCache|TestLoopGoldenThinkingAndLog", [(A, 'type Request struct {', 'type Request struct {\n Stream bool `json:"stream"`')]),
     ("Anbietertext durchreichen", "TestGatewayErrorsFixed", [
@@ -77,7 +85,7 @@ CASES = [
     ("B1.1 H4 Medien-Positivliste entfernt", "TestImageMediaTypesAtAdapter", [(A, 'if str(b["type"]) == "image" {', 'if false {')]),
     ("B1.1 H4 Projektionspruefung entfernt", "TestImageMediaTypesAtAdapter", [(A, 'if ValidateContent(encoded) == nil {', 'if true { _ = encoded')]),
     ("B1.1 H4 Senderpruefung entfernt", "TestImageMediaTypesAtAdapter", [(G, 'e != nil || anthropic.Validate(b) != nil', 'e != nil')]),
-    ("B1.1 H4 Antwortpruefung entfernt", "TestImageMediaTypesAtAdapter", [(G, 'json.Unmarshal(raw, &response) != nil || anthropic.ValidateContent(response.Content) != nil', 'json.Unmarshal(raw, &response) != nil')]),
+    ("B1.1 H4 Antwortpruefung entfernt", "TestImageMediaTypesAtAdapter", [(G, 'json.Unmarshal(raw.Response, &response) != nil || anthropic.ValidateContent(response.Content) != nil', 'json.Unmarshal(raw.Response, &response) != nil')]),
     ("B1.1 H4 Verschachtelungspruefung entfernt", "TestImageMediaTypesAtAdapter", [(A, 'str(b["tool_use_id"]) == "" || ValidateContent(b["content"]) != nil', 'str(b["tool_use_id"]) == ""')]),
     ("B1.1 H5 Sondenzustand nicht ignoriert", "TestSmokeStateIgnored", [(".gitignore", '/probe/.smoke/', '')]),
     ("B1.1 Release Branch-Ausloeser", "TestReleaseWorkflowOnlyOnTag", [(W, '    tags:', '    branches: [main]\n    tags:')]),
@@ -109,7 +117,8 @@ def main():
                 if old not in body:
                     raise RuntimeError(f"mutation anchor missing: {label}: {old}")
                 path.write_text(body.replace(old, new, 1), encoding="utf-8", newline="\n")
-            proc = subprocess.run(["docker", "exec", CONTAINER, "go", "test", "./internal/...", "-run", test, "-count=1", "-timeout=8s"], text=True, encoding="utf-8", errors="replace", capture_output=True, timeout=30)
+            command = ["go"] if CONTAINER == "local" else ["docker", "exec", CONTAINER, "go"]
+            proc = subprocess.run(command + ["test", "./internal/...", "-run", test, "-count=1", "-timeout=8s"], cwd=ROOT, text=True, encoding="utf-8", errors="replace", capture_output=True, timeout=30)
             output = proc.stdout + proc.stderr
             killed = proc.returncode != 0 and ("--- FAIL:" in output or "test timed out" in output) and "build failed" not in output
             if label.startswith("B1.1"):

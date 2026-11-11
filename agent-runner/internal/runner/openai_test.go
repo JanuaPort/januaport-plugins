@@ -373,6 +373,7 @@ func TestTokenBudgetAtAdapter(t *testing.T) {
 			{"small profile", 5000, []int{1, 1}, []int{5000, 4999}, "ok"},
 			{"remaining 300", 5000, []int{4700, 1}, []int{5000, 300}, "ok"},
 			{"cumulative usage", 5000, []int{4000, 700, 1}, []int{5000, 1000, 300}, "ok"},
+			{"negative usage", 5000, []int{-9, 1}, []int{5000, 5000}, "ok"},
 			{"one token", 1, []int{1}, []int{1}, "limit"},
 			{"exhausted", 5000, []int{5000}, []int{5000}, "limit"},
 			{"overdrawn", 5000, []int{5001}, []int{5000}, "limit"},

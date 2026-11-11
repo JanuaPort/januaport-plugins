@@ -67,7 +67,8 @@ Blöcke einschließlich URL-Bildern und Bildern mit anderem Medientyp werden zu:
 > [Werkzeug-Inhalt in diesem Modell-Durchgang nicht darstellbar.]
 
 Modell-Antworten verwenden den Umschlag aus `model_response_ok.json`.
-Die usage-Werte werden nicht lokal summiert. Alle assistant-Blöcke werden
+Der Läufer summiert das äußere `usage.tokens_out` für das Restbudget;
+die übrigen Token-Budgets prüft weiterhin der Kern. Alle assistant-Blöcke werden
 angehängt; Werkzeugergebnisse folgen als eine neue user-Nachricht.
 
 ### OpenAI Chat Completions
@@ -89,10 +90,17 @@ zusammen mit dem neuen Feld vor dem Versand abgewiesen; nur Rollen
 system/user/assistant/tool, Nachrichtenfelder role/content/tool_calls/tool_call_id und Text statt Inhaltsteilen.
 `developer`, Bild-/Textteile und andere zusätzliche Kern-Felder werden abgewiesen.
 
-Je Modellaufruf gilt `min(1024, limits.tokens_out)`, auch nach angehängten
-Werkzeugergebnissen. OpenAI sendet dafür ausschließlich `max_completion_tokens`,
-Anthropic weiterhin `max_tokens`. Die tatsächlichen Token-Summen und Deckel
-prüft der Kern. Ein HTTP-400-Fehler wegen eines unbekannten Felds beendet den
+Je Modellaufruf gilt `min(MaxTokensPerAnswer, Restbudget tokens_out)`, auch nach
+angehängten Werkzeugergebnissen. `MaxTokensPerAnswer = 8192` steht in
+`internal/runner/conversation.go`: achtmal mehr Raum für längere Antworten
+als zuvor, bei weiterhin begrenzter einzelner Antwort. Restbudget bedeutet
+Profil-`limits.tokens_out` minus bisheriges äußeres `usage.tokens_out` aller
+Modellantworten. Bei Restbudget ≤ 0 endet der Lauf vor einem weiteren
+Modellaufruf als `limit/tokens_out`. Fehlende Nutzung zählt als 0; negative
+Werte erhöhen das Budget nicht. OpenAI sendet dafür ausschließlich
+`max_completion_tokens`, Anthropic weiterhin `max_tokens`. Alle Profilbudgets
+und tatsächlichen Token-Summen prüft weiterhin der Kern.
+Ein HTTP-400-Fehler wegen eines unbekannten Felds beendet den
 Lauf; es gibt keinen automatischen Wiederholungsaufruf mit `max_tokens`.
 
 Anbieterquellen (abgerufen am 2026-10-28):
@@ -140,7 +148,8 @@ Werkzeugfreigabe, ID-Eindeutigkeit, Grenzen, Fehlerklassen
 und Lauf-Protokoll sind für beide Adapter dieselben.
 Der Kern liest Nutzung aus `response.usage.prompt_tokens` und
 `completion_tokens` der Anbieterantwort und gibt sie im äußeren `usage`
-als `tokens_in`/`tokens_out` weiter; der Läufer summiert sie nicht.
+als `tokens_in`/`tokens_out` weiter; der Läufer summiert ausschließlich dieses
+äußere `usage.tokens_out`, nicht die Anbieter-Nutzung in `response.usage`.
 
 ## Ende und neue Referenzdateien zur Übernahme
 
@@ -150,7 +159,14 @@ Server-Identität in `_meta`; der fachliche Golden-Test entfernt ausschließlich
 Ein zusätzlicher Test vergleicht den Ergebnis-Erzeuger ohne Transport exakt.
 
 Das OpenAI-Anfragebeispiel unter `proposed/model_request_openai.json` zeigt
-den Feldwechsel aus #1228. Die Ende-Vorschläge stehen ebenfalls in `proposed/`:
+den Feldwechsel aus #1228. Alle Modell-Anfragebeispiele bleiben bei 1024 und
+byte-identisch: Das Anthropic-Golden ist ein fester Roundtrip-Test, kein
+erzeugter Lauf mit dem Profilbudget aus `run_agent_request.json` (20000).
+Der erzeugende OpenAI-Vergleich und der Anthropic-Bytevergleich setzen ihr
+Profilbudget ausdrücklich auf 1024. Der OpenAI-Adaptertest übergibt weiterhin
+explizit 1024; das ältere OpenAI-Kern-Golden bleibt historische Referenz.
+Ein Golden-Wechsel würde den gepinnten SHA256-Vertragsabgleich brechen.
+Die Ende-Vorschläge stehen ebenfalls in `proposed/`:
 
 | Datei | Ende / Detail |
 |---|---|
@@ -164,7 +180,13 @@ den Feldwechsel aus #1228. Die Ende-Vorschläge stehen ebenfalls in `proposed/`:
 | `run_log_ok.json` | Inhaltfreies Lauf-Protokoll, Dauer für Vergleich auf 0 gesetzt |
 
 Fehler-Ergebnisse tragen `isError: true`, `steps` und optional `detail`.
-Lokale Grenzen: steps, tool_calls, wall; Modellende max_tokens (Anthropic) bzw. length (OpenAI) → tokens_out.
+Lokale Grenzen: steps, tool_calls, wall, tokens_out (Restbudget);
+Modellende max_tokens (Anthropic) bzw. length (OpenAI) → tokens_out,
+auch wenn nach der gekürzten Antwort noch Restbudget vorhanden ist.
+Die gekürzten Inhalte und Werkzeugaufrufe werden verworfen. Der feste Ende-Satz
+unterscheidet Antwortgrenze und Laufbudget nicht. Einen zusätzlichen
+Freitext-Grund wie „Antwort länger als MaxTokensPerAnswer“ gibt es in Contract 1
+nicht; dafür wäre eine Vertragsänderung mit dem Kern erforderlich.
 Grenzdetails des Kerns werden aus steps/tool_calls/wall/tokens_in/tokens_out
 übernommen, unbekannte Details zu gateway. HTTP 401/403 auf beiden inneren
 Wegen ergibt revoked; die Fehlerklassen cancelled/revoked ebenso. Unbekannte

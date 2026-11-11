@@ -62,7 +62,8 @@ Lauf-Token an derselben Betreiberadresse `JNPT_GATEWAY_URL`.
 | Modell nur über Kern; HTTP-Umleitungen und Umgebungsproxy gesperrt | `TestNoRedirectsOrProxyAtEitherGateway` |
 | Anthropic Messages ohne model/stream, keine erzwungene Werkzeugwahl, nur erlaubte Nachrichten/Blöcke, Medien base64, keine Anbieter-Werkzeuge | `TestForbiddenModelPayloads`, `TestModelWireGuards`, `TestUnsafeResponseAndUnknownToolAtAdapter` |
 | OpenAI nur messages/tools/max_completion_tokens; max_tokens allein und zusammen mit dem neuen Feld wird abgewiesen, Rollen system/user/assistant/tool, keine developer-Rolle, keine benannten Nachrichten oder Inhaltsteile; nur Funktionswerkzeuge und Text, tool-Ergebnisse mit tool_call_id; ungültige arguments werden lokaler Fehlertext | `TestRequestAndGolden`, `TestForbiddenRequests`, `TestRunnerVocabularyRejected`, `TestOpenAIOutgoingGuardsAtAdapter`, `TestCompletionTokenField`, `TestOpenAILoopTable` |
-| Je Modellaufruf min(1024, limits.tokens_out): OpenAI max_completion_tokens, Anthropic max_tokens; auch nach Werkzeugergebnissen. Kein automatischer Feldwechsel oder Wiederholungsaufruf bei HTTP 400 | `TestTokenBudgetAtAdapter`, `TestOpenAIUnknownCompletionTokensNoRetryAtAdapter` |
+| Je Modellaufruf min(MaxTokensPerAnswer = 8192, Restbudget tokens_out); Verbrauch aus dem äußeren usage.tokens_out wird über alle Antworten summiert, bei Restbudget ≤ 0 kein weiterer Modellaufruf. OpenAI max_completion_tokens, Anthropic max_tokens; auch nach Werkzeugergebnissen. Kein automatischer Feldwechsel oder Wiederholungsaufruf bei HTTP 400 | `TestTokenBudgetAtAdapter`, `TestOpenAIUnknownCompletionTokensNoRetryAtAdapter` |
+| Anthropic max_tokens und OpenAI length beenden auch bei positivem Restbudget als limit/tokens_out; gekürzte Inhalte und Werkzeugaufrufe werden verworfen. Der bestehende Vertrag hat nur feste Ende-Sätze, keinen zusätzlichen Freitext-Grund | `TestAnswerLimitStopAtAdapter`, `TestOpenAIFinishDetailsAtAdapter` |
 | Fehlendes Protokoll erhält byte-identische Anthropic-Anfrage; unbekannte/ungültige Werte scheitern vor dem Lauf ohne Echo | `TestLegacyAnthropicRequestBytes`, `TestRunRequestGoldenRoundTrip`, `TestProtocolDefaultAndUnknownAtAdapter`, `TestInvalidProtocolValuesAtAdapter` |
 | tool_use darf `caller` nur als `{"type":"direct"}` tragen (Anthropic seit 10/2026); jeder andere caller (Code-Ausführung) oder jedes weitere Feld scheitert; der Block bleibt unverändert in der Historie | `TestToolUseCaller`, `TestLoopToolUseCaller`, `TestLoopProgrammaticCallerRejected` |
 | Thinking und redacted_thinking bleiben in der angehängten Historie erhalten | `TestLoopGoldenThinkingAndLog`, `TestThinkingAndCache` |
@@ -88,11 +89,22 @@ Lauf-Token an derselben Betreiberadresse `JNPT_GATEWAY_URL`.
   Der Healthcheck wird vom eigenen Binary ausgeführt.
 - Nur Anthropic: Cache-Breakpoint am letzten Werkzeug (deckt die Werkzeugliste ab) und am
   System; damit bleiben auch große Werkzeuglisten unter vier Breakpoints.
-- Je Modellaufruf `min(1024, limits.tokens_out)`: OpenAI sendet ausschließlich
-  `max_completion_tokens`, Anthropic weiterhin `max_tokens`. Die tatsächlichen
-  Token-Summen prüft ausschließlich der Kern, auch Cache-Tokens. Ein unbekanntes
+- Je Modellaufruf `min(MaxTokensPerAnswer, Restbudget tokens_out)`.
+  `MaxTokensPerAnswer = 8192` steht in `internal/runner/conversation.go`:
+  achtmal mehr Raum als die frühere Grenze 1024 für längere Antworten,
+  bei weiterhin begrenzter einzelner Modellantwort. Das ist eine lokale
+  Läufergrenze, keine behauptete Anbietergrenze. OpenAI sendet ausschließlich
+  `max_completion_tokens`, Anthropic weiterhin `max_tokens`. `loop.go` zieht
+  das äußere `usage.tokens_out` jeder Antwort vom Profil-`limits.tokens_out`
+  ab, auch nach Werkzeugaufrufen; bei Restbudget ≤ 0 endet der Lauf vor dem
+  nächsten Modellaufruf als `limit/tokens_out`. Fehlender Verbrauch zählt als
+  0; negative Werte erhöhen das Budget nicht. Der Kern prüft weiterhin die
+  tatsächlichen Token-Summen und alle Profilbudgets, auch Cache-Tokens. Ein unbekanntes
   Feld beim Anbieter führt im Lauf zum Fehler, ohne Wiederholung mit `max_tokens`.
   `max_tokens` als interner Stop-Grund (auch für OpenAI-`length`) bleibt bestehen.
+  Diese Stoppgründe enden weiterhin als `limit/tokens_out`, auch wenn das
+  Laufbudget noch nicht verbraucht ist. Der feste Ende-Satz unterscheidet
+  Antwortgrenze und Laufbudget nicht; Contract 1 hat keinen Freitext-Grund.
   Anbieterquellen und ihre Grenzen: `contract/README.md`.
 - 4 MiB je eingehender HTTP-Anfrage und je HTTP-Antwort auf beiden
   Gateway-Pfaden (Bearer-Transport), 1024 Werkzeugdefinitionen und

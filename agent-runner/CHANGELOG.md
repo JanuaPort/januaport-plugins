@@ -1,5 +1,23 @@
 # Changelog
 
+## Unveröffentlicht
+
+JanuaPort/januaport#1371, Befund 1.
+
+- Benannte Grenze `MaxTokensPerAnswer = 8192` statt 1024 je Modellantwort:
+  mehr Raum für längere Antworten bei weiterhin begrenztem Einzelaufruf.
+  Beide Adapter senden das Minimum aus dieser Grenze und dem Restbudget
+  (`limits.tokens_out` minus bisherigem äußerem `usage.tokens_out`).
+- Ausgabe-Verbrauch wird lokal über die Antworten summiert, auch nach
+  Werkzeugaufrufen. Bei Restbudget ≤ 0 endet der Lauf vor dem nächsten
+  Modellaufruf als `limit/tokens_out`; die Budgetprüfung des Kerns bleibt.
+- Anthropic `max_tokens` und OpenAI `length` bleiben `limit/tokens_out`,
+  auch bei positivem Restbudget. Ende-Satz und Contract 1 bleiben unverändert;
+  der Vertrag hat keinen zusätzlichen Freitext-Grund für die Antwortgrenze.
+- Kern-Goldens und vorgeschlagenes OpenAI-Anfragebeispiel unverändert;
+  die erzeugenden Vergleichstests verwenden ein Profilbudget von 1024.
+  Adaptertabellen und reproduzierbare Mutationen prüfen Grenze und Restbudget.
+
 ## 0.2.2 — 2026-11-05
 
 JanuaPort/januaport#1338, JanuaPort/januaport#1335.
@@ -25,8 +43,9 @@ JanuaPort/januaport#1338, JanuaPort/januaport#1335.
 - OpenAI-Anfragen senden `max_completion_tokens`; die eigene Prüfung weist
   `max_tokens` auch zusammen mit dem neuen Feld ab. Anthropic nutzt weiterhin
   `max_tokens`. Kein automatischer Feldwechsel im Lauf bei Anbieterfehlern.
-- Der Deckel `min(1024, limits.tokens_out)` bleibt bei jedem Modellaufruf
-  wirksam; Adapter- und Lauf-Tests prüfen beide Protokolle samt Folgeaufruf.
+- Damals galt der Deckel `min(1024, limits.tokens_out)` bei jedem Modellaufruf
+  (ersetzt durch JanuaPort/januaport#1371, siehe Unveröffentlicht);
+  Adapter- und Lauf-Tests prüften beide Protokolle samt Folgeaufruf.
 - MCP-Implementierungsversion 0.2.1. Anbieterquellen und Grenzen im
   Draht-Vertrag; bisherige Kern-Goldens unverändert.
 
