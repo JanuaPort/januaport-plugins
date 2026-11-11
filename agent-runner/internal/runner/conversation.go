@@ -10,6 +10,10 @@ import (
 	"github.com/januaport/januaport-plugins/agent-runner/internal/openai"
 )
 
+// MaxTokensPerAnswer leaves room for longer answers while bounding each turn;
+// the loop also caps every request at the run's remaining output-token budget.
+const MaxTokensPerAnswer = 8192
+
 type toolCall struct {
 	ID, Name string
 	Input    json.RawMessage
@@ -18,6 +22,7 @@ type toolCall struct {
 type turn struct {
 	Text, Stop string
 	Calls      []toolCall
+	TokensOut  int
 }
 
 type toolResult struct {
@@ -27,7 +32,7 @@ type toolResult struct {
 
 // The loop owns limits and tool authorization; conversations own wire history.
 type conversation interface {
-	next(context.Context, *Runner, *http.Client) (turn, string, string)
+	next(context.Context, *Runner, *http.Client, int) (turn, string, string)
 	appendResults([]toolResult)
 }
 
@@ -37,14 +42,15 @@ func newConversation(a Arguments, tools []anthropic.Tool) conversation {
 		for _, t := range tools {
 			projected = append(projected, openai.Tool{Type: "function", Function: openai.Definition{Name: t.Name, Description: t.Description, Parameters: t.InputSchema}})
 		}
-		return &openAIConversation{request: openai.NewRequest(a.Instructions, a.Input, projected, min(1024, a.Limits.TokensOut))}
+		return &openAIConversation{request: openai.NewRequest(a.Instructions, a.Input, projected, MaxTokensPerAnswer)}
 	}
-	return &anthropicConversation{request: anthropic.NewRequest(a.Instructions, a.Input, tools, min(1024, a.Limits.TokensOut))}
+	return &anthropicConversation{request: anthropic.NewRequest(a.Instructions, a.Input, tools, MaxTokensPerAnswer)}
 }
 
 type anthropicConversation struct{ request anthropic.Request }
 
-func (c *anthropicConversation) next(ctx context.Context, r *Runner, client *http.Client) (turn, string, string) {
+func (c *anthropicConversation) next(ctx context.Context, r *Runner, client *http.Client, maxTokens int) (turn, string, string) {
+	c.request.MaxTokens = maxTokens
 	response, end, detail := r.model(ctx, client, c.request)
 	if end != "" {
 		return turn{}, end, detail
@@ -58,7 +64,7 @@ func (c *anthropicConversation) next(ctx context.Context, r *Runner, client *htt
 	if json.Unmarshal(response.Content, &blocks) != nil {
 		return turn{}, "error", "gateway"
 	}
-	out := turn{Stop: response.StopReason}
+	out := turn{Stop: response.StopReason, TokensOut: response.TokensOut}
 	var text strings.Builder
 	for _, b := range blocks {
 		if b.Type == "text" {
@@ -83,13 +89,14 @@ func (c *anthropicConversation) appendResults(results []toolResult) {
 
 type openAIConversation struct{ request openai.Request }
 
-func (c *openAIConversation) next(ctx context.Context, r *Runner, client *http.Client) (turn, string, string) {
+func (c *openAIConversation) next(ctx context.Context, r *Runner, client *http.Client, maxTokens int) (turn, string, string) {
+	c.request.MaxCompletionTokens = maxTokens
 	response, end, detail := r.openAIModel(ctx, client, c.request)
 	if end != "" {
 		return turn{}, end, detail
 	}
 	c.request.Messages = append(c.request.Messages, response.Message)
-	out := turn{}
+	out := turn{TokensOut: response.TokensOut}
 	_ = json.Unmarshal(response.Message.Content, &out.Text)
 	// Shared stop reasons; the OpenAI request uses max_completion_tokens.
 	switch response.FinishReason {

@@ -70,9 +70,16 @@ nicht vorgesehen.
 Schritte und Werkzeugaufrufe werden nach den Anfragegrenzen im Runner
 gezählt. Die Wandzeit umfasst Werkzeugsuche, Modell- und Werkzeugaufrufe;
 sie ist das Minimum aus Anfrage und eigener Meldung (Standard 300 s).
-Je Modellaufruf gilt `min(1024, limits.tokens_out)`: OpenAI sendet
-`max_completion_tokens`, Anthropic weiterhin `max_tokens`. Die Token-Summen
-und Budgetdeckel verwaltet der Kern. Im Lauf gibt es keinen automatischen
+Je Modellaufruf gilt `min(MaxTokensPerAnswer, Restbudget tokens_out)` mit
+`MaxTokensPerAnswer = 8192` in `internal/runner/conversation.go`. Die Grenze
+gibt längeren Antworten achtmal mehr Raum als bisher und begrenzt weiterhin
+die einzelne Modellantwort. Das Restbudget ist `limits.tokens_out` minus
+dem bisherigen Verbrauch aus dem äußeren `usage.tokens_out` des Kern-Umschlags;
+es wird auch nach Werkzeugergebnissen neu berücksichtigt. Bei Restbudget ≤ 0
+endet der Lauf vor einem weiteren Modellaufruf als `limit/tokens_out`.
+OpenAI sendet `max_completion_tokens`, Anthropic weiterhin `max_tokens`.
+Alle Profilbudgets und tatsächlichen Token-Summen prüft weiterhin der Kern.
+Im Lauf gibt es keinen automatischen
 Wechsel auf `max_tokens`, auch bei HTTP 400 wegen eines unbekannten Felds.
 Beendet der Kern den Relay-Kontext, endet der laufende HTTP-Aufruf ebenfalls.
 Vor dem Schließen der MCP-Sitzung wird der Lauf-Kontext abgebrochen; das
@@ -93,6 +100,11 @@ die Rollen `system`, `user`, `assistant`, `tool` und Funktionswerkzeuge.
 `finish_reason: stop` beendet erfolgreich, `length` ergibt `limit/tokens_out`,
 `content_filter` ergibt `limit/content_filter`. Gefilterter Text und etwaige
 Werkzeugaufrufe werden dabei nicht ausgegeben bzw. ausgeführt.
+Anthropic `stop_reason: max_tokens` ergibt ebenfalls `limit/tokens_out`.
+Beide Antwortlängen-Stoppgründe beenden den Lauf auch bei positivem Restbudget;
+gekürzte Inhalte und Werkzeugaufrufe werden verworfen. Der feste Ende-Satz
+nennt Ausgabe-Tokens und unterscheidet Antwortgrenze und Laufbudget nicht.
+Der bestehende Vertrag bietet keinen zusätzlichen Freitext-Grund.
 
 Eine JSON-Zeile je Lauf auf stdout: `steps`, `tool_calls`, `tools`, `end`,
 `duration_ms` und optional das feste Ende-`detail` (auch `content_filter`).

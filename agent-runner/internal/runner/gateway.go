@@ -74,6 +74,23 @@ func (r *Runner) client(token string) *http.Client {
 type modelResponse struct {
 	Content    json.RawMessage `json:"content"`
 	StopReason string          `json:"stop_reason"`
+	TokensOut  int             `json:"-"`
+}
+
+type openAIResponse struct {
+	openai.Response
+	TokensOut int
+}
+
+type modelEnvelope struct {
+	Response json.RawMessage `json:"response"`
+	Usage    struct {
+		TokensOut int `json:"tokens_out"`
+	} `json:"usage"`
+	Error *struct {
+		Class  string `json:"class"`
+		Detail string `json:"detail"`
+	} `json:"error"`
 }
 
 func (r *Runner) model(ctx context.Context, c *http.Client, request anthropic.Request) (modelResponse, string, string) {
@@ -86,14 +103,15 @@ func (r *Runner) model(ctx context.Context, c *http.Client, request anthropic.Re
 	if end != "" {
 		return response, end, detail
 	}
-	if json.Unmarshal(raw, &response) != nil || anthropic.ValidateContent(response.Content) != nil {
+	if json.Unmarshal(raw.Response, &response) != nil || anthropic.ValidateContent(response.Content) != nil {
 		return response, "error", "gateway"
 	}
+	response.TokensOut = raw.Usage.TokensOut
 	return response, "", ""
 }
 
-func (r *Runner) openAIModel(ctx context.Context, c *http.Client, request any) (openai.Response, string, string) {
-	var response openai.Response
+func (r *Runner) openAIModel(ctx context.Context, c *http.Client, request any) (openAIResponse, string, string) {
+	var response openAIResponse
 	b, e := json.Marshal(request)
 	if e != nil || openai.Validate(b) != nil {
 		return response, "error", "rejected"
@@ -102,16 +120,17 @@ func (r *Runner) openAIModel(ctx context.Context, c *http.Client, request any) (
 	if end != "" {
 		return response, end, detail
 	}
-	response, e = openai.ParseResponse(raw)
+	response.Response, e = openai.ParseResponse(raw.Response)
 	if e != nil {
 		return response, "error", "gateway"
 	}
+	response.TokensOut = raw.Usage.TokensOut
 	return response, "", ""
 }
 
 // Both adapters use the same envelope, transport and fixed error classification.
-func (r *Runner) modelBody(ctx context.Context, c *http.Client, b []byte) (json.RawMessage, string, string) {
-	var response json.RawMessage
+func (r *Runner) modelBody(ctx context.Context, c *http.Client, b []byte) (modelEnvelope, string, string) {
+	var response modelEnvelope
 	req, e := http.NewRequestWithContext(ctx, "POST", r.cfg.GatewayURL+ModelPath, bytes.NewReader(b))
 	if e != nil {
 		return response, "error", "gateway"
@@ -122,13 +141,7 @@ func (r *Runner) modelBody(ctx context.Context, c *http.Client, b []byte) (json.
 		return response, "error", "gateway"
 	}
 	defer func() { _ = res.Body.Close() }()
-	var envelope struct {
-		Response json.RawMessage `json:"response"`
-		Error    *struct {
-			Class  string `json:"class"`
-			Detail string `json:"detail"`
-		} `json:"error"`
-	}
+	var envelope modelEnvelope
 	d := json.NewDecoder(res.Body)
 	if d.Decode(&envelope) != nil || d.Decode(new(any)) != io.EOF {
 		return response, "error", "gateway"
@@ -157,5 +170,5 @@ func (r *Runner) modelBody(ctx context.Context, c *http.Client, b []byte) (json.
 	if res.StatusCode != 200 {
 		return response, "error", "gateway"
 	}
-	return envelope.Response, "", ""
+	return envelope, "", ""
 }

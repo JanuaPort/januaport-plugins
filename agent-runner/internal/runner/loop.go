@@ -74,6 +74,7 @@ func (r *Runner) run(parent context.Context, a Arguments, token string) (out *mc
 		seen[cursor] = true
 	}
 	history := newConversation(a, tools)
+	remainingTokensOut := a.Limits.TokensOut
 	// Nur der letzte Werkzeug-Schritt zählt: Ein Fehler, nach dem ein Schritt ohne
 	// Fehler folgt, ist Erholung. Das Merkmal ist isError, nie ein Inhalt.
 	lastStepFailed := false
@@ -81,11 +82,17 @@ func (r *Runner) run(parent context.Context, a Arguments, token string) (out *mc
 		if ctx.Err() != nil {
 			return finish("cancelled", "", "")
 		}
+		if remainingTokensOut <= 0 {
+			return finish("limit", "tokens_out", "")
+		}
 		record.Steps++
-		response, end, detail := history.next(ctx, r, client)
+		response, end, detail := history.next(ctx, r, client, min(MaxTokensPerAnswer, remainingTokensOut))
 		if end != "" {
 			return finish(end, detail, "")
 		}
+		// Count the core envelope's usage, including answers that use tools.
+		// Missing usage is zero; negative usage must never replenish the budget.
+		remainingTokensOut -= max(0, response.TokensOut)
 		if response.Stop == "end_turn" && len(response.Calls) == 0 {
 			if lastStepFailed {
 				return finish("error", "tools", "")
