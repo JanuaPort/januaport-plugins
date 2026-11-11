@@ -236,6 +236,8 @@ func TestOpenAIGoldensAtAdapter(t *testing.T) {
 	equalJSON(t, encoded, golden(t, "run_agent_request_openai.json"))
 	// The request fixture contains an instruction canary, the model fixture does not.
 	q.Arguments.Instructions = "Prüfe Rechnungen."
+	// Keep the model example at 1024 without changing the core's golden files.
+	q.Arguments.Limits.TokensOut = 1024
 	var response struct {
 		Status int
 		Body   json.RawMessage
@@ -278,9 +280,10 @@ func TestLegacyAnthropicRequestBytes(t *testing.T) {
 	}}
 	r, _, _ := setup(t, core)
 	q := requestFixture(t)
+	q.Arguments.Limits.TokensOut = 1024
 	_, out := invoke(t, r, context.Background(), q, nil)
 	end(t, out, "ok", 1)
-	legacy := anthropic.NewRequest(q.Arguments.Instructions, q.Arguments.Input, []anthropic.Tool{{Name: "erp_list_things", Description: "Lists things.", InputSchema: json.RawMessage(`{"type":"object"}`)}}, min(1024, q.Arguments.Limits.TokensOut))
+	legacy := anthropic.NewRequest(q.Arguments.Instructions, q.Arguments.Input, []anthropic.Tool{{Name: "erp_list_things", Description: "Lists things.", InputSchema: json.RawMessage(`{"type":"object"}`)}}, 1024)
 	want, _ := json.Marshal(legacy)
 	if !bytes.Equal(wire, want) {
 		t.Fatalf("legacy wire changed:\n%s\n%s", wire, want)
@@ -359,28 +362,47 @@ func TestOpenAIFinishDetailsAtAdapter(t *testing.T) {
 // Exercise the real MCP handler, conversation and HTTP sender on every turn.
 func TestTokenBudgetAtAdapter(t *testing.T) {
 	for _, protocol := range []string{"openai", "anthropic", ""} {
-		for _, tc := range []struct{ limit, want int }{{1, 1}, {511, 511}, {1024, 1024}, {20000, 1024}} {
-			t.Run(fmt.Sprintf("%s/%d", protocol, tc.limit), func(t *testing.T) {
+		for _, tc := range []struct {
+			name    string
+			limit   int
+			used    []int
+			want    []int
+			wantEnd string
+		}{
+			{"large profile", 60000, []int{8192, 1}, []int{8192, 8192}, "ok"},
+			{"small profile", 5000, []int{1, 1}, []int{5000, 4999}, "ok"},
+			{"remaining 300", 5000, []int{4700, 1}, []int{5000, 300}, "ok"},
+			{"cumulative usage", 5000, []int{4000, 700, 1}, []int{5000, 1000, 300}, "ok"},
+			{"one token", 1, []int{1}, []int{1}, "limit"},
+			{"exhausted", 5000, []int{5000}, []int{5000}, "limit"},
+			{"overdrawn", 5000, []int{5001}, []int{5000}, "limit"},
+			{"511 tokens", 511, []int{1, 1}, []int{511, 510}, "ok"},
+			{"1024 profile", 1024, []int{1, 1}, []int{1024, 1023}, "ok"},
+		} {
+			t.Run(fmt.Sprintf("%s/%s", protocol, tc.name), func(t *testing.T) {
 				core := &fakeCore{model: func(w http.ResponseWriter, r *http.Request, n int) {
-					if protocol == "openai" {
-						if n == 1 {
-							openAIReply(w, `{"role":"assistant","tool_calls":[`+openAIUse("a", `{"q":"`+secret+`"}`)+`]}`, "tool_calls")
-						} else {
-							openAIReply(w, `{"role":"assistant","content":"fertig"}`, "stop")
-						}
-					} else if n == 1 {
-						modelReply(w, `[{"type":"tool_use","id":"a","name":"erp_list_things","input":{"q":"`+secret+`"}}]`, "tool_use")
-					} else {
-						modelReply(w, `[{"type":"text","text":"fertig"}]`, "end_turn")
+					if n > len(tc.used) {
+						t.Error("model called after budget exhaustion")
+						w.WriteHeader(http.StatusInternalServerError)
+						return
 					}
+					tool := n < len(tc.used) || tc.wantEnd == "limit"
+					budgetReply(w, protocol, tool, "", tc.used[n-1])
 				}}
 				r, _, _ := setup(t, core)
 				q := requestFixture(t)
 				q.Arguments.Model.Protocol = modelProtocol(protocol)
 				q.Arguments.Limits.TokensOut = tc.limit
 				_, out := invoke(t, r, context.Background(), q, nil)
-				end(t, out, "ok", 2)
-				if len(core.requests) != 2 || core.calls != 1 {
+				end(t, out, tc.wantEnd, len(tc.want))
+				wantCalls := len(tc.want) - 1
+				if tc.wantEnd == "limit" {
+					wantCalls = len(tc.want)
+					if !strings.Contains(string(out), `"detail":"tokens_out"`) {
+						t.Fatal(string(out))
+					}
+				}
+				if len(core.requests) != len(tc.want) || core.calls != wantCalls {
 					t.Fatalf("requests/calls: %d/%d", len(core.requests), core.calls)
 				}
 				field, forbidden := "max_tokens", "max_completion_tokens"
@@ -388,8 +410,8 @@ func TestTokenBudgetAtAdapter(t *testing.T) {
 					field, forbidden = forbidden, field
 				}
 				for i, body := range core.requests {
-					if body[field] != float64(tc.want) {
-						t.Errorf("turn %d: %s = %v, want %d", i+1, field, body[field], tc.want)
+					if body[field] != float64(tc.want[i]) {
+						t.Errorf("turn %d: %s = %v, want %d", i+1, field, body[field], tc.want[i])
 					}
 					if _, exists := body[forbidden]; exists {
 						t.Errorf("turn %d: forbidden field %s sent", i+1, forbidden)
@@ -411,7 +433,7 @@ func TestOpenAIUnknownCompletionTokensNoRetryAtAdapter(t *testing.T) {
 	if !strings.Contains(string(out), `"detail":"provider"`) || len(core.requests) != 1 || core.calls != 0 {
 		t.Fatalf("unexpected retry or result: %s; requests/calls %d/%d", out, len(core.requests), core.calls)
 	}
-	if core.requests[0]["max_completion_tokens"] != float64(1024) || core.requests[0]["max_tokens"] != nil {
+	if core.requests[0]["max_completion_tokens"] != float64(8192) || core.requests[0]["max_tokens"] != nil {
 		t.Fatalf("wrong token field: %v", core.requests[0])
 	}
 	if strings.Contains(string(out)+logs.String(), "Unknown parameter") {
