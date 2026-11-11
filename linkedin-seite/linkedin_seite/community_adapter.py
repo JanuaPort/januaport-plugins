@@ -45,18 +45,20 @@ class CommunityAdapter:
         self.calls = 0
         self.ceiling = None
         self.schreibversuch = False
+        self.route = '-'
+        self.diagnose_offen = k.DIAGNOSE_MAX    # form diagnosis lines this call may still hand out
 
     # --- dispatch ---------------------------------------------------------------------------
 
     def run(self, req):
         if isinstance(req, k.CommentsRequest):
-            self.ceiling = HTTP_JE_LESEN
+            self.route, self.ceiling = 'comments', HTTP_JE_LESEN
             return self.comments(req)
         if isinstance(req, k.TageslisteRequest):
-            self.ceiling = HTTP_JE_TAGESLISTE
+            self.route, self.ceiling = 'tagesliste', HTTP_JE_TAGESLISTE
             return self.tagesliste(req)
         if isinstance(req, k.ReplyRequest):
-            self.ceiling = HTTP_JE_ANTWORT
+            self.route, self.ceiling = 'reply', HTTP_JE_ANTWORT
             try:
                 return self.reply(req)
             except ReportError as exc:
@@ -66,6 +68,15 @@ class CommunityAdapter:
 
     def von_uns(self, actor):
         return actor == self.cfg.organization or actor in self.own
+
+    def verworfen(self, row, grund):
+        """A dropped row leaves one content-free line (class, key names, URN prefixes), at most five per call.
+
+        A job is log-silent, so the line goes to the server process, which logs it as a WARN.
+        """
+        if self.diagnose_offen > 0:
+            self.diagnose_offen -= 1
+            self.link.diagnose(k.diagnose_zeile(self.route, grund, row))
 
     # --- LinkedIn ---------------------------------------------------------------------------
 
@@ -147,12 +158,13 @@ class CommunityAdapter:
         rows, complete = self._listing('comments_list', post_urn, {'start': 0, 'count': s.LIST_COUNT})
         found, unreadable = [], 0
         for row in rows:
-            item = k.kommentar_aus(row, post_urn)
+            item, grund = k.kommentar_pruefen(row, post_urn)
             if item is None:
                 unreadable += 1
+                self.verworfen(row, grund)
             else:
                 found.append(item)
-        if len({item.activity for item in found}) > 1:
+        if len({item.thread for item in found}) > 1:
             shape()  # one post is one thread; two threads in one listing is not a known form
         return found, unreadable, complete
 
@@ -161,9 +173,12 @@ class CommunityAdapter:
         rows, complete = self._listing('replies_list', kommentar.urn, {'start': 0, 'count': s.LIST_COUNT})
         found, unreadable = [], 0
         for row in rows:
-            item = k.kommentar_aus(row, post_urn)
-            if item is None or item.activity != kommentar.activity:
+            item, grund = k.kommentar_pruefen(row, post_urn)
+            if item is not None and item.thread != kommentar.thread:
+                item, grund = None, 'object'    # a reply of another thread does not belong to this comment
+            if item is None:
                 unreadable += 1
+                self.verworfen(row, grund)
             else:
                 found.append(item)
         return found, unreadable, complete
@@ -218,10 +233,10 @@ class CommunityAdapter:
         rid = headers.get(s.RESTLI_ID)
         if not isinstance(rid, str) or not k.DIGITS.fullmatch(rid):
             shape()
-        antwort = k.kommentar_urn(parent.activity, rid)
+        antwort = k.kommentar_urn(parent.thread, rid)
         result = {'ausgefuehrt': True, 'state': 'beantwortet', 'post_urn': req.post_urn, 'kommentar_urn': parent.urn,
                   'antwort_urn': antwort, 'anlass': req.anlass, 'doppelt': False, 'nachgelesen': False,
-                  'link': k.link_antwort(parent.activity, parent.cid, rid)}
+                  'link': k.link_antwort(parent.thread, parent.cid, rid)}
         try:  # read back: a confirmed POST stays a success even if this fails
             replies = self.unsere(self.antworten(parent, req.post_urn)[0])
             result['nachgelesen'] = any(reply.cid == rid for reply in replies)
@@ -322,12 +337,12 @@ class CommunityAdapter:
                     ours = self.unsere(replies)
                 if not ours:
                     if open_post:
-                        lists['offen'].append(k.link_kommentar(kommentar.activity, kommentar.cid))
+                        lists['offen'].append(k.link_kommentar(kommentar.thread, kommentar.cid))
                     continue
                 for reply in sorted(ours, key=lambda r: r.schluessel, reverse=True):
                     if req.start_ms <= reply.zeit_ms < req.ende_ms:
-                        lists['antworten'].append(k.link_antwort(kommentar.activity, kommentar.cid, reply.cid))
+                        lists['antworten'].append(k.link_antwort(kommentar.thread, kommentar.cid, reply.cid))
                 if len(ours) > 1:
-                    lists['doppelt'].append(k.link_kommentar(kommentar.activity, kommentar.cid))
+                    lists['doppelt'].append(k.link_kommentar(kommentar.thread, kommentar.cid))
                 if kommentar.geaendert_ms > kommentar.zeit_ms and kommentar.geaendert_ms > max(r.zeit_ms for r in ours):
-                    lists['nach_antwort_bearbeitet'].append(k.link_kommentar(kommentar.activity, kommentar.cid))
+                    lists['nach_antwort_bearbeitet'].append(k.link_kommentar(kommentar.thread, kommentar.cid))
