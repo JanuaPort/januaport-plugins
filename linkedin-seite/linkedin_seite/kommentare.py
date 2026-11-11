@@ -284,7 +284,7 @@ def _object_passt(art, thread, objekt, post_urn):
     """activity: today's rule. ugcPost/share: object, the listed post and the thread are one and the same URN."""
     if art == 'activity':
         return objekt in (thread, post_urn or thread)
-    return post_urn is not None and post_urn == thread and objekt == post_urn
+    return post_urn == thread and objekt == post_urn     # no listed post (None) never equals a thread
 
 
 def kommentar_aus(element, post_urn=None):
