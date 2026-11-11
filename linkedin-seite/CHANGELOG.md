@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.4.1 — 2026-11-11
+
+- JanuaPort/januaport#1237, Schnitt c-6800107310, SEC L1/L2 c-6800122813: `KOMMENTAR_URN` kannte nur die
+  Activity-Form `urn:li:comment:(urn:li:activity:<n>,<n>)`; jede Kommentarzeile mit anderem Faden fiel
+  als `nicht_lesbar` heraus, ohne dass im Log stand, warum. Welche Form LinkedIn live liefert, ist nicht
+  belegt; deshalb zwei Teile: weitere Formen und eine Diagnose.
+- **Faden-URN:** `KOMMENTAR_URN` nimmt jetzt `urn:li:comment:(urn:li:(activity|ugcPost|share):<ziffern>,<ziffern>)`,
+  nur Ziffern, beide Teile höchstens 30 Stellen. Bei `ugcPost` und `share` muss `object` genau der Post des
+  Listings sein (und damit der Faden selbst); bei `activity` gilt die Regel von 0.4.0 (Activity oder
+  Post). Der Faden steht am Kommentar; Links, `antwort_urn` und der `reply`-Aufruf bauen daraus
+  (`feed/update/<faden-urn>`), nie aus einer geratenen Activity. `antworten`: Antworten müssen im selben Faden
+  liegen wie der Elternkommentar. Die Links der Formen `ugcPost` und `share` sind **nicht live belegt**.
+- **Formdiagnose:** je verworfener Zeile eine WARN-Zeile im Serverprozess
+  `route=… grund=<Klasse> schluessel=<Feldnamen> comment_praefix=… object_praefix=… actor_praefix=…`.
+  Klassen fest: `urn_form`, `object`, `actor`, `zeit`, `text_typ`, `attribute`, `geloescht_typ`,
+  `kein_objekt`; die erste Abweichung zählt. Nie Text, volle Kennung oder Name. **L1:** ein Präfix steht nur,
+  wenn `^urn:li:[A-Za-z]{1,30}:` passt, genau dieser Teil; sonst `andere`, fehlend `fehlt`, kein String `typ`.
+  **L2:** nur Schlüssel der obersten Ebene nach `^[A-Za-z][A-Za-z0-9_]{0,39}$`, sortiert, höchstens 20; andere
+  zählen als `?` und werden nie geschrieben. Höchstens fünf Zeilen je Aufruf (Adapter und Serverprozess prüfen
+  je); der Serverprozess lässt nur Zeilen der festen Form durch.
+- Unverändert: Antwort an den Aufrufer (`nicht_lesbar: n`), SEC S1–S4 und T1–T3, Tagesdeckel 8 (`daily_cap`),
+  Audit-Tiefe, keine neuen Antwortfelder, kein zusätzlicher LinkedIn-Aufruf.
+- Ausrollen wie 0.4.0: neues Image, per Digest in `JNPT_LINKEDIN_SEITE_IMAGE`; keine neue Zustimmung. Nach
+  dem Rollout zeigt das Log (WARN-Zeilen), welche Formen LinkedIn tatsächlich liefert. Synthetisch geprüft,
+  **nicht live belegt**.
+
+
 ## 0.4.0 — 2026-11-10
 
 - JanuaPort/januaport#1237, **Stufe B3**: Kommentare unter eigenen Posts lesen und als Organisation

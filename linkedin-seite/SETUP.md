@@ -1,4 +1,4 @@
-# LinkedIn-Seite 0.4.0 einrichten — Stufe A, Stufe B1 und Stufe B3
+# LinkedIn-Seite 0.4.1 einrichten — Stufe A, Stufe B1 und Stufe B3
 
 Diese Anleitung führt den Admin durch LinkedIn-Zustimmung und Tresoreintrag. Der Betreiber
 installiert vorher den Beisteller, legt die beiden Tresor-Stellen an und setzt den Bridge-Key.
@@ -246,6 +246,10 @@ alt, Kommentar oberster Ebene genau dieses Posts, nicht von uns, noch nicht von 
 demselben Verfasser unter diesem Post noch nicht geantwortet. Er sendet höchstens alle 60 Sekunden eine
 Antwort. Der Tagesdeckel steht im Kern: 8 Versuche je Tag am Werkzeug `reply`, auch abgelehnte zählen.
 Hochgesetzt wird er nur auf Wort des PO.
+
+Seit 0.4.1 erkennt der Dienst Kommentare in drei Faden-Formen (`activity`, `ugcPost`, `share`). Verwirft er
+eine Zeile, steht im Log eine WARN-Zeile `route=… grund=…` mit festen Klassen, Schlüsselnamen und
+URN-Präfixen, nie Text oder Namen; höchstens fünf je Aufruf. Die Antwort an die KI bleibt `nicht_lesbar: n`.
 
 **Rechte am Antwort-Token** (in der Admin-Oberfläche von JanuaPort, genau diese drei, sonst nichts):
 `linkedin-seite-community:comments`, `linkedin-seite-community:reply` und `linkedin-seite:posts`. Kein

@@ -1,4 +1,4 @@
-# LinkedIn-Seite 0.4.0 — #1237, Stufe A, Stufe B1 und Stufe B3
+# LinkedIn-Seite 0.4.1 — #1237, Stufe A, Stufe B1 und Stufe B3
 
 Privater Python-REST-Beisteller für Kennzahlen einer fest konfigurierten LinkedIn-Seite.
 PO-Entscheid vom 29.10.2026: Option (a), Stufe A. Seit 0.2.0 zusätzlich Stufe B1: Posten,
@@ -530,8 +530,8 @@ schützt das LinkedIn-Kontingent und die anderen Pfade, er begrenzt keine Antwor
 der Development Tier 100 Aufrufe am Tag über alle APIs; 50 + 45 + 60 liegt darüber.
 
 **Tagesliste (S4, T1).** Live aus LinkedIn, nichts gespeichert. Jeder Eintrag ist ein Link, den der
-Dienst aus geprüften Ziffern-IDs selbst baut (`https://www.linkedin.com/feed/update/urn:li:activity:…`
-mit `commentUrn`/`replyUrn`); was nicht passt, zählt nur als `nicht_lesbar`. Die Merkmale `antworten`,
+Dienst aus geprüften Ziffern-IDs selbst baut (`https://www.linkedin.com/feed/update/<faden-urn>/…` mit
+`commentUrn`/`replyUrn`; Faden ist `urn:li:activity|ugcPost|share:<ziffern>`, seit 0.4.1); was nicht passt, zählt nur als `nicht_lesbar`. Die Merkmale `antworten`,
 `offen`, `doppelt`, `nach_antwort_bearbeitet` sind feste Werte des Dienstes. Kein Kommentartext, kein
 Name, keine Headline, keine Einstufung. Der `anlass` einer eigenen Antwort fehlt: der Dienst hält keinen
 Speicher, LinkedIn kennt ihn nicht. Eigenes Recht `linkedin-seite-community:tagesliste`, damit das
@@ -564,13 +564,28 @@ eine Person. Kommentartexte leben nur im Arbeitsspeicher eines Aufrufs.
    anstehenden Post-Termin; Lesen und Posten fallen bis dahin aus.
 3. CONNECTOR portiert die Vorlage, GATE setzt die Rechte nach der Aktivierungsregel.
 
+### Faden-Formen und Formdiagnose (0.4.1)
+
+Eine Kommentar-URN gilt in drei Formen: `urn:li:comment:(urn:li:activity:<n>,<n>)`, `…(urn:li:ugcPost:<n>,<n>)`
+und `…(urn:li:share:<n>,<n>)`, nur Ziffern, beide Teile höchstens 30 Stellen. Bei `ugcPost` und `share` muss
+`object` genau der Post des Listings sein, bei `activity` wie bisher die Activity oder der Post. Den Faden hält
+der Dienst am Kommentar; Links und `reply` bauen daraus. Eine Antwort gilt nur im selben Faden wie ihr
+Elternkommentar. Die Weblinks der Formen `ugcPost` und `share` sind nicht live belegt.
+
+Verwirft der Dienst eine Zeile, steht im Serverlog (Stufe WARN, **nicht** in der Antwort, dort bleibt es bei
+`nicht_lesbar: n`) je Zeile eine feste Form: `route=comments grund=object schluessel=actor,commentUrn,…
+comment_praefix=urn:li:comment: object_praefix=urn:li:ugcPost: actor_praefix=urn:li:organization:`. `grund` ist
+einer von `urn_form`, `object`, `actor`, `zeit`, `text_typ`, `attribute`, `geloescht_typ`, `kein_objekt`. Ein
+Präfix ist nur der passende Teil `urn:li:<art>:`, sonst `andere`, `fehlt` oder `typ`; Schlüssel nur nach der
+Zeichenregel, andere zählen als `?`; nie Text, volle Kennung oder Name. Höchstens fünf Zeilen je Aufruf.
+
 ### Live-Gates Stufe B3
 
 Testkommentar unter einem eigenen Post: `comments` zeigt den Text ohne Namensfeld · `reply` erscheint
 unter genau diesem Kommentar · zweiter Aufruf ergibt `wiederholt` · Audit ohne Text, Nebentabelle leer ·
 nach Entzug des Rechts 403 · der Deckel greift. Zu belegen [A]: Form von `object` und `commentUrn` in der
-Liste (Activity- oder Post-Form; beide werden angenommen, jede andere fällt heraus) · `parentComment` in
-Activity-Form · ob die Post-Liste verschachtelte Kommentare enthält · Paging mit `start`/`count` ·
+Liste (Faden `activity`, `ugcPost` oder `share`, seit 0.4.1; jede andere Form fällt heraus; bei `ugcPost`
+und `share` die Weblinks) · `parentComment` in Faden-Form · ob die Post-Liste verschachtelte Kommentare enthält · Paging mit `start`/`count` ·
 Feld für gelöschte Kommentare · ob `lastModified` nur beim Bearbeiten steigt · Weblink-Form der
 Tagesliste · Lesen über `r_organization_social_feed` als Seiten-Admin · Prozent-Kodierung der
 Kommentar-URN im Pfad.
