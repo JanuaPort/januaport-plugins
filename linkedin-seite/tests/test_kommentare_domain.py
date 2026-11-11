@@ -117,8 +117,10 @@ class ReplyInput(unittest.TestCase):
     def test_exact_body_with_four_fields(self):
         req = k.parse_reply(body())
         self.assertEqual((req.post_urn, req.kommentar_urn, req.anlass), (POST, KOMMENTAR, 'dank'))
+        for urn in ('urn:li:comment:(urn:li:ugcPost:1,2)', 'urn:li:comment:(urn:li:share:1,2)'):
+            self.assertEqual(k.parse_reply(body(kommentar_urn=urn)).kommentar_urn, urn)
         for raw in (b'', b'[]', b'{"post_urn":"x"}', body(extra='x'), body(post_urn='urn:li:activity:1'),
-                    body(kommentar_urn='urn:li:comment:(urn:li:share:1,2)'),
+                    body(kommentar_urn='urn:li:comment:(urn:li:person:1,2)'),
                     body(kommentar_urn='urn:li:comment:(urn:li:activity:1,abc)'), body(text=5), body(anlass=None),
                     b'{"text":"a","text":"b"}', b'x' * 9000):
             with self.subTest(raw=raw[:60]), self.assertRaises(ReportError) as cm:
