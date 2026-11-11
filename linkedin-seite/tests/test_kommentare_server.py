@@ -325,10 +325,10 @@ class DiagnoseJob(JobCommunityAdapter):
     """A job that hands the server process more lines than allowed, one of them with content."""
 
     def comments(self, req):
-        for _ in range(8):
-            self.link.diagnose(k.diagnose_zeile('comments', 'object', {}))
         self.link.diagnose('route=comments grund=object schluessel=- comment_praefix=Max Mustermann KANARIE')
         self.link.diagnose('KANARIE Kommentartext')
+        for _ in range(8):
+            self.link.diagnose(k.diagnose_zeile('comments', 'object', {}))
         return super().comments(req)
 
 
