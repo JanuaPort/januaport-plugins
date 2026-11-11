@@ -521,12 +521,12 @@ class Threads(Base):
             with self.subTest(kind=kind):
                 post, other = (self.li.post(kind=kind, thread='post') for _ in range(2))
                 good = self.li.comment(post)
-                foreign = self.li.element(post, DRITTER, 'fremd TEXTCANARY', ms(1))
+                foreign = self.li.element(post, DRITTER, 'fremd FREMDCANARY', ms(1))
                 foreign['object'] = other
                 self.li.comments[post].append(foreign)
                 out = self.comments(post)
                 self.assertEqual(([c['kommentar_urn'] for c in out['kommentare']], out['nicht_lesbar']), ([good], 1))
-                self.assertNotIn('TEXTCANARY', json.dumps(out))
+                self.assertNotIn('FREMDCANARY', json.dumps(out))
                 self.assertEqual(self.refused(post, foreign['commentUrn']), 'kommentare_nicht_lesbar')
 
     def test_a_thread_of_another_post_in_the_listing_is_dropped(self):
