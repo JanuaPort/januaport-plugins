@@ -10,6 +10,7 @@ from google_reporting.manage import ManageRequest, envelope
 from google_reporting.safe_http import serve_app
 from google_reporting.domain import Sites, project
 from google_reporting.server import create_app
+from google_reporting import workers
 from google_reporting.workers import WorkerPool
 from site_fixtures import januaport_entry, sites_raw, terminagent_entry
 
@@ -83,6 +84,9 @@ class SyntheticAdapter:
 
 
 def main():
+    # The probes of the Go cross-repo tests make far more than 30 calls per source and minute in a
+    # row. The budget itself (also page_compare counting twice) is tested in test_page_compare.py.
+    workers.RATE_PER_MINUTE = 10_000
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=18092)
     args = parser.parse_args()
