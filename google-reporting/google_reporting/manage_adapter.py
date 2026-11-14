@@ -47,6 +47,7 @@ class ManageRunner:
             req.source,
             req.operation,
             "ok" if items else "no_rows",
+            req.site,
             items=items,
             quality=quality,
         )
@@ -56,6 +57,7 @@ class ManageRunner:
             req.source,
             req.operation,
             state,
+            req.site,
             dry_run=req.dry_run,
             target=target,
             changed_fields=changed,

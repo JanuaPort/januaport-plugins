@@ -1,7 +1,7 @@
-# Google Reporting 1.0.1 — #1130, #1176
+# Google Reporting 1.1.0 — #1130, #1176, #1379
 
 Stufe 1 „Sicher verbinden“. Gebaut und synthetisch geprüft; **noch nicht live
-abgenommen oder produktiv provisioniert**. Fassung 1.0.1 (#1130, #1148, #1150, #1176); den Tag
+abgenommen oder produktiv provisioniert**. Fassung 1.1.0 (#1130, #1148, #1150, #1176, #1379); den Tag
 `google-reporting-vX.Y.Z` setzt GATE über den Release-Workflow. Apache 2.0.
 Ein privater Python-Beisteller übersetzt acht feste GET-Berichte in offizielle
 Google-REST-Aufrufe. JanuaPort behält Rechte, Audit und Pseudonymisierung.
@@ -26,6 +26,15 @@ Handgriffe Annotation, Sitemap und Kanalgruppe, kein Löschen, keine weitere Adm
 `Authorization: Bearer <Bridge-Key>`: **ein** Bridge-Key für beide Quellen
 (Stelle `plugin-google-reporting`, Datei `runtime-key`). Die Rechte je Werkzeug
 prüft das Gateway, nicht der Dienst. Status nimmt keine Parameter an.
+
+**Site (seit 1.1.0, #1379):** Ein Dienst bedient eine oder mehrere Sites (Abschnitt „Mehrere
+Sites“). Welche, bestimmt allein der Header `X-Google-Reporting-Site`, den die JanuaPort-Instanz
+aus ihrem Pflicht-Instanzwert `site` mitsendet. Die Site ist **nie** ein MCP-Parameter und nie
+ein Query- oder Body-Feld (`?site=…` ist `invalid_input`). Der Dienst wertet den Header **nach**
+der Bridge-Key-Prüfung und **vor** jedem Parsen aus: Property, Hosts und Seitenliste einer
+Anfrage stammen von genau dieser einen Site. Berichte tragen `scope.site`, `get_status` nennt
+`site` und die `hosts` dieser Site (die Property-IDs bleiben verborgen), Verwaltungsantworten
+tragen `site`.
 Alle Berichte erlauben `period_days` (28/90, Default 28), `end_date` (ISO),
 `segment` (`all_public`/`atas`/`gateway`/`shared`, Default all_public).
 GSC erlaubt optional `page_path` innerhalb des Segments; Ranglisten `limit`
@@ -83,8 +92,8 @@ Die Produktvorlagen heißen `google-search-console-manage` und `google-analytics
 | GA4 | `ga4/update_channel_group` | POST | `get` (readonly), dann `patch`, `analytics.edit` |
 
 Es gibt **eine feste Route je Operation**, keinen generischen Pfad und kein `delete`/`archive`
-(404). Site und Property kommen ausschließlich aus der Betreiberkonfiguration, nie aus einem
-Parameter. Ein Schreibaufruf holt seinen Schreib-Scope über ein **eigenes Credential-Objekt**;
+(404). Site und Property kommen ausschließlich aus der Betreiberkonfiguration der Site, die der
+Header auflöste, nie aus einem Parameter. Ein Schreibaufruf holt seinen Schreib-Scope über ein **eigenes Credential-Objekt**;
 die Lesewege und der Vorzustand eines Schreibaufrufs bleiben auf dem Readonly-Scope, die Scopes
 werden nie kombiniert (`tests/test_manage_adapter.py` pinnt die Menge je Operation).
 
@@ -112,8 +121,12 @@ werden nie kombiniert (`tests/test_manage_adapter.py` pinnt die Menge je Operati
 - **Vorschau und Antwort:** Jeder Schreibhandgriff kennt `dry_run` (JSON-Boolean). Die Antwort
   trägt immer `state` (`applied`, `preview`, `unchanged`), `target`, `changed_fields`, `before`
   und `after`; eine Vorschau ruft nichts Schreibendes bei Google auf.
-- **Tagesdeckel:** höchstens 20 Schreibversuche je Quelle und UTC-Tag. Der Zähler liegt im
-  langlebigen Serverprozess (nicht im Worker, der bei Abbruch getötet wird), zählt den Versuch
+- **Tagesdeckel:** höchstens 20 Schreibversuche je Quelle **und Site** und UTC-Tag (Schlüssel
+  `(site, source, day)`; die Properties sind je Site eindeutig, also bleibt es bei 20 je Property
+  und Tag). Zuerst wird die Site aufgelöst, dann gezählt: `site_required` und `site_unknown`
+  zählen nirgends. Eine Site kann die Schreibhandgriffe einer anderen nicht sperren. Die
+  Obergrenze am ganzen Dienst sind damit höchstens 5 × 20 = 100 Schreibversuche je Quelle und
+  Tag. Der Zähler liegt im langlebigen Serverprozess (nicht im Worker, der bei Abbruch getötet wird), zählt den Versuch
   vor dem Google-Aufruf und damit auch Fehlschläge, nicht aber `dry_run`. Der 21. Versuch gibt
   429 `write_cap_reached`. Ein Neustart des Containers setzt den Zähler auf null; das ist eine
   dokumentierte Grenze, ein Aufrufer kann ihn nicht auslösen. Schreibaufrufe laufen ohne Retries.
@@ -123,7 +136,7 @@ werden nie kombiniert (`tests/test_manage_adapter.py` pinnt die Menge je Operati
   den vorhandenen Discovery-Client (`analyticsadmin` v1alpha aus dem gepinnten
   `google-api-python-client`), keine zusätzliche Abhängigkeit.
 - **Änderungszeile:** Für jeden **angewendeten** Schreibaufruf schreibt der Dienst genau eine
-  Zeile `change ts=… source=… op=… target=… fields=… before={…} after={…}`. Werte stehen nur für
+  Zeile `change ts=… site=… source=… op=… target=… fields=… before={…} after={…}`. Werte stehen nur für
   Felder mit festem Typ (Datum, Farbe, Hostnamen, Sitemap-URL, Flags); Titel und Beschreibung
   nur als Länge und SHA-256-Präfix. Token, Schlüssel und Bridge-Key stehen nie darin. Das
   Gateway-Audit hält fest, wer welches Werkzeug mit welchem Ergebnis aufrief; diese Zeile hält
@@ -138,7 +151,86 @@ werden nie kombiniert (`tests/test_manage_adapter.py` pinnt die Menge je Operati
 Fehlercodes dieser Routen: `invalid_input`, `personal_data_rejected` (400), `route_not_found`
 (404), `sitemap_not_found`, `annotation_not_found`, `channel_group_not_found` (404),
 `annotation_not_managed`, `channel_group_not_managed`, `channel_group_exists` (409),
-`write_cap_reached` (429), `unexpected_source_shape`, `source_rejected` (502).
+`write_cap_reached` (429), `unexpected_source_shape`, `source_rejected` (502). Dazu bei jeder
+Route `site_required` und `site_unknown` (400, Abschnitt „Mehrere Sites“).
+
+## Mehrere Sites (JanuaPort/januaport#1379)
+
+Ein Dienst, ein Egress, ein Servicekonto, ein Bridge-Key: Mehrere Websites mit je eigener
+Property laufen im selben Beisteller. Jede Site bekommt in JanuaPort **eigene Instanzen** der
+vier Vorlagen (`google-search-console`, `google-analytics`, je mit `-manage`); die Rechte je Site
+sind die vorhandenen Scopes je Instanz. Die Instanz sendet ihren Site-Kurznamen als deklarierten
+Instanzwert `site` im Header `X-Google-Reporting-Site` (Vorlagen 1.1.0, Katalog-Eintrag bleibt
+einer je Plugin).
+
+**Konfiguration.** `config.example.sites.json` zeigt die Listenform:
+
+```json
+{"sites": [{"name": "januaport", "gsc_property": "…", …}, {"name": "terminagent", …}]}
+```
+
+Je Eintrag stehen `name` und genau die Felder der Einzelkonfiguration. Grenzen: 1–5 Sites, Name
+`[a-z][a-z0-9-]{0,31}` und eindeutig, `default` ist in der Liste verboten. Die Hosts der Sites
+sind disjunkt, `gsc_property` und `ga4_property` je Site eindeutig (sonst träfen Annotation und
+Kanalgruppe zwei Sites). `MAX_PATHS` (100) und `MAX_REGEX` gelten **je Site**. Die bisherige
+Einzelkonfiguration (ohne `sites`) bleibt gültig und ist die Site `default`, ohne Migration.
+Mischformen (`sites` neben Einzelfeldern) sind `invalid_configuration`.
+
+**Auflösung.** Der Header wird mit exaktem Byte-Vergleich gelesen (kein Kleinschreiben, kein
+Trimmen):
+
+| Lage | Antwort |
+|---|---|
+| Einzelform, kein Header oder genau `default` | Site `default` (kompatibel mit 1.0.x) |
+| Listenform, kein Header, auch bei einem Eintrag | 400 `site_required` |
+| Header mehrfach, leer, außerhalb des Musters, unbekannt, in der Einzelform ein anderer Name | 400 `site_unknown` |
+| Listenform, bekannter Name | diese Site |
+
+Es gibt **nie** einen Rückfall auf die erste Site, und der Fehlertext nennt den Namen nie (der
+Körper bleibt `{"error": code}`, die Logzeile trägt nur eine aufgelöste Site, sonst `-`). Eine
+Instanz, die beim Vorlagen-Update auf 1.0.0 ohne Header stehen blieb, wird in der Listenform
+deshalb abgewiesen und liest nie still die Daten einer anderen Site.
+
+**Was je Site getrennt ist.** Property, Hosts, Seitenliste, `query_enabled`, Schlüsselereignisse
+und Kanalgruppenname kommen aus der aufgelösten Site; Sitemap-URL, `inspect_url`-Pfad und
+`page_path` werden nur gegen deren Hosts und Pfade geprüft (fremd: `invalid_input`). Die Segmente
+bleiben `atas`, `gateway`, `shared`; eine Site ohne `atas`-Seiten legt alle Seiten nach `shared`,
+eine leere Gruppe ergibt wie bisher `invalid_input`. RAM-Caches der Clients und Credentials sind
+gemeinsam (ein Servicekonto), Berichtsdaten liegen nie im Cache.
+
+**Grenzen je Quelle.** Die Minutengrenze (30 je Quelle) bleibt gemeinsam, weil die Google-Quote
+am Projekt hängt: Eine Schleife auf einer Site kann die andere höchstens eine Minute lang
+ausbremsen, ohne Datenwirkung. Der Tagesdeckel gilt je Quelle **und Site** (siehe oben, höchstens
+5 × 20 = 100 je Quelle und Tag am ganzen Dienst).
+
+**Betreiberfolge** (Pflicht, in dieser Reihenfolge):
+
+1. Plugin 1.1.0 ausrollen; die Einzelkonfiguration bleibt, die bestehenden Instanzen laufen
+   weiter.
+2. In **einem** Wartungsgang die Konfiguration auf `sites: [{"name": "januaport", …}]` umstellen,
+   Dienst neu starten und die vier Bestandsinstanzen mit `jnpt connector upgrade --wert
+   site=januaport --yes <instanz>` auf 1.1.0 anheben. Dazwischen liefern die Bestandsinstanzen
+   kurz `site_required`; das ist fail-closed und gewollt.
+3. `terminagent` (oder eine weitere Site) mit Hosts, Properties und Seitenliste in die
+   Konfiguration aufnehmen, Dienst neu starten.
+4. Je neue Site vier Instanzen mit kurzem Namen anlegen (`google-search-console-manage-terminagent`
+   ist 52 Zeichen lang; die MCP-Clients erlauben für `<instanz>_<werkzeug>` höchstens 64) und
+   Scopes mit **exakten Instanznamen** nur dem Team dieser Site geben. Ein Instanzscope erfasst
+   nur seine eigene Instanz, Wildcards über Instanzgrenzen kennt die Policy nicht.
+5. Das Servicekonto bei Google für die Properties der neuen Site freigeben (Rechte wie in
+   `SETUP.md`).
+
+**Abnahme nach jeder Anlage einer Site-Instanz (Pflicht):** `get_status` aufrufen. Die Antwort
+muss die richtige `site` und die richtigen `hosts` nennen; eine kopierte oder vertippte Instanz
+zeigt hier sofort die falsche Site. Der Probelauf mit einem echten Team-Token prüft zusätzlich:
+Bericht über 28 Tage mit `scope.site`, ein Werkzeug einer fremden Instanz gibt 403 (auch mit dem
+persönlichen Token eines Teammitglieds, das nicht in beiden Teams ist, denn persönliche Tokens
+erben Team-Mitgliedschaften), Schreibhandgriffe nur mit `dry_run`.
+
+**Mandantentrennung.** Sie setzt voraus, dass Instanzen nur der Betreiber anlegt: Die
+Instanzwerte setzen Menschen über GUI, REST und CLI sowie der Admin-MCP hinter dem Schalter
+`target_address`, über `/mcp` nie. Wer Admin-Zugang hat, kann eine Instanz auf eine fremde Site
+umbiegen; Admin-Rechte gehören deshalb nur dem Betreiber.
 
 ## Konfiguration und Datenschutz
 
@@ -146,7 +238,7 @@ Fehlercodes dieser Routen: `invalid_input`, `personal_data_rejected` (400), `rou
 (1–80 Zeichen, Vorgabe „KI-Assistenten“): Name der einen Kanalgruppe, die der Dienst anlegen
 und ändern darf. Pflicht: feste GSC-Property,
 GA4-Property-ID ohne `properties/`, IANA-Zeitzone, exakte kanonische Hosts,
-drei disjunkte Gruppen mit zusammen 1–100 öffentlichen Pfaden (seit 1.0.1, vorher 50) und
+drei disjunkte Gruppen mit zusammen 1–100 öffentlichen Pfaden je Site (seit 1.0.1, vorher 50) und
 explizite vollständige GSC-URLs je Pfad/Host. Keine Querystrings, Fragmente, dynamischen
 Nutzerpfade, keine Präfixe. Pfade höchstens 512 Zeichen, GSC-Regex über alle URLs höchstens
 4096 Zeichen; Überschreitung schlägt beim Laden fehl, kein ungefilterter Fallback. Die
@@ -198,8 +290,8 @@ Python-Logs. Keine Datenbank, Berichtscache oder geplante Abfragen.
 512 KiB JSON vor Ausgabe, 8 KiB URL/Query, Pfad 512 Zeichen. **20 Sekunden**
 Gesamtbudget inklusive Queue, Token-Refresh und API. Connector-Timeout **25 s**.
 Zwei persistente Python-Kindprozesse insgesamt, vier zusätzliche Queueplätze,
-30 Berichts-/Probeanforderungen je Quelle pro rollender Minute, dazu höchstens 20
-Schreibversuche je Quelle und Tag (nur im RAM des Serverprozesses). Status kann
+30 Berichts-/Probeanforderungen je Quelle pro rollender Minute (gemeinsam für alle Sites), dazu
+höchstens 20 Schreibversuche je Quelle, Site und Tag (nur im RAM des Serverprozesses). Status kann
 mehrere feste Kompatibilitätsaufrufe innerhalb derselben Frist enthalten.
 Ein Prozess führt immer nur einen Auftrag aus. Token/Clients pro Quelle und
 Prozess getrennt, nur im RAM. Reguläre Aufrufe verwenden gültige Tokens weiter;
@@ -227,10 +319,11 @@ keine relativen Links; `tests/test_setup_guide.py` prüft das.
 
 ## Einrichtung, Betrieb und Rückbau
 
-1. Neue zweckgebundene Servicekonto-Identität für diese Website. Seit #1148 (SEC-Obergrenze V1):
+1. Neue zweckgebundene Servicekonto-Identität für diesen Dienst, ein Konto für alle Sites. Seit #1148 (SEC-Obergrenze V1):
    GSC höchstens „Uneingeschränkt“ (nie Inhaber), GA4 höchstens „Bearbeiter“ auf der **konkreten
    Property** (nie Administrator), keine IAM-Rolle; IAM allein genügt nicht. Kein
-   Terminagent-Konto, kein Owner/Admin auf Vorrat. Search Console API, Analytics Data API und
+   eigenes Konto je Site, kein Owner/Admin auf Vorrat; das eine Konto bekommt auf jeder Property
+   jeder Site dieselben minimalen Rechte. Search Console API, Analytics Data API und
    Analytics Admin API aktivieren. Die Lesewege fragen ausschließlich
    webmasters.readonly beziehungsweise analytics.readonly an, ein Schreibaufruf holt
    `webmasters` beziehungsweise `analytics.edit` über ein eigenes Credential-Objekt. Die
@@ -310,9 +403,9 @@ keine relativen Links; `tests/test_setup_guide.py` prüft das.
 6. Die **eine** Connector-Credential `google-reporting` im JanuaPort-Vault ist
    schon aus Schritt 2 gesetzt (Wert gleich `runtime-key` der Stelle
    `plugin-google-reporting`, nie von Hand getippt). Bytegleiche Vorlagen aus Integrations-/Produktrepo
-   (`google-search-console`, `google-analytics`, beide jeweils 1.0.0 und beide mit
+   (`google-search-console`, `google-analytics`, beide jeweils 1.1.0 und beide mit
    dieser Credential; für den ATAS-Zugang zusätzlich `google-search-console-manage` und
-   `google-analytics-manage`, ebenfalls 1.0.0) als **corp**-Instanzen mit
+   `google-analytics-manage`, ebenfalls 1.1.0, je Instanz mit dem Pflichtwert `site`) als **corp**-Instanzen mit
    http://google-reporting:8092 erstellen. Die Schreibwerkzeuge der Manage-Vorlagen bekommt
    nur der ATAS-Zugang, je Werkzeug einzeln (tool-genaues Recht). Team-Selbstanlage erlaubt nur öffentliche HTTPS-Ziele; Admin-MCP
    benötigt target_address-Schalter für private Ziele, alternativ Betreiberweg.

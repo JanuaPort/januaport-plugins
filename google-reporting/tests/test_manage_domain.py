@@ -357,7 +357,7 @@ class DryRunAndBody(unittest.TestCase):
 
 class ChangeLine(unittest.TestCase):
     PATTERN = re.compile(
-        r"^change ts=(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ) source=(gsc|ga4) op=([a-z_]+) target=(\S+) fields=(\S*) before=(\{.*\}|null) after=(\{.*\}|null)$"
+        r"^change ts=(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ) site=default source=(gsc|ga4) op=([a-z_]+) target=(\S+) fields=(\S*) before=(\{.*\}|null) after=(\{.*\}|null)$"
     )
 
     def payload(self):

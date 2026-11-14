@@ -4,6 +4,7 @@ Configuration, site resolution and the separation of two sites at the pure level
 """
 
 import json
+import re
 import unittest
 
 from google_reporting.domain import (
@@ -283,7 +284,9 @@ class Separation(unittest.TestCase):
                 for foreign in JANUA_ONLY:
                     self.assertNotIn(foreign, text)
         gsc = build_query(self.termin, parse_request(self.termin, "gsc", "page_summary", []))
-        self.assertIn("www.termin.test", json.dumps(gsc))
+        expression = gsc["dimensionFilterGroups"][0]["filters"][0]["expression"]
+        self.assertTrue(re.search(expression, "https://www.termin.test/preise"))
+        self.assertFalse(re.search(expression, "https://www.example.test/atas"))
         ga4 = build_query(self.termin, parse_request(self.termin, "ga4", "traffic_summary", []))
         self.assertEqual(ga4["property"], "properties/654321")
 

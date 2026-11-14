@@ -208,6 +208,65 @@ MUTANTS = [
         '"invalid_input"',
         "test_boundary.HTTP.test_late_end_date_reports_a_fixed_code_without_echo",
     ),
+    # JanuaPort/januaport#1379: several sites, the header names the site, nothing falls back.
+    (
+        "site-falls-back-to-the-first",
+        "domain.py",
+        "cfg = self.by_name.get(name) if SITE_NAME.fullmatch(name) else None",
+        "cfg = self.by_name.get(name) or next(iter(self.by_name.values()))",
+        "test_sites.Resolution.test_table",
+    ),
+    (
+        "list-form-with-one-site-needs-no-header",
+        "domain.py",
+        "            if not self.listed:",
+        "            if not self.listed or len(self.by_name) == 1:",
+        "test_sites.Resolution.test_table",
+    ),
+    (
+        "site-header-lowercased",
+        "domain.py",
+        'name = values[0] if len(values) == 1 else ""',
+        'name = values[0].lower() if len(values) == 1 else ""',
+        "test_sites.Resolution.test_table",
+    ),
+    (
+        "site-header-stripped",
+        "domain.py",
+        'name = values[0] if len(values) == 1 else ""',
+        'name = values[0].strip() if len(values) == 1 else ""',
+        "test_sites.Resolution.test_table",
+    ),
+    (
+        "adapter-uses-the-first-site-config",
+        "google_adapter.py",
+        "return self.sites.config(req.site)",
+        "return next(iter(self.sites.by_name.values()))",
+        "test_site_adapter.Separation.test_no_google_call_of_terminagent_carries_a_value_of_januaport",
+    ),
+    (
+        "write-cap-key-without-site",
+        "workers.py",
+        "key = (req.site, req.source, day)",
+        "key = (req.source, day)",
+        "test_site_http.Cap.test_the_cap_is_per_source_and_site_and_unresolved_sites_count_nowhere",
+    ),
+    (
+        "count-before-the-site-is-resolved",
+        "server.py",
+        "            cfg = sites.resolve(request.headers.getall(SITE_HEADER, []))",
+        "            first = (next(iter(sites.by_name)), source, pool.today())\n"
+        "            pool.write_attempts[first] = pool.write_attempts.get(first, 0) + (kind == 'write')\n"
+        "            cfg = sites.resolve(request.headers.getall(SITE_HEADER, []))",
+        "test_site_http.Cap.test_the_cap_is_per_source_and_site_and_unresolved_sites_count_nowhere",
+    ),
+    (
+        "site-name-in-the-error",
+        "server.py",
+        'return web.json_response({"error": code}, status=exc.status)',
+        'return web.json_response({"error": code + ":" + request.headers.get(SITE_HEADER, "")}, status=exc.status)',
+        "test_site_http.Matrix.test_the_error_never_echoes_the_header_value",
+    ),
 ]
 
 
