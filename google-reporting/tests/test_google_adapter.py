@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
 import httplib2
 import requests
-from google_reporting.domain import Config, ReportError, parse_request
+from google_reporting.domain import Config, ReportError, Sites, parse_request
 from google_reporting.google_adapter import GoogleAdapter, SCOPES, load_identity
 from test_contract import fixture
 from google.analytics.data_v1beta.types import (
@@ -59,7 +59,7 @@ class Adapter(unittest.TestCase):
             "metadata": {"timeZone": "Europe/Berlin", "subjectToThresholding": True},
             "propertyQuota": {"tokensPerHour": {"consumed": 1, "remaining": 99}},
         }
-        self.adapter = GoogleAdapter(self.cfg, "unused")
+        self.adapter = GoogleAdapter(Sites.single(self.cfg), "unused")
 
     def send(self, session, prepared, **kwargs):
         self.calls.append(
@@ -311,7 +311,7 @@ class Adapter(unittest.TestCase):
             "consent_coverage": "unknown",
         }
         self.cfg = Config.from_dict(cfg)
-        self.adapter = GoogleAdapter(self.cfg, "unused")
+        self.adapter = GoogleAdapter(Sites.single(self.cfg), "unused")
         a, b, c = self.patches()
         original = self.send
 
@@ -524,7 +524,10 @@ class SlowTokenCancellation(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as temp:
             cfg = Config.from_dict(fixture())
             pool = WorkerPool(
-                cfg, temp + "/pid", budget=5, adapter_factory=SlowTokenAdapter
+                Sites.single(cfg),
+                temp + "/pid",
+                budget=5,
+                adapter_factory=SlowTokenAdapter,
             )
             try:
                 with self.assertRaises(ReportError) as cm:
@@ -600,12 +603,13 @@ class Compatibilities(unittest.TestCase):
             "valid_to": "2999-12-31",
             "consent_coverage": "unknown",
         }
-        self.adapter = GoogleAdapter(Config.from_dict(raw), "unused")
+        self.cfg = Config.from_dict(raw)
+        self.adapter = GoogleAdapter(Sites.single(self.cfg), "unused")
 
     def verdict(self, build):
         client = WholePropertyClient(build)
         try:
-            self.adapter.check_definitions(client)
+            self.adapter.check_definitions(client, self.cfg)
         except ReportError as exc:
             return (exc.status, exc.code)
         self.assertEqual(len(client.asked), 3)
@@ -615,7 +619,7 @@ class Compatibilities(unittest.TestCase):
         unverified = (503, "report_definition_unverified")
         incompatible = (503, "report_definition_incompatible")
         probe = WholePropertyClient(lambda d, m: answer(d, m, foreign=False))
-        self.adapter.check_definitions(probe)
+        self.adapter.check_definitions(probe, self.cfg)
         dim, met = probe.asked[0][0][0], probe.asked[0][1][0]
         cases = [
             ("exact answer", lambda d, m: answer(d, m, foreign=False), "ok"),

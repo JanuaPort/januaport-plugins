@@ -11,6 +11,10 @@ from urllib.parse import urlsplit
 MAX_RESPONSE = 512 * 1024
 MAX_REGEX = 4096
 MAX_PATHS = 100
+MAX_SITES = 5
+DEFAULT_SITE = "default"
+SITE_HEADER = "X-Google-Reporting-Site"
+SITE_NAME = re.compile(r"[a-z][a-z0-9-]{0,31}")
 REPORTS = {
     "gsc": {"get_status", "performance_overview", "query_summary", "page_summary"},
     "ga4": {"get_status", "traffic_summary", "landing_pages", "key_events"},
@@ -52,11 +56,13 @@ class Config:
     ga4_min_group_size: int = 10
     key_events: dict | None = None
     ga4_channel_group_name: str = "KI-Assistenten"
+    site: str = DEFAULT_SITE
 
     @classmethod
-    def from_dict(cls, raw):
+    def from_dict(cls, raw, site=DEFAULT_SITE):
+        """One site's configuration; `site` is never part of the raw values (a stray key fails)."""
         try:
-            cfg = cls(**raw)
+            cfg = cls(**raw, site=site)
             require(bool(re.fullmatch(r"[A-Za-z0-9._-]{1,64}", cfg.definition_version)))
             require(
                 isinstance(cfg.hosts, list)
@@ -177,6 +183,71 @@ class Config:
         )
 
 
+@dataclass(frozen=True)
+class Sites:
+    """The configured sites and the one place that turns the header into a site (#1379).
+
+    Single form (a plain config) is the site `default`; the list form `sites` names each site
+    and always needs the header, also with one entry. Nothing here falls back to a first site.
+    """
+
+    listed: bool
+    by_name: dict
+
+    @classmethod
+    def single(cls, cfg):
+        return cls(False, {cfg.site: cfg})
+
+    @classmethod
+    def from_dict(cls, raw):
+        try:
+            if not isinstance(raw, dict) or "sites" not in raw:
+                return cls.single(Config.from_dict(raw))
+            require(set(raw) == {"sites"})
+            entries = raw["sites"]
+            require(isinstance(entries, list) and 1 <= len(entries) <= MAX_SITES)
+            by_name = {}
+            for entry in entries:
+                require(isinstance(entry, dict) and isinstance(entry.get("name"), str))
+                name = entry["name"]
+                require(
+                    bool(SITE_NAME.fullmatch(name))
+                    and name != DEFAULT_SITE
+                    and name not in by_name
+                )
+                by_name[name] = Config.from_dict(
+                    {k: v for k, v in entry.items() if k != "name"}, site=name
+                )
+            configs = list(by_name.values())
+            for values in (
+                [h for c in configs for h in c.hosts],
+                [c.gsc_property for c in configs],
+                [c.ga4_property for c in configs],
+            ):
+                require(len(set(values)) == len(values))
+            return cls(True, by_name)
+        except (TypeError, KeyError, ValueError, AttributeError):
+            raise ValueError("invalid_configuration") from None
+
+    def config(self, name):
+        cfg = self.by_name.get(name)
+        if cfg is None:
+            raise ReportError(503, "configuration_invalid")
+        return cfg
+
+    def resolve(self, values):
+        """The site named by the header values: exact bytes, exactly one value, never an echo."""
+        if not values:
+            if not self.listed:
+                return self.by_name[DEFAULT_SITE]
+            raise ReportError(400, "site_required")
+        name = values[0] if len(values) == 1 else ""
+        cfg = self.by_name.get(name) if SITE_NAME.fullmatch(name) else None
+        if cfg is None:
+            raise ReportError(400, "site_unknown")
+        return cfg
+
+
 def iso_date(value):
     if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
         raise ValueError()
@@ -198,6 +269,7 @@ class Request:
     paths: list
     page_path: str | None
     limit: int
+    site: str = DEFAULT_SITE
 
 
 def parse_request(cfg, source, report, pairs, now=None):
@@ -253,6 +325,7 @@ def parse_request(cfg, source, report, pairs, now=None):
             [page] if page else paths,
             page,
             limit,
+            cfg.site,
         )
     except (ValueError, OverflowError):
         raise ReportError(400, "invalid_input") from None
@@ -373,6 +446,7 @@ def project(cfg, req, raw):
             "time_zone": req.time_zone,
         },
         "scope": {
+            "site": cfg.site,
             "segment": req.segment,
             "definition_version": cfg.definition_version,
             "page_paths": req.paths,
@@ -394,6 +468,8 @@ def project(cfg, req, raw):
             "state": "ready",
             "checked_at": output["fetched_at"],
             "definition_version": cfg.definition_version,
+            "site": cfg.site,
+            "hosts": list(cfg.hosts),
             "report_definitions": "validated" if req.source == "ga4" else "fixed",
             "key_events": "configured" if cfg.key_events else "not_configured",
             "query_reports": "enabled" if cfg.query_enabled else "disabled_pending_sec",

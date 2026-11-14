@@ -357,7 +357,7 @@ class DryRunAndBody(unittest.TestCase):
 
 class ChangeLine(unittest.TestCase):
     PATTERN = re.compile(
-        r"^change ts=(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ) source=(gsc|ga4) op=([a-z_]+) target=(\S+) fields=(\S*) before=(\{.*\}|null) after=(\{.*\}|null)$"
+        r"^change ts=(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ) site=default source=(gsc|ga4) op=([a-z_]+) target=(\S+) fields=(\S*) before=(\{.*\}|null) after=(\{.*\}|null)$"
     )
 
     def payload(self):
@@ -376,7 +376,7 @@ class ChangeLine(unittest.TestCase):
         }
 
     def test_fixed_format_with_fixed_type_values_only(self):
-        line = change_line("ga4", "update_annotation", self.payload(), now="2026-10-22T10:00:00Z")
+        line = change_line("default", "ga4", "update_annotation", self.payload(), now="2026-10-22T10:00:00Z")
         match = self.PATTERN.match(line)
         self.assertIsNotNone(match, line)
         self.assertEqual(match.group(1, 2, 3, 4, 5), ("2026-10-22T10:00:00Z", "ga4", "update_annotation", "456", "color,title"))
@@ -386,7 +386,7 @@ class ChangeLine(unittest.TestCase):
         self.assertNotIn("\n", line)
 
     def test_free_text_appears_as_length_and_hash_only(self):
-        line = change_line("ga4", "update_annotation", self.payload(), now="2026-10-22T10:00:00Z")
+        line = change_line("default", "ga4", "update_annotation", self.payload(), now="2026-10-22T10:00:00Z")
         for plain in ("[JP] neu", "[JP] alt", "Beschreibung neu", "Beschreibung alt"):
             self.assertNotIn(plain, line)
         after = json.loads(self.PATTERN.match(line).group(7))
@@ -395,13 +395,13 @@ class ChangeLine(unittest.TestCase):
         self.assertEqual(after["description"]["len"], len("Beschreibung neu"))
 
     def test_canary_token_and_unknown_fields_never_appear(self):
-        line = change_line("ga4", "update_annotation", self.payload(), now="2026-10-22T10:00:00Z")
+        line = change_line("default", "ga4", "update_annotation", self.payload(), now="2026-10-22T10:00:00Z")
         self.assertNotIn("BRIDGE-CANARY-TOKEN", line)
         self.assertNotIn("KEY-CANARY", line)
         payload = self.payload()
         payload["after"]["secret"] = "FIELD-CANARY"
         payload["target"] = "4 5\nchange forged=1"
-        line = change_line("ga4", "update_annotation", payload, now="2026-10-22T10:00:00Z")
+        line = change_line("default", "ga4", "update_annotation", payload, now="2026-10-22T10:00:00Z")
         self.assertNotIn("FIELD-CANARY", line)
         self.assertEqual(line.count("\n"), 0)
         self.assertNotIn("forged", line)
@@ -414,7 +414,7 @@ class ChangeLine(unittest.TestCase):
             "before": None,
             "after": {"channel_group_name": "KI-Assistenten", "source_hosts": ["chatgpt.com", "claude.ai"], "rule_count": 20},
         }
-        line = change_line("ga4", "create_channel_group", payload, now="2026-10-22T10:00:00Z")
+        line = change_line("default", "ga4", "create_channel_group", payload, now="2026-10-22T10:00:00Z")
         match = self.PATTERN.match(line)
         self.assertEqual(match.group(6), "null")
         self.assertEqual(json.loads(match.group(7))["source_hosts"], ["chatgpt.com", "claude.ai"])
@@ -425,7 +425,7 @@ class ChangeLine(unittest.TestCase):
             "before": {"registered": False},
             "after": {"registered": True, "sitemap_url": "https://www.example.test/sitemap.xml"},
         }
-        line = change_line("gsc", "submit_sitemap", payload, now="2026-10-22T10:00:00Z")
+        line = change_line("default", "gsc", "submit_sitemap", payload, now="2026-10-22T10:00:00Z")
         self.assertIn("https://www.example.test/sitemap.xml", line)
         self.assertIsNotNone(self.PATTERN.match(line), line)
 
