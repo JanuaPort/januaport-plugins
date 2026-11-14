@@ -212,7 +212,7 @@ def serve():
     # Library/access logs may embed full URLs or response bodies.
     for name in ("aiohttp", "google", "googleapiclient", "urllib3", "httplib2"):
         logging.getLogger(name).setLevel(logging.CRITICAL)
-    sites = Sites.from_dict(json.loads(Path(CONFIG_PATH).read_text()))
+    sites = Sites.from_json(Path(CONFIG_PATH).read_text())
     key = load_runtime_files()
     bind = os.environ.get("GOOGLE_REPORTING_BIND_IP", "")
     # Exact plugin-network IPv4 is provisioned by the operator, never 0.0.0.0.

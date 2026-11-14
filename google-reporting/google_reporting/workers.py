@@ -113,13 +113,15 @@ class WorkerPool:
         ticks = self.rate[req.source]
         while ticks and started - ticks[0] >= 60:
             ticks.popleft()
-        if len(ticks) >= RATE_PER_MINUTE:
+        # A request may ask the source more than once (page_compare: once per period).
+        calls = getattr(req, "source_calls", 1)
+        if len(ticks) + calls > RATE_PER_MINUTE:
             raise ReportError(429, "source_rate_limited")
         if self.pending >= WORKERS + MAX_QUEUED:
             raise ReportError(429, "queue_full")
         if getattr(req, "write", False) and not req.dry_run:
             self._count_write(req)
-        ticks.append(started)
+        ticks.extend([started] * calls)
         self.pending += 1
         index = None
         try:

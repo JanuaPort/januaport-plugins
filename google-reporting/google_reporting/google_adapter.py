@@ -217,11 +217,14 @@ class GoogleAdapter:
         try:
             client = self.client(req.source)
             if req.source == "gsc":
-                raw = (
-                    client.searchanalytics()
-                    .query(siteUrl=cfg.gsc_property, body=query)
-                    .execute(num_retries=0)
-                )
+                raw = self.search_analytics(client, cfg, query)
+                if req.report == "page_compare":
+                    raw = {
+                        "a": raw,
+                        "b": self.search_analytics(
+                            client, cfg, build_query(cfg, req, compare=True)
+                        ),
+                    }
             else:
                 if req.report == "get_status":
                     self.check_definitions(client, cfg)
@@ -242,6 +245,14 @@ class GoogleAdapter:
         except Exception as exc:
             # Never propagate Google messages, URLs, inputs or stack traces.
             raise safe_error(exc) from None
+
+    @staticmethod
+    def search_analytics(client, cfg, query):
+        return (
+            client.searchanalytics()
+            .query(siteUrl=cfg.gsc_property, body=query)
+            .execute(num_retries=0)
+        )
 
     def check_definitions(self, client, cfg):
         for report in ("traffic_summary", "landing_pages", "key_events"):

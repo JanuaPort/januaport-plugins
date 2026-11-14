@@ -1,9 +1,9 @@
-# Google Reporting 1.1.0 — #1130, #1176, #1379
+# Google Reporting 2.0.0 — #1130, #1176, #1379
 
 Stufe 1 „Sicher verbinden“. Gebaut und synthetisch geprüft; **noch nicht live
-abgenommen oder produktiv provisioniert**. Fassung 1.1.0 (#1130, #1148, #1150, #1176, #1379); den Tag
+abgenommen oder produktiv provisioniert**. Fassung 2.0.0 (#1130, #1148, #1150, #1176, #1379); den Tag
 `google-reporting-vX.Y.Z` setzt GATE über den Release-Workflow. Apache 2.0.
-Ein privater Python-Beisteller übersetzt acht feste GET-Berichte in offizielle
+Ein privater Python-Beisteller übersetzt neun feste GET-Berichte in offizielle
 Google-REST-Aufrufe. JanuaPort behält Rechte, Audit und Pseudonymisierung.
 Keine Accountsuche, freien Dimensionen/Metriken, Nutzer-/Session-/Lead-IDs,
 Realtime-, Ads-API oder Odoo-Verbindung. Seit #1148 kommen fünf lesende und fünf
@@ -18,6 +18,7 @@ Handgriffe Annotation, Sitemap und Kanalgruppe, kein Löschen, keine weitere Adm
 | GSC | `gsc/performance_overview` | Datum, Klicks, Impressionen, CTR, Position |
 | GSC | `gsc/query_summary` | begrenzte Query-Auswahl; standardmäßig gesperrt |
 | GSC | `gsc/page_summary` | ausschließlich freigegebene öffentliche Pfade |
+| GSC | `gsc/page_compare` | je freigegebener Seite zwei gleich lange, nicht überlappende Zeiträume A und B mit Differenz |
 | GA4 | `ga4/get_status` | Probe plus Kompatibilitätsprüfung der Berichtsdefinitionen (nur die angefragten `apiName`s, jeder muss in der Antwort stehen und `COMPATIBLE` sein) |
 | GA4 | `ga4/traffic_summary` | `sessionDefaultChannelGroup`, sessions, engagedSessions |
 | GA4 | `ga4/landing_pages` | `landingPage` ohne Querystring, sessions, engagedSessions |
@@ -35,8 +36,10 @@ der Bridge-Key-Prüfung und **vor** jedem Parsen aus: Property, Hosts und Seiten
 Anfrage stammen von genau dieser einen Site. Berichte tragen `scope.site`, `get_status` nennt
 `site` und die `hosts` dieser Site (die Property-IDs bleiben verborgen), Verwaltungsantworten
 tragen `site`.
-Alle Berichte erlauben `period_days` (28/90, Default 28), `end_date` (ISO),
-`segment` (`all_public`/`atas`/`gateway`/`shared`, Default all_public).
+Alle Berichte erlauben `period_days` (ganze Zahl 1 bis 90 als Dezimalstring ohne führende Null,
+Default 28), `end_date` (ISO) und `segment` (`all_public` oder ein Segmentname der aufgelösten
+Site, Default all_public). Das Zahlenintervall und die Segmentnamen prüft dieser Dienst; das
+Gateway kennt `period_days` als Zahl und `segment` als freien Text.
 GSC erlaubt optional `page_path` innerhalb des Segments; Ranglisten `limit`
 (1–100, Default 25). Übersicht maximal 90 Tageszeilen. Unbekannte, doppelte,
 falsch typisierte oder unzulässige Parameter scheitern **vor Auth/Google**.
@@ -54,6 +57,33 @@ Ein wohlgeformtes `end_date` nach diesem letzten Tag (GSC: Pazifikzeit, GA4:
 Property-Zeitzone) scheitert mit dem eigenen festen Code `end_date_not_available`
 (400, ohne Echo des Datums und ohne Klemmen); ein kaputtes Datum bleibt `invalid_input`.
 Wer den Zeitraum nicht festlegen muss, lässt `end_date` weg: Dann gilt genau dieser letzte Tag.
+Der Abstand von drei Tagen gilt für beide Quellen; für GSC ist ein kürzerer Abstand nicht belegt
+und wird erst nach einer Messung mit `dataState` in einer eigenen Änderung geprüft.
+
+**page_compare (seit 2.0.0, nur GSC).** Zeitraum A endet bei `end_date` (Vorgabe: letzter
+verfügbarer Tag) und dauert `period_days` Tage. Zeitraum B ist gleich lang: ohne
+`compare_end_date` liegt er unmittelbar vor A, mit `compare_end_date` endet er an diesem Tag.
+B muss vollständig vor A liegen, sonst `invalid_input`; für `compare_end_date` gilt dieselbe
+Datumsprüfung wie für `end_date` (`end_date_not_available` nach dem letzten verfügbaren Tag).
+`segment`, `page_path` und `limit` gelten wie bei `page_summary`. Der Dienst fragt die Search
+Console zweimal ab (A und B, Dimension `page`, derselbe Seitenfilter wie `page_summary`); beide
+Abfragen zählen gegen die 30 je Quelle und Minute, die Antwort kommt innerhalb des 20-Sekunden-
+Budgets. Jede Abfrage verlangt alle freigegebenen URLs des Bereichs, damit eine Seite, die in
+einem Zeitraum unter dem Zeilenlimit läge, im anderen nicht fälschlich als unbekannt erscheint;
+`limit` kürzt erst die fertige Liste.
+
+Die Antwort trägt `range` (Zeitraum A) und `compare_range` (Zeitraum B), `scope`, `rows`,
+`quality` und `fetched_at`. Je Seite mit mindestens einer Quellenzeile in A oder B steht eine Zeile
+`{page_path, a, b, delta}`; `a` und `b` tragen `clicks`, `impressions`, `ctr` und `position`
+**unverändert aus der Quellenzeile** des Zeitraums (nie über Zeilen gemittelt oder aus Klicks und
+Impressionen berechnet), `delta` ist A minus B je Feld. Hat die Seite in einem Zeitraum keine
+Zeile, sind alle Werte dieses Zeitraums und das `delta` `null` (unbekannt, nicht 0), und
+`quality.notes` nennt `page_without_rows_in_period_a` bzw. `…_b`. Liefert die Quelle in einem
+Zeitraum zwei Zeilen für denselben Pfad (zwei freigegebene URL-Varianten), gibt es keine einzelne
+CTR und Position: Die Werte dieses Zeitraums sind `null`, die Note heißt `page_rows_ambiguous`.
+Sortierung: Klicks in A absteigend, bei Gleichstand nach Pfad, Seiten ohne Wert in A zuletzt.
+Fremde Seiten und Segmente anderer Sites gibt es nicht (`invalid_input`); die Trennung nach Site
+gilt für beide Abfragen.
 
 Antworten tragen schema_version 1.0, Quelle/Bericht, `ok`/`partial`/`no_rows`/
 `not_configured`, Bereich, tatsächliche Pfadmenge/Konfigurationsfassung, Zeilen,
@@ -194,8 +224,9 @@ deshalb abgewiesen und liest nie still die Daten einer anderen Site.
 **Was je Site getrennt ist.** Property, Hosts, Seitenliste, `query_enabled`, Schlüsselereignisse
 und Kanalgruppenname kommen aus der aufgelösten Site; Sitemap-URL, `inspect_url`-Pfad und
 `page_path` werden nur gegen deren Hosts und Pfade geprüft (fremd: `invalid_input`). Die Segmente
-bleiben `atas`, `gateway`, `shared`; eine Site ohne `atas`-Seiten legt alle Seiten nach `shared`,
-eine leere Gruppe ergibt wie bisher `invalid_input`. RAM-Caches der Clients und Credentials sind
+sind je Site frei benannt (seit 2.0.0, Abschnitt „Konfiguration und Datenschutz“); `segment` wird
+gegen die Segmente der **aufgelösten** Site geprüft, ein Segment einer anderen Site ist wie ein
+unbekanntes `invalid_input`. Eine leere Gruppe ergibt wie bisher `invalid_input`. RAM-Caches der Clients und Credentials sind
 gemeinsam (ein Servicekonto), Berichtsdaten liegen nie im Cache.
 
 **Grenzen je Quelle.** Die Minutengrenze (30 je Quelle) bleibt gemeinsam, weil die Google-Quote
@@ -227,6 +258,16 @@ Bericht über 28 Tage mit `scope.site`, ein Werkzeug einer fremden Instanz gibt 
 persönlichen Token eines Teammitglieds, das nicht in beiden Teams ist, denn persönliche Tokens
 erben Team-Mitgliedschaften), Schreibhandgriffe nur mit `dry_run`.
 
+**Anhebung auf 2.0.0 (#1379, Teil B).** Die Vorlagen `google-search-console` und `google-analytics`
+stehen dann auf 2.0.0 (MAJOR: neues Werkzeug `page_compare`, `period_days` frei, `segment` ohne
+Auswahlliste). Bestandsinstanzen werden **nicht automatisch** angehoben; sie bleiben auf 1.1.0 und
+laufen gegen den neuen Dienst weiter (`period_days` 28/90 und die Segmente `atas`, `gateway`,
+`shared` der Site `januaport` gelten unverändert). Der Admin hebt sie bewusst an
+(`jnpt connector upgrade --yes <instanz>`); der Anlagenwert `site` bleibt dabei erhalten. Das neue
+Werkzeug `page_compare` braucht danach sein Recht, ein Scope auf die ganze Integration genügt.
+Die Verwaltungsvorlagen (`-manage`) bleiben 1.1.0. Vor dem Anheben den Dienst auf 2.0.0 bringen;
+eine Instanz auf 2.0.0 gegen einen 1.1.0-Dienst bekäme für `page_compare` `route_not_found`.
+
 **Mandantentrennung.** Sie setzt voraus, dass Instanzen nur der Betreiber anlegt: Die
 Instanzwerte setzen Menschen über GUI, REST und CLI sowie der Admin-MCP hinter dem Schalter
 `target_address`, über `/mcp` nie. Wer Admin-Zugang hat, kann eine Instanz auf eine fremde Site
@@ -238,7 +279,7 @@ umbiegen; Admin-Rechte gehören deshalb nur dem Betreiber.
 (1–80 Zeichen, Vorgabe „KI-Assistenten“): Name der einen Kanalgruppe, die der Dienst anlegen
 und ändern darf. Pflicht: feste GSC-Property,
 GA4-Property-ID ohne `properties/`, IANA-Zeitzone, exakte kanonische Hosts,
-drei disjunkte Gruppen mit zusammen 1–100 öffentlichen Pfaden je Site (seit 1.0.1, vorher 50) und
+1 bis 8 disjunkte Segmente (Gruppen) mit zusammen 1–100 öffentlichen Pfaden je Site (seit 1.0.1, vorher 50) und
 explizite vollständige GSC-URLs je Pfad/Host. Keine Querystrings, Fragmente, dynamischen
 Nutzerpfade, keine Präfixe. Pfade höchstens 512 Zeichen, GSC-Regex über alle URLs höchstens
 4096 Zeichen; Überschreitung schlägt beim Laden fehl, kein ungefilterter Fallback. Die
@@ -247,6 +288,16 @@ Regex-Grenze kann vor der Pfadgrenze greifen: Bei einem Host und Pfaden wie
 Property gehören. GA4 filtert **immer** sowohl landingPage-Werteliste als auch
 hostName-Werteliste, auch bei gemischten Properties. Deren Kompatibilität bleibt
 vor Live-Freigabe zu bestätigen; keine stillen Ersatzmetriken.
+
+**Segmente (seit 2.0.0, #1379).** `segments` ist ein Objekt aus 1 bis 8 Segmentnamen nach
+`[a-z][a-z0-9-]{0,31}`, je mit der Liste der Pfade des Segments. Die Namen wählt der Betreiber
+je Site frei (`config.example.json` und `config.example.sites.json` zeigen `atas`, `gateway`,
+`shared`; eine zweite Site kann zum Beispiel `preise` und `start` heißen). `all_public` ist
+reserviert, kein Konfigurationsname und meint immer alle Pfade der Site. Die Pfadliste bleibt wie
+bisher: `gsc_urls` ist die Vereinigung aller Segmente, ein Pfad steht in höchstens einem Segment.
+Ein Name, der in der Datei zweimal vorkommt, ist ebenso ein Fehler wie jeder andere doppelte
+Schlüssel (`invalid_configuration`; JSON würde sonst stillschweigend den letzten behalten).
+`get_status` nennt die Segmentnamen der Site (nur Namen, nie Property-IDs oder Pfade).
 
 `query_enabled` ist **false als sichere Auslieferungsvorgabe** (Betreiberschalter).
 Der erste Start läuft mit `false`, bis die Zahlenberichte live belegt sind; danach
@@ -290,7 +341,7 @@ Python-Logs. Keine Datenbank, Berichtscache oder geplante Abfragen.
 512 KiB JSON vor Ausgabe, 8 KiB URL/Query, Pfad 512 Zeichen. **20 Sekunden**
 Gesamtbudget inklusive Queue, Token-Refresh und API. Connector-Timeout **25 s**.
 Zwei persistente Python-Kindprozesse insgesamt, vier zusätzliche Queueplätze,
-30 Berichts-/Probeanforderungen je Quelle pro rollender Minute (gemeinsam für alle Sites), dazu
+30 Abfragen je Quelle pro rollender Minute (gemeinsam für alle Sites; `page_compare` fragt zweimal und zählt doppelt), dazu
 höchstens 20 Schreibversuche je Quelle, Site und Tag (nur im RAM des Serverprozesses). Status kann
 mehrere feste Kompatibilitätsaufrufe innerhalb derselben Frist enthalten.
 Ein Prozess führt immer nur einen Auftrag aus. Token/Clients pro Quelle und
@@ -403,7 +454,7 @@ keine relativen Links; `tests/test_setup_guide.py` prüft das.
 6. Die **eine** Connector-Credential `google-reporting` im JanuaPort-Vault ist
    schon aus Schritt 2 gesetzt (Wert gleich `runtime-key` der Stelle
    `plugin-google-reporting`, nie von Hand getippt). Bytegleiche Vorlagen aus Integrations-/Produktrepo
-   (`google-search-console`, `google-analytics`, beide jeweils 1.1.0 und beide mit
+   (`google-search-console`, `google-analytics`, beide jeweils 2.0.0 und beide mit
    dieser Credential; für den ATAS-Zugang zusätzlich `google-search-console-manage` und
    `google-analytics-manage`, ebenfalls 1.1.0, je Instanz mit dem Pflichtwert `site`) als **corp**-Instanzen mit
    http://google-reporting:8092 erstellen. Die Schreibwerkzeuge der Manage-Vorlagen bekommt
@@ -457,7 +508,7 @@ GA4-Kompatibilität inklusive hostname/landingPage/Eventkombinationen,
 Zeitzonen-/Consent-/Messvertrag und Seitenfreigabe, Quellenvergleich mit identischem
 Bereich, Netz-/Egressnachweis am Zielhost, SEC-Freitext/Kleingruppen/Auditfreigabe,
 GATE-Release. Live-DoD: je Quelle echter Bericht über **ChatGPT → JanuaPort SSO Neu
-→ Connector → Beisteller → Google**, danach 28/90 Tage soweit vorhanden.
+→ Connector → Beisteller → Google**, danach Zeiträume von 1 bis 90 Tagen soweit vorhanden, dazu ein `page_compare`.
 Keine produktive Freigabe aus synthetischen Tests ableiten.
 
 Live-Gates der Verwaltungshandgriffe (#1148): zuerst Staging, danach mit eigenem PO-Go eine

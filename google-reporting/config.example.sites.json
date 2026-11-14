@@ -47,10 +47,10 @@
         "www.example.org"
       ],
       "segments": {
-        "atas": [],
-        "gateway": [],
-        "shared": [
-          "/",
+        "start": [
+          "/"
+        ],
+        "preise": [
           "/preise"
         ]
       },

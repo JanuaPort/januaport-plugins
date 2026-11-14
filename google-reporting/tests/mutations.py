@@ -197,8 +197,8 @@ MUTANTS = [
     (
         "late-end-date-accepted",
         "domain.py",
-        "        if end > latest:",
-        "        if False:",
+        "    if day > latest:",
+        "    if False:",
         "test_contract.Contract.test_end_date_after_the_last_final_day_has_its_own_fixed_code",
     ),
     (
@@ -266,6 +266,104 @@ MUTANTS = [
         'return web.json_response({"error": code}, status=exc.status)',
         'return web.json_response({"error": code + ":" + request.headers.get(SITE_HEADER, "")}, status=exc.status)',
         "test_site_http.Matrix.test_the_error_never_echoes_the_header_value",
+    ),
+    # JanuaPort/januaport#1379 part B: free periods, page_compare, named segments.
+    (
+        "missing-page-shown-as-zero",
+        "domain.py",
+        "    empty = dict.fromkeys(COMPARE_FIELDS)\n",
+        "    empty = dict.fromkeys(COMPARE_FIELDS, 0)\n",
+        "test_page_compare.Projection.test_page_only_in_a_has_null_b_and_null_delta_not_zero",
+    ),
+    (
+        "ctr-computed-from-clicks-and-impressions",
+        "domain.py",
+        "        item = {k: number(row[k]) for k in COMPARE_FIELDS}\n",
+        "        item = {k: number(row[k]) for k in COMPARE_FIELDS}\n"
+        '        item["ctr"] = item["clicks"] / item["impressions"] if item["impressions"] else 0\n',
+        "test_page_compare.Projection.test_ctr_and_position_come_from_the_source_row_and_are_not_computed",
+    ),
+    (
+        "b-overlapping-a-accepted",
+        "domain.py",
+        "            require(compare_end < start)\n",
+        "            require(True)\n",
+        "test_page_compare.Ranges.test_b_that_touches_a_is_invalid_input",
+    ),
+    (
+        "period-91-accepted",
+        "domain.py",
+        "MAX_PERIOD = 90",
+        "MAX_PERIOD = 99",
+        "test_periods.Periods.test_invalid_periods_are_invalid_input_for_every_report",
+    ),
+    (
+        "gsc-distance-two-days",
+        "domain.py",
+        ").date() - timedelta(days=3)",
+        ").date() - timedelta(days=2)",
+        "test_periods.LatestDay.test_exactly_today_minus_three_is_accepted_and_minus_two_is_not",
+    ),
+    (
+        "unknown-segment-falls-back-to-all-public",
+        "domain.py",
+        "        require(\n"
+        "            segment == ALL_PUBLIC\n"
+        "            or (bool(SEGMENT_NAME.fullmatch(segment)) and segment in cfg.segments)\n"
+        "        )\n",
+        "        require(bool(SEGMENT_NAME.fullmatch(segment)) or segment == ALL_PUBLIC)\n"
+        "        if segment not in cfg.segments:\n"
+        "            segment = ALL_PUBLIC\n",
+        "test_segments.Parameter.test_unknown_and_foreign_segments_are_invalid_input_never_all_public",
+    ),
+    (
+        "nine-segments-accepted",
+        "domain.py",
+        "1 <= len(cfg.segments) <= MAX_SEGMENTS",
+        "1 <= len(cfg.segments) <= 99",
+        "test_segments.Configuration.test_one_to_eight_segments_load_and_zero_or_nine_do_not",
+    ),
+    (
+        "duplicate-config-keys-accepted",
+        "domain.py",
+        "    if len(set(keys)) != len(keys):\n",
+        "    if False:\n",
+        "test_segments.DuplicateNames.test_a_duplicated_segment_name_in_the_file_is_invalid_configuration",
+    ),
+    (
+        "comparison-counted-once",
+        "workers.py",
+        '        calls = getattr(req, "source_calls", 1)\n',
+        "        calls = 1\n",
+        "test_page_compare.PoolCost.test_a_comparison_counts_twice_and_the_16th_is_limited",
+    ),
+    (
+        "second-call-asks-period-a-again",
+        "google_adapter.py",
+        "build_query(cfg, req, compare=True)",
+        "build_query(cfg, req)",
+        "test_page_compare.AdapterCalls.test_two_searchanalytics_calls_one_per_period_with_the_page_filter",
+    ),
+    (
+        "comparison-query-limited-to-the-output-limit",
+        "domain.py",
+        "            else len(urls)\n",
+        "            else req.limit\n",
+        "test_page_compare.Queries.test_golden_both_bodies",
+    ),
+    (
+        "delta-sign-flipped",
+        "domain.py",
+        "round(first[k] - second[k], 10)",
+        "round(second[k] - first[k], 10)",
+        "test_page_compare.Projection.test_page_in_both_periods_has_values_and_delta",
+    ),
+    (
+        "ambiguous-path-keeps-one-row",
+        "domain.py",
+        "            found.pop(matching[0], None)\n",
+        "            found[matching[0]] = item\n",
+        "test_page_compare.Projection.test_two_rows_of_one_path_in_a_period_are_not_averaged",
     ),
 ]
 

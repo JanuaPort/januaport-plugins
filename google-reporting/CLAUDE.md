@@ -1,10 +1,10 @@
-# google-reporting 1.1.0 — Modulvertrag (#1130, #1148, #1150, #1176, #1379)
+# google-reporting 2.0.0 — Modulvertrag (#1130, #1148, #1150, #1176, #1379)
 
 Privater Python-REST-Beisteller, Apache2.0. Stufe 1, gebaut/synthetisch geprüft,
 Live-Abnahme offen. Kein eigener MCP-Server oder Gateway-Auth-Typ.
 
 - domain.py: fail-closed Betreiberkonfiguration, feste Berichtseingaben/-filter,
-  source-local28/90 Tage bis heute−3, Datenminimierung und Qualitätsprojektion. `Config` ist die
+  source-local 1–90 Tage bis heute−3, Datenminimierung und Qualitätsprojektion. `Config` ist die
   Konfiguration **einer** Site; `Sites` (#1379) hält alle und ist die einzige Stelle, die den Header
   in eine Site übersetzt (`resolve`).
 - google_adapter.py: offizielle google-auth-, GSC- und GA-Data-REST-Clients;
@@ -78,8 +78,8 @@ Mehrere Sites (#1379, Plan c-6875179147, Goldfische c-6875211441, SEC c-68752521
 - **Reihenfolge im Server:** Bridge-Key, dann Site, dann Parsen; **erst auflösen, dann zählen** (SEC D1):
   `site_required`/`site_unknown` zählen bei keiner Site und starten keinen Worker.
 - Konfiguration: 1–5 Sites, Hosts disjunkt, `gsc_property` und `ga4_property` je Site eindeutig,
-  `MAX_PATHS`/`MAX_REGEX` je Site; Mischform = `invalid_configuration`. Segmente bleiben
-  `atas`/`gateway`/`shared`.
+  `MAX_PATHS`/`MAX_REGEX` je Site; Mischform = `invalid_configuration`. Segmente seit 2.0.0 frei
+  benannt (unten).
 - Egress unverändert, ein Servicekonto, ein Bridge-Key, die Scope-Trennung nach W1 bleibt. `get_status` nennt
   `site` und `hosts`, nie Property-IDs.
 - Die Mandantentrennung per Instanz setzt voraus, dass nur der Betreiber Instanzen anlegt (GUI,
@@ -87,6 +87,34 @@ Mehrere Sites (#1379, Plan c-6875179147, Goldfische c-6875211441, SEC c-68752521
 Mutationen dazu: `site-falls-back-to-the-first`, `list-form-with-one-site-needs-no-header`,
 `site-header-lowercased`/`-stripped`, `adapter-uses-the-first-site-config`, `write-cap-key-without-site`,
 `count-before-the-site-is-resolved`, `site-name-in-the-error`.
+
+Freie Zeiträume, `page_compare`, benannte Segmente (#1379 Teil B, LEAD c-6883881384), Invarianten:
+- **`period_days`** ist `^[1-9][0-9]?$` und höchstens `MAX_PERIOD` = 90, Standard 28; `get_status` nimmt
+  keinen Parameter. Der letzte Tag bleibt „Quelle-heute minus drei Tage“, auch für GSC (der kürzere
+  Abstand ist nicht belegt; eine Messung mit `dataState` ist ein eigener Patch). `final_date` prüft
+  `end_date` und `compare_end_date` gleich (`end_date_not_available`, kein Datum im Fehler).
+- **`page_compare`** (nur GSC, `REPORTS["gsc"]`): Zeitraum A = `[end−p+1, end]`; B gleich lang, ohne
+  `compare_end_date` unmittelbar davor, sonst endend am Wert; B muss ganz vor A liegen (`invalid_input`).
+  `Request.compare_*_date` trägt B, `source_calls` = 2 (der Pool zählt beide Abfragen gegen die 30 je
+  Quelle und Minute; kein Schreibwerkzeug, kein Tagesdeckel). `build_query(cfg, req, compare=True)` ist B;
+  beide Abfragen verlangen `len(urls)` Zeilen (alle freigegebenen URLs), erst die fertige Liste wird
+  auf `limit` gekürzt, sonst sähe eine Seite unter dem Zeilenlimit des anderen Zeitraums „unbekannt“ aus.
+  `project_compare`: eine Zeile je Pfad mit Quellenzeile in A oder B; `a`/`b`/`delta` tragen je Feld
+  `null` statt 0, wenn der Zeitraum keine Zeile hat; CTR und Position nur aus der Quellenzeile, nie
+  gemittelt oder berechnet; zwei Zeilen desselben Pfads in einem Zeitraum (zwei URL-Varianten) ergeben
+  `null` und die Note `page_rows_ambiguous`; Sortierung Klicks A absteigend, dann Pfad; Antwort mit
+  `range` (A) und `compare_range` (B). Der Worker führt beide Abfragen nacheinander im 20-s-Budget aus.
+- **Segmente:** `segments` ist ein Objekt aus 1–`MAX_SEGMENTS` (8) Namen `SEGMENT_NAME`
+  (`[a-z][a-z0-9-]{0,31}`); `all_public` ist durch das Muster (kein Unterstrich) nie ein Name und
+  bleibt fest für alle Pfade der Site. `parse_request` prüft `segment` gegen `cfg.segments` der
+  **aufgelösten** Site; unbekannt oder fremd = `invalid_input`, nie ein Rückfall auf `all_public`, nie der
+  Name im Fehler. `Sites.from_json` lädt die Datei mit `unique_keys` und lehnt doppelte Schlüssel ab
+  (json.loads behielte still den letzten). `get_status` nennt `segments` (nur Namen).
+Mutationen dazu: `missing-page-shown-as-zero`, `ctr-computed-from-clicks-and-impressions`,
+`b-overlapping-a-accepted`, `period-91-accepted`, `gsc-distance-two-days`,
+`unknown-segment-falls-back-to-all-public`, `nine-segments-accepted`, `duplicate-config-keys-accepted`,
+`comparison-counted-once`, `second-call-asks-period-a-again`, `comparison-query-limited-to-the-output-limit`,
+`delta-sign-flipped`, `ambiguous-path-keeps-one-row`.
 
 Invarianten an allen Code-/Dokuorten nachziehen:512 KiB Antwort,8 KiB Anfrage,
 Pfad 512,100 Rangzeilen/90 Tage,100 öffentliche Pfade je Site (1.0.1)/4096Regex,20 s/25 s,
@@ -128,7 +156,7 @@ Mutationstests müssen Bridge-Key-Auth, Vorprüfung, Filter, Retries und Kill ab
 Fehler), Adapter-Konfiguration je Anfrage und den Deckel-Schlüssel mit Auflösung vor dem Zählen.
 Signatur/Katalog/Deployment nicht Teil der Implementierung.
 
-Release (#1138): Version 1.1.0 steht im Kopf dieser Datei, im README-Titel und im CHANGELOG
+Release (#1138): Version 2.0.0 steht im Kopf dieser Datei, im README-Titel und im CHANGELOG
 (sonst nirgends: Deskriptor und Compose tragen keine Version, Anlagen beziehen per Digest aus dem
 Katalog). Das Image baut nur `.github/workflows/google-reporting-release.yml` auf den Tag
 `google-reporting-vX.Y.Z` (Tag setzt GATE, nie ein Branch). Es spiegelt agent-runner-release:

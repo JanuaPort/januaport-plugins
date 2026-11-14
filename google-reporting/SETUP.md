@@ -100,6 +100,20 @@ vier Vorlagen an (`google-search-console`, `google-analytics`, `google-search-co
 Die Mandantentrennung per Instanz setzt voraus, dass nur der Betreiber Admin-Zugang hat, also GUI, Admin-MCP und `target_address`.
 Wer Instanzen anlegen oder ändern kann, könnte eine Instanz auf eine fremde Site umbiegen.
 
+## Zeiträume, Seitenvergleich und Segmente
+
+Die Berichte nehmen `period_days` von 1 bis 90 (Standard 28). Das letzte Datum liegt höchstens drei
+Tage vor heute in der Zeitzone der Quelle. Das Werkzeug `page_compare` der Vorlage
+`google-search-console` vergleicht je freigegebener Seite zwei gleich lange, nicht überlappende
+Zeiträume; es gibt es nur für die Search Console. Ein Scope auf die ganze Integration gibt dieses
+Werkzeug mit.
+
+Der Betreiber benennt je Site 1 bis 8 Segmente in `config.json` (Kleinbuchstaben, Ziffern und
+Bindestrich, zum Beispiel `preise`); `all_public` meint immer alle Seiten der Site. `get_status`
+nennt die Segmentnamen der Site. Die Vorlagen stehen seit dieser Fassung auf 2.0.0. Eine
+Bestandsinstanz wird nicht automatisch angehoben: Der Admin hebt sie mit
+`jnpt connector upgrade --yes <instanz>` an, der Wert `site` bleibt dabei erhalten.
+
 ## Schlüssel wechseln und entfernen
 
 Wechsel jährlich und bei Verdacht sofort: in der Cloud Console einen neuen Schlüssel erzeugen,

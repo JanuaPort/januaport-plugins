@@ -145,7 +145,9 @@ class DuplicateNames(unittest.TestCase):
         return json.dumps(raw).replace('"@@"', segments_json)
 
     def test_a_duplicated_segment_name_in_the_file_is_invalid_configuration(self):
-        text = self.text('{"a": ["/p"], "a": ["/q"]}')
+        # Collapsed to its last entry the object is the valid old configuration.
+        text = self.text('{"atas": ["/atas"], "gateway": ["/gateway"], "shared": ["/"], "shared": ["/"]}')
+        self.assertEqual(len(Config.from_dict(json.loads(text)).segments), 3)
         with self.assertRaises(ValueError) as ctx:
             Sites.from_json(text)
         self.assertEqual(str(ctx.exception), "invalid_configuration")

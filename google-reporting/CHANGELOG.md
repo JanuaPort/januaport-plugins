@@ -1,5 +1,41 @@
 # Änderungen — Google Reporting
 
+## 2.0.0 — 2026-11-14
+
+- JanuaPort/januaport#1379 (Teil B): **freie Zeiträume.** `period_days` ist eine ganze Zahl von
+  1 bis 90 als Dezimalstring ohne führende Null (`^[1-9][0-9]?$`, höchstens 90), Standard 28, für
+  alle Berichte beider Quellen außer `get_status`. Vorher nur 28 oder 90. 0, 91, `07`, `7.0`, leer,
+  `-1` und `1e1` sind `invalid_input`. `end_date` bleibt höchstens „Quelle-heute minus drei Tage“
+  (sonst `end_date_not_available`); der GSC-Abstand von drei Tagen ist nicht belegt und bleibt, eine
+  Messung mit `dataState` folgt gesondert.
+- **Neuer Bericht `gsc/page_compare`** (nur GSC): je freigegebener Seite `clicks`, `impressions`,
+  `ctr`, `position` für zwei gleich lange Zeiträume A und B und das `delta` (A minus B). Parameter
+  wie `page_summary` (`period_days`, `end_date`, `segment`, `page_path`, `limit`) plus optional
+  `compare_end_date`. B liegt ohne `compare_end_date` unmittelbar vor A und muss sonst vollständig
+  vor A liegen (`invalid_input`); `compare_end_date` hat dieselbe Datumsprüfung wie `end_date`. Zwei
+  Search-Console-Abfragen (Dimension `page`, derselbe Seitenfilter), beide zählen gegen die 30 je
+  Quelle und Minute. Fehlt einer Seite in einem Zeitraum die Zeile, sind Werte und `delta` `null`
+  (nicht 0) mit Hinweis in `quality.notes`; CTR und Position kommen aus der Quellenzeile und werden
+  nie gemittelt oder berechnet. Antwort mit `range` (A) und `compare_range` (B). Beide Abfragen
+  verlangen alle freigegebenen URLs, `limit` kürzt die sortierte Liste (Klicks in A absteigend,
+  dann Pfad).
+- **Frei benannte Segmente je Site** (LEAD-Entscheid c-6883881384): `segments` hat 1 bis 8 Namen nach
+  `[a-z][a-z0-9-]{0,31}`; `all_public` bleibt reserviert und fest. Die Pfadliste ist unverändert
+  (`gsc_urls` = Vereinigung aller Segmente, ein Pfad in höchstens einem Segment). `segment` wird
+  gegen die Segmente der aufgelösten Site geprüft: unbekannt oder das Segment einer anderen Site ist
+  `invalid_input`, nie ein stiller Rückfall auf `all_public`, nie der Name im Fehler. Die Site
+  `januaport` trägt weiter genau `atas`, `gateway`, `shared`. `get_status` nennt die Segmentnamen.
+  Ein doppelter Schlüssel in `config.json` (auch ein doppelter Segmentname) ist
+  `invalid_configuration`.
+- Keine neue Abhängigkeit, Lock unverändert, Egress, Servicekonto, Bridge-Key, Scope-Trennung und
+  Tagesdeckel unverändert, kein `page_compare` für GA4. Die Vorlagen `google-search-console` und
+  `google-analytics` heben auf 2.0.0 (MAJOR); Bestandsinstanzen werden nicht automatisch
+  angehoben, der Instanzwert `site` bleibt. Siehe README „Anhebung auf 2.0.0“.
+- Tests: Zeitraumtabelle je Quelle, Enddatum am Tageswechsel je Zeitzone, Bereiche A und B für
+  p = 1, 7, 90, Seite nur in A, nur in B und in beiden, Golden für beide Abfragen, Minutengrenze,
+  zweite Site, Segmenttabelle (0/1/8/9 Segmente, ungültige und doppelte Namen, fremdes und
+  unbekanntes Segment) und 13 neue Mutanten.
+
 ## 1.1.0 — 2026-11-14
 
 - JanuaPort/januaport#1379 (Teil A): **mehrere Sites in einem Dienst, Rechte je Site.** `config.json`

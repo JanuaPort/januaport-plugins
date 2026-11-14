@@ -60,7 +60,7 @@ class ConfigExamples(unittest.TestCase):
     def load(self, name):
         from google_reporting.domain import Sites
 
-        return Sites.from_dict(json.loads((ROOT / name).read_text(encoding="utf-8")))
+        return Sites.from_json((ROOT / name).read_text(encoding="utf-8"))
 
     def test_single_example_is_the_site_default(self):
         sites = self.load("config.example.json")
@@ -72,3 +72,6 @@ class ConfigExamples(unittest.TestCase):
         self.assertTrue(sites.listed)
         self.assertEqual(len(sites.by_name), 2)
         self.assertNotIn("default", sites.by_name)
+        # Each site names its own segments (#1379 part B); the first keeps the three classic ones.
+        self.assertEqual(list(sites.by_name["meine-site"].segments), ["atas", "gateway", "shared"])
+        self.assertEqual(list(sites.by_name["zweite-site"].segments), ["start", "preise"])
