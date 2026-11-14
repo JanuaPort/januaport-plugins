@@ -15,8 +15,19 @@ MAX_SITES = 5
 DEFAULT_SITE = "default"
 SITE_HEADER = "X-Google-Reporting-Site"
 SITE_NAME = re.compile(r"[a-z][a-z0-9-]{0,31}")
+SEGMENT_NAME = re.compile(r"[a-z][a-z0-9-]{0,31}")
+ALL_PUBLIC = "all_public"
+MAX_SEGMENTS = 8
+MAX_PERIOD = 90
+PERIOD_DAYS = re.compile(r"[1-9][0-9]?")
 REPORTS = {
-    "gsc": {"get_status", "performance_overview", "query_summary", "page_summary"},
+    "gsc": {
+        "get_status",
+        "performance_overview",
+        "query_summary",
+        "page_summary",
+        "page_compare",
+    },
     "ga4": {"get_status", "traffic_summary", "landing_pages", "key_events"},
 }
 
@@ -115,7 +126,15 @@ class Config:
                 type(cfg.ga4_min_group_size) is int
                 and 1 <= cfg.ga4_min_group_size <= 1000000
             )
-            require(set(cfg.segments) == {"atas", "gateway", "shared"})
+            require(
+                isinstance(cfg.segments, dict)
+                and 1 <= len(cfg.segments) <= MAX_SEGMENTS
+                # The pattern has no underscore, so the reserved all_public cannot be a name.
+                and all(
+                    isinstance(name, str) and SEGMENT_NAME.fullmatch(name)
+                    for name in cfg.segments
+                )
+            )
             paths = []
             for group in cfg.segments.values():
                 require(isinstance(group, list) and all(public_path(p) for p in group))
@@ -178,7 +197,7 @@ class Config:
     def paths(self, segment):
         return (
             [p for values in self.segments.values() for p in values]
-            if segment == "all_public"
+            if segment == ALL_PUBLIC
             else self.segments[segment]
         )
 
@@ -197,6 +216,15 @@ class Sites:
     @classmethod
     def single(cls, cfg):
         return cls(False, {cfg.site: cfg})
+
+    @classmethod
+    def from_json(cls, text):
+        """The configuration file: an object key that appears twice is refused, because
+        json.loads would silently keep the last one (a doubled segment or site setting)."""
+        try:
+            return cls.from_dict(json.loads(text, object_pairs_hook=unique_keys))
+        except ValueError:
+            raise ValueError("invalid_configuration") from None
 
     @classmethod
     def from_dict(cls, raw):
@@ -248,10 +276,25 @@ class Sites:
         return cfg
 
 
+def unique_keys(pairs):
+    keys = [k for k, _ in pairs]
+    if len(set(keys)) != len(keys):
+        raise ValueError("duplicate_key")
+    return dict(pairs)
+
+
 def iso_date(value):
     if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
         raise ValueError()
     return date.fromisoformat(value)
+
+
+def final_date(value, latest):
+    """A date the source has final data for: well-formed but later is its own fixed code (#1150)."""
+    day = iso_date(value)
+    if day > latest:
+        raise ReportError(400, "end_date_not_available")
+    return day
 
 
 def regex_for(urls):
@@ -270,6 +313,13 @@ class Request:
     page_path: str | None
     limit: int
     site: str = DEFAULT_SITE
+    compare_start_date: str | None = None
+    compare_end_date: str | None = None
+
+    @property
+    def source_calls(self):
+        """Calls to the source: page_compare asks once per period, both count against the rate."""
+        return 2 if self.report == "page_compare" else 1
 
 
 def parse_request(cfg, source, report, pairs, now=None):
@@ -281,6 +331,7 @@ def parse_request(cfg, source, report, pairs, now=None):
     if report in (
         "query_summary",
         "page_summary",
+        "page_compare",
         "traffic_summary",
         "landing_pages",
         "key_events",
@@ -288,6 +339,8 @@ def parse_request(cfg, source, report, pairs, now=None):
         allowed.add("limit")
     if source == "gsc" and report != "get_status":
         allowed.add("page_path")
+    if report == "page_compare":
+        allowed.add("compare_end_date")
     args = {}
     for k, v in pairs:
         if k not in allowed or k in args or not isinstance(v, str):
@@ -295,18 +348,29 @@ def parse_request(cfg, source, report, pairs, now=None):
         args[k] = v
     try:
         period = args.get("period_days", "28")
-        require(period in ("28", "90"))
+        require(bool(PERIOD_DAYS.fullmatch(period)) and int(period) <= MAX_PERIOD)
+        days = int(period)
         zone = "America/Los_Angeles" if source == "gsc" else cfg.ga4_time_zone
         latest = (now or datetime.now(timezone.utc)).astimezone(
             ZoneInfo(zone)
         ).date() - timedelta(days=3)
-        end = iso_date(args["end_date"]) if "end_date" in args else latest
-        if end > latest:
-            # Well-formed but beyond the final data: a fixed code, no date echoed (#1150).
-            raise ReportError(400, "end_date_not_available")
-        start = end - timedelta(days=int(period) - 1)
-        segment = args.get("segment", "all_public")
-        require(segment in ("all_public", "atas", "gateway", "shared"))
+        end = final_date(args["end_date"], latest) if "end_date" in args else latest
+        start = end - timedelta(days=days - 1)
+        compare_start = compare_end = None
+        if report == "page_compare":
+            compare_end = (
+                final_date(args["compare_end_date"], latest)
+                if "compare_end_date" in args
+                else end - timedelta(days=days)
+            )
+            # Period B has the length of A and lies completely before it.
+            require(compare_end < start)
+            compare_start = compare_end - timedelta(days=days - 1)
+        segment = args.get("segment", ALL_PUBLIC)
+        require(
+            segment == ALL_PUBLIC
+            or (bool(SEGMENT_NAME.fullmatch(segment)) and segment in cfg.segments)
+        )
         paths = cfg.paths(segment)
         require(bool(paths))
         page = args.get("page_path")
@@ -326,35 +390,49 @@ def parse_request(cfg, source, report, pairs, now=None):
             page,
             limit,
             cfg.site,
+            compare_start.isoformat() if compare_start else None,
+            compare_end.isoformat() if compare_end else None,
         )
     except (ValueError, OverflowError):
         raise ReportError(400, "invalid_input") from None
 
 
-def build_query(cfg, req):
+def build_query(cfg, req, compare=False):
+    """The source query of a report; `compare` asks page_compare for period B instead of A."""
     if req.source == "gsc":
         if req.report == "query_summary" and not cfg.query_enabled:
             raise ReportError(503, "query_not_approved")
-        expression = regex_for([u for p in req.paths for u in cfg.gsc_urls[p]])
+        urls = [u for p in req.paths for u in cfg.gsc_urls[p]]
+        expression = regex_for(urls)
         if len(expression) > MAX_REGEX:
             raise ReportError(503, "configuration_invalid")
         dimension = {
             "performance_overview": "date",
             "query_summary": "query",
             "page_summary": "page",
+            "page_compare": "page",
             "get_status": "date",
         }[req.report]
+        start, end = (
+            (req.compare_start_date, req.compare_end_date)
+            if compare
+            else (req.start_date, req.end_date)
+        )
         return dict(
-            startDate=req.start_date,
-            endDate=req.end_date,
+            startDate=start,
+            endDate=end,
             type="web",
             dataState="final",
             aggregationType="auto",
             dimensions=[dimension],
+            # A comparison asks for every approved URL in both periods: a page that ranks below
+            # the output limit in one period must not look "unknown" in the other.
             rowLimit=1
             if req.report == "get_status"
             else 90
             if dimension == "date"
+            else len(urls)
+            if req.report == "page_compare"
             else req.limit,
             dimensionFilterGroups=[
                 {
@@ -434,6 +512,95 @@ def number(value, integer=False):
     return int(n) if integer else n
 
 
+COMPARE_FIELDS = ("clicks", "impressions", "ctr", "position")
+AGGREGATIONS = ("byPage", "byProperty", "auto")
+
+
+def period_rows(cfg, req, raw):
+    """The Search Analytics answer of one period: the row of each approved path.
+
+    A path with two rows (two approved URLs of it) has no single CTR or position, so it counts
+    as ambiguous and is never averaged. Rows of unapproved URLs are suppressed.
+    """
+    if not isinstance(raw, dict) or not isinstance(raw.get("rows", []), list):
+        raise ValueError()
+    found, ambiguous, suppressed = {}, set(), 0
+    for row in raw.get("rows", []):
+        keys = row["keys"]
+        require(isinstance(keys, list) and len(keys) == 1 and isinstance(keys[0], str))
+        item = {k: number(row[k]) for k in COMPARE_FIELDS}
+        if item["ctr"] > 1:
+            raise ValueError()
+        matching = [p for p in req.paths if keys[0] in cfg.gsc_urls[p]]
+        if not matching:
+            suppressed += 1
+        elif matching[0] in found or matching[0] in ambiguous:
+            ambiguous.add(matching[0])
+            found.pop(matching[0], None)
+        else:
+            found[matching[0]] = item
+    return found, ambiguous, suppressed, len(raw.get("rows", []))
+
+
+def compare_row(path, first, second):
+    """Both periods and A - B per field; a missing period is null, never 0."""
+    empty = dict.fromkeys(COMPARE_FIELDS)
+    known = first is not None and second is not None
+    return {
+        "page_path": path,
+        "a": first or dict(empty),
+        "b": second or dict(empty),
+        "delta": {k: round(first[k] - second[k], 10) for k in COMPARE_FIELDS}
+        if known
+        else dict(empty),
+    }
+
+
+def project_compare(cfg, req, raw, output):
+    """page_compare: one row per approved page that has a source row in A or in B."""
+    try:
+        require(isinstance(raw, dict))
+        a, a_ambiguous, a_suppressed, a_count = period_rows(cfg, req, raw["a"])
+        b, b_ambiguous, b_suppressed, b_count = period_rows(cfg, req, raw["b"])
+    except (KeyError, TypeError, ValueError, IndexError, OverflowError):
+        raise ReportError(502, "invalid_source_response") from None
+    listed = [p for p in req.paths if p in a or p in b or p in a_ambiguous or p in b_ambiguous]
+    # Highest clicks in A first, then the path; a page without a value in A comes last.
+    listed.sort(key=lambda p: (p not in a, -a[p]["clicks"] if p in a else 0, p))
+    output["compare_range"] = {
+        "start_date": req.compare_start_date,
+        "end_date": req.compare_end_date,
+        "time_zone": req.time_zone,
+    }
+    output["rows"] = [compare_row(p, a.get(p), b.get(p)) for p in listed[: req.limit]]
+    quality = output["quality"]
+    quality["limit_reached"] = len(listed) > req.limit
+    quality["returned_rows"] = len(output["rows"])
+    quality["source_returned_rows_a"] = a_count
+    quality["source_returned_rows_b"] = b_count
+    aggregations = {
+        raw[period].get("responseAggregationType") for period in ("a", "b")
+    }
+    quality["aggregation_type"] = (
+        aggregations.pop() if len(aggregations) == 1 and aggregations <= set(AGGREGATIONS) else "unknown"
+    )
+    notes = quality["notes"]
+    notes.append("bounded_top_rows_not_total")
+    shown = listed[: req.limit]
+    if any(p not in a and p not in a_ambiguous for p in shown):
+        notes.append("page_without_rows_in_period_a")
+    if any(p not in b and p not in b_ambiguous for p in shown):
+        notes.append("page_without_rows_in_period_b")
+    if a_ambiguous or b_ambiguous:
+        notes.append("page_rows_ambiguous")
+    if a_suppressed or b_suppressed:
+        notes.append("small_or_unapproved_groups_suppressed")
+    # Every note after the first names a view that is not whole.
+    partial = quality["limit_reached"] or len(notes) > 1
+    output["state"] = "partial" if partial else "ok" if output["rows"] else "no_rows"
+    return output
+
+
 def project(cfg, req, raw):
     output = {
         "schema_version": "1.0",
@@ -455,6 +622,8 @@ def project(cfg, req, raw):
         "quality": {"coverage": "unknown", "limit_reached": False, "notes": []},
         "fetched_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
+    if req.report == "page_compare":
+        return project_compare(cfg, req, raw, output)
     if req.source == "ga4" and raw.get("metadata", {}).get("timeZone") not in (
         None,
         cfg.ga4_time_zone,
@@ -470,6 +639,7 @@ def project(cfg, req, raw):
             "definition_version": cfg.definition_version,
             "site": cfg.site,
             "hosts": list(cfg.hosts),
+            "segments": list(cfg.segments),
             "report_definitions": "validated" if req.source == "ga4" else "fixed",
             "key_events": "configured" if cfg.key_events else "not_configured",
             "query_reports": "enabled" if cfg.query_enabled else "disabled_pending_sec",

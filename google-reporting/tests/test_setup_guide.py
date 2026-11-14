@@ -71,6 +71,20 @@ class SetupGuide(unittest.TestCase):
         self.assertIn("`admin_set_user_scopes`", guide)
         self.assertIn("`admin_list_users`", guide)
 
+    def test_periods_compare_and_segments_are_explained(self):
+        # JanuaPort/januaport#1379, part B.
+        guide = self.guide()
+        for phrase in (
+            "## Zeiträume, Seitenvergleich und Segmente",
+            "`period_days` von 1 bis 90",
+            "`page_compare`",
+            "1 bis 8 Segmente",
+            "`all_public`",
+            "2.0.0",
+            "jnpt connector upgrade --yes",
+        ):
+            self.assertIn(phrase, guide)
+
     def test_multi_site_guide_names_the_order_and_the_checks(self):
         # JanuaPort/januaport#1379, part A: Mehrere Sites, Abnahme je Anlage, Mandantentrennung.
         guide = self.guide()
