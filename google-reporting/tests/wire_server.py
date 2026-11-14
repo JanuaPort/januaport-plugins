@@ -37,6 +37,18 @@ class SyntheticAdapter:
                 before=None,
                 after={},
             )
+        if req.report == "page_compare":
+            # Two periods, one approved page each; B has fewer clicks, so the delta is not zero.
+            url = cfg.gsc_urls[req.paths[0]][0]
+
+            def rows(clicks, position):
+                return {
+                    "rows": [
+                        {"keys": [url], "clicks": clicks, "impressions": 20, "ctr": 0.1, "position": position}
+                    ]
+                }
+
+            return project(cfg, req, {"a": rows(2, 3), "b": rows(1, 4)})
         if req.source == "gsc":
             key = (
                 req.end_date

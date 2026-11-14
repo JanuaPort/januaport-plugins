@@ -83,7 +83,9 @@ class Contract(unittest.TestCase):
     def test_invalid_input_before_google(self):
         cases = [
             [("property_id", "canary")],
-            [("period_days", "29")],
+            [("period_days", "91")],
+            [("period_days", "0")],
+            [("period_days", "07")],
             [("limit", "101")],
             [("segment", "other")],
             [("segment", "atas"), ("page_path", "/gateway")],
