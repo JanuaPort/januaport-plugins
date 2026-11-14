@@ -71,6 +71,28 @@ class SetupGuide(unittest.TestCase):
         self.assertIn("`admin_set_user_scopes`", guide)
         self.assertIn("`admin_list_users`", guide)
 
+    def test_multi_site_guide_names_the_order_and_the_checks(self):
+        # JanuaPort/januaport#1379, part A: Mehrere Sites, Abnahme je Anlage, Mandantentrennung.
+        guide = self.guide()
+        for phrase in (
+            "## Mehrere Sites",
+            "--wert site=",
+            "`get_status`",
+            "`site`",
+            "`hosts`",
+            "site_required",
+            "`target_address`",
+        ):
+            self.assertIn(phrase, guide)
+        # SEC K1: the separation by instance holds only if the operator alone has admin access.
+        self.assertIn(
+            "Die Mandantentrennung per Instanz setzt voraus, dass nur der Betreiber Admin-Zugang hat, "
+            "also GUI, Admin-MCP und `target_address`.",
+            " ".join(guide.split()),
+        )
+        # The guide neither names a real site nor says a tool takes a `site` parameter.
+        self.assertNotIn("Parameter `site`", guide)
+
     def test_has_no_relative_links(self):
         for target in re.findall(r"\]\(([^)]+)\)", self.guide()):
             self.assertRegex(target, r"^https://", target)

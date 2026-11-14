@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import patch
 from urllib.parse import parse_qs, unquote
 import httplib2
-from google_reporting.domain import Config, ReportError
+from google_reporting.domain import Config, ReportError, Sites
 from google_reporting.google_adapter import GoogleAdapter
 from google_reporting.manage import STANDARD_CHANNELS, channel_group_rules, parse_get, parse_post
 from test_contract import fixture
@@ -96,7 +96,7 @@ class Base(unittest.TestCase):
         for p in patches:
             p.start()
             self.addCleanup(p.stop)
-        self.adapter = GoogleAdapter(self.cfg, "unused")
+        self.adapter = GoogleAdapter(Sites.single(self.cfg), "unused")
 
     def get(self, source, op, pairs=()):
         return self.adapter.run(parse_get(self.cfg, source, op, list(pairs)))
@@ -149,7 +149,7 @@ class ScopePins(Base):
             with self.subTest(op=op, arg=str(arg)[:60]):
                 self.google.token_scopes.clear()
                 self.google.tokens.clear()
-                self.adapter = GoogleAdapter(self.cfg, "unused")
+                self.adapter = GoogleAdapter(Sites.single(self.cfg), "unused")
                 (self.get if kind == "get" else self.post)(source, op, arg)
                 self.assertEqual(self.scopes(), expected)
                 for scope in self.google.token_scopes:
