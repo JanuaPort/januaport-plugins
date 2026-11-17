@@ -100,7 +100,10 @@ func (b *syncBed) handle(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(401)
 			_, _ = w.Write([]byte(`{"error":{"class":"revoked"}}`))
 			return
-		case "500":
+		case "500": // nur für den kaputten Pin, die Apps kommen durch
+			if !strings.HasSuffix(r.URL.Path, strings.Repeat("b", 64)) {
+				break
+			}
 			w.WriteHeader(500)
 			_, _ = w.Write([]byte(`{"error":{"class":"internal","message":"Fehler."}}`))
 			return

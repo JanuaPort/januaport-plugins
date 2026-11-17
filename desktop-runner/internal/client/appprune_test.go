@@ -61,15 +61,15 @@ func newPruneBed(t *testing.T) *pruneBed {
 		case strings.HasSuffix(r.URL.Path, "/manifest"):
 			_ = json.NewEncoder(w).Encode(b.signed.Load())
 		case strings.HasPrefix(r.URL.Path, "/api/device/v1/packages/"):
+			if b.pkgDown.Load() {
+				c, _, _ := w.(http.Hijacker).Hijack()
+				_ = c.Close()
+				return
+			}
 			raw, ok := b.pkgs[strings.TrimPrefix(r.URL.Path, "/api/device/v1/packages/")]
 			if !ok {
 				w.WriteHeader(404)
 				_, _ = w.Write([]byte(`{"error":{"class":"not_found","message":"Der Auftrag oder das Paket wurde nicht gefunden."}}`))
-				return
-			}
-			if b.pkgDown.Load() {
-				c, _, _ := w.(http.Hijacker).Hijack()
-				_ = c.Close()
 				return
 			}
 			b.fetched.Add(1)
