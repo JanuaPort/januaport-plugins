@@ -12,7 +12,7 @@ CASES = [
     ("pair-code", "client/http.go", ".MatchString(code) {", ".MatchString(code) && false {", "client", "TestPairCodeFormat"),
     ("pair-test-key", "client/http.go", "== rfc8032TestPublicKey {", "== rfc8032TestPublicKey && false {", "client", "TestPairRFC8032Pubkey"),
     ("golden-blob-binding", "client/copied_contract.go", "if !ok || o.kind != kind {", "if (!ok || o.kind != kind) && kind != 'b' {", "client", "TestGoldenPaketeBytegenauUndManipulation"),
-    ("package-mime", "client/http.go", 'if res.Header.Get("Content-Type") != expectedType {', 'if res.Header.Get("Content-Type") != expectedType && false {', "client", "TestPaketMedientypAmHTTPAdapter"),
+    ("package-mime", "client/http.go", 'if !stream && res.Header.Get("Content-Type") != expectedType {', 'if !stream && res.Header.Get("Content-Type") != expectedType && false {', "client", "TestPaketMedientypAmHTTPAdapter"),
     ("frame-cap", "client/engine.go", "n == 0 || n > 8<<20", "n == 0 || n > 16<<20", "client", "TestRahmenDeckelMitVollstaendigemKoerper"),
     ("wheel-platform", "client/environment.go", "if !matched {", "if !matched && false {", "client", "TestWheelTagsLockUndManifestVerbote"),
     ("wheel-rein-abi", "client/environment.go", 'if tags[1] != "none" || tags[2] != "any" {', 'if tags[2] != "any" {', "client", "TestReineWheelsTagTabelle"),
@@ -76,7 +76,7 @@ CASES = [
     ("interrupted", "client/state.go", 'r.End = "interrupted"', 'r.End = "ok"', "client", "TestJournalDeckelBestaetigungNeustart"),
     ("revoke", "client/state.go", "return removeTree(s.Root)", "return nil", "client", "TestWiderrufAllesWeg"),
     ("revoke-follow-link", "client/runtemp.go", "if info.Mode().Type() == fs.ModeDir {", "if info, _ = os.Stat(path); info != nil && info.IsDir() {", "platform", "TestRevokeFolgtKeinerJunctionInTmp"),
-    ("log-code", "client/log.go", "if code < LogStarted || code > LogOfflineExpired {", "if (code < LogStarted || code > LogOfflineExpired) && false {", "client", "TestLoggerDeckelUndFesteCodes"),
+    ("log-code", "client/log.go", "if code < LogStarted || code > LogAppFault {", "if (code < LogStarted || code > LogAppFault) && false {", "client", "TestLoggerDeckelUndFesteCodes"),
     ("idle-before-spawn", "client/engine.go", "why = startRefusal(s, config)", "why = nil", "client", "TestIdleVorSpawnUndMount"),
     ("idle-panel-flag-always", "client/engine.go", "if isPanelRun(ctx) {", "if true {", "client", "TestZeitplanUndAdHocBleibenUnterLeerlauf"),
     ("panel-account-bypass", "client/engine.go", "why = localStartRefusal(s, config)", "why = nil", "client", "TestSetupKontoWechselNachZulassungWirdAccountNichtIdle"),
@@ -99,14 +99,29 @@ def run(cmd, cwd, timeout=120):
                           stderr=subprocess.STDOUT, timeout=timeout)
 
 
+def windows_only(rel, package, test):
+    # The source path alone misses platform-neutral files whose test lives in a Windows-only test file.
+    if "windows" in rel:
+        return True
+    decl = "func " + test + "("
+    for f in (ROOT / "internal" / package).glob("*_test.go"):
+        text = f.read_text(encoding="utf-8")
+        if decl in text:
+            return f.name.endswith("_windows_test.go") or text.startswith("//go:build windows")
+    raise RuntimeError(f"{test}: no test file in {package} declares it")
+
+
 def main():
     selected = set(sys.argv[1:])
     count = 0
+    skipped = 0
     (ROOT / ".probe").mkdir(exist_ok=True)
     for label, rel, old, new, package, test in CASES:
         if selected and label not in selected:
             continue
-        if os.name != "nt" and "windows" in rel:
+        if os.name != "nt" and windows_only(rel, package, test):
+            print(label + ": skipped (Windows only)", flush=True)
+            skipped += 1
             continue
         path = ROOT / "internal" / rel
         original = path.read_bytes()
@@ -129,7 +144,7 @@ def main():
             count += 1
         finally:
             path.write_bytes(original)
-    print(f"{count} mutations rejected; all source files restored.", flush=True)
+    print(f"{count} mutations rejected, {skipped} skipped (Windows only); all source files restored.", flush=True)
 
 
 if __name__ == "__main__":
