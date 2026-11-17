@@ -119,6 +119,16 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
    (Pfad/Größe/SHA-256) nach Entpacken und vor jedem Start. Python-ZIP
    zusätzlich gegen ausgelieferte python.org-Allowlist (C1), nicht aus Pin;
    fehlend/falsch → refused/runtime. Paket-tools = signierte declared_tools.
+   **Wheel-Regel (#1392):** Native Wheels brauchen weiter `cp312` (auf 3.13 auch `cp312`/`abi3`) und `win_amd64`.
+   Zusätzlich gilt ein **reines** Wheel: Das Python-Tag (an `.` zerlegt) besteht nur aus `py2` und `py3` und enthält `py3`,
+   das ABI ist genau `none`, die Plattform genau `any` (keine zusammengesetzte Plattform wie `any.win32`), Groß-/Kleinschreibung
+   zählt, der Dateiname hat fünf oder sechs `-`-Teile. Ob ein Wheel wirklich rein ist, prüft der Läufer nicht; die Grenze bleibt
+   der SHA-256 im Lock. Entpackt wird wie bei jedem Wheel (kein neuer Weg, `..`/absolute Pfade → `refused/hash`), `.data/scripts`
+   liegt unter `libs` und nirgends sonst. **`.pth` in Wheels bleibt wirkungslos, weil `site` aus ist:** Das trägt allein die `._pth`
+   (`pthFile` in `environment.go`: `python3NN.zip`, `.`, `../libs`, keine `import`-Zeile). `TestPthDateiIstFestgepinnt` hält den
+   Inhalt fest, `TestWindowsPthImWheelBleibtWirkungslos` belegt es mit echtem Embed-Python und einem Kanarien-Wheel (mit
+   Gegenprobe: mit `import site` entstünde der Marker). Wer die `._pth` ändert, braucht eine neue SEC-Prüfung.
+   Tests: `TestReineWheelsTagTabelle`, `TestReinesWheelBrauchtHashImLock`, `TestUiaProbeWheelNamen`, `TestReinesWheelEntpacktNurUnterLibs`.
 9. E4: Journal zuerst für alle Ergebnisse (Windows: DPAPI CurrentUser;
    Linux: HMAC-SHA256, Dateien 0600/Verzeichnis 0700), höchstens
    200 Ergebniseinträge/16 MiB gespeicherter Bestand inkl. OS-Schutz-/Rahmen-Overhead,
@@ -805,6 +815,7 @@ mit PASS ohne SKIP laufen. CI/Kompilierung ersetzen diesen Gate-Beleg nicht.
 | Anmeldeleiste #1321, mode nur a/b/leer, alte Kerne und Manifestwechsel | client: TestManifestAppModeAmHTTPAdapter, TestManifestV5GoldenRoundtrip; fensterio: TestRuntimeAppModeAusAktuellemManifest, TestRuntimeAppModeUmgehtPersonRequiredNicht, TestRuntimeWatchMeldetModuswechsel, TestAppModeNativVerdrahtet; Windows ohne GUI: TestSurfaceAnmeldeleisteNachModus, TestSurfaceModusAErzeugtKeineControls, TestSurfaceAnzeigemodusVerwirftAltenStand; BOX: TestWindowsWebViewAnmeldeleisteNachModus; Mutanten: leiste-immer, app-mode-ungueltig, anzeige-alter-stand |
 | B1: Git vor Spawn, Objektmenge/Modi/Namen | TestFalscherHashBrichtVorDemStartAb, TestPaketObjektmengeModiUndNamen, TestSHA1Collision, TestPaketMedientypAmHTTPAdapter, TestGoldenPaketeBytegenauUndManipulation |
 | Runtime/Lock/Umgebung | TestPythonAllowlistUndWheel, TestUmgebungVorJedemStart, TestUmgebungFehlendeZusaetzlicheDateien, TestWheelTagsLockUndManifestVerbote, TestWindowsPythonEchterStartUndManipulation |
+| Reine Wheels, `._pth` festgepinnt (#1392, W1–W3) | TestReineWheelsTagTabelle, TestReinesWheelBrauchtHashImLock, TestUiaProbeWheelNamen, TestReinesWheelEntpacktNurUnterLibs, TestPthDateiIstFestgepinnt; nativ: TestWindowsPthImWheelBleibtWirkungslos |
 | ZIP-Namen/Typen/Kollisionen/Bomben | TestZIPAbweisungAmEntpacker; Kopien: TestCopiedLibraryFunctions |
 | E3: TLS vor Code, CA/Pin, keine Redirects/Proxys, Pubkey nötig | TestPairTLSUndLeererPubkey, TestCAFingerprintProxyUndURL, TestRedirectUndRemoteHTTPAbgewiesen, TestPairCodeFormat, TestPairLeererPubkey, TestPairRFC8032Pubkey, TestPairLeererPubkeySpeichertNichts, TestPairRFC8032PubkeySpeichertNichts |
 | E1: Gerät/seq/Signatur, alter Sync unverändert | TestManifestAblehnung, TestManifestSyncAtomarUndOfflineAmAdapter, TestVeralteterStartSynchronisiertErneut; Kopien: TestCopiedContractFunctions |

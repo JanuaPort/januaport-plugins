@@ -19,7 +19,8 @@ $cases = @(
     @{Name='entropy'; File='platform/security_windows.go'; Old='blob(entropy)'; New='blob(nil)'; Test='TestWindowsDPAPIBrauchtEntropie'},
     @{Name='token-env'; File='client/engine.go'; Old='Env: slices.Clone(e.ChildEnv)'; New='Env: append(slices.Clone(e.ChildEnv), "RUN_TOKEN="+runToken)'; Test='TestWindowsPythonEchterStartUndManipulation'},
     @{Name='token-argv'; File='client/engine.go'; Old='Args: []string{"-I", "-B", "bootstrap.py"}'; New='Args: []string{"-I", "-B", "bootstrap.py", runToken}'; Test='TestWindowsPythonEchterStartUndManipulation'},
-    @{Name='no-site'; File='client/environment.go'; Old='".zip\n.\n../libs\n"'; New='".zip\n.\n../libs\nimport site\n"'; Test='TestWindowsPythonEchterStartUndManipulation'}
+    @{Name='no-site'; File='client/environment.go'; Old='".zip\n.\n../libs\n"'; New='".zip\n.\n../libs\nimport site\n"'; Test='TestWindowsPythonEchterStartUndManipulation'},
+    @{Name='no-site-kanarienvogel'; File='client/environment.go'; Old='".zip\n.\n../libs\n"'; New='".zip\n.\n../libs\nimport site\n"'; Test='TestWindowsPthImWheelBleibtWirkungslos'}
 )
 Push-Location $moduleRoot
 try {

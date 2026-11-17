@@ -2,6 +2,18 @@
 
 ## Unveröffentlicht
 
+### Reine Python-Wheels (JanuaPort/januaport#1392)
+
+- **`py3-none-any` und `py2.py3-none-any` werden angenommen,** wenn ihr SHA-256 im Lock steht. Bisher lehnte `CheckWheels` jedes
+  Wheel ohne `cp312`-Tag ab, damit scheiterte jeder Pin mit reinen Abhängigkeiten (zum Beispiel comtypes, pywinauto, six) auf
+  jedem Gerät mit `refused/hash`. Die Tags werden streng zerlegt: Python-Tag nur `py2`/`py3` mit `py3`, ABI genau `none`,
+  Plattform genau `any`, Groß-/Kleinschreibung zählt. `py2`, `py36`, `cp311`, `py3-none-win_amd64`, `py3-abi3-any` und
+  zusammengesetzte Plattformen bleiben abgelehnt; native Wheels unverändert. Ob ein Wheel wirklich rein ist, prüft der Läufer nicht.
+- **Keine Änderung an der `._pth`, kein neuer Entpackweg.** `.pth`-Dateien in Wheels bleiben wirkungslos, weil `site` aus ist. Das
+  ist jetzt festgeschrieben: Der Inhalt der `._pth` ist in einem Test festgepinnt, und ein Kanarien-Wheel, dessen `.pth` eine
+  Markerdatei anlegen würde, läuft gegen das echte Embed-Python (Gegenprobe mit `import site` legt den Marker an).
+- Der Pin-Teil für `uia_probe` (pywin32-Pfade in `sys.path`) liegt im Pin, nicht im Läufer.
+
 ## 0.5.4 — 2026-11-10 (JanuaPort/januaport#1354, JanuaPort/januaport#1240)
 
 ### Upstream-Prüfpunkt

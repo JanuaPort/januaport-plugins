@@ -26,11 +26,12 @@ func TestWindowsPthImWheelBleibtWirkungslos(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	tmp, e := os.MkdirTemp("../../.probe", "pth-")
+	// Kurzer Pfad: Umgebungsordner heißen 129 Zeichen, unter .probe würde MAX_PATH überschritten.
+	tmp, e := os.MkdirTemp("", "pth-")
 	if e != nil {
 		t.Fatal(e)
 	}
-	defer os.RemoveAll(tmp)
+	defer func() { _ = os.RemoveAll(tmp) }()
 	root, _ := filepath.Abs(tmp)
 	marker := filepath.Join(root, "marker-ausgefuehrt")
 	pth := "import os; open(r'" + marker + "', 'w').close()\n"
@@ -39,7 +40,7 @@ func TestWindowsPthImWheelBleibtWirkungslos(t *testing.T) {
 	zw := zip.NewWriter(&wb)
 	for _, f := range [][2]string{{"canary.pth", pth}, {"canary.py", "WERT = 42\n"}} {
 		w, _ := zw.Create(f[0])
-		w.Write([]byte(f[1]))
+		_, _ = w.Write([]byte(f[1]))
 	}
 	if e = zw.Close(); e != nil {
 		t.Fatal(e)
