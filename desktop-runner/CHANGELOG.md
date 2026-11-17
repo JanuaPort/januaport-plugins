@@ -2,6 +2,28 @@
 
 ## Unveröffentlicht
 
+### Kaputter Pin sperrt das Manifest nicht mehr (JanuaPort/januaport#1391)
+
+- **Ein Pin ohne Umgebung hält den Abgleich nicht mehr auf.** Bisher verwarf jeder Fehler im Pin-Schritt (Paketabruf mit
+  Antwort, `Prepare`, Umgebungsprüfung, Abweichung im Cache) den ganzen Sync: Kein neues Manifest wurde gespeichert, ein
+  Entzug von App, Setup, Pin oder Recht kam nicht an, neue Apps wurden nicht abgelegt, und `syncErr` lehnte jeden
+  geplanten Lauf ab, auch den der guten Pins. Jetzt trifft so ein Fehler nur diesen Pin: Er bleibt ohne Umgebung (Start
+  `refused/runtime`), das Manifest wird gespeichert und angewendet. Der Pin wird an den vorhandenen Sync-Punkten neu
+  versucht (Start, eine Minute vor jedem Slot, Ad-hoc, Heartbeat mit höherer Seq); keine gespeicherte Fehlerklasse, kein
+  neuer Auslöser.
+- **Fehler auf Manifest-Ebene verwerfen weiter alles:** Konfiguration, Gerät, Signatur, Seq, Vertrag, Uhrmarke, Speichern,
+  Widerruf von überall, Abbruch und **offline auch beim Paketabruf**. Ein Netzausfall schaltet keine laufende Umgebung ab;
+  der Entzug wartet nur bis zum nächsten Abgleich mit Netz, der letzte Sync bleibt dabei unverändert.
+- **Unverändertes Manifest ist kein Fehler mehr:** Der Kern behält die Seq bei gleichem Inhalt, `VerifyManifest` verlangte
+  aber `Seq > gespeichert`. Damit endete jeder Presync vor einem Slot (und jeder Sync nach dem Neustart) mit `ErrManifest`,
+  und der Lauf wurde `refused/manifest`. Jetzt gilt dieselbe signierte Hülle (gleiche Signatur, gleiche kanonische Bytes)
+  als bereits geprüft; Signatur, Gerät, Vertrag, Uhrmarke und Speichern laufen unverändert, jede andere Hülle mit gleicher
+  oder kleinerer Seq bleibt `ErrManifest`.
+- **Log:** Der vorhandene Code 2 (`LogSyncFailed`) wird geschrieben, `2 <Klasse>` mit 1 hash, 2 runtime, 3 manifest,
+  4 sonst/IO, je Fehler auf Manifest-Ebene und je nicht bereitem Pin. Kein neuer Code, keine Namen, kein Text. Nach Widerruf
+  und beim Abbruch bleibt das Log unberührt.
+- Kein neuer Vertrag, kein neues Paketformat, Heartbeat und Kern unverändert.
+
 ### Reine Python-Wheels (JanuaPort/januaport#1392)
 
 - **`py3-none-any` und `py2.py3-none-any` werden angenommen,** wenn ihr SHA-256 im Lock steht. Bisher lehnte `CheckWheels` jedes

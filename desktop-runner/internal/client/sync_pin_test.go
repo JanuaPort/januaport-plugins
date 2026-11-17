@@ -33,7 +33,8 @@ type syncBed struct {
 	signed  atomic.Pointer[SignedManifest]
 	device  atomic.Value // string: Geräte-ID der Konfiguration
 	pkgs    map[string][]byte
-	pkgMode atomic.Value // string: "" (liefert), "offline", "revoked", "500"
+	pkgMode atomic.Value // string: "" (liefert), "offline", "revoked", "500", "cancel"
+	onPkg   atomic.Pointer[func()]
 	fetched atomic.Int32
 	spawns  atomic.Int32
 	logDir  string
@@ -88,7 +89,9 @@ func (b *syncBed) handle(w http.ResponseWriter, r *http.Request) {
 		cfg.StartPolicy.Mode = "always"
 		_ = json.NewEncoder(w).Encode(cfg)
 	case strings.HasSuffix(r.URL.Path, "/manifest"):
-		_ = json.NewEncoder(w).Encode(b.signed.Load())
+		enc := json.NewEncoder(w)
+		enc.SetEscapeHTML(false) // wie ein Kern, der die Hülle ohne HTML-Escapes ausliefert
+		_ = enc.Encode(b.signed.Load())
 	case strings.HasPrefix(r.URL.Path, "/api/device/v1/packages/"):
 		b.fetched.Add(1)
 		switch b.pkgMode.Load().(string) {
@@ -100,6 +103,10 @@ func (b *syncBed) handle(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(401)
 			_, _ = w.Write([]byte(`{"error":{"class":"revoked"}}`))
 			return
+		case "cancel": // der Abbruch trifft den Läufer, bevor die Antwort bei ihm ankommt; sie selbst ist gültig
+			if f := b.onPkg.Load(); f != nil {
+				(*f)()
+			}
 		case "500": // nur für den kaputten Pin, die Apps kommen durch
 			if !strings.HasSuffix(r.URL.Path, strings.Repeat("b", 64)) {
 				break
@@ -443,13 +450,18 @@ func TestByteGleichesManifestMitJetztGutemPaketMachtDenPinBereit(t *testing.T) {
 	}
 }
 
-// Wie nach einem Neustart: Der Stand kommt aus dem Speicher; die Hülle ist dort neu serialisiert (HTML-Escapes).
-// Ein byte-gleiches Manifest mit & im Text ist trotzdem kein Fehler.
+// Wie nach einem Neustart: Der Stand kommt aus dem Speicher; json.Marshal hat die Hülle dort mit HTML-Escapes
+// neu serialisiert (aus & wird die Escape-Folge u0026), der Kern liefert sie ohne. Dasselbe Manifest mit & im Text ist trotzdem kein Fehler:
+// verglichen wird, was die Signatur deckt (kanonische Bytes), nicht die rohe Serialisierung.
 func TestByteGleichesManifestNachNeustartIstKeinFehler(t *testing.T) {
 	b := newSyncBed(t)
 	gut := b.gut
 	gut.Setups = []Setup{{Name: "s", Label: "A & B <1>", Input: json.RawMessage(`{}`), Frei: []FreeField{}}}
-	b.serve(b.manifest(1, []App{b.demo}, gut))
+	raw := strings.NewReplacer(`\u0026`, "&", `\u003c`, "<", `\u003e`, ">").Replace(string(encode(b.manifest(1, []App{b.demo}, gut))))
+	if !strings.Contains(raw, "A & B <1>") {
+		t.Fatal("Fixture trägt keine unescapten Zeichen")
+	}
+	b.serveRaw([]byte(raw), b.key)
 	if err := b.sync(); err != nil {
 		t.Fatal(err)
 	}
@@ -532,6 +544,19 @@ func TestGleicheSeqAndereHuelleBleibtErrManifest(t *testing.T) {
 	}
 }
 
+// spaeterAbbruch meldet Err() = Canceled, sobald abgebrochen ist, schließt Done() aber nie.
+type spaeterAbbruch struct {
+	context.Context
+	abgebrochen atomic.Bool
+}
+
+func (c *spaeterAbbruch) Err() error {
+	if c.abgebrochen.Load() {
+		return context.Canceled
+	}
+	return nil
+}
+
 // Fehler auf Manifest-Ebene verwerfen alles und behalten N, auch wenn das Manifest N+1 einen Entzug und einen
 // kaputten Pin enthält.
 func TestFehlerAufManifestEbeneVerwirftAlles(t *testing.T) {
@@ -597,6 +622,23 @@ func TestFehlerAufManifestEbeneVerwirftAlles(t *testing.T) {
 		}, func(t *testing.T, err error) {
 			if !IsOffline(err) {
 				t.Fatalf("Fehler = %v, erwartet offline", err)
+			}
+		}},
+		// Der Pin scheitert in Prepare (kein Netzfehler), während der Kontext abgebrochen wird: Der Abbruch ist kein
+		// Fehler dieses Pins. Der Kontext meldet Err() erst, wenn der Kern das Paket ausliefert; Done() bleibt offen,
+		// damit der Abruf selbst durchläuft und der Kontextzweig allein den Ausschlag gibt.
+		{"Abbruch während Prepare", func(b *syncBed) error {
+			pin := b.pinMitPaket("kaputt")
+			b.serve(b.manifest(2, []App{b.demo, b.dritte}, b.gut, pin))
+			b.pkgMode.Store("cancel")
+			ctx := &spaeterAbbruch{Context: context.Background()}
+			stop := func() { ctx.abgebrochen.Store(true) }
+			b.onPkg.Store(&stop)
+			b.e.syncErr = b.e.Sync(ctx)
+			return b.e.syncErr
+		}, func(t *testing.T, err error) {
+			if IsOffline(err) || err == context.Canceled {
+				t.Fatalf("Fehler = %v: erwartet der Fehler des Pins (Prepare), nicht Netz oder Abbruch", err)
 			}
 		}},
 		{"abgebrochener Kontext", func(b *syncBed) error {
