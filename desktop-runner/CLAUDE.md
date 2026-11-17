@@ -24,7 +24,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 | engine.go, halt.go, bootstrap.py | Gemeinsamer Laufplatz, Takt, Claim/Start, lokaler Halt, Rahmenkanal/MCP |
 | state.go, replace_* | Atomare OS-geschützte Dateien, Journal/Marker/Slot-Transaktion, Löschung |
 | runtemp.go | Lauf-TEMP: RunID/RunTemps, Anlegen nur neu, Aufräumen/Besen ohne Reparse-Punkte, Kind-Umgebung |
-| log.go | Geschlossene numerische Codes (1–10), 5 × 1 MiB; Code 10: n=1 Ablage, n=2 Aufräumen (Invariante 20) |
+| log.go | Geschlossene numerische Codes (1–10), 5 × 1 MiB; Code 2: n = Klasse 1 hash, 2 runtime, 3 manifest, 4 sonst (Invariante 23); Code 10: n=1 Ablage, n=2 Aufräumen (Invariante 20) |
 | cmd/bedienfeld, internal/panel, internal/panelio | Nativer Tray-Prozess, reines Modell und getrennter Pipe-I/O-Adapter |
 | internal/pipe, internal/client/pipe.go | Lokales Schema, Windows-Pipe, Serverprüfung, Setup-Zulassung und interne Rückfragen |
 | internal/platform/*_windows.go | DPAPI/ACL (SecureRoot, MkdirPrivate), WTS/LastInput, suspendierter Prozess/Job Object, COM/HKCU |
@@ -82,7 +82,13 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
    Zahlentoken verlustfrei; genaue Escape-Regeln im Vertrag. Fremde Geräte-ID,
    alte/gleiche seq oder falsche Signatur → Klasse `manifest`; alter Stand
    und letzter erfolgreicher Sync bleiben erhalten. seq uint64, dauerhaft,
-   ab 1, je erfolgreichem Sync erhöht, auch bei gleichen Pins.
+   ab 1, je erfolgreichem Sync erhöht, auch bei gleichen Pins. **Einzige Ausnahme (#1391, SEC E2):** Ist die
+   abgerufene signierte Hülle dieselbe wie die gespeicherte (gleiche Signatur und gleiche kanonische Bytes,
+   `sameEnvelope`), gilt das nicht als Fehler: `VerifyManifest` läuft vollständig, nur mit `minSeq = gespeichert − 1`
+   (Signatur, Gerät, Vertrag, Uhrmarke und Speichern wie im normalen Weg). Der Kern behält die seq bei gleichem Inhalt;
+   ohne die Ausnahme endete jeder Presync und jeder Neustart-Sync mit `ErrManifest` und `scheduled` lehnte den Lauf ab.
+   Jede andere Hülle mit gleicher oder kleinerer seq bleibt `ErrManifest`. Verglichen wird, was die Signatur deckt,
+   nicht die rohe Serialisierung, denn der Speicher serialisiert die Hülle mit HTML-Escapes neu.
 4. JSON streng mit `DisallowUnknownFields`. Windows-Heartbeat (Vertrag 4/5) ausschließlich
    `contract`, `ready`, `runner_version`, `manifest_seq`; kein Sitzungsstatus,
    keine Leerlaufzeit, kein Konto. Antwort ergänzt `manifest_seq_current`;
@@ -119,6 +125,16 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
    (Pfad/Größe/SHA-256) nach Entpacken und vor jedem Start. Python-ZIP
    zusätzlich gegen ausgelieferte python.org-Allowlist (C1), nicht aus Pin;
    fehlend/falsch → refused/runtime. Paket-tools = signierte declared_tools.
+   **Wheel-Regel (#1392):** Native Wheels brauchen weiter `cp312` (auf 3.13 auch `cp312`/`abi3`) und `win_amd64`.
+   Zusätzlich gilt ein **reines** Wheel: Das Python-Tag (an `.` zerlegt) besteht nur aus `py2` und `py3` und enthält `py3`,
+   das ABI ist genau `none`, die Plattform genau `any` (keine zusammengesetzte Plattform wie `any.win32`), Groß-/Kleinschreibung
+   zählt, der Dateiname hat fünf oder sechs `-`-Teile. Ob ein Wheel wirklich rein ist, prüft der Läufer nicht; die Grenze bleibt
+   der SHA-256 im Lock. Entpackt wird wie bei jedem Wheel (kein neuer Weg, `..`/absolute Pfade → `refused/hash`), `.data/scripts`
+   liegt unter `libs` und nirgends sonst. **`.pth` in Wheels bleibt wirkungslos, weil `site` aus ist:** Das trägt allein die `._pth`
+   (`pthFile` in `environment.go`: `python3NN.zip`, `.`, `../libs`, keine `import`-Zeile). `TestPthDateiIstFestgepinnt` hält den
+   Inhalt fest, `TestWindowsPthImWheelBleibtWirkungslos` belegt es mit echtem Embed-Python und einem Kanarien-Wheel (mit
+   Gegenprobe: mit `import site` entstünde der Marker). Wer die `._pth` ändert, braucht eine neue SEC-Prüfung.
+   Tests: `TestReineWheelsTagTabelle`, `TestReinesWheelBrauchtHashImLock`, `TestUiaProbeWheelNamen`, `TestReinesWheelEntpacktNurUnterLibs`.
 9. E4: Journal zuerst für alle Ergebnisse (Windows: DPAPI CurrentUser;
    Linux: HMAC-SHA256, Dateien 0600/Verzeichnis 0700), höchstens
    200 Ergebniseinträge/16 MiB gespeicherter Bestand inkl. OS-Schutz-/Rahmen-Overhead,
@@ -677,13 +693,13 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 20. Entzug von Apps (#1342, Windows): `pruneStored` (`appprune.go`) räumt ab, was nicht mehr als App im
     **zuletzt erfolgreich geprüften, gespeicherten** Manifest steht (`e.view()`, dieselbe Quelle wie die Läufe,
     erneut mit `VerifyManifest` geprüft). Es läuft (1) nach jedem erfolgreichen `Engine.Sync` (nach Signatur-,
-    Geräte-, Sequenz- und Vertragsprüfung, Laden der Pakete und Speichern des Manifests) vor `ensureApps` und
+    Geräte-, Sequenz- und Vertragsprüfung, Pin-Schritt und Speichern des Manifests; ein kaputter Pin hält den Sync nicht auf, Invariante 23) vor `ensureApps` und
     (2) **im Takt des Heartbeats** in `Run` (alle 60 s, rein lokal, auch offline und ohne neue Sequenz). Grund für
     (2), der Hauptfall: Der Entzug kommt mit einem neuen Manifest, der Sync räumt sofort ab, das Bedienfeld erfährt
     es erst danach und schließt das Fenster (`CloseMissing`); zum Zeitpunkt des Sync ist `webview\<app>` also
     typischerweise noch gesperrt, und der Takt löscht es beim nächsten Durchlauf. Keine Netzanfrage. Ist das
     gespeicherte Manifest leer oder nicht prüfbar (Signatur, Gerät, Format), wird nichts gelöscht; nie nach
-    Offline-, Parse-, Signatur-, Lese- oder Sequenzfehlern eines Sync (der speichert dann nichts Neues); Server
+    Offline-, Parse-, Signatur-, Lese- oder Sequenzfehlern eines Sync (der speichert dann nichts Neues; auch nicht nach offline gescheitertem Paketabruf, Invariante 23); Server
     (Vertrag 2, `apps` fehlt) räumen nichts ab. Das Manifest wird unter `State.Use` gelesen, damit der Takt keine
     App löscht, die ein gleichzeitiges `Prepare` gerade gegen ein neueres Manifest ablegt. **Pfade nur aus lokaler Aufzählung:** Der Läufer zählt die direkten
     Einträge von `<Zustand>\apps` und `<Zustand>\webview` selbst auf (`os.ReadDir`), nie aus Servernamen. Gelöscht
@@ -767,6 +783,32 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     findet nur systemweit angemeldete Kürzel, nicht die, die ein Programm in seinem eigenen Fenster auswertet; der gesperrte
     Bildschirm löst nichts aus; RDP und Citrix im Vollbild fangen Strg+Alt-Kürzel ab; Terminalserver sind nicht unterstützt;
     `SendInput` löst Kürzel aus wie UI-Automation. Der echte Tastendruck und „kein Fokusraub“ sind nur auf dem Testgerät belegbar.
+23. Das Manifest trotz kaputtem Pin (#1391, SEC E1/E2): `Engine.Sync` trennt zwei Ebenen. **Fehler auf Manifest-Ebene**
+    verwerfen alles, der alte Stand und `LastSync` bleiben: Konfiguration/Manifest abrufen, Gerät, Signatur, Seq
+    (Ausnahme: byte-gleiche Hülle, Invariante 3), Vertrag, `ObserveTime`, `Save("manifest")`, `ErrRevoked` von überall,
+    abgebrochener Kontext und **offline auch beim Paketabruf** (`manifestLevel`). Warum offline dazugehört: Bei kurzem
+    Netzausfall laufen die alten, versiegelten Umgebungen weiter; ein Entzug wartet nur bis zum nächsten Abgleich mit Netz,
+    und der nächste Heartbeat mit höherer Seq löst ihn erneut aus, weil die gespeicherte Seq nicht fortschreitet.
+    **Jeder andere Fehler im Pin-Schritt** (`pinEnvironment`: Paketabruf mit Antwort, `Prepare`, `VerifyEnvironment`,
+    Origin- oder Werkzeug-Abweichung im Cache, Speichern der Umgebung, Laden aus dem Cache) trifft **nur diesen Pin**: Er
+    bekommt keine Umgebung im neuen Stand, das Manifest wird gespeichert und angewendet (Swap, `pruneStored`,
+    `ensureApps`, also jeder Entzug und jede neue App), `Sync` gibt nil zurück und `syncErr` sperrt die guten Pins nicht.
+    Ein Pin ohne in diesem Sync versiegelte Umgebung startet nie (`refused/runtime`, `Startbar=false`); eine abweichende
+    Cache-Umgebung wird nie wiederverwendet, die Umgebung einer älteren Version springt nie für die neue Pin-Identität
+    ein (der Schlüssel enthält den Commit). Es gibt keine gespeicherte Fehlerklasse und keinen neuen Auslöser: Versucht wird
+    es wieder an den Sync-Punkten (Start, Presync eine Minute vor jedem Slot, Ad-hoc, Heartbeat mit höherer Seq); bei
+    unverändertem Manifest bereitet `Sync` nur die Pins ohne Umgebung neu vor. **Log:** der vorhandene Code 2
+    (`LogSyncFailed`) mit Klasse 1 hash, 2 runtime, 3 manifest, 4 sonst/IO, je Fehler auf Manifest-Ebene und je nicht
+    bereitem Pin, ohne Namen und ohne Text, ohne Dedup (die Rotation 5 × 1 MiB begrenzt). Nach Widerruf und beim Abbruch
+    des Prozesses wird nichts geschrieben (der Widerruf löscht den Zustand). Nicht im Umfang: Bereitschaft je Pin im
+    Heartbeat (Kern-Vertrag), laufende Prozesse beim Entzug (unverändert), die Dauerfalle „Zielordner existiert“ nach
+    gescheitertem `Save(env)`.
+    Tests: `TestPresyncUnveraendertesManifestLehntDenLaufNichtAb`, `TestKaputterPinTrifftNurDiesenPin` (Tabelle je
+    Fehlerklasse), `TestKaputterPinImGespeichertenStandBleibtOhneUmgebung`,
+    `TestByteGleichesManifestMitJetztGutemPaketMachtDenPinBereit`, `TestByteGleichesManifestNachNeustartIstKeinFehler`,
+    `TestGleicheSeqAndereHuelleBleibtErrManifest` (E2), `TestFehlerAufManifestEbeneVerwirftAlles`,
+    `TestOfflinePaketabrufVerzoegertNurDenEntzug` (E1), `TestWiderrufUndAbbruchSchreibenKeinenSyncFehlerCode`,
+    `TestSyncFehlerAufManifestEbeneSchreibtCodeMitKlasse`. Mutanten `sync-*` in `probe/mutations.py`.
 
 ## Benannte Grenzen
 
@@ -805,9 +847,11 @@ mit PASS ohne SKIP laufen. CI/Kompilierung ersetzen diesen Gate-Beleg nicht.
 | Anmeldeleiste #1321, mode nur a/b/leer, alte Kerne und Manifestwechsel | client: TestManifestAppModeAmHTTPAdapter, TestManifestV5GoldenRoundtrip; fensterio: TestRuntimeAppModeAusAktuellemManifest, TestRuntimeAppModeUmgehtPersonRequiredNicht, TestRuntimeWatchMeldetModuswechsel, TestAppModeNativVerdrahtet; Windows ohne GUI: TestSurfaceAnmeldeleisteNachModus, TestSurfaceModusAErzeugtKeineControls, TestSurfaceAnzeigemodusVerwirftAltenStand; BOX: TestWindowsWebViewAnmeldeleisteNachModus; Mutanten: leiste-immer, app-mode-ungueltig, anzeige-alter-stand |
 | B1: Git vor Spawn, Objektmenge/Modi/Namen | TestFalscherHashBrichtVorDemStartAb, TestPaketObjektmengeModiUndNamen, TestSHA1Collision, TestPaketMedientypAmHTTPAdapter, TestGoldenPaketeBytegenauUndManipulation |
 | Runtime/Lock/Umgebung | TestPythonAllowlistUndWheel, TestUmgebungVorJedemStart, TestUmgebungFehlendeZusaetzlicheDateien, TestWheelTagsLockUndManifestVerbote, TestWindowsPythonEchterStartUndManipulation |
+| Reine Wheels, `._pth` festgepinnt (#1392, W1–W3) | TestReineWheelsTagTabelle, TestReinesWheelBrauchtHashImLock, TestUiaProbeWheelNamen, TestReinesWheelEntpacktNurUnterLibs, TestPthDateiIstFestgepinnt; nativ: TestWindowsPthImWheelBleibtWirkungslos |
+| Kaputter Pin sperrt das Manifest nicht (#1391, E1/E2) | TestPresyncUnveraendertesManifestLehntDenLaufNichtAb, TestKaputterPinTrifftNurDiesenPin, TestFehlerAufManifestEbeneVerwirftAlles, TestOfflinePaketabrufVerzoegertNurDenEntzug, TestGleicheSeqAndereHuelleBleibtErrManifest, TestByteGleichesManifestNachNeustartIstKeinFehler, TestSyncFehlerAufManifestEbeneSchreibtCodeMitKlasse, TestWiderrufUndAbbruchSchreibenKeinenSyncFehlerCode |
 | ZIP-Namen/Typen/Kollisionen/Bomben | TestZIPAbweisungAmEntpacker; Kopien: TestCopiedLibraryFunctions |
 | E3: TLS vor Code, CA/Pin, keine Redirects/Proxys, Pubkey nötig | TestPairTLSUndLeererPubkey, TestCAFingerprintProxyUndURL, TestRedirectUndRemoteHTTPAbgewiesen, TestPairCodeFormat, TestPairLeererPubkey, TestPairRFC8032Pubkey, TestPairLeererPubkeySpeichertNichts, TestPairRFC8032PubkeySpeichertNichts |
-| E1: Gerät/seq/Signatur, alter Sync unverändert | TestManifestAblehnung, TestManifestSyncAtomarUndOfflineAmAdapter, TestVeralteterStartSynchronisiertErneut; Kopien: TestCopiedContractFunctions |
+| E1: Gerät/seq/Signatur, alter Sync unverändert | TestManifestAblehnung, TestManifestSyncAtomarUndOfflineAmAdapter, TestVeralteterStartSynchronisiertErneut, TestGleicheSeqAndereHuelleBleibtErrManifest; Kopien: TestCopiedContractFunctions |
 | Konto/Sitzung/idle vor Spawn | TestKontoUndManipulationVorSpawn, TestReadyVerboteneZustaende, TestIdleVorSpawnUndMount, TestIdleWirdNieAlsAccountGemeldet |
 | Rückstau-Grenze abgelehnter Ergebnisse (L2) | TestAbgelehntesErgebnisStautDenRueckstauNicht, TestAltKernLehntIdleAbJournalStautNicht, TestVerwurfWirdLokalGeloggt |
 | Lauf-TEMP (L3–L6) | TestRunIDFormat, TestRunTempsCreateVerlaesstDieBasisNie, TestRunTempsAnlegenNeuUndExklusiv, TestRunTempsRemoveFolgtKeinemVerweis, TestRunTempsSweepRaeumtRestePlusVerweiseOhneEinzusteigen, TestLaufBekommtPrivatesTempAlsArbeitsverzeichnis, TestLaufTempWirdBeiJedemEndeAufgeraeumt, TestKindUmgebungOhneProfil; Windows: TestMkdirPrivateExklusivUndGeprueft, TestRunTempJunctionKanarienvogel, TestWindowsEnvOhneProfilUndTemp, TestWindowsPythonTempProLauf |
@@ -907,6 +951,9 @@ Die echte Provenance-Negativprobe samt Mutation braucht explizit -ReleaseDirecto
 mit Release-EXE/Bundle und gh-Zugang; sie führt die Release-EXE nicht aus.
 
 Mutationen nur bei exklusivem Worktree-Zugriff: python probe/mutations.py.
+#1391/#1392: neue Mutanten `sync-*` (Pin-/Manifest-Ebene, offline, E1 `LastSync`, E2 Seq-Ausnahme, Log) und `wheel-rein-*`/`pth-site`;
+unter Windows zusätzlich `no-site-kanarienvogel` in probe/mutations-windows.ps1. Das Skript bricht bei einem überlebenden oder
+nicht kompilierenden Mutanten ab: Labels einzeln laufen lassen.
 Ein Mutant muss kompilieren und sein Zieltest tatsächlich fehlschlagen;
 Compilerfehler zählen nicht. finally stellt Quelldateien byte-genau wieder her.
 Nach externer Zwangsbeendigung den betroffenen Guard ausdrücklich prüfen.

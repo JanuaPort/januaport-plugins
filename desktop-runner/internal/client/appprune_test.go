@@ -32,6 +32,7 @@ type pruneBed struct {
 	signed  atomic.Pointer[SignedManifest]
 	pkgs    map[string][]byte
 	fetched atomic.Int32
+	pkgDown atomic.Bool // Paketabruf bricht die Verbindung ab (offline)
 	logDir  string
 	demo    App
 	zweite  App
@@ -60,6 +61,11 @@ func newPruneBed(t *testing.T) *pruneBed {
 		case strings.HasSuffix(r.URL.Path, "/manifest"):
 			_ = json.NewEncoder(w).Encode(b.signed.Load())
 		case strings.HasPrefix(r.URL.Path, "/api/device/v1/packages/"):
+			if b.pkgDown.Load() {
+				c, _, _ := w.(http.Hijacker).Hijack()
+				_ = c.Close()
+				return
+			}
 			raw, ok := b.pkgs[strings.TrimPrefix(r.URL.Path, "/api/device/v1/packages/")]
 			if !ok {
 				w.WriteHeader(404)
@@ -380,10 +386,12 @@ func TestKeinLoeschenBeiGescheitertemOderUngeprueftemAbgleich(t *testing.T) {
 			b.serve(encode(b.manifest(2, evil)), b.key)
 			return b.e.Sync(context.Background())
 		}},
-		{"Abgleich scheitert nach der Signaturprüfung (Pin-Paket fehlt)", func(b *pruneBed) error {
+		// #1391: Ein fehlendes Pin-Paket (404) trifft nur diesen Pin; offline beim Paketabruf bleibt Manifest-Ebene.
+		{"Abgleich scheitert nach der Signaturprüfung (Paketabruf offline)", func(b *pruneBed) error {
 			m := b.manifest(2, b.demo)
 			m.Pins = []Pin{pinOhnePaket}
 			b.serve(encode(m), b.key)
+			b.pkgDown.Store(true)
 			return b.e.Sync(context.Background())
 		}},
 	} {

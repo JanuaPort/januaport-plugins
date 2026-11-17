@@ -12,6 +12,7 @@ type LogCode uint8
 
 const (
 	LogStarted LogCode = iota + 1
+	// LogSyncFailed (#1391): n = Klasse des Fehlers, 1 hash, 2 runtime, 3 manifest, 4 sonst/IO.
 	LogSyncFailed
 	LogRefused
 	LogCompleted
