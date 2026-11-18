@@ -75,7 +75,7 @@ func TestPipeGolden(t *testing.T) {
 	if err = json.Unmarshal(b, &rows); err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 17 {
+	if len(rows) != 18 {
 		t.Fatalf("Golden-Nachrichten: %d", len(rows))
 	}
 	for _, row := range rows {

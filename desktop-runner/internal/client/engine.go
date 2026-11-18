@@ -59,6 +59,7 @@ type Engine struct {
 	panelPending    bool
 	panelGeneration uint64 // claim replies crossing a setup admission are discarded
 	Questions       panel.Questions
+	lastRuns        lastRuns // letzter Setup-Lauf je Pin/Setup, nur im Arbeitsspeicher (#1398)
 }
 
 func envKey(p Pin) string      { return p.Commit + "-" + sum([]byte(p.Path)) }

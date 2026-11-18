@@ -193,6 +193,9 @@ func (m *Model) View() Display {
 			text += " (braucht Eingabe)"
 		}
 		v.Menu = append(v.Menu, Item{"setup:" + s.Pin + "/" + s.Setup, text, available && s.Startbar && !s.BrauchtEingabe && !halted && !paused && m.status.Netz && !m.status.Beschaeftigt})
+		if line, ok := LastRunText(s, time.Local); ok {
+			v.Menu = append(v.Menu, Item{"lauf:" + s.Pin + "/" + s.Setup, line, false})
+		}
 	}
 	if m.status.Test {
 		v.Menu = append(v.Menu, Item{"test", "Test", false})
