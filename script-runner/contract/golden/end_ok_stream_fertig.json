@@ -1,0 +1,21 @@
+{
+  "_meta": {
+    "januaport.ai/run": {
+      "end": "ok",
+      "bytes_out": 14,
+      "tool_calls": 0,
+      "isolation": "standard",
+      "stream": {
+        "status": "fertig",
+        "bytes": 1048576,
+        "zeilen": 12000
+      }
+    }
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "12000 Zeilen.\n"
+    }
+  ]
+}
