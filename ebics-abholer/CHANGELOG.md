@@ -15,6 +15,21 @@ Ein Befund mit Fix wird durch Neubau behoben (Basis oder Abhängigkeit anheben),
 weggeschrieben. Ausnahmen nur in `.trivyignore`, je Zeile mit CVE, Grund und `exp:`
 höchstens 90 Tage. CRITICAL- und HIGH-Befunde ohne Fix blocken nicht, stehen aber hier.
 
+## Unveröffentlicht
+
+**Fehlerbehebung — nicht lesbarer ZIP-Eintrag wird nicht mehr still quittiert
+(JanuaPort/januaport#1422).** Lieferte die Bibliothek für einen Eintrag im
+ZIP-Container der Bank `false` (CRC- oder Lesefehler), übersprang `ebicsInhalte` ihn;
+der Lauf legte den Rest ab, quittierte positiv und endete mit Exit 0 — die Bank strich
+den nicht lesbaren Auszug aus dem Vorrat, obwohl er nie abgelegt wurde. Jetzt ist ein
+nicht lesbarer Eintrag ein Ablagefehler: Es wird nichts abgelegt, der Empfang wird
+negativ quittiert, der Lauf endet mit Exit 3, und der nächste Lauf holt den Auszug
+erneut. Ebenso ein Container, aus dem nach dem Übergehen leerer Einträge nichts übrig
+bleibt. Leere Einträge werden weiter übergangen; Nicht-ZIP-Antworten (H004) und leere
+Rohdaten verhalten sich wie bisher. Die Meldung enthält weder Inhalt noch
+Eintragsnamen. Betrifft nur die Logik; Image, Digest und Scan stehen erst mit dem
+nächsten Release-Eintrag.
+
 ## 1.0.0 — 2026-10-07
 
 | Feld | Wert |
