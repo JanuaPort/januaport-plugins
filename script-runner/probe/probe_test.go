@@ -106,7 +106,7 @@ func startStubGateway() *stubGateway {
 	h := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 	go func() {
 		_ = http.ListenAndServe(":8484", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if serveStorageProbe(w, r) {
+			if serveStorageProbe(w, r) || serveETLProbe(w, r) {
 				return
 			}
 			g.mu.Lock()
@@ -260,7 +260,7 @@ func setup() error {
 
 var pinNames = []string{"ok_echo", "proc_probe", "sleeper", "residue", "seccomp_probe", "net_probe",
 	"socket_dir", "second_conn", "forkbomb", "raise_canary", "memhog", "quick", "abbruch",
-	"numpy_ok", "libs_readonly", "no_pip", "log_canary"}
+	"numpy_ok", "libs_readonly", "no_pip", "log_canary", "etl_probe"}
 
 // invalidPinNames sind Pins, die ungültig bleiben müssen (#1041).
 var invalidPinNames = []string{"libs_tampered", "libs_tampered_shared"}

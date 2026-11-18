@@ -16,6 +16,9 @@ gelaufen.
 **Benannte Kompatibilitätsgrenze:** Dieser Läufer meldet `contract: 2` und
 braucht ein Gateway ab **0.77.0**. Ein älteres Gateway sperrt den Läufer ganz
 („andere Vertragsfassung“). **Update-Reihenfolge: erst das Gateway, dann der Läufer.**
+Den ETL-Rohstrom (`contract: 3`) bietet er nur an einem Kern ab **0.100.0** an; an einem
+älteren oder nicht lesbaren Kern bleibt es bei 2 ohne `etl_stream` (siehe unten), der
+Läufer wird also nicht gesperrt.
 
 ## Wie es arbeitet
 
@@ -100,7 +103,7 @@ den Lauf mit Kopfzeile nicht zusätzlich.
 `JNPT_SCRIPT_RUNNER_MAX_WALL_S` begrenzt den Läufer zusätzlich (1..86400,
 Standard 86400; ungültige Werte verhindern den Start). Der Läufer meldet
 diese Decke als `max_wall_s` in den Ergebnis-Metadaten von `tools/list`,
-weiterhin mit `contract: 2`.
+weiterhin mit `contract: 2` (oder 3 an einem Kern ab 0.100.0, siehe ETL-Rohstrom).
 **Wirkung erst mit JanuaPort-Schritt F, bis dahin bleibt der Kern-Riegel bei 25 s.**
 
 **Isolation:** Wo gVisor (Runtime `runsc-jnpt`) eingerichtet ist, läuft die
@@ -149,6 +152,51 @@ fehlt das Feld. Ungültiges UTF-8 wird ersetzt. Der Wächter begrenzt bereits
 seinen Speicher auf 64 KiB inklusive einmaliger Kürzungsmarke und verwirft
 weiteren Text. Das Dienstlog enthält diese Texte nie. Das Gateway muss das
 additive Feld übernehmen, damit Nutzer es sehen (Kern-Paket P3).
+
+## ETL-Rohstrom lesen (`etl_stream`, Vertragsfassung 3, #1215)
+
+Ein Skript kann eine **deklarierte, lesende Abfrage** einer SQL-Integration roh und in
+großen Mengen lesen. Dazu deklariert es das Strom-Recht `etl_stream` in `tools` (es ist kein
+Werkzeug) und ruft `januaport.etl_stream(integration, query_id, params=None)`:
+
+```yaml
+tools:
+  - etl_stream
+timeout_s: 3600
+```
+
+```python
+import sys
+import januaport
+
+zeilen = 0
+for row in januaport.etl_stream("erp_db", "offene_posten", {"stichtag": "2026-11-18"}):
+    zeilen += 1                          # row ist ein dict; hier in ein Zwischenziel schreiben
+# erst hier, nach dem Endsatz fertig, das Zwischenziel übernehmen
+print(zeilen)                            # nur Zähler, nie Zeilen
+```
+
+Die Sandbox hat weiter **kein Netz**: Den HTTP-Aufruf macht der Läufer mit dem Lauf-Token. Das SDK
+liefert die Zeilen **fortlaufend** als Iterator und sammelt nie; gehalten wird höchstens ein Stück
+(256 KiB). Es endet normal nur beim Endsatz `fertig` des Gateways. Jedes andere Ende wirft
+`januaport.StreamEnded(grund, zeilen, bytes)` (auch ein Strom ohne Endsatz: `"abgebrochen"`), eine
+Abweisung `januaport.StreamRefused(code, retry_after)`. **Der Lauf endet dann im Kern als `error/stream`,
+auch wenn das Skript die Ausnahme schluckt und mit 0 endet.**
+
+Regeln für Skripte:
+
+- **Stromzeilen nie drucken oder loggen**, höchstens Zähler. Alles, was ein Skript ausgibt, steht im
+  gespeicherten Lauf-Ergebnis (bis 16 MiB) und ist für KI-Zugänge mit Lauf-Rechten lesbar; Rohdaten haben die
+  Pseudonymisierung des Gateways nicht durchlaufen.
+- **Erst in ein Zwischenziel schreiben und nach `fertig` übernehmen.** Ein halber Strom ist kein Ergebnis.
+- **Nicht in einer Schleife wiederholen.** Das SDK wiederholt nicht selbst; die Wandzeit begrenzt jeden Versuch.
+- **Ein Strom je Lauf.** Mehrere Datenstände brauchen mehrere Läufe.
+- Der Deckel (Bytes, Wandzeit) liegt allein im Gateway; der Läufer meldet im Lauf-Ergebnis nur Status und Zähler
+  (`stream: {status, bytes, zeilen}`), nie Inhalte.
+
+**Kompatibilität.** Der Läufer bietet Vertragsfassung 3 nur an, wenn der Kern sie kennt: Er liest die Version über
+`/healthz` des Gateways und meldet 3 ab **0.100.0**, sonst (älter oder unlesbar) wie bisher 2, dann ohne
+`etl_stream`. Die Update-Reihenfolge ist damit Empfehlung. Draht-Vertrag: [Fassung 6](contract/README.md#etl-rohstrom-und-rückfall-fassung-6-januaportjanuaport1215-p2).
 
 ## Python-Bibliotheken (Wheels im Repository)
 

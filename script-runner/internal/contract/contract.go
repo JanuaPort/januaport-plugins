@@ -1,5 +1,6 @@
 // Package contract ist der Draht-Vertrag Gateway ↔ Skript-Läufer
-// (JanuaPort/januaport#928; Fassung 5: JanuaPort/januaport#1040): Namen,
+// (JanuaPort/januaport#928; Fassung 5: JanuaPort/januaport#1040; Fassung 6 mit
+// ETL-Strom und Rückfall: JanuaPort/januaport#1215): Namen,
 // Ende-Klassen, feste Sätze und die Form von tools/list und tools/call.
 // Die Golden-Dateien unter contract/golden/ sind die Referenz; eine Änderung
 // hier ist eine Vertragsänderung und braucht eine neue Fassung im Ticket.

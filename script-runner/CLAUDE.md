@@ -10,7 +10,7 @@ des Kunden oder freigegebenen Speicherpaketen aus, ausgelöst von einer KI
 über JanuaPort. Er läuft als Beisteller
 neben dem Gateway; das Gateway selbst führt nie Code aus (R1). Entstanden in
 JanuaPort/januaport#928 (Paket P2). Verbindlich sind der **Draht-Vertrag**
-(Fassung 5, `contract: 2`, JanuaPort/januaport#1040; Grundlage Fassung 1 + 2
+(Fassung 6, `contract: 2` oder `3` mit Rückfall, ETL-Strom in JanuaPort/januaport#1215; Fassung 5 und Laufgrenzen in JanuaPort/januaport#1040; Grundlage Fassung 1 + 2
 sowie Nachtrag 2a in JanuaPort/januaport#928; lokal `contract/README.md`) und das
 Bedrohungsmodell von SEC (T1–T12, R1–R13, M1–M7, V1–V3); die Nummern in
 Kommentaren und Tests verweisen darauf.
@@ -19,7 +19,7 @@ Kommentaren und Tests verweisen darauf.
 
 | Unterbefehl | Dienst | Verantwortung |
 |---|---|---|
-| `mediator` | `script-runner` | vermittler: MCP-Server für das Gateway (Weg A, `:8090` im internen Netz `jnpt_plugins`), prüft `runtime-key` (R13), liest `pins.json` und `desktop-pins.json`, Speicherbote und Leser von `speicher/state.json` (#1277 S4b), einzige Senke für Code (R6, M5), hält den einen Slot, misst Wandzeit und Größen selbst (M2, M4), ruft innere Werkzeuge mit dem Lauf-Token (Weg B), `/healthz` auf `:8091`; Taktgeber für Zeitpläne (#1039 S1, liest `schedules.json`, löst über das Gateway aus) |
+| `mediator` | `script-runner` | vermittler: MCP-Server für das Gateway (Weg A, `:8090` im internen Netz `jnpt_plugins`), reicht ab Vertragsfassung 3 den ETL-Rohstrom des Kerns stückweise an die Sandbox (#1215), prüft `runtime-key` (R13), liest `pins.json` und `desktop-pins.json`, Speicherbote und Leser von `speicher/state.json` (#1277 S4b), einzige Senke für Code (R6, M5), hält den einen Slot, misst Wandzeit und Größen selbst (M2, M4), ruft innere Werkzeuge mit dem Lauf-Token (Weg B), `/healthz` auf `:8091`; Taktgeber für Zeitpläne (#1039 S1, liest `schedules.json`, löst über das Gateway aus) |
 | `guard` | `script-runner-sandbox` | Wächter: PID 1 der Sandbox, `PR_SET_DUMPABLE 0`, meldet `hello`, nimmt **genau einen** job, startet `python -I`, räumt den Prozessbaum ab (V1/V3), hält die Instanz 10,5 s (B1) |
 | `fetcher` | `script-runner-fetcher` | abholer: prüft Git-Pins gegen den Standard-Zweig und holt Objekte per ssh in den Bare-Store, prüft `wanted/` und `repo_url` selbst (V2, M7); unabhängige Speicherprüfung alle 5 s (#1277 S4b) |
 | `apphost` | `script-runner-apphost` | optionales Profil `apps`, Browser `:8080`, internes tls-ask-Relay `:8081`, ausschließlich `jnpt_apps`, nur RAM und eigener Schlüsselordner |
@@ -41,8 +41,8 @@ und `fetch` gelesen.
 | Pfad | Inhalt |
 |---|---|
 | `main.go` | Unterbefehle, feste Orte im Container |
-| `internal/contract/contract.go`, `internal/contract/limits.go` | Draht-Vertrag: Namen, Ende-Klassen, feste Sätze, `tools/list`, Header-Prüfung |
-| `internal/frame/frame.go` | Rahmenprotokoll (Weg C): 4 Byte Länge BE + JSON |
+| `internal/contract/contract.go`, `internal/contract/limits.go`, `internal/contract/core.go` | Draht-Vertrag: Namen, Ende-Klassen, feste Sätze, `tools/list`, Header-Prüfung; `core.go`: Rückfall auf Fassung 2 nach Kern-Version (`ForCoreVersion`, `MinCoreVersion`) |
+| `internal/frame/frame.go`, `internal/frame/etl.go` | Rahmenprotokoll (Weg C): 4 Byte Länge BE + JSON; `etl.go`: ETL-Rahmen, Stückgröße und Status (Fassung 3) |
 | `internal/gitref/gitref.go`, `internal/gitref/desktop.go` | Allowlist-Prüfer: Commit (40/64 Hex), ssh-URL (M7), Pin-Pfad, Pin-Name |
 | `internal/pins/pins.go`, `internal/pins/desktop.go` | Leser für `pins.json` (Nachtrag 2a) und separate `desktop-pins.json` (#1165 D2b) |
 | `internal/schedules/schedules.go` | Leser für `schedules.json` (#1039): streng, fail-closed, höchstens 20, Cron wie der Kern (`robfig/cron/v3`), `time/tzdata`, Sommerzeit-Lücken |
@@ -51,15 +51,18 @@ und `fetch` gelesen.
 | `internal/store/store.go`, `internal/store/wheels.go`, `internal/store/desktop.go` | Senke: Tree-Walk mit Hash-Nachrechnung jedes Objekts (M5); `LoadSkippingWheels`, `ListWheels`, `CopyBlob` für lokale Wheels (#1041), `DesktopPackage` für Desktop-Pakete (#1165) |
 | `internal/libs/lock.go`, `internal/libs/wheel.go`, `internal/libs/plan.go`, `internal/libs/extract.go`, `internal/libs/manager.go` | Python-Bibliotheken (#1041): Lock-Parser, Wheel-Tags, 1:1-Plan, gehärtetes Entpacken, `.jnpt-manifest`, Cache `libs/<lockhash>/` (`Manager`); kennt weder Git noch Netz |
 | `internal/mediator/mediator.go`, `internal/mediator/run.go`, `internal/mediator/sandbox.go` | vermittler: MCP, Auth, Pins, Slot/V1, Lauf, Weg B |
+| `internal/mediator/etl.go` | ETL-Rohstrom (#1215): Strom-Zustand je Lauf, Pull, Zeilenzähler, einziger HTTP-Client für `/api/etl/stream` und `/healthz` des Kerns, Versionsabfrage mit Rückfall |
 | `internal/guard/guard.go`, `internal/guard/guard_linux.go`, `internal/guard/guard_other.go` | Wächter (`guard_linux.go`; anderswo nur ein Platzhalter) |
 | `internal/fetcher/fetcher.go`, `internal/fetcher/storage.go` | abholer |
 | `internal/apphost/apphost.go`, `internal/apphost/package.go`, `internal/apphost/network.go` | Browser-Listener, tls-ask-Relay, verifizierte statische Apps und Browser-Anmeldung; eigener Gatewayadapter ohne Proxy-Umgebung oder Redirects |
 | `internal/gitobjects/copied_contract.go`, `internal/gitobjects/package.go`, `internal/gitobjects/objects.go` | geprüfte Kopie des Paketvertrags: SHA-256, sortierte Objekte, vollständiger Baum ohne Git-Aufruf |
 | `internal/storagepins/pins.go`, `internal/storagepins/state.go`, `internal/storagepins/reader.go`, `internal/storagepins/io_linux.go`, `internal/storagepins/io_other.go` | signierte Speicherliste, gehärteter Dateiadapter, atomarer Höchststand und Speicherfreigaben |
 | `internal/hygiene/hygiene.go` | Prüft Compose-Dienste, Netze, Mounts und Schlüsselgrenzen. |
-| `sandbox/bootstrap.py` | Python-Seite: Modul `januaport`, Fehlermeldung ohne Text, `sys.path.append` der Bibliotheken (#1041) |
+| `sandbox/bootstrap.py` | Python-Seite: Modul `januaport` (`call`, `log`, `etl_stream`, `StreamEnded`, `StreamRefused`), Fehlermeldung ohne Text, `sys.path.append` der Bibliotheken (#1041) |
+| `sandbox/test_etl_sdk.py`, `sandbox/sdk_test.go` | Tests des Python-SDK (Standardbibliothek, Fake-Kanal); `sdk_test.go` startet sie, ohne Python übersprungen |
 | `seccomp/jnpt-sandbox-seccomp.json`, `seccomp/moby-default.json`, `seccomp/derive.py` | Profil, Quelle (moby) und Herleitung `derive.py` |
 | `contract/golden/tools_list_schedules.json`, `contract/golden/script-runner-schedules.golden.json` | Referenzieren Werkzeuglisten-Metadaten und den Zeitplanvertrag mit dem Gateway. |
+| `probe/etl_test.go` | Docker-Sonde ETL-Strom (#1215): echter Wächter und Python-SDK gegen einen Stub-Kern |
 | `probe/probe_test.go`, `probe/libs_test.go`, `probe/measure-libs.sh`, `probe/run.sh`, `probe/runner.Dockerfile` | Docker-Sonden (Build-Tag `docker`), Test-Überlagerung, SSH-Git-Anbieter; `measure-libs.sh` (Messung P0), Sonden `numpy_ok`, `libs_readonly`, `libs_tampered`, `no_pip` (#1041) |
 | `deploy/jnpt-plugins-script-runner.conf.example`, `deploy/script-runner.conf.example`, `deploy/.env.example`, `deploy/daemon.json.example` | Beispiele: tmpfiles-Zeilen, Host-Deskriptor (echtes `IMAGE_REPO`, runtime-key in `REQUIRE`), `.env.example`, `daemon.json.example` |
 | `internal/mediator/pins.go` | Gleicht Pin-Dateien, Abholfreigaben, Manifestprüfung und Zustands-Caches ab. |
@@ -78,7 +81,7 @@ und `fetch` gelesen.
   (die Werkzeuge hängen an den Pins, nicht an einer festen Registrierung).
 - **`tools/list`:** je lokalem `ready`-Skript-Pin ein Werkzeug (Name = Pin-Name,
   `_meta["januaport.ai/script"]`), auf dem Ergebnis
-  `_meta["januaport.ai/runner"]` mit `contract: 2`, `max_wall_s`, `isolation` und **allen**
+  `_meta["januaport.ai/runner"]` mit `contract: 2` (oder `3`, siehe „ETL-Rohstrom und Vertragsfassung 3“), `max_wall_s`, `isolation` und **allen**
   lokalen Pins samt Zustand. Ist `isolation` `invalid`, erscheint kein Werkzeug und
   jeder sonst bereite lokale Pin als `pending` (§5). Desktop-Pins stehen
   separat in `desktop_pins`, unabhängig von dieser Sandbox-Isolation.
@@ -113,6 +116,10 @@ und `fetch` gelesen.
   `exited{code,signal?,error_type?,error_at?}`. `hello` trägt seit Fassung 3
   `profile` (`jnpt`|`other`, Golden `contract/golden/frame_hello.json`). vermittler → Wächter:
   `job{files:[{path,data_b64}],entry,input,libs?}`, `tool_result{id,result}`.
+  Ab Fassung 3 (#1215): Sandbox → vermittler `etl_open{id,integration,query_id,params?}`
+  (höchstens 64 KiB), `etl_next{id,close?}`; vermittler → Sandbox `etl_chunk{id,data_b64}`
+  (roh höchstens 256 KiB), `etl_end{id,status,code?,retry_after_s?}`. Der Wächter reicht sie nur
+  in dieser Richtung durch (Pull: auf jedes `etl_next` genau eine Antwort).
   `libs` (#1041) ist der Lock-Hash (64 Hex) und fehlt ohne Bibliotheken; der
   job ist dann byte-gleich zu vorher.
 - **Weg D** (plugin-intern): Volume `/var/lib/script-runner` mit `wanted/<sha>`
@@ -168,8 +175,9 @@ Desktop-Manifeste behalten ihr Pflichtfeld (gemeinsame Bereichsprüfung).
 Decke (1..86400, Standard 86400). Ungültige Werte verhindern den Start mit
 festem Fehler ohne Wert. `tools/list` meldet sie auf Ergebnisebene als
 `_meta["januaport.ai/runner"].max_wall_s`, auch ohne Pins/bei ungültiger Isolation.
-Die Kennung bleibt 2: additives Meldefeld, unveränderter Header-Vertrag;
-eine neue Kennung würde der Kern sperren. Der Kern liest die Meldung beim
+Die Kennung blieb damals 2: additives Meldefeld, unveränderter Header-Vertrag;
+eine neue Kennung würde der Kern sperren. Seit Fassung 6 (#1215) meldet der Läufer 3 **nur**, wenn der
+Kern sie zulässt (Rückfallregel, „ETL-Rohstrom und Vertragsfassung 3“), sonst weiter 2. Der Kern liest die Meldung beim
 Abgleich (`cmd/jnpt/script_runtime.go`, `parseRunnerMeta` in
 `script_contract.go`) und glaubt ihr nur nach unten.
 **Wirkung erst mit JanuaPort-Schritt F, bis dahin bleibt der Kern-Riegel bei 25 s.**
@@ -185,6 +193,9 @@ HTTP/MCP und echte Git-Senke), `TestRunLimitsInvalidManifestTimeoutAtAdapter`,
 **Benannte Kompatibilitätsgrenze:** Ein Läufer mit `contract: 2` braucht ein
 Gateway ab **0.77.0**. Ein älteres Gateway sperrt den Läufer ganz
 („andere Vertragsfassung“). **Update-Reihenfolge: erst das Gateway, dann der Läufer.**
+Fassung 3 (ETL-Strom, #1215) meldet der Läufer nur an einem Kern ab **0.100.0**
+(`contract.MinCoreVersion`, Rückfall auf 2 bei älterem oder unlesbarem Kern, E4); die
+Update-Reihenfolge ist für den Strom Empfehlung statt Pflicht.
 
 Belege: `TestParseRunLimits`, `TestRunHeadersGoldenV1AndV2`,
 `TestRunnerContractTwoLiteral`, die `TestRunLimits*AtAdapter` sowie
@@ -219,7 +230,7 @@ Bote, Abholer und Senke binden die Speicherquelle an `tools/list` und die
 Ausführung an. Der Git-Weg samt
 `pins.json`, `desktop-pins.json`, `wanted/`, `approved/`, `failed/`, `repo_url`
 und `store.git` bleibt unverändert; `initStore` lässt `speicher/` unberührt.
-Desktop-/Geräte-/Testpins und Vertragskennung 2 ändern sich nicht.
+Desktop-/Geräte-/Testpins und Vertragskennung 2 ändern sich nicht (Stand der Speicherpins; die Kennung 3 aus #1215 ist unabhängig davon).
 
 Unter `/var/lib/script-runner/speicher/` liest der Abholer `inbox/list.json`
 (höchstens 1 MiB) und `inbox/pkg/<name>-<commit>.pkg` (128 MiB je Paket,
@@ -368,6 +379,91 @@ Eine rückdatierte, noch frische Liste verkürzt nur die Wartezeit bis zum echte
 Ablauf. Danach bleibt die Senke trotz gestopptem Abholer gesperrt. Kein echter
 Kern, keine Änderung an Compose, Netzen oder UIDs.
 
+## ETL-Rohstrom und Vertragsfassung 3 (#1215 P2)
+
+Stufe 1 „Sicher verbinden“, Gegenstelle im Kern: `internal/etlstream`, `POST /api/etl/stream`
+(Kern-Paket K2 liest `stream` im Lauf-Ergebnis). Maßgeblich sind der [Vertrag, Fassung 6](contract/README.md#etl-rohstrom-und-rückfall-fassung-6-januaportjanuaport1215-p2)
+und die Beschlüsse in JanuaPort/januaport#1215 (Schnitt c-6980487532, SEC E1–E6).
+
+**Aufgabe.** Ein Skript in der Sandbox (ohne Netz) ruft `januaport.etl_stream(integration,
+query_id, params=None)` und bekommt einen Iterator über Zeilen-Dicts, nie gesammelt. Den
+HTTP-Aufruf macht der **vermittler** mit dem Lauf-Token (Weg B-Token, Weg C für den Strom).
+
+| Stelle | Datei | Aufgabe |
+|---|---|---|
+| Rahmen | `internal/frame/etl.go` | `etl_open`, `etl_next` (Sandbox → vermittler), `etl_chunk`, `etl_end` (vermittler → Sandbox); `MaxETLChunkRaw` 256 KiB, `MaxETLOpen` 64 KiB, Status-Konstanten |
+| Wächter | `internal/guard/guard_linux.go` | `pumpBootstrap` reicht `etl_open`/`etl_next`, `pumpMediator` `etl_chunk`/`etl_end` durch, jeweils nur in dieser Richtung; er liest keinen Inhalt |
+| vermittler | `internal/mediator/etl.go` | Strom-Zustand, Client, Zeilenzähler, Versionsabfrage; Einbindung in `run.go` (`handle`, `end`, Select) |
+| Vertrag | `internal/contract/core.go`, `contract.go` | `Version` 3, `LegacyVersion` 2, `MinCoreVersion`, `ForCoreVersion`, `StreamReport`, `Run.Stream` |
+| SDK | `sandbox/bootstrap.py` | `etl_stream` (Generator), `StreamEnded`, `StreamRefused`; `_make_module` und `if __name__ == "__main__"`, damit die Tests das Modul laden |
+
+**Pull-Modell.** Auf jedes `etl_next` genau ein `etl_chunk` oder `etl_end`. Die HTTP-Anfrage geht erst
+beim ersten `etl_next` hinaus; der Körper wird nur auf `etl_next` gelesen, je Anforderung
+höchstens ein Stück (256 KiB, `readChunk`). Ein `etl_next` läuft in einem eigenen Lauf (`etlStream.next`),
+Antwort und Stück-Schreiben inklusive, damit Wandzeit, verlorene Sandbox, Kontext und
+Skriptende die Schleife nie blockieren. Ein zweites `etl_next` bei offener Anforderung ist ein
+Protokollbruch (`vertrag`). Ein Skript, das die Antwort nie liest, hält den Lauf nicht über die
+Wandzeit: Beim Ende setzt `detach` die Schreibfrist auf „jetzt“, kleine Rahmen der Schleife haben 10 s.
+
+**Inhaltsblind.** Der vermittler parst keine Zeilen. Er zählt Zeilenumbrüche (`lineTracker`),
+merkt die laufende Zeile bis 512 Byte und liest die **letzte vollständige Zeile** nur dann, wenn sie die Form
+`{"t":"end"` hat, und dann nur `t` und `grund`. `fertig` meldet er nur bei Grund `fertig` als
+letzter, vollständiger Zeile (kein Rest danach). `deckel`/`wandzeit` → `grenze`, jeder andere Grund oder
+fehlender Endsatz → `abgebrochen`. Er loggt nur Zähler (`stream`, `stream_bytes`, `stream_zeilen` in
+der Zeile `run`). Zeilen zählen weder in `r.out`/`bytes_out` noch in `tool_calls`.
+
+**Kein Abbruch nach Budget (LEAD).** Der Deckel liegt allein im Gateway; der Zähler ist ein Beleg.
+
+**Ein Strom je Lauf.** Jeder weitere `etl_open` (auch nach dem Ende des ersten) ist `abgewiesen` und
+verhindert `fertig` (`etlSession.extra`). Der Strom entsteht auch bei einem lokal abgewiesenen
+`etl_open` (Manifest ohne `etl_stream`, Größe, Form, Fassung 2); die Antwort kommt auf das erste `etl_next`.
+`etl_stream` in einem `tool_call` geht nie an das Gateway (Strom-Recht, kein Werkzeug).
+
+**Client (SEC E5), Quelltext-Pins in `TestETLClientSourceInvariants`.** Token nur im Header (der Test-Kanarienwert
+darf in keinem Log, Fehler, Rahmen oder Ergebnisfeld erscheinen, `TestETLCanaries`); `CheckRedirect` gibt
+`errRedirect` zurück (`TestETLRedirectNeverFollowed`: 301/302/303/307/308, der zweite Host sieht nichts);
+fester Pfad; `Proxy: nil`; kein `ProxyFromEnvironment`; Fehlerklassen aus dem Statuscode
+(`TestETLRejectionsFixedClasses`: 400/401/403/404/409/429/503 → `abgewiesen` mit Code und Zahl, alles
+andere und falscher Inhaltstyp → `vertrag`, Transportfehler → `abgebrochen`), der Antworttext wird nie gelesen.
+Die einzige Stelle mit HTTP-Client für den Strom ist `internal/mediator/etl.go` (`TestNoDownloadClientInSource`).
+
+**Ausgang im Lauf-Ergebnis.** `end()` setzt `Run.Stream` (nur wenn ein Strom geöffnet oder versucht wurde):
+Ist der Ausgang nicht entschieden, gilt beim Skriptende (`ok`, `error`) der Endsatz, falls gelesen, sonst
+`geschlossen`; jedes andere Ende (Wandzeit, Sandbox, Grenze, Kontext) ist `abgebrochen`. Der vermittler setzt
+das Lauf-Ende selbst nicht um: `ok` bleibt `ok`, der Kern wertet `error/stream`.
+
+**Rückfall (E4).** `coreProbe` fragt `GET <Gateway>/healthz` alle 30 s (`Config.CoreProbeInterval`),
+liest `version` streng (`contract.ForCoreVersion`) und wählt 3 nur ab `MinCoreVersion` (**0.100.0**, die nächste
+Minor nach dem Kern-Tag v0.99.0; das Gate bestätigt sie beim Kern-Release). Alles Unlesbare, jeder Fehler
+und der Zustand vor der ersten Antwort ergibt 2. Die Wahl wird je Lauf bei Laufbeginn festgehalten
+(`etlSession.enabled`); unter 2 antwortet der vermittler auf `etl_open` mit `vertrag`. Ein falsch hoher
+Wert für `MinCoreVersion` kostet nur die Fähigkeit, ein zu niedriger würde bei einem Kern ohne 3 den Läufer
+sperren: Der Wert ist ein Literal mit Test und im Gate-Bericht genannt.
+
+**Stolperfallen.**
+- Der Test-`stubGateway` und `fakeCore` müssen `/healthz` kennen; der Taktgeber-Test zählt `/healthz` nicht als Auslöse-Aufruf.
+- `io.ReadFull` ist falsch für den Körper: Es meldet `io.ErrUnexpectedEOF` sowohl für „Körper kürzer als das Stück“ als auch für einen
+  abgerissenen http-Körper. `readChunk` unterscheidet sauberes Ende (`io.EOF`) von Abbruch.
+- Die Linux-Wächtertests (`etl_linux_test.go`) laufen unter Windows nicht; dort in einem Linux-Container ausführen.
+- Der Python-Test lädt `bootstrap.py` als Modul (`sandbox/test_etl_sdk.py`, Aufruf aus `sandbox/sdk_test.go`, ohne
+  Python übersprungen). Fd 3 öffnet erst `_main`.
+
+| Invariante | Test |
+|---|---|
+| Rahmen als Goldens, volles Stück passt durch jede Leserschranke | `TestETLFramesGolden`, `TestETLFullChunkFitsEveryFrameLimit`, `TestETLChunkEndForwardedToBootstrapOnly` |
+| Wächter reicht nur in der richtigen Richtung durch | `TestETLOpenNextForwardedToMediatorOnly`, `TestETLChunkEndForwardedToBootstrapOnly` (Linux) |
+| Ohne `etl_next` kein Lesen, nicht einmal die Anfrage; nie mehr als ein Stück im Puffer | `TestETLNoReadWithoutNext` |
+| Nur mit `etl_stream` im Manifest; ein Strom je Lauf; Form und 64 KiB | `TestETLRefusedWithoutManifestDeclaration`, `TestETLSecondStreamRefused`, `TestETLOpenValidation`, `TestETLNextWithoutOpenOrWrongID` |
+| Abbruch schließt die Anfrage: `close`, Skriptende, Wandzeit (auch beim Warten auf den Kern), Sandbox verloren, Kontext | `TestETLCloseClosesRequest`, `TestETLScriptEndClosesRequest`, `TestETLWallTimeClosesRequest`, `TestETLWallTimeWhileWaitingForKern`, `TestETLSandboxLostClosesRequest`, `TestETLRunContextClosesRequest`, `TestETLScriptThatNeverReadsCannotPastWall` |
+| `fertig` nur beim Endsatz `fertig` als letzte Zeile; Zähler stimmen | `TestETLEndLineClassification`, `TestETLStreamFertigHappyPath`, `TestETLScriptEndAfterEndLineIsFertig`, `TestETLConnectionCutMidStream` |
+| Strom-Bytes nicht in `bytes_out`, nicht als Werkzeugaufruf | `TestETLNotCountedAsToolCallNorOutput`, `TestETLStreamFertigHappyPath` |
+| Fester Fehlersatz, Redirect, Kanarien (Token, Zeile, Fehlertext, Adresse) | `TestETLRejectionsFixedClasses`, `TestETLRedirectNeverFollowed`, `TestETLCanaries`, `TestETLKernUnreachable`, `TestETLClientSourceInvariants`, `TestETLSourceNeverLogsErrorsOrTokens` |
+| Rückfall: alt → 2, unlesbar → 2, neu → 3, Wechsel zur Laufzeit; unter 2 kein Strom | `TestForCoreVersion`, `TestContractFollowsCoreVersion`, `TestContractAdaptsWhenCoreIsUpdated`, `TestETLUnavailableUnderContract2` |
+| Alte Goldens unverändert, neue Goldens | `TestOldGoldensUnchanged`, `TestToolsListGolden` (`tools_list_v3.json`), `TestStreamResultGoldens` |
+| SDK: Zusammensetzen über Stückgrenzen, `StreamEnded`, `StreamRefused`, `close`, kein Sammeln | `sandbox/test_etl_sdk.py` |
+| Echter Wächter und echter Python-Bootstrap mit vollen Stücken (Linux, ohne Docker-Netz) | `TestETLRealGuardAndBootstrapFullChunks` |
+| Docker-Sonde mit Compose-Stack, echtem Wächter und Python-SDK gegen einen Stub-Kern | `probe/etl_test.go` (Build-Tag `docker`; lokal nicht gelaufen, siehe Gate-Bericht) |
+
 ## Desktop-Pins (#1165 D2b, Epic #1163)
 
 Der vermittler liefert die Beisteller-Seite für den **Desktop-Läufer**.
@@ -417,7 +513,7 @@ expandiert. Die Paketreihenfolge ist deterministisch (siehe Vertrag).
 | Ungültiges Manifest/fehlende Pflichtdatei öffnet keinen Paketweg; Fehler ohne Echo | `TestDesktopInvalidManifestAtHTTP`, `TestDesktopMissingRequiredFilesAtHTTP` |
 | Desktop-Pins sind keine MCP-Werkzeuge und senden keinen Sandbox-Job; auch ein gleichnamiger lokaler Pin öffnet keinen Weg | `TestDesktopMetadataAndNoSandboxOrWheelExtraction` (zählender Unix-Adapter: 0 Jobs) |
 | Kein Aufruf des Bibliotheksadapters und kein Entpacken, auch nicht für Windows-Wheels | `TestDesktopWheelPreparationSeamZero` (Windows und `any`, 0 Vorbereitungen, leere Ready-/Staging-Ordner) |
-| HTTP-Clients nur für MCP, Taktgeber, Speicherboten und den privaten Apphost-Gatewayadapter; kein Paketindex | `TestNoDownloadClientInSource` |
+| HTTP-Clients nur für MCP, Taktgeber, Speicherboten, den ETL-Strom (`internal/mediator/etl.go`) und den privaten Apphost-Gatewayadapter; kein Paketindex | `TestNoDownloadClientInSource` |
 | Desktop-Pins zählen als bekannt; Zeitpläne werden lokal nur gemeldet, das Gerät taktet aus dem Manifest | `TestDesktopTickerNeverFiresAtHTTP` (keine HTTP-Auslösung und keine lokalen Lauf-/Missed-/Busy-Werte) |
 | SHA-1 und SHA-256; unveränderte Goldens sind byte-gleich | `TestDesktopSHA256AtHTTP`, `TestDesktopPackageGolden` (direkter Import beider Golden-Pakete in echte Git-Objektdatenbanken) |
 
@@ -459,7 +555,8 @@ nicht von `isolation` ab; `/healthz` behält seine lokale Sandbox-Bedeutung.
    Ausgabe und 61 Aufrufe am echten Wächter-Adapter; der MCP-Adapter prüft
    zusätzlich Ausgabe über der Altgrenze und 60 erfolgreiche Aufrufe.
    `guard.MaxJobFrame` (8 MiB) begrenzt Job-/Bootstrap-Nachrichten, nicht die
-   Ausgabe eines Laufs. Nach dem Ende hängt der Lauf
+   Ausgabe eines Laufs; ein volles Stück des ETL-Stroms (349 584 Byte) passt hindurch,
+   Strom-Bytes zählen nie in die Ausgabe (16 MiB bleiben für stdout). Nach dem Ende hängt der Lauf
    ab (`detach`), jeder weitere Rahmen wird verworfen, der Wächter bekommt EOF.
    Socket-Ordner in der Sandbox read-only.
 3a. **L1 — Abbruch heißt Platz frei (JanuaPort/januaport#1040, SEC L1).** Endet
@@ -600,7 +697,7 @@ nicht von `isolation` ab; `/healthz` behält seine lokale Sandbox-Bedeutung.
 11. **Bibliotheken (#1041), Invarianten 1–5 und 7 des Plans.** Details im
     Abschnitt „Python-Bibliotheken“; je Invariante die Tests:
     - **Kein pip, kein Paketindex:** `TestNoDownloadClientInSource` (HTTP-Clients
-      ausschließlich in MCP, Taktgeber, Speicherboten und Apphost; `libs`/`store` und Abholer ohne HTTP-Client,
+      ausschließlich in MCP, Taktgeber, Speicherboten, ETL-Strom (`mediator/etl.go`) und Apphost; `libs`/`store` und Abholer ohne HTTP-Client,
       kein pip, keine Index-Adresse; `http.*`-Client nur in Weg B, Apphost und
       Taktgeber), Sonden `TestLibsNoPip` und `TestR12ImageHasNoPipAndSha1dcGit`,
       `net_probe` unverändert.
@@ -695,7 +792,7 @@ im vermittler ist das seit #1096 `/libs/ready/<hash>`.
    `OPENBLAS_NUM_THREADS=1` und `OMP_NUM_THREADS=1` (Messung P0).
 
 **Gründe** (das Gateway reicht sie als Text durch, im Kern ist dafür kein Code
-nötig; die aktuelle Vertragskennung ist 2, siehe Kompatibilitätsgrenze oben):
+nötig; die Vertragskennung ist 2 oder 3, siehe Kompatibilitätsgrenze oben):
 
 | Grund | Wann |
 |---|---|
