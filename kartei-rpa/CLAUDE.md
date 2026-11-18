@@ -12,6 +12,20 @@ Anlage. Entstanden in JanuaPort/januaport#806 als verallgemeinerte Neufassung
 eines Pilot-Beistellers; Muster `arbeitsliste-rpa`, Voreinstellungen = Satzart
 `zahlungseingang` des Rezepts in `januaport-recipes`.
 
+## Aufbau: Datei → Verantwortung
+
+| Datei | Verantwortung |
+|---|---|
+| `JanuaPort.Kartei.psm1` | Verbindet MCP-Transport, Credential-Manager, Einstellungen und Kartei-Laufschritte. |
+| `Invoke-Lauf.ps1` | Führt die Arbeitslisten-Schleife mit einer Beispiel-Klickfolge und optionalem Laufdeckel aus. |
+| `Test-JnptAnschluss.ps1` | Prüft Namensauflösung, TCP, TLS und den MCP-Anschluss vom Roboter-Rechner aus. |
+| `kartei-rpa.einstellungen.example.psd1` | Zeigt konfigurierbare Quelle, Credential-Ziel, Feldzuordnung und Ausgabefelder. |
+| `pad/1-arbeitsliste.ps1` | Liefert Laufkennung und Arbeitsliste als JSON an den PAD-Flow. |
+| `pad/2-satz-sperren.ps1` | Sperrt den ausgewählten Satz für den Lauf und liefert seine aktuellen Ausgabefelder. |
+| `pad/3-satz-verbuchen.ps1` | Meldet die Buchungsnummer an den Kartei-Laufschritt und liefert ID und Status. |
+| `pad/4-satz-fehler.ps1` | Meldet Schritt und Fehlertext an den Kartei-Laufschritt und liefert ID und Status. |
+| `tests/TestHelfer.ps1` | Stellt synthetische Sitzungen, Sätze und Werkzeugaufrufe für die Pester-Proben bereit. |
+
 ## Öffentliche Schnittstelle
 
 `JanuaPort.Kartei.psm1` exportiert vierzehn Funktionen:

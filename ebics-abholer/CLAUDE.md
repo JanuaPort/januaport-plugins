@@ -13,6 +13,24 @@ JanuaPort sie als Datei-Integration liest. Er kennt JanuaPort nicht — kein `/m
 kein Token, kein gemeinsames Netz. Entstanden in JanuaPort/januaport#549; Image und
 Release seit JanuaPort/januaport#1005.
 
+## Aufbau: Datei → Verantwortung
+
+| Datei | Verantwortung |
+|---|---|
+| `fetch.php` | Führt camt.053-Abruf, Dateiaufbereitung, Ablage und anschließende Bankquittung aus. |
+| `logik.php` | Entscheidet Konfigurationsprüfung, Zeitfenster, Dateinamen, Prüfsummenvergleich und Exit-Codes. |
+| `start.php` | Lädt Konfiguration und Schlüsseldatei und baut Bank- sowie Teilnehmerobjekte. |
+| `version.php` | Wendet die H004-/H005-spezifischen Bibliothekseinstellungen an. |
+| `init.php` | Erzeugt Teilnehmerschlüssel, sendet INI/HIA und erstellt das Initialisierungsprotokoll. |
+| `hpb.php` | Holt Bankschlüssel und führt Erstübernahme, Vergleich oder bestätigten Austausch mit Dateisicherung aus. |
+| `letter.php` | Erzeugt Text- und PDF-Initialisierungsprotokolle aus der vorhandenen Schlüsseldatei. |
+| `config.example.php` | Zeigt die Betreiberkonfiguration für Bank, Teilnehmer, Abruf und Ablage. |
+| `Dockerfile`, `composer.json`, `composer.lock` | Definieren PHP-Imagebau, Erweiterungen und Bibliotheksabhängigkeiten. |
+| `docker-compose.ebics-abholer.yml` | Verdrahtet Abholer-Image, Nutzer und Ablage-/Geheimnis-Mounts. |
+| `ebics-abholer.service`, `ebics-abholer.timer` | Starten den einmaligen Compose-Lauf an drei täglichen Terminen mit Nachholen. |
+| `tests/run.php` | Führt die PHP-Teststrecke mit Bibliotheks-Stubs und echtem Dateisystem aus. |
+| `tests/image.sh` | Prüft Quelldateien, Imagehülle und optional das gebaute Image. |
+
 ## Öffentliche Schnittstelle
 
 | Teil | Vertrag |

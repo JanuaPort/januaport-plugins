@@ -31,6 +31,29 @@ Produkt-Repository (Stand ea613985). Bis nach dem GoLive wird dort gepflegt;
 die Zusammenführung ist geplant (JanuaPort/januaport#876). Wer hier ändert,
 prüft, ob die Änderung dort nachgezogen werden muss — und umgekehrt.
 
+## Aufbau: Datei → Verantwortung
+
+| Datei | Verantwortung |
+|---|---|
+| `docker-compose.box.yml`, `.env.example` | Verdrahten Gateway, Proxy-Flächen, Wartungsprofil, Netze, Volumes und Betreiberwerte. |
+| `docker-compose.script-runner.yml` | Bindet Vermittler, Sandbox, Abholer, Bibliotheks-Init und optionalen Apphost an die Box an. |
+| `Caddyfile`, `Caddyfile.admin` | Konfigurieren Werkzeug- und Betreiber-Fläche des Reverse-Proxys. |
+| `apps-global.caddy`, `apps.caddy` | Konfigurieren Zertifikatsfreigabe, Apphost-Proxy und App-Zugriffsprotokoll. |
+| `tailscale-serve.json` | Konfiguriert den TLS-Proxy des Wartungs-Containers zum Gateway. |
+| `tunnel/profiles/box.yaml.example` | Zeigt Tunnel-Kennung, Schlüsselverweis, MCP-Kanal, Harpoon-Ziele und Gesundheitslistener des Box-Profils. |
+| `scripts/hardening.sh` | Richtet Host-Härtung, Firewall, SSH- und Boot-Konfiguration auf Debian ein. |
+| `scripts/lasttest.py` | Misst parallele MCP-Sitzungen mit Latenz- und Fehlerzählern. |
+| `boot/jnpt-netz-warten`, `boot/10-netz-vor-docker.conf` | Binden die Prüfung von Adresse, Route und DNS vor dem Docker-Start ein. |
+| `boot/jnpt-stack-nachstart.service` | Holt den Compose-Start nach dem Docker-Boot nach. |
+| `smb/srv-jnpt-ablage-beispiel.mount.example`, `smb/srv-jnpt-ablage-ki.mount.example`, `smb/srv-jnpt-sicherung.mount` | Konfigurieren SMB-Mounts für Ablage-Einstiegspunkte und Sicherung. |
+| `smb/jnpt-backup.sh`, `smb/jnpt-backup.service`, `smb/jnpt-backup.timer` | Erzeugen und übertragen die periodische Box-Sicherung auf die SMB-Freigabe. |
+| `sharepoint/install-rclone.sh` | Installiert die gepinnte rclone-Fassung nach Prüfsummenvergleich. |
+| `sharepoint/ablage.app.example`, `sharepoint/sicherung.app.example`, `sharepoint/zugang-sp.sh` | Stellen App-Kennungen und die lokale Eingabe der beiden SharePoint-Secrets bereit. |
+| `sharepoint/sp-token-probe.py` | Prüft Tokenbezug, Rollen und Zugriff auf Wurzel-Site sowie Site-Suche. |
+| `sharepoint/sp-einrichten.py`, `sharepoint/rclone-probe.sh` | Richten den Site-Remote ein und prüfen die rclone-Dateioperationen. |
+| `sharepoint/jnpt-ablage-abgleich.sh`, `sharepoint/jnpt-ablage-abgleich.service`, `sharepoint/jnpt-ablage-abgleich.timer` | Führen den periodischen Zwei-Wege-Abgleich der Ablage mit SharePoint aus. |
+| `sharepoint/jnpt-sicherung-sharepoint.sh`, `sharepoint/jnpt-sicherung-sharepoint.service`, `sharepoint/jnpt-sicherung-sharepoint.timer` | Erzeugen und übertragen die periodische Box-Sicherung nach SharePoint. |
+
 ## Öffentliche Schnittstelle
 
 **Installationsort:** Der Ordner liegt auf der Box als `/opt/jnpt/box`. Diesen

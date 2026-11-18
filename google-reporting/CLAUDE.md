@@ -3,6 +3,28 @@
 Privater Python-REST-Beisteller, Apache2.0. Stufe 1, gebaut/synthetisch geprüft,
 Live-Abnahme offen. Kein eigener MCP-Server oder Gateway-Auth-Typ.
 
+## Aufbau: Datei → Verantwortung
+
+| Datei | Verantwortung |
+|---|---|
+| `google_reporting/domain.py` | Prüft Sites und Berichtseingaben und erstellt Abfragen sowie Ergebnisprojektionen. |
+| `google_reporting/google_adapter.py` | Verbindet Servicekonto, Scope-Credentials und Google-Clients mit den Berichtsaufrufen. |
+| `google_reporting/manage.py` | Definiert Eingaben, Bodies, Projektionen und Änderungszeilen der Verwaltungsoperationen. |
+| `google_reporting/manage_adapter.py` | Führt Vorzustandsabfragen und Verwaltungsoperationen über die Google-Clients aus. |
+| `google_reporting/workers.py` | Verwaltet Worker-Prozesse, Warteschlange, Fristen und Schreibzähler je Quelle und Site. |
+| `google_reporting/server.py` | Verbindet Laufzeitdateien, Bridge-Prüfung, Site-Auflösung, REST-Routen und Protokollierung. |
+| `google_reporting/safe_http.py` | Bindet die aiohttp-Protokollbehandlung für feste Parserfehler an den Server. |
+| `config.example.json`, `config.example.sites.json` | Zeigen Einzel-Site- und Mehr-Site-Konfigurationen. |
+| `Dockerfile`, `requirements.in`, `requirements.lock` | Definieren Imagebau und Python-Abhängigkeiten mit Hash-Lock. |
+| `docker-compose.yml`, `deploy/env.example` | Verdrahten Image, Netzadressen, Konfiguration und Schlüsselordner. |
+| `deploy/google-reporting.conf.example` | Beschreibt den Dienst für den Update-Aktuator. |
+| `deploy/jnpt-plugins-google-reporting.conf.example` | Legt die tmpfiles-Vorlage für die beiden Laufzeit-Schlüsselordner fest. |
+| `deploy/jnpt-google-reporting-key.path`, `deploy/jnpt-google-reporting-key.service` | Beobachten beide Laufzeitschlüssel und erzeugen den Dienst bei Änderungen neu. |
+| `tests/site_fixtures.py`, `tests/wire_server.py` | Stellen synthetische Site-Konfigurationen und den Dienst für Cross-Repo-Proben bereit. |
+| `tests/mutations.py` | Führt gezielte Sperren-Mutationen mit Wiederherstellung aus. |
+
+## Implementierungsdetails
+
 - domain.py: fail-closed Betreiberkonfiguration, feste Berichtseingaben/-filter,
   source-local28/90 Tage bis heute−3, Datenminimierung und Qualitätsprojektion. `Config` ist die
   Konfiguration **einer** Site; `Sites` (#1379) hält alle und ist die einzige Stelle, die den Header

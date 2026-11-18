@@ -2,6 +2,22 @@
 
 Es gelten zusätzlich die Regeln in `../../CLAUDE.md`, insbesondere Invarianten 16 und 18.
 
+## Aufbau: Datei → Verantwortung
+
+| Datei | Verantwortung |
+|---|---|
+| `runtime.go`, `runtime_windows.go` | Verbinden geprüfte Apps, Reader, Appstore und Windows-Laufzeit mit Öffnen und Manifestabgleich. |
+| `gateway.go` | Übersetzt Brückenaufrufe in App-Token- und App-MCP-Anfragen. |
+| `lokal.go`, `exchange.go` | Übersetzen lokale Status-/Haltbefehle und ordnen Antworten auf der Bedienfeld-Pipe zu. |
+| `host.go` | Verarbeitet Brückennachrichten im Hintergrund und verwaltet Antwortschlange sowie Host-Epochen. |
+| `events.go` | Übersetzt native Navigation, Fenster-, Download- und Nachrichtenereignisse in Urteile und Startschritte. |
+| `login.go` | Steuert Anmeldestatus, Personenwechsel, Dokumentwechsel und Profilbereinigung über die View-Schnittstelle. |
+| `login_windows.go`, `loopback_windows.go` | Verbinden Geräte-Anmeldung, PKCE, Systembrowser und lokalen HTTP-Rückruf. |
+| `login_surface_windows.go` | Baut und aktualisiert die native Anmeldeleiste samt Layout und Dokumentübergang. |
+| `webview_windows.go` | Erstellt die WebView-Oberfläche und bindet COM-Ereignisse, Ressourcenfilter und Browserdatenbereinigung ein. |
+| `env.go`, `procargs_windows.go` | Prüfen Umgebungsnamen und lesen die Parameter der Browserprozesse für die Startprüfung. |
+| `thread_windows.go`, `wait.go` | Verwalten UI-Thread-Zuordnung und begrenztes Warten mit Nachrichtenverarbeitung. |
+
 ## K6c: persönliche PC-Anmeldung
 
 - #1321, unverändert Vertrag 5: `apps[].mode` optional, nur a/b/leer, sonst Manifestfehler.
