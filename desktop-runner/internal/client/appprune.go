@@ -16,19 +16,21 @@ var errAppBereich = errors.New("app_bereich")
 // pruneStored räumt gegen das zuletzt erfolgreich geprüfte, gespeicherte Manifest ab (#1342): nach jedem Sync und im
 // Takt des Heartbeats, auch bei unveränderter Sequenz. Der Entzug kommt mit einem neuen Manifest, das Fenster
 // schließt das Bedienfeld aber erst danach; zum Zeitpunkt des Sync ist das Profil deshalb oft noch gesperrt und der
-// Takt löscht es später. Keine Netzanfrage: Quelle ist dieselbe wie bei den Läufen (e.view()). Ist das Manifest
-// leer oder nicht prüfbar (Signatur, Gerät, Format), wird nichts gelöscht.
+// Takt löscht es später. Keine Netzanfrage. Quelle ist der gespeicherte Stand auf der Platte (State "manifest"), nicht
+// e.bundle (#1421). Ist das Manifest leer oder nicht prüfbar (Signatur, Gerät, Format), wird nichts gelöscht.
 func (e *Engine) pruneStored() {
 	if e.Container != nil {
 		return
 	}
 	// Das Manifest wird unter der Zustandssperre gelesen: Ein Prepare derselben Sperre sieht damit nie ein älteres
-	// Manifest als das, gegen das es abgelegt hat, und der Takt löscht keine frisch abgelegte App.
+	// Manifest als das, gegen das es abgelegt hat, und der Takt löscht keine frisch abgelegte App. Sperr-Reihenfolge
+	// (#1421): e.mu vor State.mu, unter State.mu nie e.mu. Deshalb liest der Takt die Platte statt e.view(); Sync
+	// speichert vor dem Setzen von e.bundle, die Platte ist also gleich neu oder neuer.
 	err := e.State.Use(func() error {
 		if e.pruneHook != nil {
 			e.pruneHook()
 		}
-		m, ok := e.storedManifest()
+		m, ok := e.storedManifestLocked()
 		if !ok || m.Apps == nil {
 			return nil
 		}
@@ -41,9 +43,10 @@ func (e *Engine) pruneStored() {
 	e.notePruneResult(err)
 }
 
-func (e *Engine) storedManifest() (Manifest, bool) {
-	b := e.view()
-	if len(b.Manifest.Envelope.Manifest) == 0 {
+// storedManifestLocked läuft unter der Zustandssperre und nimmt e.mu nie.
+func (e *Engine) storedManifestLocked() (Manifest, bool) {
+	var b Bundle
+	if err := e.State.loadLocked("manifest", &b); err != nil || len(b.Manifest.Envelope.Manifest) == 0 {
 		return Manifest{}, false
 	}
 	m, err := VerifyManifest(b.Manifest.Envelope, e.Credential.Pubkey, e.Credential.DeviceID, 0)

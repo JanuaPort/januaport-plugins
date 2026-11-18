@@ -124,6 +124,12 @@ func (s *State) Load(name string, v any) error {
 	if s.dead {
 		return ErrRevoked
 	}
+	return s.loadLocked(name, v)
+}
+
+// loadLocked liest unter bereits gehaltener Sperre (State.Use), Gegenstück zu saveLocked. Dort darf Load nicht
+// gerufen werden, weil es selbst s.mu nimmt.
+func (s *State) loadLocked(name string, v any) error {
 	p, e := s.path(name)
 	if e != nil {
 		return e
