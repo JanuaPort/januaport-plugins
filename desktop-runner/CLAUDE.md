@@ -11,7 +11,7 @@ Windows spricht Vertrag 5 (K6b-1: Vertrag 4 plus `apps`), Linux-Server unveränd
 Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 [contract/](contract/README.md) bleibt der eingefrorene historische D0-Vertrag 1.
 
-## Aufbau
+## Aufbau: Datei → Verantwortung
 
 | Pfad | Inhalt |
 |---|---|
@@ -19,33 +19,45 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 | console.go, console_windows.go, console_other.go | GUI-Läufer (`-H=windowsgui`): reine Entscheidung `planConsole`, Windows-Anschluss an die Konsole des Aufrufers, No-op sonst (Invariante 19) |
 | internal/client/http.go | Einziger HTTP-Client-Adapter, E3, Tokenrollen, Widerruf (Server-Ausnahme K6c: fensterio/loopback_windows.go) |
 | internal/client/sse.go | Liest die SSE-Antwort des Lauf-Zweigs von `mcp` bis zur ersten Nicht-Benachrichtigung (Invariante 1, #1340) |
-| manifest.go, copied_contract.go | Manifest/Kanonisierung/Ed25519, Gitobjekte/SHA-1DC, Cron/IANA |
-| environment.go, copied_lock.go, copied_zip.go | Allowlist, Wheels, Entpacken und Umgebungsseal |
-| engine.go, halt.go, bootstrap.py | Gemeinsamer Laufplatz, Takt, Claim/Start, lokaler Halt, Rahmenkanal/MCP |
-| state.go, replace_* | Atomare OS-geschützte Dateien, Journal/Marker/Slot-Transaktion, Löschung |
-| runtemp.go | Lauf-TEMP: RunID/RunTemps, Anlegen nur neu, Aufräumen/Besen ohne Reparse-Punkte, Kind-Umgebung |
-| log.go | Geschlossene numerische Codes (1–10), 5 × 1 MiB; Code 2: n = Klasse 1 hash, 2 runtime, 3 manifest, 4 sonst (Invariante 23); Code 10: n=1 Ablage, n=2 Aufräumen (Invariante 20) |
-| cmd/bedienfeld, internal/panel, internal/panelio | Nativer Tray-Prozess, reines Modell und getrennter Pipe-I/O-Adapter |
-| internal/pipe, internal/client/pipe.go | Lokales Schema, Windows-Pipe, Serverprüfung, Setup-Zulassung und interne Rückfragen |
-| internal/platform/*_windows.go | DPAPI/ACL (SecureRoot, MkdirPrivate), WTS/LastInput, suspendierter Prozess/Job Object, COM/HKCU |
-| internal/platform/install.go, other.go | Windows-Nähte und Fail-closed-Stubs für andere Systeme |
-| internal/platform/security_linux.go, server_linux.go | Linux-HMAC/Dateirechte, Sperre und Server-Konfiguration |
-| container.go, container_engine.go, secrets_linux.go | Docker-CLI, Startwege und Geheimnisgrenze |
-| internal/fenster | Reines Go ohne Netz/Prozess/Datei/Windows (K6b-1): CSP-Literal, Navigation, Nachrichten, Einstellungen, Umschlag, Brücke |
-| internal/fensterio | Hinter der Tür des Bedienfelds (K6b-2): Gateway (App-Token im RAM, Modus a: 401 → einmal neu; Modus b: nativer Login), Pipe-Wrapper mit zwei Operationen, `Host` (UI-Thread-sicher), `PanelExchange` über die vorhandene Verbindung, `Runtime` (Apps lesen, öffnen), Urteile für native Ereignisse, `Surface` (nur Windows) |
-| internal/wv2com | Nur Windows: dünner COM-Adapter für NavigationStarting, NewWindowRequested, DownloadStarting, Quelle der Webnachricht, ClearBrowsingData |
-| internal/edge | Nur Windows: geprüfte, angepasste Kopie von go-webview2 v1.0.19 `pkg/edge` (MIT, NOTICE): kein `os.Exit`, kein `log.Fatal`, Start mit `Begin`/`Ready`/`Cancel`/`Close` statt `Embed` |
+| `internal/client/manifest.go` | Manifestprüfung mit Ed25519, Cron/IANA und `OfflineAllowed` (Werkzeugdeklarationen, Pinfrist vor Gerätefrist und Zeitpunkt des letzten Syncs). |
+| `internal/client/environment.go`, `internal/client/copied_lock.go`, `internal/client/copied_zip.go` | Prüfen Python-Allowlist, Lock-Hashes und Wheel-Tags einschließlich reiner `py3`-/`py2.py3`-Wheels mit `none-any`, entpacken Pakete und versiegeln Umgebungen. |
+| `internal/client/engine.go`, `internal/client/halt.go`, `internal/client/bootstrap.py` | Gemeinsamer Laufplatz, Takt, Claim/Start, lokaler Halt und Rahmenkanal/MCP; `Sync`/`pinEnvironment` bereiten jeden Pin einzeln vor und trennen Pinfehler von Manifestfehlern. |
+| `internal/client/state.go`, `internal/client/replace_windows.go`, `internal/client/replace_other.go` | Atomare OS-geschützte Dateien, Journal/Marker/Slot-Transaktion, Löschung |
+| `internal/client/runtemp.go` | Lauf-TEMP: RunID/RunTemps, Anlegen nur neu, Aufräumen/Besen ohne Reparse-Punkte, Kind-Umgebung |
+| `internal/client/log.go` | Geschlossene numerische Codes (1–10), 5 × 1 MiB; Code 2: n = Klasse 1 hash, 2 runtime, 3 manifest, 4 sonst (Invariante 23); Code 10: n=1 Ablage, n=2 Aufräumen (Invariante 20) |
+| `cmd/bedienfeld/main_windows.go`, `internal/panel/model.go`, `internal/panelio/link.go` | Nativer Tray-Prozess, reines Modell und getrennter Pipe-I/O-Adapter |
+| `internal/pipe/schema.go`, `internal/pipe/security.go`, `internal/pipe/signature_windows.go`, `internal/pipe/transport.go`, `internal/pipe/transport_windows.go`, `internal/pipe/transport_other.go`, `internal/client/pipe.go` | Lokales Schema, Windows-Pipe, Serverprüfung, Setup-Zulassung und interne Rückfragen |
+| `internal/platform/security_windows.go`, `internal/platform/session_windows.go`, `internal/platform/process_windows.go`, `internal/platform/install_windows.go` | DPAPI/ACL (SecureRoot, MkdirPrivate), WTS/LastInput, suspendierter Prozess/Job Object, COM/HKCU |
+| `internal/platform/install.go`, `internal/platform/other.go` | Windows-Nähte und Fail-closed-Stubs für andere Systeme |
+| `internal/platform/security_linux.go`, `server_linux.go` | Linux-HMAC/Dateirechte, Sperre und Server-Konfiguration |
+| `internal/client/container.go`, `internal/client/container_engine.go`, `internal/client/secrets_linux.go`, `internal/client/secrets_other.go` | Docker-CLI, Startwege und Geheimnisgrenze |
+| `internal/fenster/csp.go`, `internal/fenster/navigation.go`, `internal/fenster/resource.go`, `internal/fenster/umschlag.go`, `internal/fenster/bruecke.go`, `internal/fenster/settings.go`, `internal/fenster/extern.go`, `internal/fenster/fehler.go`, `internal/fenster/diag.go` | Reines Go ohne Netz/Prozess/Datei/Windows (K6b-1): CSP-Literal, Navigation, Nachrichten, Einstellungen, Umschlag, Brücke |
+| `internal/fensterio/gateway.go`, `internal/fensterio/lokal.go`, `internal/fensterio/host.go`, `internal/fensterio/exchange.go`, `internal/fensterio/runtime.go`, `internal/fensterio/events.go`, `internal/fensterio/webview_windows.go` | Hinter der Tür des Bedienfelds (K6b-2): Gateway (App-Token im RAM, Modus a: 401 → einmal neu; Modus b: nativer Login), Pipe-Wrapper mit zwei Operationen, `Host` (UI-Thread-sicher), `PanelExchange` über die vorhandene Verbindung, `Runtime` (Apps lesen, öffnen), Urteile für native Ereignisse, `Surface` (nur Windows) |
+| `internal/wv2com/com_windows.go` | Nur Windows: dünner COM-Adapter für NavigationStarting, NewWindowRequested, DownloadStarting, Quelle der Webnachricht, ClearBrowsingData |
+| `internal/edge/chromium.go`, `internal/edge/doc.go`, `internal/edge/upstream-diff.sh` | Nur Windows: geprüfte, angepasste Kopie von go-webview2 v1.0.19 `pkg/edge` (MIT, NOTICE): kein `os.Exit`, kein `log.Fatal`, Start mit `Begin`/`Ready`/`Cancel`/`Close` statt `Embed` |
 | internal/client/reader.go | `Reader`: nur lesender Zugriff des Bedienfelds auf Zugangsdaten, geprüftes Manifest und App-Siegel; `Reader.Hotkeys` liefert Tastenkürzel nur bei gültigem Siegel |
 | internal/client/apphotkeys.go, internal/panel/hotkey.go, cmd/bedienfeld/hotkey_windows.go | Tastenkürzel für Setups (#1240 F-T, Invariante 22): strenges Parsen von `tasten`, Modell (Taste gleich Klick, Warten, Abweisung), Windows-Anmeldung als einzige Stelle für `RegisterHotKey` |
-| apptoken.go, applogin.go, appstore.go, appload.go, copied_apphost.go | Vertrag 5 im Client: App-Token, privates Ablegen mit Siegel, Ladeprüfung, markierte apphost-Kopie |
-| appprune.go | Entzug (#1342): räumt nach jedem Sync und im Heartbeat-Takt Ablage, WebView-Profil und Siegel nicht mehr zugewiesener Apps gegen das gespeicherte, geprüfte Manifest ab (Invariante 20) |
-| contract/golden-v5 | Bytegleicher Kernspiegel von Vertrag 5 (Manifest und Routen) mit SHA256SUMS |
+| `internal/client/apptoken.go`, `internal/client/applogin.go`, `internal/client/appstore.go`, `internal/client/appload.go`, `internal/client/copied_apphost.go` | Vertrag 5 im Client: App-Token, privates Ablegen mit Siegel, Ladeprüfung, markierte apphost-Kopie |
+| `internal/client/appprune.go` | Entzug (#1342): räumt nach jedem Sync und im Heartbeat-Takt Ablage, WebView-Profil und Siegel nicht mehr zugewiesener Apps gegen das gespeicherte, geprüfte Manifest ab (Invariante 20) |
+| `contract/golden-v5/SHA256SUMS` | Prüfsummen des bytegleichen Kernspiegels von Vertrag 5 (Manifest und Routen). |
 | probe/k6b_mutations.py | Mutationen K6b-1 im Container mit Go und Python |
-| internal/testfixture | Synthetische Gitpakete nur für Tests |
+| `internal/testfixture/package.go` | Synthetische Gitpakete nur für Tests |
 | probe/mutations.py | Negativtests unter entfernten Sperren, exakte Wiederherstellung |
-| probe/installtest*.ps1 | Manueller Release-Installationstest, Offline-Adaptertests und isolierte Mutationen |
-| contract/ | Vertrag/Goldens, eigenständiges D0-Testmodul |
-| .github/workflows/desktop-runner*.yml (Repo-Root) | Linux-/Windows-CI und optional signiertes Release |
+| `probe/installtest.ps1`, `probe/installtest-tests.ps1`, `probe/installtest-fixture.ps1`, `probe/installtest-mutations.ps1` | Manueller Release-Installationstest, Offline-Adaptertests und isolierte Mutationen |
+| `contract/README.md`, `contract/contract_test.go`, `contract/go.mod` | Vertrag/Goldens, eigenständiges D0-Testmodul |
+| `../.github/workflows/desktop-runner.yml`, `../.github/workflows/desktop-runner-release.yml`, `../.github/workflows/desktop-runner-installtest.yml` | Linux-/Windows-CI und optional signiertes Release |
+| `internal/client/copied_contract.go`, `internal/client/canon_export.go`, `internal/client/package.go` | Stellen Kanonisierung, Gitobjektprüfung mit SHA-1DC und die geprüften Paketdateien bereit. |
+| `internal/client/types.go` | Definiert Drahttypen, striktes JSON und die Startregeln für Sitzung, Konto und Leerlauf. |
+| `internal/client/helpers.go`, `internal/client/questions.go`, `internal/pipe/questions.go` | Verbinden Skript-Rahmen mit Test-Ergebnissen, Bildschirmaufnahme und lokalen Rückfragen. |
+| `internal/client/python-allowlist.json`, `contract/python-allowlist.json` | Halten Laufzeit-Allowlist und Vertragsreferenz der Python-ZIP-Prüfsummen. |
+| `internal/anmeldung/anmeldung.go`, `internal/fensterio/login.go`, `internal/fensterio/login_windows.go`, `internal/fensterio/loopback_windows.go`, `internal/fensterio/login_surface_windows.go` | Definieren Anmeldefluss und Rückrufprüfung und verbinden sie mit Systembrowser und nativer Anmeldeleiste. |
+| `cmd/bedienfeld/apps_windows.go`, `cmd/bedienfeld/native_windows.go`, `internal/panel/tray.go` | Verbinden App-Fenster, native Aufrufhüllen und Tray-Aktualisierung mit dem Bedienfeld. |
+| `internal/platform/screenshot.go`, `internal/platform/screenshot_windows.go`, `internal/platform/screenshot_other.go` | Stellen begrenzte PNG-Ausgabe, GDI-Aufnahme und den Plattform-Stub bereit. |
+| `internal/platform/install_stop_windows.go`, `internal/platform/error_windows.go` | Beenden das eigene Bedienfeld beim Deinstallieren und klassifizieren Windows-Operationsfehler. |
+| `internal/envsnap/envsnap.go` | Hält die Prozessumgebung beim Paketstart als Vergleichsstand fest. |
+| `server_other.go` | Stellt den Server-Unterbefehl auf anderen Plattformen als Linux als Fehler-Stub bereit. |
+| `internal/statefixture/statefixture.go` | Schreibt synthetische Zugangsdaten, signierte Manifeste und versiegelte App-Ablagen für paketübergreifende Tests. |
+| `internal/fensterio/CLAUDE.md` | Ordnet die weiteren Fensteradapter-Dateien ihren Aufgaben zu und beschreibt die persönliche PC-Anmeldung. |
 
 ## Invarianten
 
@@ -125,7 +137,8 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
    (Pfad/Größe/SHA-256) nach Entpacken und vor jedem Start. Python-ZIP
    zusätzlich gegen ausgelieferte python.org-Allowlist (C1), nicht aus Pin;
    fehlend/falsch → refused/runtime. Paket-tools = signierte declared_tools.
-   **Wheel-Regel (#1392):** Native Wheels brauchen weiter `cp312` (auf 3.13 auch `cp312`/`abi3`) und `win_amd64`.
+   **Wheel-Regel (#1392):** Native Wheels brauchen `win_amd64` und das Python-Tag `cp312` auf Python 3.12 bzw. `cp313` auf Python 3.13;
+   dazu passt ABI `none`, `abi3` oder das jeweilige Interpreter-Tag. Python 3.13 akzeptiert zusätzlich `cp312` mit ABI `abi3`.
    Zusätzlich gilt ein **reines** Wheel: Das Python-Tag (an `.` zerlegt) besteht nur aus `py2` und `py3` und enthält `py3`,
    das ABI ist genau `none`, die Plattform genau `any` (keine zusammengesetzte Plattform wie `any.win32`), Groß-/Kleinschreibung
    zählt, der Dateiname hat fünf oder sechs `-`-Teile. Ob ein Wheel wirklich rein ist, prüft der Läufer nicht; die Grenze bleibt

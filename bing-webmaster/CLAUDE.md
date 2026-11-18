@@ -4,6 +4,25 @@ Privater Python-REST-Beisteller, Apache2.0. Stufe 1, gebaut/synthetisch geprüft
 offen. Kein eigener MCP-Server oder Gateway-Auth-Typ. Grund für den Beisteller: Bing nimmt den
 API-Schlüssel nur als `?apikey=` in der URL, die Connector-Specs setzen Credentials nur in Header.
 
+## Aufbau: Datei → Verantwortung
+
+| Datei | Verantwortung |
+|---|---|
+| `bing_webmaster/domain.py` | Prüft Konfiguration und Eingaben und projiziert Bing-/IndexNow-Ergebnisse auf den lokalen Vertrag. |
+| `bing_webmaster/adapter.py` | Führt die Bing-/IndexNow-HTTP-Aufrufe aus und übersetzt Herstellerantworten in feste Ergebnisse und Fehlercodes. |
+| `bing_webmaster/server.py` | Verbindet Laufzeitdateien, Bridge-Prüfung, REST-Routen, Schreibzähler und Aufrufprotokoll. |
+| `bing_webmaster/safe_http.py` | Bindet die aiohttp-Protokollbehandlung für feste Parserfehler an den Server. |
+| `config.example.json` | Zeigt die Konfiguration für Site, Hosts, IndexNow und Schreibdeckel. |
+| `Dockerfile`, `requirements.in`, `requirements.lock` | Definieren Imagebau und Python-Abhängigkeiten mit Hash-Lock. |
+| `docker-compose.yml`, `deploy/env.example` | Verdrahten Image, Netzadressen, Konfiguration und Schlüsselordner. |
+| `deploy/bing-webmaster.conf.example` | Beschreibt den Dienst für den Update-Aktuator. |
+| `deploy/jnpt-plugins-bing-webmaster.conf.example` | Legt die tmpfiles-Vorlage für die beiden Laufzeit-Schlüsselordner fest. |
+| `deploy/jnpt-bing-webmaster-key.path`, `deploy/jnpt-bing-webmaster-key.service` | Beobachten beide Laufzeitschlüssel und erzeugen den Dienst bei Änderungen neu. |
+| `tests/support.py`, `tests/wire_server.py` | Stellen Loopback-Hersteller und den echten Dienst für Adapter- und Cross-Repo-Proben bereit. |
+| `tests/mutations.py` | Führt gezielte Sperren-Mutationen mit Wiederherstellung aus. |
+
+## Implementierungsdetails
+
 - domain.py: rein (kein Netz, kein Log). `Config.from_dict` (fail-closed, `ValueError` ohne Wert),
   `validate_url` (https, exakter Host aus `hosts`, kein Port/Userinfo/Fragment/Query/`@`/`..`),
   `parse_get`/`parse_post` (Routenmengen, unbekannte und doppelte Schlüssel → 400),

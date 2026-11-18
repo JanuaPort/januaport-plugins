@@ -558,6 +558,13 @@ ausgewählten Python-Laufzeit passende Python-/ABI-Tags aus **`cp312`, `cp313`,
 `cp312`/`cp313` bezeichnen Interpreter beziehungsweise versionsgebundene ABI,
 `abi3`/`none` die ABI, keine frei austauschbaren Teile. Ein cp313-Wheel ist
 unter Python 3.12 nicht kompatibel. `any` verlangt ABI `none`.
+Der Client ergänzt reine Wheels: Das Python-Tag besteht, an `.` zerlegt,
+ausschließlich aus `py2` und `py3` und enthält `py3`; ABI ist genau `none`,
+Plattform genau `any`, Groß-/Kleinschreibung zählt. Native Wheels passen mit
+`cp312` zu Python 3.12 und mit `cp313` zu Python 3.13, jeweils mit ABI `none`,
+`abi3` oder dem jeweiligen Interpreter-Tag; Python 3.13 akzeptiert zusätzlich
+`cp312`/`abi3`. Dateinamen haben fünf oder sechs `-`-Teile, alle Varianten
+brauchen den SHA-256 im Lock (`internal/client/environment.go`, `CheckWheels`).
 `tools` muss als Menge mit `declared_tools` des freigegebenen Pins
 übereinstimmen; ein fehlender oder abweichender Stand ergibt `refused/manifest`.
 Pfadangaben bleiben im Pin-Ordner. Manifestfehler ergeben `refused/manifest`,

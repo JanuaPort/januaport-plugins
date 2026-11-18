@@ -10,7 +10,7 @@ Zeitpläne/Ticker gehören zu Release B. Betreiberanleitung: `README.md`.
 
 OpenAI-Format braucht JanuaPort mit `model.protocol` (Version folgt); ein älterer Kern schickt kein Protokoll, dann gilt Anthropic.
 
-## Aufbau
+## Aufbau: Datei → Verantwortung
 
 | Pfad | Aufgabe |
 |---|---|
@@ -20,14 +20,15 @@ OpenAI-Format braucht JanuaPort mit `model.protocol` (Version folgt); ein älter
 | `internal/runner/loop.go` | Historie, Grenzen, MCP-Sitzung, Werkzeugfreigabe und Wertung des letzten Werkzeug-Schritts |
 | `internal/runner/gateway.go` | Modell-Durchgang, Lauf-Token, beschränkter HTTP-Transport |
 | `internal/runner/conversation.go` | Protokollwahl, Adapter und angehängte Historie |
-| `internal/openai` | Chat-Completions-Projektion, Prüfung und Werkzeugtexte |
-| `internal/anthropic` | Messages-Projektion, Prüfung, Cache, Werkzeugergebnisse |
-| `internal/runlog` | Inhaltfreies JSON-Protokoll auf stdout |
-| `internal/hygiene` | Strenge Compose-Prüfung und Dockerfile-Gegenproben |
-| `contract/golden` | Byte-identische Referenzdateien des Kerns, SHA256SUMS |
-| `contract/proposed` | Neue Ende-Antworten und Lauf-Protokoll zur Kernübernahme |
+| `internal/openai/adapter.go` | Chat-Completions-Projektion, Prüfung und Werkzeugtexte |
+| `internal/anthropic/adapter.go` | Messages-Projektion, Prüfung, Cache, Werkzeugergebnisse |
+| `internal/runlog/log.go` | Inhaltfreies JSON-Protokoll auf stdout |
+| `internal/hygiene/hygiene_test.go` | Strenge Compose-Prüfung und Dockerfile-Gegenproben |
+| `contract/golden/SHA256SUMS` | Prüfsummen der byte-identischen Referenzdateien des Kerns. |
+| `contract/proposed/run_agent_response_tools.json`, `contract/proposed/run_log_ok.json` | Zeigen das Ende bei Werkzeugfehler und das Lauf-Protokoll zur Kernübernahme. |
 | `probe/mutations.py`, `probe/openai_mutations.py` | Reproduzierbare Mutationen mit Wiederherstellung |
 | `internal/hygiene/release_test.go` | Release-Auslöser, Rechte, SHA-Pins und Digest-Bindung |
+| `Dockerfile`, `docker-compose.yml` | Definieren statisches Laufzeitimage und Dienstverdrahtung. |
 
 ## Draht-Vertrag
 

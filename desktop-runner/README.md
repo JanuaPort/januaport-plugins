@@ -692,7 +692,11 @@ und gegebenenfalls requirements.lock mit wheels/*.whl. Der Client lädt
 Python/Wheels ausschließlich als Bestandteil des Gitpakets von der Anlage,
 ohne Paketinstaller. Git-IDs einschließlich SHA-1DC, exakte Objektmenge,
 Windows-Pfade, Wheel-SHA-256 und Runtime-Allowlist werden geprüft.
-Wheels: native mit `cp312` und `win_amd64`, reine (`py3`/`py2.py3`, ABI `none`, Plattform `any`) mit Hash im Lock.
+Wheels: native mit `win_amd64` und `cp312` auf Python 3.12 bzw. `cp313` auf Python 3.13;
+ABI `none`, `abi3` oder das jeweilige Interpreter-Tag. Python 3.13 akzeptiert zusätzlich `cp312`/`abi3`.
+Reine Wheels: Python-Tag nur `py2`/`py3` mit `py3`, ABI genau `none`, Plattform genau `any`;
+auch `cp312`-/`cp313`-Wheels mit passendem Interpreter-Tag und ABI `none` dürfen Plattform `any` tragen.
+Alle Varianten brauchen ihren SHA-256 im Lock.
 
 Umgebungen: <code>envs\&lt;commit&gt;-&lt;SHA256-des-Pfads&gt;\</code>.
 Die ._pth aktiviert site nicht; .pth-Hooks laufen nicht automatisch.
