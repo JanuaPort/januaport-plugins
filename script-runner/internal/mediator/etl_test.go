@@ -32,7 +32,7 @@ const (
 	// Log, keinem Fehler und keinem Feld des Lauf-Ergebnisses (SEC E5).
 	rowCanary   = "ROWCANARY-7f3a91-private"
 	errCanary   = "ERRBODYCANARY-55c2d0-private"
-	tokenCanary = "jnptrun_TOKENCANARY0123456789abcdefghijklmnopq"
+	tokenCanary = "jnptrun_TOKENCANARY0123456789abcdefghijklmnopqrstuv"
 )
 
 const etlManifest = `name: etl_job
@@ -299,7 +299,7 @@ func (k *openKern) waitClosed(t *testing.T, what string) {
 // =============================================================================
 
 func TestETLStreamFertigHappyPath(t *testing.T) {
-	body := ndjsonRows(4000, "fertig")
+	body := ndjsonRows(12000, "fertig")
 	e := newETLEnv(t, etlCoreVersion, serveBody(body))
 	var got []byte
 	var chunks, maxChunk int
@@ -323,7 +323,7 @@ func TestETLStreamFertigHappyPath(t *testing.T) {
 		t.Fatalf("nur %d Stück; der Test braucht mehrere", chunks)
 	}
 	meta := assertEnd(t, res, contract.EndOK, "")
-	assertStream(t, res, contract.StreamFertig, int64(len(body)), 4000)
+	assertStream(t, res, contract.StreamFertig, int64(len(body)), 12000)
 	// Strom-Bytes zählen weder in bytes_out noch als Werkzeugaufruf.
 	if meta["bytes_out"] != float64(len("ok\n")) || meta["tool_calls"] != float64(0) {
 		t.Fatalf("bytes_out/tool_calls zählen den Strom: %v", meta)

@@ -59,7 +59,9 @@ func newFakeCore(t *testing.T, handle func(w http.ResponseWriter, r *http.Reques
 	t.Helper()
 	c := &fakeCore{handle: handle}
 	c.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api/plugin/script-runner/storage/") {
+		// Weder Speicherbote noch die Versionsabfrage (/healthz, #1215 P2) sind
+		// Auslöse-Aufrufe: Sie zählen nicht als Anfrage an den Kern.
+		if strings.HasPrefix(r.URL.Path, "/api/plugin/script-runner/storage/") || r.URL.Path == "/healthz" {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
