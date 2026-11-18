@@ -1,7 +1,7 @@
-# Bing Webmaster 0.1.0 — #1292
+# Bing Webmaster 0.1.1 — #1292
 
 Stufe 1 „Sicher verbinden“. Gebaut und synthetisch geprüft; **noch nicht live abgenommen oder
-produktiv provisioniert**. Fassung 0.1.0; den Tag `bing-webmaster-vX.Y.Z` setzt GATE über den
+produktiv provisioniert**. Fassung 0.1.1; den Tag `bing-webmaster-vX.Y.Z` setzt GATE über den
 Release-Workflow. Apache 2.0.
 Ein privater Python-Beisteller übersetzt sechs feste Routen in Aufrufe der Bing Webmaster API
 (JSON-Endpunkt) und in IndexNow. JanuaPort behält Rechte und Audit.
@@ -44,8 +44,11 @@ Gateway, nicht der Dienst.
   `fetched_at`. Ausgegeben wird eine **feste Feldliste**; weitere Herstellerfelder werden
   verworfen, die Adresse in `url_info` ist die geprüfte Eingabe, nicht das Herstellerfeld.
   - `url_info`: `item` mit `url`, `discovery_date`, `last_crawled_date` (ISO UTC; Bings
-    `/Date(ms±hhmm)/` wird gelesen, Werte bis zur Epoche sind `null`), `http_status`,
-    `document_size`, `is_page`; `state` `ok` oder `no_data`.
+    `/Date(ms±hhmm)/` wird gelesen, Werte bis zur Epoche sind `null`), `http_status` (Bings
+    Wert `0` heißt „kein Code bekannt“ und wird `null`; jeder andere Wert bleibt), `document_size`,
+    `is_page`; `state` `ok` oder `no_data`. `no_data` mit `item: null` gilt, wenn Bing für die
+    Adresse weder ein Entdeckungs- noch ein Crawl-Datum kennt (beide `null`, auch Bings „nie“);
+    ist eines von beiden gesetzt, bleibt es `ok`.
   - `sitemaps`: `items` (`url`, `type`, `status`, `url_count`, `file_size`, `compressed`,
     `submitted`, `last_crawled`), höchstens 100, `quality.truncated`; `state` `ok` oder `no_rows`.
   - `submission_quota`: `item` mit `daily_quota`, `monthly_quota`, wie von Bing gemeldet.
@@ -54,7 +57,8 @@ Gateway, nicht der Dienst.
     `state` ist `applied` oder `preview`. IndexNow antwortet 202, solange die Prüfung der
     Schlüsseldatei aussteht; das ist ein Erfolg.
 - **Vorschau:** `dry_run` validiert und antwortet `preview`. Es ruft weder Bing noch IndexNow auf
-  und zählt nicht gegen den Tagesdeckel.
+  und zählt nicht gegen den Tagesdeckel. Deshalb ist `quota_before` bei `bing/submit_urls` mit
+  `dry_run` `null`: Die Vorschau liest die Quote nicht.
 - **Quote:** `bing/submit_urls` liest vor dem Batch die gemeldete Tagesquote und reicht nie mehr
   Adressen ein, als sie erlaubt (`source_quota_exceeded`, 429, ohne Batch-Aufruf). Bing nennt
   500 Adressen je Batch als Grenze; hier gilt 100.

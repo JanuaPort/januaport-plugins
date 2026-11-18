@@ -207,6 +207,27 @@ MUTANTS = [
         A + "Writes.test_never_submits_above_the_reported_quota",
     ),
     (
+        "http-status-zero-kept",
+        "domain.py",
+        '"http_status": status or None,',
+        '"http_status": status,',
+        D + "Projections.test_url_info_http_status_zero_is_null_and_everything_else_is_kept",
+    ),
+    (
+        "unknown-url-not-no-data",
+        "domain.py",
+        "if discovery is None and crawled is None:",
+        "if False:",
+        D + "Projections.test_url_info_without_discovery_and_crawl_is_no_data",
+    ),
+    (
+        "crawled-url-turned-no-data",
+        "domain.py",
+        "if discovery is None and crawled is None:",
+        "if discovery is None or crawled is None:",
+        D + "Projections.test_url_info_with_discovery_or_crawl_stays_ok",
+    ),
+    (
         "write-answer-not-checked",
         "adapter.py",
         'if await self._bing("POST", name, body=body) != {"d": None}:',
