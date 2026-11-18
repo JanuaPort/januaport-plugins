@@ -12,9 +12,33 @@ CASES = [
     ("pair-code", "client/http.go", ".MatchString(code) {", ".MatchString(code) && false {", "client", "TestPairCodeFormat"),
     ("pair-test-key", "client/http.go", "== rfc8032TestPublicKey {", "== rfc8032TestPublicKey && false {", "client", "TestPairRFC8032Pubkey"),
     ("golden-blob-binding", "client/copied_contract.go", "if !ok || o.kind != kind {", "if (!ok || o.kind != kind) && kind != 'b' {", "client", "TestGoldenPaketeBytegenauUndManipulation"),
-    ("package-mime", "client/http.go", 'if res.Header.Get("Content-Type") != expectedType {', 'if res.Header.Get("Content-Type") != expectedType && false {', "client", "TestPaketMedientypAmHTTPAdapter"),
+    ("package-mime", "client/http.go", 'if !stream && res.Header.Get("Content-Type") != expectedType {', 'if !stream && res.Header.Get("Content-Type") != expectedType && false {', "client", "TestPaketMedientypAmHTTPAdapter"),
     ("frame-cap", "client/engine.go", "n == 0 || n > 8<<20", "n == 0 || n > 16<<20", "client", "TestRahmenDeckelMitVollstaendigemKoerper"),
     ("wheel-platform", "client/environment.go", "if !matched {", "if !matched && false {", "client", "TestWheelTagsLockUndManifestVerbote"),
+    ("wheel-rein-abi", "client/environment.go", 'if tags[1] != "none" || tags[2] != "any" {', 'if tags[2] != "any" {', "client", "TestReineWheelsTagTabelle"),
+    ("wheel-rein-plattform", "client/environment.go", 'if tags[1] != "none" || tags[2] != "any" {', 'if tags[1] != "none" {', "client", "TestReineWheelsTagTabelle"),
+    ("wheel-rein-py3-pflicht", "client/environment.go", "return py3", "return py3 || true", "client", "TestReineWheelsTagTabelle"),
+    ("wheel-rein-fremdes-py", "client/environment.go", 'case "py2":', 'case "py2", "py36":', "client", "TestReineWheelsTagTabelle"),
+    ("wheel-rein-grossschreibung", "client/environment.go", "switch python {", "switch strings.ToLower(python) {", "client", "TestReineWheelsTagTabelle"),
+    ("wheel-rein-hash", "client/environment.go", "&& slices.Contains(e.Hashes, sum(b))", "&& (slices.Contains(e.Hashes, sum(b)) || true)", "client", "TestReinesWheelBrauchtHashImLock"),
+    ("wheel-rein-zip-path", "client/environment.go", "|| !safePath(rel) ||", "|| false ||", "client", "TestReinesWheelEntpacktNurUnterLibs"),
+    ("pth-site", "client/environment.go", r'".zip\n.\n../libs\n"', r'".zip\n.\n../libs\nimport site\n"', "client", "TestPthDateiIstFestgepinnt"),
+    ("sync-frueher-return", "client/engine.go", 'if manifestLevel(ctx, perr) {', 'if true {', "client", "TestKaputterPinTrifftNurDiesenPin"),
+    ("sync-offline-zweig", "client/engine.go", 'return errors.Is(err, ErrRevoked) || ctx.Err() != nil || IsOffline(err)', 'return errors.Is(err, ErrRevoked) || ctx.Err() != nil', "client", "TestOfflinePaketabrufVerzoegertNurDenEntzug"),
+    ("sync-offline-lastsync", "client/engine.go", 'if manifestLevel(ctx, perr) {', 'if manifestLevel(ctx, perr) && func() bool { e.mu.Lock(); e.bundle.Manifest.LastSync = time.Now().UTC(); e.mu.Unlock(); return true }() {', "client", "TestOfflinePaketabrufVerzoegertNurDenEntzug"),
+    ("sync-widerruf-zweig", "client/engine.go", 'return errors.Is(err, ErrRevoked) || ctx.Err() != nil || IsOffline(err)', 'return ctx.Err() != nil || IsOffline(err)', "client", "TestFehlerAufManifestEbeneVerwirftAlles"),
+    ("sync-abbruch-zweig", "client/engine.go", 'return errors.Is(err, ErrRevoked) || ctx.Err() != nil || IsOffline(err)', 'return errors.Is(err, ErrRevoked) || IsOffline(err)', "client", "TestFehlerAufManifestEbeneVerwirftAlles"),
+    ("sync-seq-ausnahme-weg", "client/engine.go", 'minSeq = seq - 1', 'minSeq = seq', "client", "TestPresyncUnveraendertesManifestLehntDenLaufNichtAb"),
+    ("sync-seq-immer-locker", "client/engine.go", 'if seq > 0 && sameEnvelope(signed, old.Manifest.Envelope) {', 'if seq > 0 {', "client", "TestGleicheSeqAndereHuelleBleibtErrManifest"),
+    ("sync-seq-statt-bytes", "client/engine.go", 'if seq > 0 && sameEnvelope(signed, old.Manifest.Envelope) {', 'if p, err := ParseManifest(signed.Manifest); seq > 0 && err == nil && p.Seq == seq {', "client", "TestGleicheSeqAndereHuelleBleibtErrManifest"),
+    ("sync-huelle-roh", "client/engine.go", 'bytes.Equal(ca, cb)', 'bytes.Equal(a.Manifest, b.Manifest) && len(ca) == len(cb)', "client", "TestByteGleichesManifestNachNeustartIstKeinFehler"),
+    ("sync-origin", "client/engine.go", 'if env.Origin.Pin != p.Pin || env.Origin.Algo != p.Algo {', 'if false {', "client", "TestKaputterPinTrifftNurDiesenPin"),
+    ("sync-werkzeuge", "client/engine.go", 'if !sameSet(env.Tools, p.DeclaredTools) {', 'if false {', "client", "TestKaputterPinTrifftNurDiesenPin"),
+    ("sync-umgebung-pruefen", "client/engine.go", 'if err := VerifyEnvironment(filepath.Join(e.State.Root, "envs", env.Dir), env.Files); err != nil {', 'if err := VerifyEnvironment(filepath.Join(e.State.Root, "envs", env.Dir), env.Files); err != nil && false {', "client", "TestKaputterPinTrifftNurDiesenPin"),
+    ("sync-log-pin", "client/engine.go", 'e.logCode(LogSyncFailed, syncFailClass(perr))', '_ = syncFailClass(perr)', "client", "TestKaputterPinTrifftNurDiesenPin"),
+    ("sync-log-manifest", "client/engine.go", 'e.logSyncFailed(ctx, err)', '_ = ctx', "client", "TestSyncFehlerAufManifestEbeneSchreibtCodeMitKlasse"),
+    ("sync-log-klasse", "client/engine.go", 'case errors.Is(err, ErrHash):', 'case errors.Is(err, ErrHash) && false:', "client", "TestKaputterPinTrifftNurDiesenPin"),
+    ("sync-log-widerruf", "client/engine.go", 'if err == nil || errors.Is(err, ErrRevoked) || ctx.Err() != nil {', 'if err == nil {', "client", "TestWiderrufUndAbbruchSchreibenKeinenSyncFehlerCode"),
     ("yaml-unknown", "client/environment.go", "d.KnownFields(true)", "d.KnownFields(false)", "client", "TestWheelTagsLockUndManifestVerbote"),
 
     ("sha1dc", "client/copied_contract.go", "if collision {", "if collision && false {", "client", "TestSHA1Collision"),
@@ -52,7 +76,7 @@ CASES = [
     ("interrupted", "client/state.go", 'r.End = "interrupted"', 'r.End = "ok"', "client", "TestJournalDeckelBestaetigungNeustart"),
     ("revoke", "client/state.go", "return removeTree(s.Root)", "return nil", "client", "TestWiderrufAllesWeg"),
     ("revoke-follow-link", "client/runtemp.go", "if info.Mode().Type() == fs.ModeDir {", "if info, _ = os.Stat(path); info != nil && info.IsDir() {", "platform", "TestRevokeFolgtKeinerJunctionInTmp"),
-    ("log-code", "client/log.go", "if code < LogStarted || code > LogOfflineExpired {", "if (code < LogStarted || code > LogOfflineExpired) && false {", "client", "TestLoggerDeckelUndFesteCodes"),
+    ("log-code", "client/log.go", "if code < LogStarted || code > LogAppFault {", "if (code < LogStarted || code > LogAppFault) && false {", "client", "TestLoggerDeckelUndFesteCodes"),
     ("idle-before-spawn", "client/engine.go", "why = startRefusal(s, config)", "why = nil", "client", "TestIdleVorSpawnUndMount"),
     ("idle-panel-flag-always", "client/engine.go", "if isPanelRun(ctx) {", "if true {", "client", "TestZeitplanUndAdHocBleibenUnterLeerlauf"),
     ("panel-account-bypass", "client/engine.go", "why = localStartRefusal(s, config)", "why = nil", "client", "TestSetupKontoWechselNachZulassungWirdAccountNichtIdle"),
@@ -75,14 +99,29 @@ def run(cmd, cwd, timeout=120):
                           stderr=subprocess.STDOUT, timeout=timeout)
 
 
+def windows_only(rel, package, test):
+    # The source path alone misses platform-neutral files whose test lives in a Windows-only test file.
+    if "windows" in rel:
+        return True
+    decl = "func " + test + "("
+    for f in (ROOT / "internal" / package).glob("*_test.go"):
+        text = f.read_text(encoding="utf-8")
+        if decl in text:
+            return f.name.endswith("_windows_test.go") or text.startswith("//go:build windows")
+    raise RuntimeError(f"{test}: no test file in {package} declares it")
+
+
 def main():
     selected = set(sys.argv[1:])
     count = 0
+    skipped = 0
     (ROOT / ".probe").mkdir(exist_ok=True)
     for label, rel, old, new, package, test in CASES:
         if selected and label not in selected:
             continue
-        if os.name != "nt" and "windows" in rel:
+        if os.name != "nt" and windows_only(rel, package, test):
+            print(label + ": skipped (Windows only)", flush=True)
+            skipped += 1
             continue
         path = ROOT / "internal" / rel
         original = path.read_bytes()
@@ -105,7 +144,7 @@ def main():
             count += 1
         finally:
             path.write_bytes(original)
-    print(f"{count} mutations rejected; all source files restored.", flush=True)
+    print(f"{count} mutations rejected, {skipped} skipped (Windows only); all source files restored.", flush=True)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,40 @@
 
 ## Unveröffentlicht
 
+### Kaputter Pin sperrt das Manifest nicht mehr (JanuaPort/januaport#1391)
+
+- **Ein Pin ohne Umgebung hält den Abgleich nicht mehr auf.** Bisher verwarf jeder Fehler im Pin-Schritt (Paketabruf mit
+  Antwort, `Prepare`, Umgebungsprüfung, Abweichung im Cache) den ganzen Sync: Kein neues Manifest wurde gespeichert, ein
+  Entzug von App, Setup, Pin oder Recht kam nicht an, neue Apps wurden nicht abgelegt, und `syncErr` lehnte jeden
+  geplanten Lauf ab, auch den der guten Pins. Jetzt trifft so ein Fehler nur diesen Pin: Er bleibt ohne Umgebung (Start
+  `refused/runtime`), das Manifest wird gespeichert und angewendet. Der Pin wird an den vorhandenen Sync-Punkten neu
+  versucht (Start, eine Minute vor jedem Slot, Ad-hoc, Heartbeat mit höherer Seq); keine gespeicherte Fehlerklasse, kein
+  neuer Auslöser.
+- **Fehler auf Manifest-Ebene verwerfen weiter alles:** Konfiguration, Gerät, Signatur, Seq, Vertrag, Uhrmarke, Speichern,
+  Widerruf von überall, Abbruch und **offline auch beim Paketabruf**. Ein Netzausfall schaltet keine laufende Umgebung ab;
+  der Entzug wartet nur bis zum nächsten Abgleich mit Netz, der letzte Sync bleibt dabei unverändert.
+- **Unverändertes Manifest ist kein Fehler mehr:** Der Kern behält die Seq bei gleichem Inhalt, `VerifyManifest` verlangte
+  aber `Seq > gespeichert`. Damit endete jeder Presync vor einem Slot (und jeder Sync nach dem Neustart) mit `ErrManifest`,
+  und der Lauf wurde `refused/manifest`. Jetzt gilt dieselbe signierte Hülle (gleiche Signatur, gleiche kanonische Bytes)
+  als bereits geprüft; Signatur, Gerät, Vertrag, Uhrmarke und Speichern laufen unverändert, jede andere Hülle mit gleicher
+  oder kleinerer Seq bleibt `ErrManifest`.
+- **Log:** Der vorhandene Code 2 (`LogSyncFailed`) wird geschrieben, `2 <Klasse>` mit 1 hash, 2 runtime, 3 manifest,
+  4 sonst/IO, je Fehler auf Manifest-Ebene und je nicht bereitem Pin. Kein neuer Code, keine Namen, kein Text. Nach Widerruf
+  und beim Abbruch bleibt das Log unberührt.
+- Kein neuer Vertrag, kein neues Paketformat, Heartbeat und Kern unverändert.
+
+### Reine Python-Wheels (JanuaPort/januaport#1392)
+
+- **`py3-none-any` und `py2.py3-none-any` werden angenommen,** wenn ihr SHA-256 im Lock steht. Bisher lehnte `CheckWheels` jedes
+  Wheel ohne `cp312`-Tag ab, damit scheiterte jeder Pin mit reinen Abhängigkeiten (zum Beispiel comtypes, pywinauto, six) auf
+  jedem Gerät mit `refused/hash`. Die Tags werden streng zerlegt: Python-Tag nur `py2`/`py3` mit `py3`, ABI genau `none`,
+  Plattform genau `any`, Groß-/Kleinschreibung zählt. `py2`, `py36`, `cp311`, `py3-none-win_amd64`, `py3-abi3-any` und
+  zusammengesetzte Plattformen bleiben abgelehnt; native Wheels unverändert. Ob ein Wheel wirklich rein ist, prüft der Läufer nicht.
+- **Keine Änderung an der `._pth`, kein neuer Entpackweg.** `.pth`-Dateien in Wheels bleiben wirkungslos, weil `site` aus ist. Das
+  ist jetzt festgeschrieben: Der Inhalt der `._pth` ist in einem Test festgepinnt, und ein Kanarien-Wheel, dessen `.pth` eine
+  Markerdatei anlegen würde, läuft gegen das echte Embed-Python (Gegenprobe mit `import site` legt den Marker an).
+- Der Pin-Teil für `uia_probe` (pywin32-Pfade in `sys.path`) liegt im Pin, nicht im Läufer.
+
 ## 0.5.4 — 2026-11-10 (JanuaPort/januaport#1354, JanuaPort/januaport#1240)
 
 ### Upstream-Prüfpunkt

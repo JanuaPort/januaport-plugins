@@ -8,7 +8,7 @@ import tempfile
 import time
 import unittest
 from aiohttp.test_utils import TestClient
-from google_reporting.domain import Config, ReportError
+from google_reporting.domain import Config, ReportError, Sites
 from google_reporting.manage import ManageRequest, parse_post
 from google_reporting.server import create_app
 from google_reporting.workers import WorkerPool, WRITE_CAP_PER_DAY
@@ -48,7 +48,7 @@ class Routes(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.pool = Pool()
         self.cfg = Config.from_dict(fixture())
-        self.client = TestClient(SafeTestServer(create_app(self.cfg, KEY.encode(), self.pool)))
+        self.client = TestClient(SafeTestServer(create_app(Sites.single(self.cfg), KEY.encode(), self.pool)))
         await self.client.start_server()
 
     async def asyncTearDown(self):
@@ -160,12 +160,12 @@ class Routes(unittest.IsolatedAsyncioTestCase):
         lines = logs.output
         changes = [l for l in lines if "change ts=" in l]
         self.assertEqual(len(changes), 1, lines)
-        self.assertRegex(changes[0], r"change ts=\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ source=ga4 op=create_annotation target=456 fields=annotation_date,color,title before=null after=\{")
+        self.assertRegex(changes[0], r"change ts=\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ site=default source=ga4 op=create_annotation target=456 fields=annotation_date,color,title before=null after=\{")
         joined = "\n".join(lines)
         for plain in ("Copy ATAS-12", "Commit 4ffbc7d8", KEY):
             self.assertNotIn(plain, joined)
         # The existing invariant stays: route, code, duration.
-        self.assertTrue(any("route=ga4/create_annotation code=ok duration_ms=" in l for l in lines), lines)
+        self.assertTrue(any("route=ga4/create_annotation site=default code=ok duration_ms=" in l for l in lines), lines)
 
     async def test_preview_and_reads_write_no_change_line(self):
         self.pool.payload = dict(APPLIED, state="preview", dry_run=True)
@@ -183,7 +183,7 @@ class FailingPool(Pool):
 class FixedErrors(unittest.IsolatedAsyncioTestCase):
     async def test_error_code_is_fixed_and_logged_without_change_line(self):
         cfg = Config.from_dict(fixture())
-        client = TestClient(SafeTestServer(create_app(cfg, KEY.encode(), FailingPool())))
+        client = TestClient(SafeTestServer(create_app(Sites.single(cfg), KEY.encode(), FailingPool())))
         await client.start_server()
         try:
             with self.assertLogs("google_reporting", level="INFO") as logs:
@@ -227,7 +227,7 @@ class DailyCap(unittest.IsolatedAsyncioTestCase):
         self.path = self.temp.name + "/attempts"
         self.cfg = Config.from_dict(fixture())
         self.day = ["2026-10-22"]
-        self.pool = WorkerPool(self.cfg, self.path, budget=3, adapter_factory=CountingAdapter, today=lambda: self.day[0])
+        self.pool = WorkerPool(Sites.single(self.cfg), self.path, budget=3, adapter_factory=CountingAdapter, today=lambda: self.day[0])
 
     async def asyncTearDown(self):
         await self.pool.close()
@@ -256,7 +256,7 @@ class DailyCap(unittest.IsolatedAsyncioTestCase):
         self.pool.rate["ga4"].clear()
         await self.pool.run(write_req(self.cfg))
         self.assertEqual(self.attempts(), 26)
-        self.assertEqual(self.pool.write_attempts.get(("ga4", "2026-10-22")), 1)
+        self.assertEqual(self.pool.write_attempts.get(("default", "ga4", "2026-10-22")), 1)
 
     async def test_failed_attempts_count_and_sources_are_separate(self):
         for _ in range(20):
@@ -277,11 +277,11 @@ class DailyCap(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(cm.exception.status, 504)
         pid_alive = any(slot is not None for slot in self.pool.slots)
         self.assertFalse(pid_alive)
-        self.assertEqual(self.pool.write_attempts, {("ga4", "2026-10-22"): 1})
+        self.assertEqual(self.pool.write_attempts, {("default", "ga4", "2026-10-22"): 1})
         self.assertNotEqual(self.pool.write_attempts, before)
         self.pool.rate["ga4"].clear()
         await self.pool.run(write_req(self.cfg))
-        self.assertEqual(self.pool.write_attempts, {("ga4", "2026-10-22"): 2})
+        self.assertEqual(self.pool.write_attempts, {("default", "ga4", "2026-10-22"): 2})
 
     async def test_next_day_starts_at_zero(self):
         for _ in range(20):
@@ -290,7 +290,7 @@ class DailyCap(unittest.IsolatedAsyncioTestCase):
         self.day[0] = "2026-10-23"
         self.pool.rate["ga4"].clear()
         await self.pool.run(write_req(self.cfg))
-        self.assertEqual(self.pool.write_attempts, {("ga4", "2026-10-23"): 1})
+        self.assertEqual(self.pool.write_attempts, {("default", "ga4", "2026-10-23"): 1})
 
     async def test_over_cap_does_not_start_or_kill_a_worker(self):
         for _ in range(20):

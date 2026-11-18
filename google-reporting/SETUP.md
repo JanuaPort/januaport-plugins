@@ -62,8 +62,8 @@ sein eigenes Recht, einzeln vergeben:
 - `google-analytics-manage:update_channel_group`
 
 Gelöscht oder archiviert wird über diese Werkzeuge nichts. Ein Schreibwerkzeug bleibt in Grenzen:
-höchstens 20 Schreibversuche je Quelle und Tag (ein Neustart des Beistellers setzt den Zähler
-zurück), jedes mit Vorschau über `dry_run`. Den Stand vor und nach jeder Änderung zeigt die
+höchstens 20 Schreibversuche je Quelle, Site und Tag (ein Neustart des Beistellers setzt den
+Zähler zurück), jedes mit Vorschau über `dry_run`. Den Stand vor und nach jeder Änderung zeigt die
 Antwort, die Änderungszeile steht im Protokoll des Beistellers.
 
 ## 4. Prüfen
@@ -72,6 +72,33 @@ Danach im KI-Client den Katalog neu einlesen und je Quelle `get_status` aufrufen
 `ready`. `access_denied` heißt meist, dass Schritt 1.4 oder 1.5 fehlt oder auf der falschen
 Property liegt. Für die Verwaltungsvorlagen genügt `list_sitemaps` bzw. `list_annotations`; ein
 Schreibwerkzeug lässt sich gefahrlos mit `dry_run` prüfen.
+
+## Mehrere Sites
+
+Der Beisteller kann mehrere Websites bedienen, jede mit eigener Property. Der Betreiber führt
+sie in `config.json` unter `sites` mit einem Kurznamen auf (Kleinbuchstaben, Ziffern und
+Bindestrich, zum Beispiel `terminagent`). Für jede Site legt der Admin **eigene Instanzen** der
+vier Vorlagen an (`google-search-console`, `google-analytics`, `google-search-console-manage`,
+`google-analytics-manage`):
+
+1. Beim Anlegen ist `site` ein Pflichtwert: genau der Kurzname aus der `config.json`, ohne
+   Großbuchstaben und ohne Leerzeichen. Bei einer Bestandsinstanz, die auf die neue Vorlage
+   angehoben wird, setzt `--wert site=<kurzname>` ihn mit. Die Site gibt es nie als Parameter
+   eines Werkzeugs.
+2. Die Instanznamen kurz halten, zum Beispiel `google-search-console-manage-terminagent`: Die
+   Werkzeugnamen der KI-Clients sind auf 64 Zeichen begrenzt.
+3. Die Scopes mit den **exakten Instanznamen** nur dem Team dieser Site geben. Ein Scope auf eine
+   Instanz gilt nur für diese Instanz.
+4. Das Dienstkonto bei Google für die Properties der neuen Site freigeben, mit denselben Rechten
+   wie in Abschnitt 1.
+5. **Nach jeder Anlage `get_status` aufrufen.** Die Antwort nennt `site` und `hosts` der
+   aufgelösten Site, die Property-IDs bleiben verborgen. Stimmen Site und Hosts nicht, ist die
+   Instanz kopiert oder vertippt: korrigieren, bevor jemand sie nutzt. `site_required` heißt,
+   dass die Instanz keinen Wert `site` hat (noch auf Vorlage 1.0.0), `site_unknown`, dass der
+   Name nicht in der `config.json` steht.
+
+Die Mandantentrennung per Instanz setzt voraus, dass nur der Betreiber Admin-Zugang hat, also GUI, Admin-MCP und `target_address`.
+Wer Instanzen anlegen oder ändern kann, könnte eine Instanz auf eine fremde Site umbiegen.
 
 ## Schlüssel wechseln und entfernen
 

@@ -48,3 +48,27 @@ class RuntimeFiles(unittest.TestCase):
 
     def test_bridge_keys_must_differ_is_gone(self):
         self.assertNotIn("bridge_keys_must_differ", Path(server.__file__).read_text())
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+@unittest.skipUnless((ROOT / "README.md").exists(), "plugin files not mounted")
+class ConfigExamples(unittest.TestCase):
+    """The example files are the documented forms: single (default) and list (#1379)."""
+
+    def load(self, name):
+        from google_reporting.domain import Sites
+
+        return Sites.from_dict(json.loads((ROOT / name).read_text(encoding="utf-8")))
+
+    def test_single_example_is_the_site_default(self):
+        sites = self.load("config.example.json")
+        self.assertFalse(sites.listed)
+        self.assertEqual(list(sites.by_name), ["default"])
+
+    def test_sites_example_is_the_list_form_with_two_sites(self):
+        sites = self.load("config.example.sites.json")
+        self.assertTrue(sites.listed)
+        self.assertEqual(len(sites.by_name), 2)
+        self.assertNotIn("default", sites.by_name)

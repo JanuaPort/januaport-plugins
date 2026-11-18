@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
@@ -82,8 +83,17 @@ func (e *Engine) Revoke() error {
 	}
 	return e.State.Revoke()
 }
+
+// Sync holt Konfiguration und Manifest, prüft sie und bereitet die Umgebungen der Pins vor. Fehler auf
+// Manifest-Ebene (Konfiguration, Signatur, Seq, Gerät, Vertrag, ObserveTime, Speichern, Widerruf, Abbruch, offline)
+// verwerfen alles und behalten den alten Stand. Jeder andere Fehler im Pin-Schritt trifft nur diesen Pin (#1391): Er
+// bleibt ohne Umgebung (Start `refused/runtime`), das Manifest wird trotzdem gespeichert und angewendet, damit
+// kein kaputter Pin einen Entzug oder die guten Pins aufhält. Versucht wird es wieder an den Sync-Punkten.
 func (e *Engine) Sync(ctx context.Context) (err error) {
-	defer func() { e.observePanelNetwork(err) }()
+	defer func() {
+		e.observePanelNetwork(err)
+		e.logSyncFailed(ctx, err)
+	}()
 	config, err := e.API.Config(ctx)
 	if err != nil {
 		return err
@@ -104,7 +114,13 @@ func (e *Engine) Sync(ctx context.Context) (err error) {
 		}
 		seq = m.Seq
 	}
-	m, err := VerifyManifest(signed, e.Credential.Pubkey, e.Credential.DeviceID, seq)
+	minSeq := seq
+	if seq > 0 && sameEnvelope(signed, old.Manifest.Envelope) {
+		// SEC E2: Nur die Seq-Prüfung entfällt. Dieser Stand ist bereits verifiziert gespeichert; Signatur, Gerät,
+		// Vertrag, Uhrmarke und Speichern laufen unverändert.
+		minSeq = seq - 1
+	}
+	m, err := VerifyManifest(signed, e.Credential.Pubkey, e.Credential.DeviceID, minSeq)
 	if err != nil {
 		return err
 	}
@@ -117,49 +133,13 @@ func (e *Engine) Sync(ctx context.Context) (err error) {
 			continue
 		}
 		key := envKey(p)
-		env, ok := old.Environments[key]
-		if !ok {
-			loadErr := e.State.Load("env-"+key, &env)
-			ok = loadErr == nil
-			if loadErr != nil && !os.IsNotExist(loadErr) {
-				return loadErr
+		env, perr := e.pinEnvironment(ctx, old, p, key)
+		if perr != nil {
+			if manifestLevel(ctx, perr) {
+				return perr
 			}
-		}
-		if ok {
-			if env.Origin.Pin != p.Pin || env.Origin.Algo != p.Algo {
-				return ErrManifest
-			}
-			if err = VerifyEnvironment(filepath.Join(e.State.Root, "envs", env.Dir), env.Files); err != nil {
-				return err
-			}
-			if !sameSet(env.Tools, p.DeclaredTools) {
-				return ErrManifest
-			}
-			envs[key] = env
+			e.logCode(LogSyncFailed, syncFailClass(perr))
 			continue
-		}
-		raw, err := e.API.Package(ctx, p)
-		if err != nil {
-			return err
-		}
-		env = Environment{}
-		err = e.State.Use(func() error {
-			var x error
-			env, x = Prepare(filepath.Join(e.State.Root, "envs"), raw, p)
-			if x != nil {
-				return x
-			}
-			dir := filepath.Join(e.State.Root, "packages")
-			if x = os.MkdirAll(dir, 0700); x != nil {
-				return x
-			}
-			return os.WriteFile(filepath.Join(dir, key), raw, 0600)
-		})
-		if err != nil {
-			return err
-		}
-		if err = e.State.Save("env-"+key, env); err != nil {
-			return err
 		}
 		envs[key] = env
 	}
@@ -181,6 +161,96 @@ func (e *Engine) Sync(ctx context.Context) (err error) {
 	e.pruneStored()
 	e.ensureApps(ctx, m)
 	return nil
+}
+
+// pinEnvironment liefert die versiegelte Umgebung des Pins: aus dem Cache (geprüft) oder frisch aus dem Paket. Eine
+// abweichende Cache-Umgebung wird nie wiederverwendet, und die Umgebung einer älteren Version springt nie ein: Der
+// Schlüssel enthält den Commit.
+func (e *Engine) pinEnvironment(ctx context.Context, old Bundle, p Pin, key string) (Environment, error) {
+	env, ok := old.Environments[key]
+	if !ok {
+		loadErr := e.State.Load("env-"+key, &env)
+		ok = loadErr == nil
+		if loadErr != nil && !os.IsNotExist(loadErr) {
+			return Environment{}, loadErr
+		}
+	}
+	if ok {
+		if env.Origin.Pin != p.Pin || env.Origin.Algo != p.Algo {
+			return Environment{}, ErrManifest
+		}
+		if err := VerifyEnvironment(filepath.Join(e.State.Root, "envs", env.Dir), env.Files); err != nil {
+			return Environment{}, err
+		}
+		if !sameSet(env.Tools, p.DeclaredTools) {
+			return Environment{}, ErrManifest
+		}
+		return env, nil
+	}
+	raw, err := e.API.Package(ctx, p)
+	if err != nil {
+		return Environment{}, err
+	}
+	env = Environment{}
+	err = e.State.Use(func() error {
+		var x error
+		env, x = Prepare(filepath.Join(e.State.Root, "envs"), raw, p)
+		if x != nil {
+			return x
+		}
+		dir := filepath.Join(e.State.Root, "packages")
+		if x = os.MkdirAll(dir, 0700); x != nil {
+			return x
+		}
+		return os.WriteFile(filepath.Join(dir, key), raw, 0600)
+	})
+	if err != nil {
+		return Environment{}, err
+	}
+	if err = e.State.Save("env-"+key, env); err != nil {
+		return Environment{}, err
+	}
+	return env, nil
+}
+
+// manifestLevel trennt die Fehler, die den ganzen Abgleich verwerfen, vom Fehler eines einzelnen Pins. Offline
+// gehört dazu (SEC E1): Bei kurzem Netzausfall laufen die alten, versiegelten Umgebungen weiter, und ein Entzug
+// wartet nur bis zum nächsten Abgleich mit Netz.
+func manifestLevel(ctx context.Context, err error) bool {
+	return errors.Is(err, ErrRevoked) || ctx.Err() != nil || IsOffline(err)
+}
+
+// sameEnvelope: Dieselbe signierte Hülle (SEC E2). Verglichen werden die Signatur und die kanonischen Bytes, also
+// genau das, was die Signatur deckt, nicht geparste Felder. Die kanonische Form hält auch nach einem Neustart, wenn
+// der Speicher die Hülle neu serialisiert hat (HTML-Escapes in Texten mit & < >).
+func sameEnvelope(a, b SignedManifest) bool {
+	if a.Sig != b.Sig {
+		return false
+	}
+	ca, errA := canonical(a.Manifest)
+	cb, errB := canonical(b.Manifest)
+	return errA == nil && errB == nil && bytes.Equal(ca, cb)
+}
+
+// logSyncFailed schreibt den festen Code 2 mit Klasse (1 hash, 2 runtime, 3 manifest, 4 sonst), nie einen Namen
+// oder Text. Nach Widerruf (der Zustand wird gelöscht) und beim Abbruch des Prozesses bleibt das Log unberührt.
+func (e *Engine) logSyncFailed(ctx context.Context, err error) {
+	if err == nil || errors.Is(err, ErrRevoked) || ctx.Err() != nil {
+		return
+	}
+	e.logCode(LogSyncFailed, syncFailClass(err))
+}
+
+func syncFailClass(err error) uint64 {
+	switch {
+	case errors.Is(err, ErrHash):
+		return 1
+	case errors.Is(err, ErrRuntime):
+		return 2
+	case errors.Is(err, ErrManifest):
+		return 3
+	}
+	return 4
 }
 func sameSet(a, b []string) bool {
 	a = slices.Clone(a)

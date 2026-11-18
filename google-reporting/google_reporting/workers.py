@@ -15,14 +15,14 @@ MAX_QUEUED = 4
 WRITE_CAP_PER_DAY = 20
 
 
-def worker_main(conn, cfg, identity_path, adapter_factory=None):
+def worker_main(conn, sites, identity_path, adapter_factory=None):
     logging.disable(logging.CRITICAL)
     # No Python logging or inherited request/server objects in a spawned worker.
     if adapter_factory is None:
         from .google_adapter import GoogleAdapter
 
         adapter_factory = GoogleAdapter
-    adapter = adapter_factory(cfg, identity_path)
+    adapter = adapter_factory(sites, identity_path)
     try:
         while True:
             req = conn.recv()
@@ -42,14 +42,14 @@ def worker_main(conn, cfg, identity_path, adapter_factory=None):
 class WorkerPool:
     def __init__(
         self,
-        cfg,
+        sites,
         identity_path,
         *,
         budget=BUDGET_SECONDS,
         adapter_factory=None,
         today=None,
     ):
-        self.cfg, self.identity_path = cfg, identity_path
+        self.sites, self.identity_path = sites, identity_path
         self.budget = budget
         self.factory = adapter_factory
         self.context = multiprocessing.get_context("spawn")
@@ -61,15 +61,19 @@ class WorkerPool:
         self.pending = 0
         self.closed = False
         # Write attempts live here, in the long-running server process: a killed worker
-        # cannot reset them (SEC P3). A restart of the process starts at zero.
+        # cannot reset them (SEC P3). A restart of the process starts at zero. The key is
+        # (site, source, day): one site cannot lock the writes of another (#1379, SEC D1).
         self.write_attempts = {}
         self.today = today or (lambda: datetime.now(timezone.utc).date().isoformat())
 
     def _count_write(self, req):
-        """Count the attempt before the Google call; failures count, previews do not."""
+        """Count the attempt before the Google call; failures count, previews do not.
+
+        Only a resolved request gets here: the site is known before anything is counted.
+        """
         day = self.today()
-        self.write_attempts = {k: v for k, v in self.write_attempts.items() if k[1] == day}
-        key = (req.source, day)
+        self.write_attempts = {k: v for k, v in self.write_attempts.items() if k[-1] == day}
+        key = (req.site, req.source, day)
         if self.write_attempts.get(key, 0) >= WRITE_CAP_PER_DAY:
             raise ReportError(429, "write_cap_reached")
         self.write_attempts[key] = self.write_attempts.get(key, 0) + 1
@@ -78,7 +82,7 @@ class WorkerPool:
         parent, child = self.context.Pipe()
         proc = self.context.Process(
             target=worker_main,
-            args=(child, self.cfg, self.identity_path, self.factory),
+            args=(child, self.sites, self.identity_path, self.factory),
             daemon=True,
         )
         proc.start()

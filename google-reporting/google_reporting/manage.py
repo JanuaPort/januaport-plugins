@@ -1,7 +1,8 @@
 """Write/manage handles of JanuaPort/januaport#1148: fixed routes, validation, builders.
 
 Pure: no HTTP, no Google import. Every rejection is a fixed code without an echo of the
-input. Site and property never come from a parameter, only from the operator config.
+input. Site and property never come from a parameter, only from the operator config of the
+site that the header resolved (#1379).
 """
 
 from dataclasses import dataclass
@@ -9,7 +10,7 @@ from datetime import date, datetime, timedelta, timezone
 import hashlib
 import json
 import re
-from .domain import ReportError, public_path
+from .domain import DEFAULT_SITE, ReportError, public_path
 
 GET_OPS = {
     "gsc": {"list_sitemaps", "get_sitemap", "inspect_url"},
@@ -96,6 +97,7 @@ class ManageRequest:
     operation: str
     params: dict
     dry_run: bool = False
+    site: str = DEFAULT_SITE
 
     @property
     def write(self):
@@ -258,13 +260,16 @@ def parse_get(cfg, source, op, pairs, now=None):
     if op == "get_sitemap":
         if "sitemap_url" not in args:
             raise invalid()
-        return ManageRequest(source, op, {"sitemap_url": sitemap_url(cfg, args["sitemap_url"])})
+        return ManageRequest(
+            source, op, {"sitemap_url": sitemap_url(cfg, args["sitemap_url"])}, site=cfg.site
+        )
     if op == "inspect_url":
         path = args.get("page_path")
         if path is None or path not in cfg.gsc_urls:
             raise invalid()
-        return ManageRequest(source, op, {"page_path": path, "url": cfg.gsc_urls[path][0]})
-    return ManageRequest(source, op, {})
+        params = {"page_path": path, "url": cfg.gsc_urls[path][0]}
+        return ManageRequest(source, op, params, site=cfg.site)
+    return ManageRequest(source, op, {}, site=cfg.site)
 
 
 def parse_post(cfg, source, op, raw, now=None):
@@ -307,7 +312,7 @@ def parse_post(cfg, source, op, raw, now=None):
             "channel_group_id": resource_id(body["channel_group_id"]),
             "source_hosts": source_hosts(body["source_hosts"]),
         }
-    return ManageRequest(source, op, params, dry_run)
+    return ManageRequest(source, op, params, dry_run, cfg.site)
 
 
 # --- Google bodies -----------------------------------------------------------------
@@ -529,8 +534,14 @@ def project_inspection(data, page_path, url):
     }
 
 
-def envelope(source, operation, state, **fields):
-    out = {"schema_version": "1.0", "source": source, "operation": operation, "state": state}
+def envelope(source, operation, state, site, **fields):
+    out = {
+        "schema_version": "1.0",
+        "source": source,
+        "operation": operation,
+        "site": site,
+        "state": state,
+    }
     out.update(fields)
     out["fetched_at"] = now_utc().isoformat().replace("+00:00", "Z")
     return out
@@ -569,11 +580,12 @@ def line_target(value):
     return value if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9:/._~\-]{1,512}", value) else "-"
 
 
-def change_line(source, operation, payload, now=None):
+def change_line(site, source, operation, payload, now=None):
     fields = payload.get("changed_fields", [])
     names = [f for f in fields if isinstance(f, str) and re.fullmatch(r"[a-z_]{1,40}", f)]
-    return "change ts=%s source=%s op=%s target=%s fields=%s before=%s after=%s" % (
+    return "change ts=%s site=%s source=%s op=%s target=%s fields=%s before=%s after=%s" % (
         timestamp(now),
+        site,
         source,
         operation,
         line_target(payload.get("target")),

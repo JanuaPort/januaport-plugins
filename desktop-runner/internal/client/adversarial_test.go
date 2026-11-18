@@ -203,7 +203,8 @@ func TestManifestSyncAtomarUndOfflineAmAdapter(t *testing.T) {
 		bad := m
 		bad.Seq = 2
 		if kind == "old" {
-			bad.Seq = 1
+			// Gleiche Seq, aber andere Hülle (#1391: dieselbe Hülle Byte für Byte wäre kein Fehler).
+			bad.Seq, bad.GraceHours = 1, 2
 		}
 		if kind == "foreign" {
 			bad.DeviceID = "foreign"

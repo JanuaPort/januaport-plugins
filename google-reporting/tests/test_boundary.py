@@ -7,7 +7,7 @@ import time
 import unittest
 from aiohttp.test_utils import TestClient, TestServer as AiohttpTestServer
 from google_reporting.safe_http import SafeAppRunner
-from google_reporting.domain import Config, ReportError, parse_request, encode_response
+from google_reporting.domain import Config, ReportError, Sites, parse_request, encode_response
 from google_reporting.server import create_app
 from google_reporting.workers import WorkerPool
 from test_contract import fixture
@@ -113,7 +113,7 @@ class HTTP(unittest.IsolatedAsyncioTestCase):
         self.cfg = Config.from_dict(fixture())
         self.client = TestClient(
             SafeTestServer(
-                create_app(self.cfg, b"A" * 32, self.pool)
+                create_app(Sites.single(self.cfg), b"A" * 32, self.pool)
             )
         )
         await self.client.start_server()
@@ -222,7 +222,7 @@ class Disconnect(unittest.IsolatedAsyncioTestCase):
             )
             client = TestClient(
                 SafeTestServer(
-                    create_app(cfg, b"A" * 32, pool)
+                    create_app(Sites.single(cfg), b"A" * 32, pool)
                 )
             )
             await client.start_server()
@@ -258,7 +258,7 @@ class Disconnect(unittest.IsolatedAsyncioTestCase):
         client = TestClient(
             SafeTestServer(
                 create_app(
-                    Config.from_dict(fixture()),
+                    Sites.single(Config.from_dict(fixture())),
                     b"A" * 32,
                     UnavailablePool(),
                 )

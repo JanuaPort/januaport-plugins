@@ -93,7 +93,7 @@ func CheckWheels(lock []byte, wheels map[string][]byte, py string) error {
 		}
 		seen[pkg] = true
 		tags := parts[len(parts)-3:]
-		matched := false
+		matched := pureWheel(tags)
 		for _, python := range strings.Split(tags[0], ".") {
 			for _, abi := range strings.Split(tags[1], ".") {
 				for _, plat := range strings.Split(tags[2], ".") {
@@ -122,6 +122,26 @@ func CheckWheels(lock []byte, wheels map[string][]byte, py string) error {
 		}
 	}
 	return nil
+}
+
+// pureWheel erkennt ein reines Python-Wheel (#1392): Das Python-Tag besteht nur aus py2 und py3 und enthält py3,
+// das ABI ist genau none, die Plattform genau any. Groß-/Kleinschreibung zählt, eine zusammengesetzte Plattform
+// (any.win32) gilt nicht. Ob das Wheel wirklich rein ist, prüft der Läufer nicht; es zählt der Hash im Lock.
+func pureWheel(tags []string) bool {
+	if tags[1] != "none" || tags[2] != "any" {
+		return false
+	}
+	py3 := false
+	for _, python := range strings.Split(tags[0], ".") {
+		switch python {
+		case "py3":
+			py3 = true
+		case "py2":
+		default:
+			return false
+		}
+	}
+	return py3
 }
 
 func readPackageManifest(files map[string][]byte, p Pin) (PackageManifest, error) {
@@ -365,13 +385,8 @@ func Prepare(root string, raw []byte, p Pin) (Environment, error) {
 	if e = os.WriteFile(filepath.Join(runtimeDir, "bootstrap.py"), bootstrap, 0600); e != nil {
 		return env, e
 	}
-	minor := "312"
-	if strings.HasPrefix(py, "3.13.") {
-		minor = "313"
-	}
-	// Explicit module paths; importing site or processing .pth is never enabled.
-	pth := []byte("python" + minor + ".zip\n.\n../libs\n")
-	if e = os.WriteFile(filepath.Join(runtimeDir, "python"+minor+"._pth"), pth, 0600); e != nil {
+	pthName, pth := pthFile(py)
+	if e = os.WriteFile(filepath.Join(runtimeDir, pthName), pth, 0600); e != nil {
 		return env, e
 	}
 	if _, e = os.Stat(filepath.Join(runtimeDir, "python.exe")); e != nil {
@@ -391,6 +406,17 @@ func Prepare(root string, raw []byte, p Pin) (Environment, error) {
 		return env, e
 	}
 	return Environment{Origin: p, Dir: dir, Files: seal, Entry: m.Entry, Timeout: m.Timeout, Tools: slices.Clone(m.Tools)}, nil
+}
+
+// pthFile liefert Name und Inhalt der `._pth` des Läufers. Explicit module paths; importing site or processing .pth is
+// never enabled. Dass eine `.pth` in einem Wheel wirkungslos bleibt, trägt allein diese Datei (#1392, SEC W1): Sie
+// enthält keine import-Zeile, und TestPthDateiIstFestgepinnt hält den Inhalt fest.
+func pthFile(py string) (string, []byte) {
+	minor := "312"
+	if strings.HasPrefix(py, "3.13.") {
+		minor = "313"
+	}
+	return "python" + minor + "._pth", []byte("python" + minor + ".zip\n.\n../libs\n")
 }
 
 // The seal is stored in the encrypted state, outside the script environment.

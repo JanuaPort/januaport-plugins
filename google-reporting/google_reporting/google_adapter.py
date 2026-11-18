@@ -137,8 +137,8 @@ def verify_compatible(requested, answered):
 class GoogleAdapter:
     """One cache per worker, distinct scoped credentials for each source; RAM only."""
 
-    def __init__(self, cfg, identity_path):
-        self.cfg = cfg
+    def __init__(self, sites, identity_path):
+        self.sites = sites
         self.identity_path = identity_path
         self.clients = {}
         self.credentials = {}
@@ -194,9 +194,13 @@ class GoogleAdapter:
     def ga_edit(self):
         return self.service("ga4-admin-edit", "analyticsadmin", "v1alpha", WRITE_SCOPES["ga4"])
 
+    def config_for(self, req):
+        """Property, hosts and pages come from the site of this very request, never a default."""
+        return self.sites.config(req.site)
+
     def run_manage(self, req):
         try:
-            return ManageRunner(self.cfg, self).run(req)
+            return ManageRunner(self.config_for(req), self).run(req)
         except ReportError:
             raise
         except Exception as exc:
@@ -206,20 +210,21 @@ class GoogleAdapter:
     def run(self, req):
         if isinstance(req, ManageRequest):
             return self.run_manage(req)
-        query = build_query(self.cfg, req)
+        cfg = self.config_for(req)
+        query = build_query(cfg, req)
         if query is None:
-            return project(self.cfg, req, {})
+            return project(cfg, req, {})
         try:
             client = self.client(req.source)
             if req.source == "gsc":
                 raw = (
                     client.searchanalytics()
-                    .query(siteUrl=self.cfg.gsc_property, body=query)
+                    .query(siteUrl=cfg.gsc_property, body=query)
                     .execute(num_retries=0)
                 )
             else:
                 if req.report == "get_status":
-                    self.check_definitions(client)
+                    self.check_definitions(client, cfg)
                 response = client.run_report(
                     request=proto_request(RunReportRequest, query),
                     retry=None,
@@ -231,17 +236,17 @@ class GoogleAdapter:
                     always_print_fields_with_no_presence=False,
                     use_integers_for_enums=False,
                 )
-            return project(self.cfg, req, raw)
+            return project(cfg, req, raw)
         except ReportError:
             raise
         except Exception as exc:
             # Never propagate Google messages, URLs, inputs or stack traces.
             raise safe_error(exc) from None
 
-    def check_definitions(self, client):
+    def check_definitions(self, client, cfg):
         for report in ("traffic_summary", "landing_pages", "key_events"):
-            req = parse_request(self.cfg, "ga4", report, [])
-            query = build_query(self.cfg, req)
+            req = parse_request(cfg, "ga4", report, [])
+            query = build_query(cfg, req)
             if query is None:
                 continue
             fields = {

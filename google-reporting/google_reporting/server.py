@@ -10,7 +10,15 @@ import os
 from pathlib import Path
 import time
 from aiohttp import web
-from .domain import Config, ReportError, parse_request, encode_response, REPORTS
+from .domain import (
+    REPORTS,
+    SITE_HEADER,
+    ReportError,
+    Sites,
+    encode_response,
+    parse_request,
+    project,
+)
 from .manage import (
     GET_OPS,
     MAX_BODY,
@@ -68,19 +76,21 @@ async def bounded_body(request):
     return raw
 
 
-def log_change(source, operation, payload):
+def log_change(site, source, operation, payload):
     """One fixed-format line per applied write; previews and reads leave none (SEC P4)."""
     result = json.loads(payload)
     if result.get("state") == "applied":
-        LOG.info(change_line(source, operation, result))
+        LOG.info(change_line(site, source, operation, result))
 
 
-def create_app(cfg, key, pool):
+def create_app(sites, key, pool):
     @web.middleware
     async def errors(request, handler):
         started = time.monotonic()
         code = "ok"
         route = "unknown"
+        # Only a resolved site name is logged, never the raw header (no echo, no log injection).
+        cfg = None
         try:
             if len(request.raw_path.encode()) > 8192:
                 raise ReportError(400, "request_too_large")
@@ -111,6 +121,8 @@ def create_app(cfg, key, pool):
                 authorized = False
             if not authorized:
                 raise ReportError(403, "bridge_forbidden")
+            # The site comes from the header alone, after the key and before any parsing.
+            cfg = sites.resolve(request.headers.getall(SITE_HEADER, []))
             if kind == "write":
                 req = parse_post(cfg, source, report, await bounded_body(request))
             elif request.can_read_body:
@@ -122,8 +134,6 @@ def create_app(cfg, key, pool):
             if source == "gsc" and report == "query_summary" and not cfg.query_enabled:
                 raise ReportError(503, "query_not_approved")
             if source == "ga4" and report == "key_events" and cfg.key_events is None:
-                from .domain import project
-
                 payload = encode_response(project(cfg, req, {}))
             else:
                 task = asyncio.create_task(pool.run(req))
@@ -142,14 +152,14 @@ def create_app(cfg, key, pool):
                         except asyncio.CancelledError:
                             pass
             if kind == "write":
-                log_change(source, report, payload)
+                log_change(cfg.site, source, report, payload)
             return web.Response(body=payload, content_type="application/json")
         except ReportError as exc:
             code = exc.code
-            if route in ("gsc/get_status", "ga4/get_status") and exc.status in (
-                502,
-                503,
-                504,
+            if (
+                cfg is not None
+                and route in ("gsc/get_status", "ga4/get_status")
+                and exc.status in (502, 503, 504)
             ):
                 state = {
                     "source_access_denied": "access_denied",
@@ -164,6 +174,7 @@ def create_app(cfg, key, pool):
                         "state": state,
                         "checked_at": datetime.now(timezone.utc).isoformat(),
                         "definition_version": cfg.definition_version,
+                        "site": cfg.site,
                     }
                 )
             return web.json_response({"error": code}, status=exc.status)
@@ -175,8 +186,9 @@ def create_app(cfg, key, pool):
             return web.json_response({"error": code}, status=503)
         finally:
             LOG.info(
-                "route=%s code=%s duration_ms=%d",
+                "route=%s site=%s code=%s duration_ms=%d",
                 route,
+                cfg.site if cfg else "-",
                 code,
                 int((time.monotonic() - started) * 1000),
             )
@@ -200,17 +212,17 @@ def serve():
     # Library/access logs may embed full URLs or response bodies.
     for name in ("aiohttp", "google", "googleapiclient", "urllib3", "httplib2"):
         logging.getLogger(name).setLevel(logging.CRITICAL)
-    cfg = Config.from_dict(json.loads(Path(CONFIG_PATH).read_text()))
+    sites = Sites.from_dict(json.loads(Path(CONFIG_PATH).read_text()))
     key = load_runtime_files()
     bind = os.environ.get("GOOGLE_REPORTING_BIND_IP", "")
     # Exact plugin-network IPv4 is provisioned by the operator, never 0.0.0.0.
     ip = ipaddress.ip_address(bind)
     if ip.version != 4 or not ip.is_private or ip.is_unspecified or ip.is_loopback:
         raise ValueError("invalid_bind_ip")
-    pool = WorkerPool(cfg, IDENTITY_PATH)
+    pool = WorkerPool(sites, IDENTITY_PATH)
     from .safe_http import serve_app
 
-    asyncio.run(serve_app(create_app(cfg, key, pool), bind))
+    asyncio.run(serve_app(create_app(sites, key, pool), bind))
 
 
 def main():

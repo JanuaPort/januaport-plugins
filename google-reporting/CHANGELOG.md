@@ -1,5 +1,30 @@
 # Änderungen — Google Reporting
 
+## 1.1.0 — 2026-11-14
+
+- JanuaPort/januaport#1379 (Teil A): **mehrere Sites in einem Dienst, Rechte je Site.** `config.json`
+  führt optional die Liste `sites` (1–5 Einträge mit `name` und den Feldern der bisherigen
+  Konfiguration); die Einzelform bleibt gültig und ist die Site `default`, ohne Migration. Hosts
+  sind je Site disjunkt, `gsc_property` und `ga4_property` eindeutig, `MAX_PATHS`/`MAX_REGEX`
+  gelten je Site. Die Site kommt aus dem Header `X-Google-Reporting-Site`, den die Instanz aus
+  ihrem Pflicht-Instanzwert `site` sendet (Vorlagen 1.1.0); sie ist nie ein MCP-Parameter. Der
+  Dienst löst sie nach der Bridge-Key-Prüfung und vor jedem Parsen auf. Einzelform: ohne Header
+  oder `default`. Listenform: Header immer Pflicht, auch bei einem Eintrag (`site_required`);
+  mehrfach, leer, außerhalb des Musters oder unbekannt ist `site_unknown`; exakter Byte-Vergleich,
+  kein Rückfall auf die erste Site, nie der Name im Fehler. Eine Anfrage berührt Property, Hosts und
+  Pfade genau einer Site; fremde Sitemap-Hosts, Seiten und Pfade sind `invalid_input`. Berichte
+  tragen `scope.site`, `get_status` nennt `site` und `hosts` (nie Property-IDs), Verwaltungsantworten
+  `site`; Log- und Änderungszeile tragen `site=`.
+- Tagesdeckel (SEC D1): Schlüssel `(site, source, day)`, erst die Site auflösen, dann zählen;
+  `site_required` und `site_unknown` zählen nirgends. Höchstens 5 × 20 = 100 Schreibversuche je
+  Quelle und Tag am ganzen Dienst (D2). Die Minutengrenze 30/Quelle bleibt gemeinsam (D3).
+- Neue Beispieldatei `config.example.sites.json`. Keine neue Abhängigkeit, Lock unverändert,
+  Egress, Servicekonto, Bridge-Key und die Scope-Trennung nach W1 unverändert. Keine freien Zeiträume,
+  kein `page_compare` (Teil B), keine neuen Segmente.
+- Tests: Konfigurationstabelle, Auflösungstabelle, HTTP-Matrix (Header × Form × Anfrageart),
+  Trennung bis in jeden Google-Aufruf, Deckel A×20/A21/B1, acht neue Mutanten. Die Betreiberfolge
+  (Umstellung und Anhebung der Bestandsinstanzen in einem Wartungsgang) steht im README.
+
 ## 1.0.1 — 2026-10-28
 
 - JanuaPort/januaport#1176: Die Betreiberkonfiguration nimmt zusammen bis zu **100** öffentliche
