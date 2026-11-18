@@ -8,6 +8,31 @@
 - JanuaPort/januaport#1424: Der `/mcp`-Proxy des Apphost schneidet Werkzeugaufrufe nicht mehr nach 30 Sekunden ab. Eigener HTTP-Client ohne Gesamtfrist, die Frist läuft über den Anfrage-Kontext (Obergrenze: Wandzeit-Decke 86400 s plus eine Minute; Abbruch des Browsers bricht den Upstream ab), `ResponseHeaderTimeout` folgt der Proxy-Frist. Kopierfehler nach dem Header-Versand werden ohne Inhalt geloggt. Paketabruf und Anmeldung behalten ihre 30 Sekunden; gleiche Netz-Vorgaben (kein Umgebungs-Proxy, kein Redirect, expliziter TCP-Dialer).
 
 - **Go 1.26.11** (GO-2026-6859, `net/http`, behoben in 1.26.11): `go.mod` und Build-Image `golang:1.26.11` per Digest `sha256:4165ee6b…` gepinnt, wie der Kern mit JanuaPort/januaport#1372. Ohne diesen Sprung schlägt `govulncheck` auf dem ausgelieferten Binary fehl.
+- **JanuaPort/januaport#1215 (P2): ETL-Rohstrom über den Vermittler, Vertragsfassung 3.**
+  Ein Skript mit `etl_stream` im Manifest ruft `januaport.etl_stream(integration, query_id,
+  params=None)` und bekommt einen Iterator über Zeilen-Dicts (nie gesammelt, höchstens ein
+  Stück von 256 KiB gehalten). Den HTTP-Aufruf `POST /api/etl/stream` macht der Vermittler mit
+  dem Lauf-Token, die Sandbox bleibt ohne Netz.
+  - Rahmen `etl_open`, `etl_next`, `etl_chunk`, `etl_end` (Pull: auf jedes `etl_next` genau eine
+    Antwort); der Wächter reicht sie nur in ihrer Richtung durch. Ein volles Stück (349 584 Byte
+    Nutzlast) passt durch jede Leserschranke.
+  - Der Vermittler öffnet nur bei `etl_stream` im Manifest, ein Strom je Lauf, liest nur auf
+    `etl_next`, ist inhaltsblind (Zeilenumbrüche, nur der Endsatz `fertig`) und bricht nie selbst
+    nach Budget ab; der Deckel liegt allein im Gateway. Strom-Bytes zählen nicht in `bytes_out`,
+    `etl_open` nicht als Werkzeugaufruf. Das Lauf-Ergebnis trägt `stream: {status, bytes, zeilen}`.
+  - HTTP-Client nach SEC E5: Lauf-Token nur im Header, keine Umleitung, keine Proxy-Umgebung, fester
+    Pfad, feste Fehlerklassen (409/429/503 nur Code und Wartezeit), Kanarientests.
+  - **Vertragsfassung 3 mit Rückfall (E4):** Der Läufer liest die Kern-Version über `/healthz` und
+    meldet `contract: 3` erst ab Kern **0.100.0** (`contract.MinCoreVersion`, das Gate bestätigt
+    den Wert beim Release); an einem älteren oder unlesbaren Kern bleibt es bei `contract: 2`. Ein
+    alter Kern sperrt den Läufer damit nicht; die Update-Reihenfolge ist Empfehlung. Die Goldens der
+    Fassungen 1 bis 5 bleiben bytegleich; neu sind `tools_list_v3.json`, `frame_etl_*.json` und
+    `end_ok_stream_*.json`. Contract-README Textfassung 6.
+  - SDK: `januaport.etl_stream` (Generator), `StreamEnded(grund, zeilen, bytes)`,
+    `StreamRefused(code, retry_after)`; `close()` schließt den Strom. Regeln: Stromzeilen nie
+    drucken, erst in ein Zwischenziel schreiben und nach `fertig` übernehmen, nicht in einer
+    Schleife wiederholen.
+  - Test-first; Linux-Wächtertests, Python-SDK-Tests und Docker-Sonde `probe/etl_test.go`.
 
 - JanuaPort/januaport#1246: Die Hygiene-Prüfung erkennt Windows-Laufwerksquellen
   (`C:\…:/ziel`, `c:/…`) als Host-Pfad und meldet sie fail-closed, statt sie

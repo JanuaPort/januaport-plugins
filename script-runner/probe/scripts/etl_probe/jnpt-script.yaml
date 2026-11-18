@@ -1,0 +1,8 @@
+name: etl_probe
+description: Sonde etl_probe (JanuaPort/januaport#1215).
+entry: main.py
+input_schema:
+  type: object
+tools:
+  - etl_stream
+timeout_s: 60
