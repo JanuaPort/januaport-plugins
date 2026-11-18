@@ -25,6 +25,11 @@ type Setup struct {
 	Label          string `json:"label"`
 	Startbar       bool   `json:"startbar"`
 	BrauchtEingabe bool   `json:"braucht_eingabe"`
+	// Letzter Lauf (#1398): nur Zeitpunkt und Status, nur lesend. Ergebnis ist ok, fehler, nicht_bereit oder nie;
+	// Zuletzt (UTC) gehört zu ok und fehler, Code (fester Laufcode) nur zu fehler. Leer = Läufer ohne Angabe.
+	Zuletzt  string `json:"zuletzt,omitempty"`
+	Ergebnis string `json:"ergebnis,omitempty"`
+	Code     string `json:"code,omitempty"`
 }
 
 // Message is a closed union. Decode checks the exact required/allowed fields of
@@ -238,16 +243,56 @@ func decode(b []byte, server bool) (Message, error) {
 			return Message{}, ErrProtocol
 		}
 		for _, r := range rows {
-			valid = valid && exactKeys(r, "pin setup label startbar braucht_eingabe", "")
+			valid = valid && exactKeys(r, "pin setup label startbar braucht_eingabe", "zuletzt ergebnis code")
 		}
 		for _, s := range m.Setups {
-			valid = valid && name(s.Pin) && name(s.Setup) && bounded(s.Label, 40)
+			valid = valid && name(s.Pin) && name(s.Setup) && bounded(s.Label, 40) && lastRunValid(s)
 		}
 	}
 	if !valid {
 		return Message{}, ErrProtocol
 	}
 	return m, nil
+}
+
+// lastRunValid hält die Kombinationen der Felder zum letzten Lauf geschlossen: Ohne Ergebnis steht nichts da,
+// ok und fehler tragen einen UTC-Zeitpunkt, nur fehler trägt einen Code, nicht_bereit und nie tragen nichts.
+func lastRunValid(s Setup) bool {
+	switch s.Ergebnis {
+	case "":
+		return s.Zuletzt == "" && s.Code == ""
+	case "ok":
+		return utcStamp(s.Zuletzt) && s.Code == ""
+	case "fehler":
+		return utcStamp(s.Zuletzt) && runCode(s.Code)
+	case "nicht_bereit", "nie":
+		return s.Zuletzt == "" && s.Code == ""
+	}
+	return false
+}
+
+func utcStamp(s string) bool {
+	at, err := time.Parse(time.RFC3339Nano, s)
+	return err == nil && at.Location() == time.UTC && strings.HasSuffix(s, "Z")
+}
+
+// runCode ist ein fester Laufcode: ein oder zwei Teile aus kleinen Buchstaben, etwa "timeout" oder "refused/runtime".
+func runCode(s string) bool {
+	parts := strings.Split(s, "/")
+	if len(parts) > 2 {
+		return false
+	}
+	for _, p := range parts {
+		if len(p) < 1 || len(p) > 16 {
+			return false
+		}
+		for _, c := range p {
+			if c < 'a' || c > 'z' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func name(s string) bool {
