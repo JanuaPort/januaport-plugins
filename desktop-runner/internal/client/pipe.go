@@ -67,7 +67,8 @@ func (e *Engine) panelStatus() panel.Message {
 		}
 		for _, s := range p.Setups {
 			_, present := b.Environments[envKey(p)]
-			m.Setups = append(m.Setups, panel.Setup{Pin: p.Pin, Setup: s.Name, Label: s.Label, BrauchtEingabe: len(s.Frei) > 0, Startbar: len(s.Frei) == 0 && m.Zustand == "arbeitet" && !m.Beschaeftigt && m.Netz && ready && present})
+			zuletzt, ergebnis, code := describeLastRun(e.lastRuns.get(p.Pin, s.Name), present)
+			m.Setups = append(m.Setups, panel.Setup{Pin: p.Pin, Setup: s.Name, Label: s.Label, BrauchtEingabe: len(s.Frei) > 0, Startbar: len(s.Frei) == 0 && m.Zustand == "arbeitet" && !m.Beschaeftigt && m.Netz && ready && present, Zuletzt: zuletzt, Ergebnis: ergebnis, Code: code})
 		}
 	}
 	// The manifest can contain more setups than the local 4 KiB protocol fits.
@@ -292,18 +293,25 @@ func (e *Engine) startPanelSetup(ctx context.Context, pin, setup string) error {
 		e.mu.Unlock()
 		// A changed/withdrawn manifest while HTTP was in flight cannot authorize spawn.
 		if blocked || string(current.Manifest) != string(b.Manifest.Envelope.Manifest) || current.Sig != b.Manifest.Envelope.Sig {
-			e.report(finish(r, "cancelled", ""))
+			e.reportPanel(pin, setup, finish(r, "cancelled", ""))
 			return
 		}
 		expires, err := time.Parse(time.RFC3339, reply.ExpiresAt)
 		if err != nil || !time.Now().Before(expires) {
-			e.report(finish(r, "internal", ""))
+			e.reportPanel(pin, setup, finish(r, "internal", ""))
 			return
 		}
 		permit := panelPermit{envelope: b.Manifest.Envelope, haltVersion: version}
-		e.report(e.executeReserved(context.WithValue(runCtx, panelPermitKey{}, permit), r, env, reply.Input, reply.RunToken, env.Timeout, 10000))
+		e.reportPanel(pin, setup, e.executeReserved(context.WithValue(runCtx, panelPermitKey{}, permit), r, env, reply.Input, reply.RunToken, env.Timeout, 10000))
 	}()
 	return nil
+}
+
+// reportPanel meldet das Ergebnis eines Setup-Laufs aus dem Bedienfeld und merkt sich Zeitpunkt und Ausgang
+// für die Anzeige „zuletzt gelaufen“ (#1398). Die Anzeige hängt nicht am Erfolg der Ablage.
+func (e *Engine) reportPanel(pin, setup string, r Result) {
+	e.lastRuns.note(pin, setup, r)
+	e.report(r)
 }
 
 type panelLifetimeKey struct{}

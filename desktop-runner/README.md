@@ -337,6 +337,10 @@ Menü: Zustand, Pause 15 min / 1 h / bis Weiter, Weiter, Anhalten/Fortsetzen,
 Manifest-Setups, auf Testgeräten „Test“ als Anzeige, Beenden nur des Bedienfelds.
 Gesperrte Setups sind grau; nur `braucht_eingabe:true` ergänzt „braucht Eingabe“. Ein Setup im Bedienfeld
 braucht keinen Leerlauf (#1354, Invariante 11); Konto, Sitzung, Halt und Pause sperren weiter.
+Unter jedem Setup steht eine graue Zeile „zuletzt gelaufen (seit Start): 17.11.2026 14:05 · ok“, mit dem Ergebnis `ok`,
+`Fehler <Code>` (zum Beispiel `timeout` oder `refused/runtime`), `nicht bereit` (der Pin hat keine Umgebung, #1391) oder `nie`
+(#1398). Sie zeigt nur Zeitpunkt und Status des letzten Setup-Laufs, den dieser Läuferprozess aus dem Bedienfeld beendet hat;
+nach einem Neustart des Läufers beginnt sie wieder bei `nie`, denn der Läufer legt dafür nichts auf der Platte ab.
 `bis` erscheint als lokale Uhrzeit, offline + Fristablauf als
 „offline, Frist abgelaufen“.
 
@@ -498,9 +502,11 @@ bytegleich. Zulässige Nachrichten:
 | Richtung | Nachrichten |
 |---|---|
 | Client → Läufer | `status`, `pause{minuten:15\|60\|0}`, `weiter`, `anhalten`, `fortsetzen`, `setup_start{pin,setup}`, `antwort{id,wahl}` |
-| Läufer → Client | `zustand{zustand,bis?,test,netz,beschaeftigt,frist_abgelaufen?,setups:[{pin,setup,label,startbar,braucht_eingabe}]}`, `frage{id,titel,text,optionen,frist_s}`, `frage_weg{id}`, `fehler{code}` |
+| Läufer → Client | `zustand{zustand,bis?,test,netz,beschaeftigt,frist_abgelaufen?,setups:[{pin,setup,label,startbar,braucht_eingabe,zuletzt?,ergebnis?,code?}]}`, `frage{id,titel,text,optionen,frist_s}`, `frage_weg{id}`, `fehler{code}` |
 
-Alle Nachrichten tragen `type`. `zustand` ist `arbeitet`, `pausiert`,
+`zuletzt` (UTC), `ergebnis` (`ok`, `fehler`, `nicht_bereit`, `nie`) und `code` (nur bei `fehler`, fester Laufcode) sind
+optional und nur lesend (#1398); `zuletzt` gehört zu `ok` und `fehler`, sonst steht keines der drei Felder in einer anderen
+Kombination. Alle Nachrichten tragen `type`. `zustand` ist `arbeitet`, `pausiert`,
 `angehalten` oder `stoerung`; `bis` ist UTC. Fehlercodes sind ausschließlich
 `protokoll`, `abgewiesen`, `stoerung`. Niemals Credential, Token-, Eingabe-,
 Pfad- oder Modusfelder: der Status wird ausdrücklich aus erlaubten Feldern

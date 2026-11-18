@@ -229,8 +229,19 @@ function ebicsIstZip(string $daten): bool
  * Regel ein einzelnes Dokument. Beides wird hier auf dieselbe Liste gebracht,
  * damit die Ablage nur einen Fall kennt.
  *
+ * ⚠️ Ein NICHT LESBARER Eintrag (die Bibliothek liefert `false`, etwa bei
+ * CRC- oder Lesefehler) wird nie uebergangen: Wer ihn wegliesse, quittierte den
+ * Auszug positiv, obwohl er nie abgelegt wurde — die Bank striche ihn aus dem
+ * Vorrat, und er waere weg. Er ist ein Ablagefehler (Exit 3, negative
+ * Quittung). Ebenso ein Container, aus dem nichts Ablegbares uebrig bleibt.
+ * Uebergangen werden nur wirklich leere Eintraege (etwa Verzeichniseintraege).
+ *
+ * Die Meldungen tragen weder Inhalt noch Eintragsnamen: Beides ist
+ * Bank-Fremdeingabe und gehoert nicht ins Protokoll.
+ *
  * @param callable(string): array<string, string|false> $zipEntpacker
  * @return list<string>
+ * @throws EbicsAblageFehler
  */
 function ebicsInhalte(string $rohdaten, callable $zipEntpacker): array
 {
@@ -243,16 +254,49 @@ function ebicsInhalte(string $rohdaten, callable $zipEntpacker): array
     }
 
     $inhalte = [];
-    foreach ($zipEntpacker($rohdaten) as $inhalt) {
-        // Ein nicht lesbarer oder leerer Eintrag wird uebergangen — eine leere
-        // Datei in der Ablage waere fuer den Datei-Weg schlimmer als keine.
-        if (!is_string($inhalt) || trim($inhalt) === '') {
+    $position = 0;
+    $eintraege = $zipEntpacker($rohdaten);
+    foreach ($eintraege as $inhalt) {
+        $position++;
+        if (!is_string($inhalt)) {
+            throw new EbicsAblageFehler(
+                "Eintrag $position von " . count($eintraege) . ' im ZIP-Container der Bank ist nicht lesbar '
+                . '— nichts abgelegt, der Auszug bleibt bei der Bank.'
+            );
+        }
+        // Eine leere Datei in der Ablage waere fuer den Datei-Weg schlimmer
+        // als keine.
+        if (trim($inhalt) === '') {
             continue;
         }
         $inhalte[] = $inhalt;
     }
 
+    if ($inhalte === []) {
+        throw new EbicsAblageFehler(
+            'Der ZIP-Container der Bank enthaelt keinen ablegbaren Auszug (' . count($eintraege)
+            . ' Eintraege, alle leer) — nichts abgelegt, nicht positiv quittiert.'
+        );
+    }
+
     return $inhalte;
+}
+
+/**
+ * Die Entscheidung hinter der Quittung: zerlegen, pruefen, erst dann ablegen.
+ *
+ * Die Pruefung (`ebicsInhalte`) laeuft VOR dem Ablegen. Scheitert sie, wurde
+ * noch nichts geschrieben — ein Neuabruf der Bank liefert keine Doppelten.
+ * Eine Ausnahme von hier ist fuer fetch.php die NEGATIVE Quittung.
+ *
+ * @param callable(string): array<string, string|false> $zipEntpacker
+ * @param callable(list<string>): list<string> $ablegen legt die Inhalte ab, liefert die Pfade
+ * @return list<string> die abgelegten Pfade
+ * @throws EbicsAblageFehler
+ */
+function ebicsAuszuegeAblegen(string $rohdaten, callable $zipEntpacker, callable $ablegen): array
+{
+    return $ablegen(ebicsInhalte($rohdaten, $zipEntpacker));
 }
 
 // ── Dateinamen ──────────────────────────────────────────────────────────────

@@ -120,7 +120,7 @@ tools:
       - name: kommentar_urn
         type: string
         required: true
-        description: Top-level comment from comments, urn:li:comment:(urn:li:activity:<digits>,<digits>).
+        description: Top-level comment from comments, urn:li:comment:(urn:li:activity|ugcPost|share:<digits>,<digits>).
       - name: text
         type: string
         required: true

@@ -1,4 +1,47 @@
-# Prüfbericht linkedin-seite 0.4.0 (#1237 B3), 0.3.1 (#1237) und 0.3.0 (#1306 F4)
+# Prüfbericht linkedin-seite 0.4.1 (#1237 Faden-URN), 0.4.0 (#1237 B3), 0.3.1 (#1237) und 0.3.0 (#1306 F4)
+
+## #1237 Faden-URN und Formdiagnose (0.4.1)
+
+Verbindlich: Schnitt c-6800107310, SEC L1/L2 c-6800122813. Branch `fix/1237-kommentar-urn` ab origin/main.
+Synthetisch geprüft, **nicht live belegt**: welche Form LinkedIn tatsächlich liefert, zeigt erst das Log
+nach dem Rollout.
+
+### Vorgehen, test-first
+
+| Schritt | Wächter | Rot | Code |
+|---|---|---|---|
+| Faden-URN, Formdiagnose | `test_kommentare_domain` (`Urns`, `Forms`, `Grund`, `Diagnose`), `test_kommentare_adapter` (`Threads`, `Formdiagnose`), `test_kommentare_server` (`Formdiagnose`, `LogCanary`), `test_version` (0.4.1) | `pruefung/urn-0.4.1-rot.txt`: vor dem Code rot in allen drei Dateien und im Versionstest | `kommentare`, `community_adapter`, `community_pool`, `source_contract` (Kommentar), Version und Doku |
+
+### Abgleich mit der Vorgabe
+
+| Vorgabe | Wächter | Mutanten |
+|---|---|---|
+| Faden `activity`/`ugcPost`/`share`, nur Ziffern, ≤30 Stellen | `Urns.test_comment_urn_pattern`, `Urns.test_the_three_thread_forms_with_one_to_thirty_digits` | `b3-url-digits-thread-part`, `b3-url-digits-length`, `b3-url-kinds`, `b3-t1-digits-only` |
+| `object` bei `ugcPost`/`share` genau der Post des Listings; bei `activity` wie bisher | `Forms.test_a_foreign_object_under_a_post_thread_is_dropped`, `Forms.test_activity_keeps_todays_object_rule`, `Threads.test_a_foreign_object_under_an_ugcpost_thread_is_dropped_and_blocks_a_reply` | `b3-ugcpost-object-equality(-adapter)`, `b3-ugcpost-thread-equals-post`, `b3-ugcpost-without-listed-post`, `b3-key-object-id` |
+| Faden am Kommentar; Links, Antwort-URN, Tagesliste daraus | `Threads.test_comments_reply_and_links_are_built_from_the_thread_urn_in_every_form`, `Threads.test_the_daily_list_links_follow_the_thread_urn`, `Urns.test_ugcpost_and_share_links_follow_the_thread_urn_form_a_not_live_proven` | `b3-thread-kept-on-comment`, `b3-link-from-guessed-activity`, `b3-antwort-urn-from-guessed-activity`, `b3-daily-link-from-guessed-activity`, `b3-link-form-activity` |
+| `antworten`: gleicher Faden wie der Elternkommentar | `Threads.test_a_reply_of_another_thread_is_not_ours_and_not_counted_as_an_answer`, `Formdiagnose.test_a_reply_of_another_thread_is_dropped_as_object` | `b3-reply-thread-mismatch`, `b3-one-thread-per-listing` |
+| Formdiagnose: feste Klassen, feste Zeile, höchstens fünf je Aufruf | `Grund.test_each_defect_has_its_class`, `Diagnose.test_the_line_for_one_element_is_exactly_the_documented_form`, `Formdiagnose.test_at_most_five_lines_per_call_across_listing_and_replies`, `Formdiagnose.test_the_server_logs_at_most_five_lines_and_only_lines_of_the_fixed_form` | `b3-grund-class`, `b3-diag-cap-adapter`, `b3-diag-cap-sink`, `b3-diag-cap-constant`, `b3-diag-sink-form`, `b3-diag-sink-pattern`, `b3-diag-fixed-route`, `b3-diag-route-of-reply`, `b3-diag-not-logged`, `b3-diag-level` |
+| Nie Text, volle Kennung, Name | `Diagnose.test_no_text_no_full_ids_no_values_in_the_line`, `LogCanary.test_real_service_prints_the_form_diagnosis_without_any_content` | `b3-diag-text-in-line(-adapter)` |
+| L1: Präfix nur nach `^urn:li:[A-Za-z]{1,30}:`, sonst `andere`/`fehlt`/`typ` | `Diagnose.test_l1_a_prefix_is_only_the_urn_prefix_or_a_fixed_word`, `Diagnose.test_l1_canary_a_free_text_urn_without_pattern_never_reaches_the_line`, `Formdiagnose.test_l1_canary_a_free_text_urn_without_digits_does_not_reach_the_log` | `b3-diag-l1-freetext(-adapter)`, `b3-diag-l1-pattern`, `b3-diag-l1-no-type-word` |
+| L2: Schlüssel nach `^[A-Za-z][A-Za-z0-9_]{0,39}$`, ≤20, andere als `?` | `Diagnose.test_l2_keys_only_by_the_character_rule_sorted_at_most_twenty`, `Diagnose.test_l2_canary_a_key_of_free_text_never_reaches_the_line`, `Formdiagnose.test_l2_canary_a_key_with_blanks_and_text_does_not_reach_the_log` | `b3-diag-l2-freetext-key(-adapter)`, `b3-diag-l2-pattern`, `b3-diag-l2-cap`, `b3-diag-l2-unknown-marker` |
+| Unverändert: Antwort `nicht_lesbar: n`, S1–S4/T1–T3, Deckel 8, Audit, keine neuen Felder, kein zusätzlicher LinkedIn-Aufruf | die bestehenden B3-Wächter laufen unverändert grün; `Formdiagnose.test_the_reply_route_and_the_daily_list_name_their_route` | die bestehenden `b3-*`-Mutanten (drei auf die neuen Muster umgestellt) |
+
+### Verifikation (Linux-Spiegel, Python 3.12, Container ohne Netz)
+
+- `python -m unittest discover -s tests`: 405 Tests, OK, 14 übersprungen (alle `test_release_workflow`: die Workflows liegen außerhalb von `linkedin-seite/` und waren nicht eingehängt; auf dem Windows-Host laufen sie grün)
+  321 Sekunden. `python tests/mutations.py`: Basislauf grün, **301 von 301
+  Mutanten erkannt**, Originale unverändert (35 mehr als in 0.4.0).
+- Der Spiegel hat kein Netz: die zehn Pakete aus `requirements.lock` (Versionen identisch zur Sperrdatei)
+  liefen im Reinpython-Modus (`*_NO_EXTENSIONS=1`), ohne gebaute Erweiterungen. Zwei nur dort nötige Anpassungen
+  der Kopie, nicht im Repo: `reply_budget` des Tests `test_a_job_over_its_budget_after_sending_is_unclear_and_locks`
+  von 1,0 auf 2,5 Sekunden (der Jobstart im Reinpython-Modus braucht über eine Sekunde; derselbe Test schlägt dort
+  auch auf origin/main fehl) und der Suchpfad der Mutantenläufe. Die CI-Läufe mit gebauten Paketen stehen aus.
+
+### Doku-Pflicht
+
+- [x] `CLAUDE.md`: Kopf 0.4.1, Faden-Formen, Formdiagnose samt L1/L2 und Log-Deckel 5, Pflichtmutanten.
+- [x] `README.md`: Kopf 0.4.1, Abschnitt „Faden-Formen und Formdiagnose“, Tagesliste-Link, Live-Gates. `SETUP.md`: Kopf und Hinweis im B3-Abschnitt.
+- [x] `CHANGELOG.md` 0.4.1; Version in Modulvertrag, README, CHANGELOG, `Dockerfile`, `gateway.py`; `ARCHITEKTUR.md`-Katalog; Vorlagenentwurf (Parameterbeschreibung `kommentar_urn`).
 
 ## #1237 Stufe B3 — Kommentare beantworten (aktueller Prüfstand, 0.4.0)
 

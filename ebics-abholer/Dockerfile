@@ -35,13 +35,13 @@ RUN composer install --no-dev --no-interaction --prefer-dist --no-progress \
 # ── erweiterungen ───────────────────────────────────────────────────────────
 # bcmath: die RSA-Arithmetik der Bibliothek · zip: der camt-Container der Bank.
 # Compiler und Header bleiben in dieser Stufe zurueck.
-FROM php:8.5.11-cli-alpine3.24@sha256:93684051146ec037620855feb77f278090bde45ddc030801cd3f2a7685bc4deb AS erweiterungen
+FROM php:8.5.12-cli-alpine3.24@sha256:1ff5b45922ab30f418447c6089dbe2eba5f01e0b2742863d0327ac349305d70f AS erweiterungen
 
 RUN apk add --no-cache $PHPIZE_DEPS libzip-dev \
     && docker-php-ext-install bcmath zip
 
 # ── Laufzeit ────────────────────────────────────────────────────────────────
-FROM php:8.5.11-cli-alpine3.24@sha256:93684051146ec037620855feb77f278090bde45ddc030801cd3f2a7685bc4deb
+FROM php:8.5.12-cli-alpine3.24@sha256:1ff5b45922ab30f418447c6089dbe2eba5f01e0b2742863d0327ac349305d70f
 
 # libzip ist die einzige Laufzeit-Bibliothek, die die zip-Erweiterung braucht.
 RUN apk add --no-cache libzip

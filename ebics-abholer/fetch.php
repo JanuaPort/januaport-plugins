@@ -198,11 +198,13 @@ function ebicsAbholen(array $argumente): void
     $kontext->setAckClosure(
         function (DownloadTransaction $transaktion) use (&$abgelegt, &$ablageFehler, $ablage, $datum): bool {
             try {
-                $inhalte = ebicsInhalte(
+                // Zerlegen und Pruefen laufen VOR dem Ablegen: Ein nicht lesbarer
+                // Eintrag wirft hier, bevor eine einzige Datei geschrieben ist.
+                $abgelegt = ebicsAuszuegeAblegen(
                     $transaktion->getOrderData(),
-                    static fn(string $roh): array => (new ZipArchiveExtractor())->extractFilesFromString($roh)
+                    static fn(string $roh): array => (new ZipArchiveExtractor())->extractFilesFromString($roh),
+                    static fn(array $inhalte): array => ebicsAblegen($ablage, $inhalte, $datum)
                 );
-                $abgelegt = ebicsAblegen($ablage, $inhalte, $datum);
 
                 return true;
             } catch (Throwable $e) {

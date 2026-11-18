@@ -66,6 +66,15 @@ Release seit JanuaPort/januaport#1005.
 
 1. **Nur abholen.** Kein Skript kann einreichen; `tests/run.php` wacht darüber.
 2. **Ablegen vor Quittieren**, nie überschreiben, Dateiname nie von der Bank.
+   Ein **nicht lesbarer** ZIP-Eintrag (die Bibliothek liefert `false`) wird nie still
+   übergangen: `ebicsInhalte` wirft `EbicsAblageFehler`, **bevor** `ebicsAblegen`
+   läuft — negative Quittung, Exit 3, keine Datei im Verzeichnis (sonst gäbe es beim
+   Neuabruf Doppelte). Ebenso ein Container, aus dem nichts Ablegbares übrig bleibt.
+   Nur **wirklich leere** Einträge (etwa Verzeichniseinträge) werden übergangen. Die
+   Meldung nennt weder Inhalt noch Eintragsnamen, nur die Position. Die Entscheidung
+   steht in `ebicsAuszuegeAblegen` (`logik.php`), die die Quittungs-Closure in
+   `fetch.php` ruft — deshalb ohne Bank und ohne `vendor/` testbar. Leere Rohdaten und
+   Nicht-ZIP (H004) sind kein Befund und bleiben unverändert.
 3. **Nie ein Kontoumsatz, eine IBAN oder ein Schlüsselwort im Protokoll.**
 4. **Geheimnisse nie im Image, nie im Repo:** `config.php`, `keyring.json`,
    Sicherungen und das Initialisierungsprotokoll sind über `.gitignore` gesperrt;
@@ -73,7 +82,7 @@ Release seit JanuaPort/januaport#1005.
 5. **Kein Composer zur Laufzeit.** `composer.json`/`.lock` liegen im Image, weil
    `tests/run.php` sie prüft — das Werkzeug nicht.
 6. **Die Teststrecke spricht nie mit dem Netz.** Im Image läuft sie mit
-   `--network none` vollständig (95 Fälle).
+   `--network none` vollständig (104 Fälle).
 
 ## Stolperfallen
 

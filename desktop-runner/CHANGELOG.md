@@ -13,6 +13,22 @@
   `10 2` unverändert; ohne gespeichertes oder prüfbares Manifest wird nichts gelöscht.
 - Halt-Semantik, Journal-Format, Manifestprüfung und Pipe unverändert.
 
+### Bedienfeld zeigt „zuletzt gelaufen“ (JanuaPort/januaport#1398)
+
+- **Eine graue Zeile unter jedem Setup im Menü:** „zuletzt gelaufen (seit Start): 17.11.2026 14:05 · ok“. Das Ergebnis ist
+  genau eins von `ok`, `Fehler <Code>` (`error`, `timeout`, `limit`, `cancelled`, `internal`, `interrupted`, `refused/<Grund>`),
+  `nicht bereit` (der Pin hat keine Umgebung, Zustand aus #1391) oder `nie`. Am Gerät ist damit sichtbar, wenn ein Pin nicht
+  vorbereitet ist, ohne Anlage oder Log zu öffnen.
+- **Quelle ist der Speicher des Läufers, kein neuer Weg und kein neues Format.** Er merkt sich je Pin/Setup nur den letzten Lauf
+  aus dem Bedienfeld. Er legt dafür nichts auf der Platte ab (das Journal löscht ein Ergebnis mit der Zustellung und kennt
+  keinen Pin-Namen); nach einem Neustart beginnt die Anzeige bei `nie`, die Zeile sagt deshalb „seit Start“. Zeitplan- und
+  Ad-hoc-Läufe tragen keinen Setup-Namen und erscheinen hier nicht.
+- **Pipe:** drei optionale, nur lesende Felder je Setup-Zeile (`zuletzt`, `ergebnis`, `code`), streng kombiniert. Nur Zeitpunkt
+  und Status; Log, Ergebnis, Eingabe, Fenstertitel und Detailtexte verlassen den Läufer nicht. Befehlsschema, Serverprüfung und
+  Rahmengrenze (4 KiB) bleiben unverändert; eine Zeile wird 17 bis 80 Byte länger, passt die Liste nicht, folgt wie bisher
+  `fehler{stoerung}`. Ein älterer Läufer ohne die Felder zeigt keine Zeile. Kein neuer Vertrag, kein Eingriff in Kern,
+  Manifest oder Paketformat.
+
 ### Kaputter Pin sperrt das Manifest nicht mehr (JanuaPort/januaport#1391)
 
 - **Ein Pin ohne Umgebung hält den Abgleich nicht mehr auf.** Bisher verwarf jeder Fehler im Pin-Schritt (Paketabruf mit

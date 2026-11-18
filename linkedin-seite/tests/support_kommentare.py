@@ -4,7 +4,8 @@ A ThreadingHTTPServer on a free loopback port. Nothing here talks to LinkedIn. T
 transport is kept; only the target is rewritten to the fake (as in support_post). Every comment
 element carries the canaries a real answer may carry: author name and headline (`actor~`), the
 person URN of the author, of likers and of the acting admin (`agent`). None of them may ever leave
-the plugin. Comment URNs follow the documented form urn:li:comment:(urn:li:activity:<n>,<n>).
+the plugin. Comment URNs follow the documented form urn:li:comment:(urn:li:activity:<n>,<n>); since 0.4.1 the
+thread may also be the post itself (urn:li:ugcPost:<n> or urn:li:share:<n>, `post(thread='post')`).
 """
 from datetime import datetime, timezone
 from functools import partial
@@ -60,8 +61,17 @@ def config(eigene=(EIGENE_PERSON,)):
     return Config.from_dict(raw)
 
 
-def kurn(activity, cid):
-    return 'urn:li:comment:(urn:li:activity:%s,%s)' % (activity, cid)
+def thread_urn(thread):
+    """A bare digit string is an activity thread; a full urn:li: thread (the post itself) stays as given."""
+    return thread if thread.startswith('urn:li:') else 'urn:li:activity:' + thread
+
+
+def thread_of(comment_urn):
+    return comment_urn[len('urn:li:comment:('):].split(',')[0]
+
+
+def kurn(thread, cid):
+    return 'urn:li:comment:(%s,%s)' % (thread_urn(thread), cid)
 
 
 class FakeCommunity:
@@ -117,23 +127,24 @@ class FakeCommunity:
 
     # --- building state --------------------------------------------------------------------
 
-    def post(self, days_ago=1, author=ORG, state='PUBLISHED', kind='share'):
+    def post(self, days_ago=1, author=ORG, state='PUBLISHED', kind='share', thread='activity'):
         urn = 'urn:li:%s:%s' % (kind, new_id())
         self.posts[urn] = {'id': urn, 'author': author, 'createdAt': ms(days_ago), 'publishedAt': ms(days_ago),
                            'lifecycleState': state, 'commentary': 'Eigener Beitragstext', 'visibility': 'PUBLIC'}
-        self.threads[urn] = new_id()
+        self.threads[urn] = urn if thread == 'post' else new_id()   # 'post': the thread is the post itself
         self.comments[urn] = []
         return urn
 
     def element(self, activity, actor, text, created, modified=None, parent=None, cid=None, **extra):
         cid = cid or new_id()
-        urn = kurn(activity, cid)
+        thread = thread_urn(activity)
+        urn = kurn(thread, cid)
         element = {'actor': actor, 'commentUrn': urn, 'id': cid,
                    'created': {'actor': actor, 'time': created},
                    'lastModified': {'actor': actor, 'time': modified if modified is not None else created},
                    'likesSummary': {'aggregatedTotalLikes': 1, 'likedByCurrentUser': False, 'totalLikes': 1,
                                     'selectedLikes': ['urn:li:like:(urn:li:person:LikeCanary9,%s)' % urn]},
-                   'message': {'attributes': [], 'text': text}, 'object': 'urn:li:activity:' + activity,
+                   'message': {'attributes': [], 'text': text}, 'object': thread,
                    'actor~': {'localizedFirstName': NAME, 'localizedHeadline': HEADLINE, 'vanityName': 'vanitycanary'}}
         if actor == ORG:
             element['agent'] = 'urn:li:person:AgentCanary7'
@@ -152,8 +163,7 @@ class FakeCommunity:
         return element['commentUrn']
 
     def reply(self, comment_urn, actor=ORG, text='Danke für Ihr Feedback.', days_ago=0.25):
-        activity = comment_urn.split('activity:')[1].split(',')[0]
-        element = self.element(activity, actor, text, ms(days_ago), parent=comment_urn)
+        element = self.element(thread_of(comment_urn), actor, text, ms(days_ago), parent=comment_urn)
         self.replies.setdefault(comment_urn, []).append(element)
         return element['commentUrn']
 
@@ -167,6 +177,8 @@ class FakeCommunity:
     # --- answering ---------------------------------------------------------------------------
 
     def with_summary(self, element):
+        if not isinstance(element, dict):
+            return element      # a hostile listing may carry rows that are not objects
         out = dict(element)
         if self.summary:
             count = len(self.replies.get(element['commentUrn'], []))
@@ -203,8 +215,7 @@ class FakeCommunity:
                 body = json.loads(call['body'])
                 if target not in self.replies:
                     return 404, js, b'{"status":404}'
-                activity = target.split('activity:')[1].split(',')[0]
-                element = self.element(activity, body['actor'], body['message']['text'], NOW_MS - 1000, parent=target)
+                element = self.element(thread_of(target), body['actor'], body['message']['text'], NOW_MS - 1000, parent=target)
                 self.replies[target].append(element)
                 if self.on_reply:
                     self.on_reply(target, body)
@@ -243,6 +254,7 @@ class Link:
         self.http = 0
         self.writes = 0
         self.http_cap = http_cap
+        self.diag = []              # the form diagnosis lines a job hands to the server process
 
     def permit_http(self):
         from linkedin_seite.domain import ReportError
@@ -252,6 +264,9 @@ class Link:
 
     def write_request(self):
         self.writes += 1
+
+    def diagnose(self, line):
+        self.diag.append(line)
 
 
 def community_pool(cfg, tokens, port, adapter=JobCommunityAdapter, **kwargs):

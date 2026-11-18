@@ -40,7 +40,11 @@ Die einzige Naht ist ein **gemeinsames Verzeichnis**:
 - Abgelegt wird, **bevor** die Quittung an die Bank geht: Erst wenn jede Datei
   eines Laufs vollständig liegt, wird positiv quittiert — sonst negativ, und
   die Bank führt die Daten weiter als neu. Damit geht bei einem Fehlschlag
-  (volle Platte, Rechteproblem) kein Auszug verloren.
+  (volle Platte, Rechteproblem) kein Auszug verloren. Dasselbe gilt, wenn ein
+  Eintrag im ZIP-Container der Bank nicht lesbar ist oder der Container nichts
+  Ablegbares enthält: Es wird gar nichts abgelegt, negativ quittiert, Exit `3`;
+  der nächste Lauf holt den Auszug erneut. Leere Einträge (etwa Verzeichnisse im
+  ZIP) werden übergangen.
 - **Dateiname:** `camt053-JJJJ-MM-TT-NN.xml`. Das Datum darin ist der
   **Abruftag**, nicht der Buchungstag (der steht innerhalb der Datei). Bei
   einem Namenskonflikt wird nummeriert (`…-NN-2.xml`), **nie überschrieben**.
@@ -127,7 +131,7 @@ Die einzige Naht ist ein **gemeinsames Verzeichnis**:
   | `0` | abgeholt · oder die Bank hatte nichts Neues |
   | `1` | Konfiguration/Umgebung unbrauchbar — nichts abgerufen |
   | `2` | echter Fehler bei Bank, Netz oder Protokoll |
-  | `3` | abgerufen, aber **nicht abgelegt** (negativ quittiert — die Bank behält die Daten, der nächste Lauf holt sie erneut) |
+  | `3` | abgerufen, aber **nicht abgelegt** — auch bei nicht lesbarem ZIP-Eintrag (negativ quittiert — die Bank behält die Daten, der nächste Lauf holt sie erneut) |
   | `4` | Bankschlüssel passen nicht mehr (EBICS `091008`) — nichts abgerufen, nichts quittiert |
 
 - **Schlüsselwechsel der Bank:** Banken erneuern ihre EBICS-Schlüssel
