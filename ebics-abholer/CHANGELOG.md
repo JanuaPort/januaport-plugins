@@ -30,6 +30,11 @@ Rohdaten verhalten sich wie bisher. Die Meldung enthält weder Inhalt noch
 Eintragsnamen. Betrifft nur die Logik; Image, Digest und Scan stehen erst mit dem
 nächsten Release-Eintrag.
 
+**Basis angehoben auf `php:8.5.12-cli-alpine3.24` (per Digest gepinnt).** Der K-Scan der
+alten Basis 8.5.11 vom 27.09. meldete behebbare Befunde in musl, zlib und libcurl
+(1 CRITICAL, 5 HIGH); nach der K-Scan-Regel behebt sie ein Neubau, nicht ein Eintrag in
+`.trivyignore`.
+
 ## 1.0.0 — 2026-10-07
 
 | Feld | Wert |
