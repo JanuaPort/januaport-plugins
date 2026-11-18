@@ -19,7 +19,7 @@ unverändert bei Version 1; dies ist eine eigene Kennung.
 
 **Benannte Kompatibilitätsgrenze:** Ein Läufer mit `contract: 2` braucht ein
 Gateway ab **0.77.0**. Ein älteres Gateway sperrt den Läufer ganz
-(„andere Vertragsfassung“). **Update-Reihenfolge: erst das Gateway, dann der Läufer.**
+(„andere Vertragsfassung“). **Update-Reihenfolge über diese Grenze (0.77.0): erst das Gateway, dann der Läufer.** Für Fassung 3 gilt die Rückfallregel unten, dort ist die Reihenfolge nur Empfehlung.
 Ein Gateway ab 0.77.0 akzeptiert die Läuferkennungen 1 und 2, ein Kern ab 0.100.0
 auch 3. Dieser Läufer meldet 2, bis er an `/healthz` einen Kern ab 0.100.0 liest;
 erst dann meldet er 3 (Fassung 6), damit ihn ein Kern, der die 3 nicht kennt, nicht sperrt.
@@ -250,7 +250,8 @@ Das Fenster zwischen Start und erster Antwort und jeder Ausfall führen zu 2,
 nie zu 3: Der Rückfall nimmt nur eine Fähigkeit weg (`etl_stream`) und fügt
 keine hinzu. Der vermittler fragt alle 30 s (`Config.CoreProbeInterval`) und
 loggt nur die gewählte Fassung (`vertragsfassung contract=<n>`), nie den Text
-des Kerns. Die Wahl gilt je Lauf ab dem Laufbeginn. Der Satz „eine neue Kennung
+des Kerns. **Nachweis nach einem Update:** Binnen 30 s nach dem Start des Läufers steht im Log eine Zeile
+`vertragsfassung contract=3`. Steht dort `contract=2`, ist der Kern älter als 0.100.0 oder seine Version unlesbar. Die Wahl gilt je Lauf ab dem Laufbeginn. Der Satz „eine neue Kennung
 sperrt der Kern“ gilt weiter: Deshalb meldet der Läufer 3 nicht blind, sondern nur nach
 dieser Prüfung; **Update-Reihenfolge ist damit Empfehlung** (erst der Kern, dann
 der Läufer), nicht mehr Pflicht. Unter Kennung 2 kennt der Läufer keinen Strom:
