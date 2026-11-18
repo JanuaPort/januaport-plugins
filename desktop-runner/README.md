@@ -265,7 +265,7 @@ Kind-Umgebung/Kommandozeile; das Modul wird ausschließlich im Bootstrap erzeugt
 
 Prüfung: `python3 -B -m unittest discover -s internal/client -p test_bootstrap.py`,
 Go-Tests einschließlich echtem Python-Bootstrap und rohen Rahmen sowie
-`python probe/l5_mutations.py` exklusiv in `l5-test` (Go 1.26.10).
+`python probe/l5_mutations.py` exklusiv in `l5-test` (Go 1.26.11).
 `TestWindowsScreenshotGDI` und `TestWindowsScreenshotGDIChild` werden lokal nur
 cross-kompiliert. LEAD startet CI/GATE mit `JNPT_GDI_PROBE=1`; der Hilfsprozess
 hat eine feste 15-Sekunden-Grenze. Ohne Opt-in bzw. interaktive Sitzung sichtbarer
@@ -319,7 +319,7 @@ kann das laufende Skript selbst aufheben, endgültig für den Baum ist nur Anhal
 Linux-Server und Vertrag 2 bleiben unverändert.
 
 Prüfung: `python probe/l2_mutations.py` im exklusiven Worktree mit Container
-`l2-test` (Go 1.26.10). Linux-Race-Tests prüfen die realen HTTP-/State-Adapter;
+`l2-test` (Go 1.26.11). Linux-Race-Tests prüfen die realen HTTP-/State-Adapter;
 `TestWindowsAnhaltenBeendetEnkel` prüft in Windows-CI den echten Job-Baum und
 DPAPI-Neustart. Lokal wird diese native Sonde nur kompiliert.
 
@@ -416,7 +416,7 @@ Kürzel aus wie UI-Automation (dieselbe Grenze wie beim Bedienen des Menüs). Ei
 Der echte Tastendruck und die Prüfung „kein Fokusraub“ sind nur auf dem Testgerät belegbar, nicht in der CI.
 
 Prüfung: `python probe/l4_mutations.py`, exklusiver Container `l4-test`
-(Go 1.26.10), Linux-Race-Tests, Linux-/Windows-vet, GUI-Cross-Build und D0.
+(Go 1.26.11), Linux-Race-Tests, Linux-/Windows-vet, GUI-Cross-Build und D0.
 `TestWindowsBedienfeldProzesssonde` baut die echte Exe, startet ohne Argumente
 und prüft PEB/Umgebung sowie Handle-Vererbung mit positiver Gegenprobe.
 `CompareObjectHandles` wird aus `kernelbase.dll` nach erfolgreichem `Find()`
@@ -556,7 +556,7 @@ muss den Kindtest rot machen. Die Python-Sonde muss zudem ihre eigene Kontrollpi
 finden. Ihr Laufzeitpfad bleibt kurz wie bei der vorhandenen Python-Adapterprobe.
 
 Prüfung: `python probe/l3_mutations.py` im exklusiven Container `l3-test`
-(`golang:1.26.10`). Linux prüft Schema, rohe Rahmen am Engine-/HTTP-Adapter,
+(`golang:1.26.11`). Linux prüft Schema, rohe Rahmen am Engine-/HTTP-Adapter,
 Rückfragen, Kanarien-Credential und Hygiene mit genau einem Pipe-Listener.
 Native Tests lokal nur kompilieren; Ausführung durch LEAD in Windows-CI:
 `TestWindowsPipeDACLUndLabel`, `TestWindowsPipeLowILReadWrite`,
@@ -814,7 +814,7 @@ desktop-runner-v* freigegeben), danach je Exe Existenzprüfung und
 Dateien. Fehlt eine Exe oder SIGNING_PROFILE, ist eine Signatur ungültig oder scheitert ein Schritt,
 bricht das Release ab; ein unsigniertes Release gibt es nicht.
 
-L6: `python probe/l6_mutations.py` im exklusiven Container `l6-test` mit Go 1.26.10.
+L6: `python probe/l6_mutations.py` im exklusiven Container `l6-test` mit Go 1.26.11.
 Elf kompilierende Mutanten für Installation, Rücknahme, Argumente und Release;
 Containerquellen werden wiederhergestellt. Lokal kein Installtest/GUI-Start,
 nur Windows-Cross-Build und PowerShell-Syntax. Windows-CI startet der LEAD.

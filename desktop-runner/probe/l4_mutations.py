@@ -1,4 +1,4 @@
-"""L4 gates; exclusive worktree, golang:1.26.10 in l4-test at /workspace.
+"""L4 gates; exclusive worktree, golang:1.26.11 in l4-test at /workspace.
 
 Each mutant must compile, then fail its named test. Windows process mutants
 are compiled only; --native is for LEAD's Windows CI, never a local GUI run.

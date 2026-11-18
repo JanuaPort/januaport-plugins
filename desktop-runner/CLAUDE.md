@@ -517,7 +517,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     **Die Kopie `internal/edge` ist Sicherheitskern (SEC-Bedingungen):** (1) Herkunft: `doc.go` nennt Repository,
     Tag `v1.0.19`, Commit `11c6e567b916645d5fe6df006681f988ac52c13d` und die `go.sum`-Prüfsumme;
     `internal/edge/upstream-diff.sh` holt das Original, prüft den Commit gegen den Go-Modulproxy und zeigt den
-    Diff (`docker run --rm -v "$PWD:/w" -w /w golang:1.26.10 sh internal/edge/upstream-diff.sh`);
+    Diff (`docker run --rm -v "$PWD:/w" -w /w golang:1.26.11 sh internal/edge/upstream-diff.sh`);
     `TestEdgeKopieNenntUpstream` hält doc.go, go.mod und go.sum zusammen. (2) Wächter: kein `os.Exit`, kein
     `log.Fatal`, kein `panic`, keine Endlosschleife, kein `Sleep`/`Wait`, kein `GetMessage`, kein `Embed`, keine
     Rückkanäle, die das Fenster nicht braucht (`TestEdgeKopieOhneProzessendeUndOhneUnbegrenzteWartezeit`,
@@ -989,39 +989,39 @@ Abschlussbericht ausschließlich im Chat, keine Berichtsdatei im Repository.
 SEC-R4 F3 ergänzt Mutanten für Träger in JSON-Escapes und Schlüsseln (`traeger-unescape`, `traeger-schluessel`), `rpc-methode`, `rpc-id`, `rpc-version`, `rpc-ergebnis-und-fehler`, `http-beide-traeger`, `http-app-endpoint`, `http-app-praefix`, `gw-revoked-code`.
 K6b-2 ergänzt Mutanten für Host (`host-*`), Exchange (`exchange-*`), Leser (`reader-*`), Laufzeit (`runtime-*`), Wächter (`ui-thread-liest`, `bedienfeld-importiert-*`, `panel-importiert-fensterio`), die Ereignisurteile und Pflichtschritte (`nav-*`, `neues-fenster-*`, `download-*`, `quelle-ignoriert`, `schritte-*`, `adapter-*`), Links, Layout und App-Menü.
 Native Sonden (nur Test-VM, Opt-in `JNPT_NATIVE_WEBVIEW_PROBE=1`): `go test -c -o fensterio.test.exe ./internal/fensterio` auf dem Build-Rechner, auf der VM `fensterio.test.exe -test.run TestWindowsWebView -test.v`; das Binary braucht dort kein Go, nur die WebView2-Runtime und eine interaktive Sitzung; `PATH` darf kein `jnpt` tragen.
-K6b-1-Mutationen: `python3 probe/k6b_mutations.py [name…]`, im Container `golang:1.26.10` mit
+K6b-1-Mutationen: `python3 probe/k6b_mutations.py [name…]`, im Container `golang:1.26.11` mit
 nachinstalliertem Python (Worktree als Mount, exklusiv). Jeder Mutant muss kompilieren und den
 benannten Test rot machen; Compilerfehler zählen nicht; `finally` stellt die Bytes her. Reine
 Linux-Proben, kein Fenster, kein Prozess. Die Mutationen für `WindowsContract` stehen zusätzlich
 in `probe/l1_mutations.py` und `probe/l3_mutations.py` (Anker auf die Konstante umgestellt).
 
-L6-Mutationen: `python probe/l6_mutations.py`, exklusiv in `l6-test`, Go 1.26.10.
+L6-Mutationen: `python probe/l6_mutations.py`, exklusiv in `l6-test`, Go 1.26.11.
 Git-Archiv statt Windows-Bind-Mount; ausschließlich Container-Kopien mutieren,
 kompilierende rote Zieltests und geprüfte Wiederherstellung. Installtest lokal
 nicht ausführen, nur PowerShell-Syntax prüfen. Windows-Tests nur cross-kompilieren;
 CI startet der LEAD. Kein Tag, Push oder Signieren durch den Implementierer.
 
 L5-Mutationen: `python probe/l5_mutations.py`, exklusiv in `l5-test` mit
-Go 1.26.10. Jede Mutation kompiliert und muss den benannten Test rot machen;
+Go 1.26.11. Jede Mutation kompiliert und muss den benannten Test rot machen;
 Quelldateien werden bytegenau wiederhergestellt. Python: `python3 -B -m unittest
 discover -s internal/client -p test_bootstrap.py`. Native GDI-Proben nur durch
 LEAD CI/GATE mit `JNPT_GDI_PROBE=1`; separater Hilfsprozess mit 15 Sekunden
 Frist, sichtbarer Skip ohne Opt-in/interaktive Sitzung. Lokal nur cross-kompilieren,
 niemals GUI oder Bildschirmaufnahme. H3-Handleliste/Env/argv bleiben unverändert.
 
-L4-Mutationen: `python probe/l4_mutations.py`, exklusiv in `l4-test`, Go 1.26.10.
+L4-Mutationen: `python probe/l4_mutations.py`, exklusiv in `l4-test`, Go 1.26.11.
 Kompilierende rote Mutanten, bytegenaue Wiederherstellung. Native Mutanten
 lokal nur cross-kompilieren; Ausführung durch LEAD in CI, Fokus/Tray am GATE.
 
 L3-Mutationen: `python probe/l3_mutations.py`, exklusiv im Container `l3-test`
-mit `golang:1.26.10` und Repo-Mount `/workspace`. Jeder Linux-Mutant muss
+mit `golang:1.26.11` und Repo-Mount `/workspace`. Jeder Linux-Mutant muss
 kompilieren und seinen Zieltest tatsächlich rot machen; alle Bytes werden in
 `finally` wiederhergestellt. Native Mutanten werden standardmäßig ausschließlich
 cross-kompiliert; `--native` ist für die durch LEAD gestartete Windows-CI.
 Native Kompilierung ist kein Laufzeitbeweis für ACL, IL, Authenticode oder H3.
 Keine lokalen GUI-/Desktop-Proben, kein automatischer CI-Dispatch.
 
-L2-Mutationen: `python probe/l2_mutations.py`, Container `l2-test` mit Go 1.26.10
+L2-Mutationen: `python probe/l2_mutations.py`, Container `l2-test` mit Go 1.26.11
 und Repo-Mount `/workspace`, keine parallelen Tests/Mutationen. Der Test für
 L2-1 erzwingt tabellarisch `angehalten` und `pausiert` während der Vorbereitung
 nach einem echten HTTP-Claim und bewacht zusätzlich die gemeinsame Spawn-Sperre.
@@ -1109,7 +1109,7 @@ probe/container_mutations.py mutiert neue Sperren mit kompilierenden roten Tests
 und stellt jede Datei bytegenau wieder her. Nur exklusiv, keine parallelen Tests.
 
 L1-Mutationen: `python probe/l1_mutations.py` nutzt den laufenden Container
-`l1-test` mit Go 1.26.10, ohne parallele Tests. Jeder Mutant muss kompilieren
+`l1-test` mit Go 1.26.11, ohne parallele Tests. Jeder Mutant muss kompilieren
 und am benannten Adaptertest rot werden; `finally` stellt die Bytes wieder her.
 Windows-CI ergänzt `TestWindowsK8UhrmarkeDPAPINeustart` (DPAPI, ACL,
 Neustart, Manipulation). Keine GUI-Probe für L1.

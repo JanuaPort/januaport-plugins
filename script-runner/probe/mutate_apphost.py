@@ -1,6 +1,6 @@
 """Run complete Go package suites for temporary K4 mutations; always restore files.
 
-Inside golang:1.26.10, from /repo/script-runner:
+Inside golang:1.26.11, from /repo/script-runner:
   python3 probe/mutate_apphost.py
 The official Go image may not have Python; the host can use --docker instead.
 """
@@ -88,7 +88,7 @@ def main():
                 command = ["docker", "run", "--rm", "--name", f"k4-mutation-{i}",
                     "-v", f"{ROOT.parent.as_posix()}:/repo",
                     "-v", f"{(pathlib.Path.home()/'go/pkg/mod').as_posix()}:/go/pkg/mod",
-                    "-w", "/repo/script-runner", "golang:1.26.10"] + command
+                    "-w", "/repo/script-runner", "golang:1.26.11"] + command
             if name.startswith("11 "):
                 command = ["pwsh", "-NoProfile", "-File", str(ROOT / "probe/apphost.ps1")]
             result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False)

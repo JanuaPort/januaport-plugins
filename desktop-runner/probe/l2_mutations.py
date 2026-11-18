@@ -1,4 +1,4 @@
-"""L2 mutations in l2-test (golang:1.26.10, /workspace bind mount).
+"""L2 mutations in l2-test (golang:1.26.11, /workspace bind mount).
 
 Run exclusively: python probe/l2_mutations.py [case ...]
 Each mutant must compile and fail its named test; restore exact source bytes.
