@@ -261,9 +261,29 @@ pruefe('ZIP wird entpackt, Reihenfolge bleibt', function () {
     gleich(['<b/>', '<a/>'], ebicsInhalte("PK\x03\x04...", $entpacker));
 });
 
-pruefe('Kaputte und leere ZIP-Eintraege fliegen raus', function () {
-    $entpacker = fn(string $roh) => ['a.xml' => '<a/>', 'kaputt.xml' => false, 'leer.xml' => '', 'c.xml' => '<c/>'];
+pruefe('Leere ZIP-Eintraege (etwa Verzeichniseintraege) werden uebergangen', function () {
+    $entpacker = fn(string $roh) => ['a.xml' => '<a/>', 'leer.xml' => '', 'blank.xml' => " \n ", 'c.xml' => '<c/>'];
     gleich(['<a/>', '<c/>'], ebicsInhalte("PK\x03\x04...", $entpacker));
+});
+
+pruefe('⚠️ Ein nicht lesbarer ZIP-Eintrag ist ein Ablagefehler, kein Uebergehen', function () {
+    $entpacker = fn(string $roh) => ['a.xml' => '<a/>', 'kaputt.xml' => false, 'c.xml' => '<c/>'];
+    wirft(EbicsAblageFehler::class, fn() => ebicsInhalte("PK\x03\x04...", $entpacker));
+});
+
+pruefe('⚠️ Die Meldung zum nicht lesbaren Eintrag nennt weder Inhalt noch Eintragsnamen', function () {
+    $entpacker = fn(string $roh) => ['geheim-name.xml' => '<Ntry>GEHEIM</Ntry>', 'kaputt-name.xml' => false];
+    $fehler = wirft(EbicsAblageFehler::class, fn() => ebicsInhalte("PK\x03\x04...", $entpacker));
+    wahr(!str_contains($fehler->getMessage(), 'GEHEIM'), 'kein Inhalt in der Meldung');
+    wahr(!str_contains($fehler->getMessage(), 'geheim-name'), 'kein Eintragsname in der Meldung');
+    wahr(!str_contains($fehler->getMessage(), 'kaputt-name'), 'kein Eintragsname in der Meldung');
+});
+
+pruefe('⚠️ Ein ZIP ohne jeden Inhalt ist ein Ablagefehler, keine Erfolgsmeldung', function () {
+    // Eine Bank, die einen leeren Container schickt, ist ein Befund. Wuerde
+    // hier [] zurueckkommen, quittierte fetch.php positiv — nichts abgelegt.
+    wirft(EbicsAblageFehler::class, fn() => ebicsInhalte("PK\x03\x04...", fn() => ['leer.xml' => '', 'dir/' => '']));
+    wirft(EbicsAblageFehler::class, fn() => ebicsInhalte("PK\x03\x04...", fn() => []));
 });
 
 pruefe('Nicht-ZIP kommt als genau ein Inhalt zurueck (H004-Fall)', function () {
@@ -275,6 +295,72 @@ pruefe('Nicht-ZIP kommt als genau ein Inhalt zurueck (H004-Fall)', function () {
 
 pruefe('Leere Rohdaten ergeben keine Datei', function () {
     gleich([], ebicsInhalte('   ', fn() => []));
+});
+
+pruefe('Leere Rohdaten und Nicht-ZIP bleiben ohne Ausnahme, der Entpacker wird nicht gerufen', function () {
+    // H004-Leerfall: kein ZIP, also kein Befund — ablegen wird mit [] gerufen
+    // (nichts zu tun), die Quittung bleibt positiv.
+    $entpacker = function () {
+        throw new RuntimeException('der Entpacker darf hier gar nicht gerufen werden');
+    };
+    gleich([], ebicsInhalte('', $entpacker));
+    gleich([], ebicsInhalte("\n  ", $entpacker));
+});
+
+// ── 4a. Ablegen vor Quittieren: die Entscheidung hinter der Quittung ────────
+
+echo "\nAblegen vor Quittieren (Entscheidung der Quittung)\n";
+
+pruefe('Lesbare Eintraege werden zum Ablegen gereicht, Ergebnis ist die Ablageliste', function () {
+    $gereicht = null;
+    $ergebnis = ebicsAuszuegeAblegen(
+        "PK\x03\x04...",
+        fn() => ['a.xml' => '<a/>', 'b.xml' => '<b/>'],
+        function (array $inhalte) use (&$gereicht): array {
+            $gereicht = $inhalte;
+            return ['/ablage/x-01.xml', '/ablage/x-02.xml'];
+        }
+    );
+    gleich(['<a/>', '<b/>'], $gereicht, 'gereichte Inhalte');
+    gleich(['/ablage/x-01.xml', '/ablage/x-02.xml'], $ergebnis, 'Ablageliste');
+});
+
+pruefe('⚠️ Nicht lesbarer Eintrag: Ausnahme, und es wird GAR NICHT abgelegt', function () {
+    // Die Ausnahme macht in fetch.php aus der Quittung ein `false`. Dass vorher
+    // nichts abgelegt wurde, verhindert Doppelte beim Neuabruf.
+    $abgelegtGerufen = 0;
+    $fehler = wirft(EbicsAblageFehler::class, function () use (&$abgelegtGerufen) {
+        ebicsAuszuegeAblegen(
+            "PK\x03\x04...",
+            fn() => ['a.xml' => '<a/>', 'kaputt.xml' => false],
+            function (array $inhalte) use (&$abgelegtGerufen): array {
+                $abgelegtGerufen++;
+                return [];
+            }
+        );
+    });
+    gleich(0, $abgelegtGerufen, 'ablegen wurde nicht gerufen');
+    gleich(3, ebicsExitCode(get_class($fehler), null), 'zusammen ergibt das Exit 3');
+});
+
+pruefe('Ein ZIP, das sich nicht oeffnen laesst, wirft aus dem Entpacker durch', function () {
+    wirft(RuntimeException::class, fn() => ebicsAuszuegeAblegen(
+        "PK\x03\x04...",
+        function (): array {
+            throw new RuntimeException('ZIP nicht lesbar');
+        },
+        fn(array $inhalte): array => []
+    ));
+});
+
+pruefe('Nicht-ZIP-Leerfall: ablegen mit [] gerufen, keine Ausnahme (unveraendert)', function () {
+    $gereicht = 'nie';
+    $ergebnis = ebicsAuszuegeAblegen('', fn() => [], function (array $inhalte) use (&$gereicht): array {
+        $gereicht = $inhalte;
+        return [];
+    });
+    gleich([], $gereicht, 'ablegen bekam []');
+    gleich([], $ergebnis, 'nichts abgelegt, aber kein Fehler');
 });
 
 // ── 5. Dateinamen ───────────────────────────────────────────────────────────
@@ -759,6 +845,22 @@ if (!is_file(__DIR__ . '/../vendor/autoload.php')) {
         ebicsAblegen($dir, ['<a/>'], '2026-08-20');
 
         gleich([], glob($dir . '/.*.teil') ?: [], 'keine .teil-Datei uebrig');
+    });
+
+    pruefe('⚠️ Nicht lesbarer Eintrag im Container: keine einzige Datei liegt in der Ablage', function () use ($frischesVerzeichnis) {
+        $dir = $frischesVerzeichnis();
+
+        wirft(EbicsAblageFehler::class, fn() => ebicsAuszuegeAblegen(
+            "PK\x03\x04...",
+            fn() => ['a.xml' => '<a/>', 'kaputt.xml' => false, 'c.xml' => '<c/>'],
+            fn(array $inhalte): array => ebicsAblegen($dir, $inhalte, '2026-08-20')
+        ));
+
+        gleich(
+            [],
+            array_values(array_diff(scandir($dir) ?: [], ['.', '..'])),
+            'das Verzeichnis ist leer (auch keine Zwischendatei)'
+        );
     });
 
     pruefe('Der Abruf-Auftrag laesst sich fuer H005 und H004 bauen', function () {
