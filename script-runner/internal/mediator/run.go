@@ -49,8 +49,13 @@ func (m *Mediator) callTool(ctx context.Context, req *mcp.CallToolRequest) (*mcp
 	if r.Isolation == "" {
 		r.Isolation = isolation
 	}
-	m.log.Info("run", "end", r.End, "detail", r.Detail, "duration_ms", time.Since(start).Milliseconds(),
-		"bytes_out", r.BytesOut, "tool_calls", r.ToolCalls)
+	attrs := []any{"end", r.End, "detail", r.Detail, "duration_ms", time.Since(start).Milliseconds(),
+		"bytes_out", r.BytesOut, "tool_calls", r.ToolCalls}
+	if r.Stream != nil {
+		// Nur Status und Zähler des Stroms, nie ein Inhalt (inhaltsblind).
+		attrs = append(attrs, "stream", r.Stream.Status, "stream_bytes", r.Stream.Bytes, "stream_zeilen", r.Stream.Zeilen)
+	}
+	m.log.Info("run", attrs...)
 	return contract.Result(r, out), nil
 }
 
@@ -97,11 +102,16 @@ func (m *Mediator) run(ctx context.Context, p pinState, input json.RawMessage, r
 	defer sc.detach(a)
 	r := &runner{
 		m: m, sc: sc, a: a, pin: p, tree: tree,
-		run:    contract.Run{Isolation: sc.isolation},
-		gw:     &gatewayClient{url: m.cfg.GatewayURL + "/mcp", token: runToken},
-		limits: limits,
+		run:     contract.Run{Isolation: sc.isolation},
+		gw:      &gatewayClient{url: m.cfg.GatewayURL + "/mcp", token: runToken},
+		limits:  limits,
+		etlDone: make(chan error, 1),
 	}
+	// Die Fassung gilt ab Laufbeginn; ein späterer Wechsel der Kern-Version
+	// ändert diesen Lauf nicht.
+	r.etl.enabled = m.contractVersion() == contract.Version
 	defer r.gw.close()
+	defer r.etl.shutdown()
 	// acquire kann warten: direkt vor der Übergabe die Freigabe erneut lesen.
 	if m.pinApproval(p).state != contract.StateReady {
 		m.forget(p.pin)
@@ -138,10 +148,19 @@ type runner struct {
 	log    runlog.Buffer
 	gw     *gatewayClient
 	limits contract.RunLimits
+
+	// ETL-Rohstrom (Fassung 3): Der Strom gehört dem Lauf; etlDone meldet das
+	// Ende eines etl_next, das in einem eigenen Lauf antwortet.
+	etl     etlSession
+	etlDone chan error
 }
 
 func (r *runner) end(end, detail string) (contract.Run, []byte) {
 	r.run.End, r.run.Detail = end, detail
+	// Das Ende des Skripts (ok, error) lässt einen offenen Strom als verlassen
+	// gelten; jedes andere Ende (Wandzeit, Sandbox, Grenze, Kontext) bricht ihn ab.
+	r.run.Stream = r.etl.report(end == contract.EndOK || end == contract.EndError)
+	r.etl.shutdown()
 	r.run.Log = r.log.String() // every end after job: never pass this to slog
 	if end != contract.EndOK {
 		return r.run, nil
@@ -157,6 +176,11 @@ func (r *runner) loop(ctx context.Context, wall *time.Timer) (contract.Run, []by
 		case f := <-r.a.frames:
 			if res, out, done := r.handle(ctx, f, wall); done {
 				return res, out
+			}
+		case err := <-r.etlDone:
+			r.etl.pending = false
+			if err != nil {
+				return r.end(contract.EndLimit, contract.DetailSandboxLost)
 			}
 		case <-wall.C:
 			return r.end(contract.EndTimeout, "")
@@ -209,6 +233,14 @@ func (r *runner) handle(ctx context.Context, f inFrame, wall *time.Timer) (contr
 		if res, out, done := r.toolCall(ctx, f.payload, wall); done {
 			return res, out, true
 		}
+	case frame.TypeETLOpen:
+		// Kein Werkzeugaufruf: zählt nicht in tool_calls.
+		r.etlOpen(ctx, f.payload)
+	case frame.TypeETLNext:
+		if r.etlNext(f.payload) {
+			res, out := r.end(contract.EndLimit, contract.DetailSandboxLost)
+			return res, out, true
+		}
 	case frame.TypeExited:
 		var ex frame.Exited
 		if json.Unmarshal(f.payload, &ex) != nil {
@@ -229,7 +261,10 @@ func (r *runner) toolCall(ctx context.Context, payload []byte, wall *time.Timer)
 		return contract.Run{}, nil, false
 	}
 	var result json.RawMessage
-	if !slices.Contains(r.pin.manifest.Tools, tc.Name) {
+	if tc.Name == etlScope {
+		// Strom-Recht, nie ein Werkzeug (E2 im Kern): kein Weg B für diesen Namen.
+		result = errorResult("etl_stream ist ein Strom, kein Werkzeug.")
+	} else if !slices.Contains(r.pin.manifest.Tools, tc.Name) {
 		result = errorResult("Werkzeug nicht im Manifest deklariert.")
 	} else {
 		callCtx, cancel := context.WithCancel(ctx)

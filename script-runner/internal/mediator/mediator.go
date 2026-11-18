@@ -29,20 +29,21 @@ import (
 // Config des vermittlers. Leere Dauern bekommen die Standards aus dem
 // Vertrag.
 type Config struct {
-	SocketPath     string       // Unix-Socket für den Wächter (Weg C)
-	KeyDir         string       // Plugin-Ordner mit runtime-key, pins.json und desktop-pins.json
-	StoreDir       string       // gemeinsames Volume mit dem abholer (Weg D)
-	LibsDir        string       // Volume mit den entpackten Python-Bibliotheken (#1041); leer = keine Bibliotheken
-	LibsStagingDir string       // private sibling in the same volume, never mounted in sandbox (#1096)
-	LibsLimits     *libs.Limits // Grenzen des Entpackens; nil = libs.DefaultLimits
-	GatewayURL     string       // Basis für Weg B, ohne /mcp
-	Logger         *slog.Logger
-	BusyWait       time.Duration                   // Vertrag §5: 3 s
-	PollInterval   time.Duration                   // Abstand für beide Pin-Dateien, runtime-key, Store
-	Now            func() time.Time                // Uhr des Taktgebers (#1039); Standard time.Now
-	TriggerTimeout time.Duration                   // HTTP-Frist des Auslöse-Aufrufs; Standard 35 s
-	MaxWallS       int                             // gemeldete und eingehaltene Wandzeitdecke; 0 = contract.MaxWallS
-	NewWallTimer   func(time.Duration) *time.Timer // Lauf-Uhr; Standard time.NewTimer
+	SocketPath        string       // Unix-Socket für den Wächter (Weg C)
+	KeyDir            string       // Plugin-Ordner mit runtime-key, pins.json und desktop-pins.json
+	StoreDir          string       // gemeinsames Volume mit dem abholer (Weg D)
+	LibsDir           string       // Volume mit den entpackten Python-Bibliotheken (#1041); leer = keine Bibliotheken
+	LibsStagingDir    string       // private sibling in the same volume, never mounted in sandbox (#1096)
+	LibsLimits        *libs.Limits // Grenzen des Entpackens; nil = libs.DefaultLimits
+	GatewayURL        string       // Basis für Weg B, ohne /mcp
+	Logger            *slog.Logger
+	BusyWait          time.Duration                   // Vertrag §5: 3 s
+	PollInterval      time.Duration                   // Abstand für beide Pin-Dateien, runtime-key, Store
+	Now               func() time.Time                // Uhr des Taktgebers (#1039); Standard time.Now
+	TriggerTimeout    time.Duration                   // HTTP-Frist des Auslöse-Aufrufs; Standard 35 s
+	CoreProbeInterval time.Duration                   // Abstand der Versionsabfrage am Kern (/healthz); Standard 30 s
+	MaxWallS          int                             // gemeldete und eingehaltene Wandzeitdecke; 0 = contract.MaxWallS
+	NewWallTimer      func(time.Duration) *time.Timer // Lauf-Uhr; Standard time.NewTimer
 }
 
 // Mediator ist der vermittler.
@@ -66,7 +67,9 @@ type Mediator struct {
 	ticker         *ticker.Ticker
 	trigger        *gatewayTrigger
 	storageCourier *storageCourier
-	schedState     string // zuletzt geloggter Zustand von schedules.json
+	etl            *etlClient
+	core           *coreProbe // gewählte Vertragsfassung (Rückfall auf 2, E4)
+	schedState     string     // zuletzt geloggter Zustand von schedules.json
 }
 
 // New prüft die Konfiguration.
@@ -98,6 +101,9 @@ func New(cfg Config) (*Mediator, error) {
 	if cfg.TriggerTimeout == 0 {
 		cfg.TriggerTimeout = triggerTimeout
 	}
+	if cfg.CoreProbeInterval == 0 {
+		cfg.CoreProbeInterval = 30 * time.Second
+	}
 	m := &Mediator{
 		cfg:          cfg,
 		store:        store.Open(filepath.Join(cfg.StoreDir, "store.git")),
@@ -108,6 +114,8 @@ func New(cfg Config) (*Mediator, error) {
 		ticker:       ticker.New(cfg.Logger),
 		trigger:      newGatewayTrigger(cfg.GatewayURL, filepath.Join(cfg.KeyDir, "runtime-key"), cfg.TriggerTimeout),
 	}
+	m.etl = newETLClient(cfg.GatewayURL)
+	m.core = newCoreProbe(m.etl, cfg.CoreProbeInterval, cfg.Logger)
 	m.sb = newSandboxes(m.onHello, m.log)
 	m.storageCourier = newStorageCourier(cfg.GatewayURL, filepath.Join(cfg.KeyDir, "runtime-key"), cfg.StoreDir, cfg.Now, cfg.Logger)
 	m.libs = openLibs(cfg)
@@ -136,6 +144,9 @@ func (m *Mediator) Serve(ctx context.Context) error {
 		defer m.libs.Close()
 	}
 	go m.pollLoop(ctx)
+	coreDone := make(chan struct{})
+	go func() { defer close(coreDone); m.core.run(ctx) }()
+	defer func() { <-coreDone }()
 	storageCtx, cancelStorage := context.WithCancel(ctx)
 	storageDone := make(chan struct{})
 	go func() { defer close(storageDone); m.storageCourier.Run(storageCtx) }()
@@ -251,7 +262,7 @@ func (m *Mediator) toolsList() *mcp.ListToolsResult {
 		}
 		listed = append(listed, lp)
 	}
-	res := contract.ToolsList(listed, m.isolation, sched)
+	res := contract.ToolsList(m.contractVersion(), listed, m.isolation, sched)
 	meta := res.Meta[contract.MetaRunner].(contract.RunnerMeta)
 	meta.MaxWallS = m.cfg.MaxWallS
 	for _, p := range m.desktopPins {
