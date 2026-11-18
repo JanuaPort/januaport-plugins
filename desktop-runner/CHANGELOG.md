@@ -2,6 +2,17 @@
 
 ## Unveröffentlicht
 
+### Feste Sperr-Reihenfolge, kein Deadlock zwischen Takt und Pause (JanuaPort/januaport#1421)
+
+- **Fehler:** Der Aufräumtakt (`pruneStored`, nach jedem Sync und alle 60 s im Heartbeat) las das Manifest über `e.view()`
+  (`e.mu`) unter der Zustandssperre (`State.mu`); Pause, Anhalten, das automatische Ende einer Pause und die
+  Slot-Reservierung nehmen dagegen `e.mu` und dann `State.mu`. Trafen beide Wege zusammen, hing der Läufer dauerhaft.
+- **Jetzt gilt `e.mu` vor `State.mu`, unter `State.mu` nie `e.mu`.** Der Takt liest das gespeicherte Manifest unter der
+  schon gehaltenen Zustandssperre von der Platte (`State.loadLocked`, Gegenstück zu `saveLocked`). Das ist dieselbe Quelle
+  wie zuvor: `Sync` speichert vor dem Setzen von `e.bundle`. Löschen, Prüfung (`VerifyManifest`), Fehlerfälle und Logcode
+  `10 2` unverändert; ohne gespeichertes oder prüfbares Manifest wird nichts gelöscht.
+- Halt-Semantik, Journal-Format, Manifestprüfung und Pipe unverändert.
+
 ### Kaputter Pin sperrt das Manifest nicht mehr (JanuaPort/januaport#1391)
 
 - **Ein Pin ohne Umgebung hält den Abgleich nicht mehr auf.** Bisher verwarf jeder Fehler im Pin-Schritt (Paketabruf mit
