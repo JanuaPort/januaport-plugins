@@ -17,8 +17,14 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Version ist `contract` in `_meta["januaport.ai/runner"]`.
-const Version = 2
+// Version ist die höchste Vertragsfassung, die der Läufer spricht (`contract`
+// in `_meta["januaport.ai/runner"]`): Fassung 3 ist Fassung 2 plus ETL-Strom
+// (JanuaPort/januaport#1215 P2). LegacyVersion ist die Rückfallebene bei einem
+// Kern, der Fassung 3 nicht kennt oder dessen Version unlesbar ist (E4).
+const (
+	Version       = 3
+	LegacyVersion = 2
+)
 
 // Schlüssel in `_meta`.
 const (
@@ -118,17 +124,38 @@ const (
 	MaxToolCalls   = 10000
 )
 
+// Ausgang des ETL-Stroms (Fassung 3, Feld `stream`). Nur `fertig` heißt: Der
+// Strom endete mit dem Endsatz `fertig` des Gateways.
+const (
+	StreamFertig      = "fertig"
+	StreamAbgebrochen = "abgebrochen"
+	StreamGeschlossen = "geschlossen"
+	StreamGrenze      = "grenze"
+	StreamVertrag     = "vertrag"
+	StreamAbgewiesen  = "abgewiesen"
+)
+
+// StreamReport ist das Feld `stream` im Lauf-Ergebnis (Fassung 3): Status und
+// Zähler des vermittlers, nie Inhalte. Es steht nur, wenn der Lauf einen Strom
+// geöffnet oder versucht hat.
+type StreamReport struct {
+	Status string `json:"status"`
+	Bytes  int64  `json:"bytes"`
+	Zeilen int64  `json:"zeilen"`
+}
+
 // Run ist das Ergebnis eines Laufs, wie es in `_meta["januaport.ai/run"]`
 // steht.
 type Run struct {
-	End       string `json:"end"`
-	Detail    string `json:"detail,omitempty"`
-	ErrorType string `json:"error_type,omitempty"`
-	ErrorAt   string `json:"error_at,omitempty"`
-	BytesOut  int    `json:"bytes_out"`
-	ToolCalls int    `json:"tool_calls"`
-	Isolation string `json:"isolation"`
-	Log       string `json:"log,omitempty"` // M6: explicit run log, only in _meta
+	End       string        `json:"end"`
+	Detail    string        `json:"detail,omitempty"`
+	ErrorType string        `json:"error_type,omitempty"`
+	ErrorAt   string        `json:"error_at,omitempty"`
+	BytesOut  int           `json:"bytes_out"`
+	ToolCalls int           `json:"tool_calls"`
+	Isolation string        `json:"isolation"`
+	Stream    *StreamReport `json:"stream,omitempty"`
+	Log       string        `json:"log,omitempty"` // M6: explicit run log, only in _meta
 }
 
 var messages = map[string]string{
@@ -275,9 +302,10 @@ type ListedPin struct {
 
 // ToolsList baut das tools/list-Ergebnis (Vertrag §2). Werkzeuge gibt es
 // nur für lokale Skript-Pins im Zustand `ready` und nie bei isolation `invalid`. Die
-// Zeitpläne meldet der Taktgeber (#1039), höchstens MaxSchedules.
-func ToolsList(pins []ListedPin, isolation string, schedules []ScheduleStatus) *mcp.ListToolsResult {
-	meta := RunnerMeta{Contract: Version, Isolation: isolation, Pins: []PinStatus{}, Schedules: schedules[:min(len(schedules), MaxSchedules)]}
+// Zeitpläne meldet der Taktgeber (#1039), höchstens MaxSchedules. version ist
+// die gewählte Fassung (ForCoreVersion).
+func ToolsList(version int, pins []ListedPin, isolation string, schedules []ScheduleStatus) *mcp.ListToolsResult {
+	meta := RunnerMeta{Contract: version, Isolation: isolation, Pins: []PinStatus{}, Schedules: schedules[:min(len(schedules), MaxSchedules)]}
 	tools := []*mcp.Tool{}
 	for _, p := range pins {
 		state := p.State
