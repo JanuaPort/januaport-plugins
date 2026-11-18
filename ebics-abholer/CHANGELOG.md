@@ -17,6 +17,26 @@ höchstens 90 Tage. CRITICAL- und HIGH-Befunde ohne Fix blocken nicht, stehen ab
 
 ## Unveröffentlicht
 
+## 1.0.1 — 2026-11-18
+
+| Feld | Wert |
+|---|---|
+| Image | `ghcr.io/januaport/ebics` |
+| Version | `1.0.1` (Tag `ebics-abholer/v1.0.1` → `95aad4f`, Release-Lauf 44347623555) |
+| Digest (OCI-Index) | `sha256:82648f8715e8a73634a064684fb306eed1e1729c28f88f4ebd8247e09afbaa87` |
+| Plattformen | `linux/amd64`, `linux/arm64` |
+| Art | Job (einmaliger Lauf per systemd-Timer), kein Dienst |
+| Basis | `php:8.5.12-cli-alpine3.24` (per Digest gepinnt), Composer 2.10.3 nur in der Bau-Stufe |
+| Bibliothek | unverändert gegenüber 1.0.0 (`composer.lock`) |
+| Geprüft mit | Teststrecke `tests/run.php` (104 Fälle, lokal im Image, ohne Netz); Laufbeleg an der Pilot-Anlage steht aus |
+| Datum | 18. November 2026 |
+
+**Bindender Scan (18. November 2026, Release-Lauf 44347623555):** Trivy 0.75.0 gegen
+genau `ghcr.io/januaport/ebics@sha256:82648f8715e8…` je Plattform, CRITICAL/HIGH mit Fix:
+**0 Befunde** für `linux/amd64` und `linux/arm64` (Alpine 3.24.4 und
+`composer/installed.json`). Ausnahmen in `.trivyignore`: keine. Die Tags `1.0.1`,
+`ebics-abholer-v1.0.1` und `latest` zeigen auf denselben Index.
+
 **Fehlerbehebung — nicht lesbarer ZIP-Eintrag wird nicht mehr still quittiert
 (JanuaPort/januaport#1422).** Lieferte die Bibliothek für einen Eintrag im
 ZIP-Container der Bank `false` (CRC- oder Lesefehler), übersprang `ebicsInhalte` ihn;
