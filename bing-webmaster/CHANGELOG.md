@@ -1,5 +1,19 @@
 # Änderungen — Bing Webmaster
 
+## 0.1.1 — 2026-11-18
+
+**Korrektur von `bing/url_info`** (JanuaPort/januaport#1303, Befunde aus dem Live-Betrieb von 0.1.0).
+Nur die Projektion; Routen, Quote, Schreibwege und Vorlagen bleiben unverändert.
+
+- `http_status`: Bings Wert `0` (kein Code bekannt) wird als `null` ausgegeben, jeder andere Wert bleibt.
+- `state`: Hat Bing für eine Adresse weder Entdeckungs- noch Crawl-Datum (beide `null`, auch Bings
+  „nie“), ist die Antwort `no_data` mit `item: null` statt `ok` mit Nullen. Eine entdeckte oder
+  gecrawlte Adresse bleibt `ok`.
+- README: `quota_before` ist bei `bing/submit_urls` mit `dry_run` `null`, weil die Vorschau Bing nicht
+  aufruft (Verhalten unverändert).
+- Mutanten `http-status-zero-kept`, `unknown-url-not-no-data`, `crawled-url-turned-no-data` in
+  `tests/mutations.py`.
+
 ## 0.1.0 — 2026-11-02
 
 **Erste Fassung** (JanuaPort/januaport#1292, Stufe 1, gebaut/synthetisch geprüft, Live-Abnahme offen).

@@ -6,6 +6,37 @@ Privater Python-REST-Beisteller, Apache 2.0. PO 29.10.2026 Option (a): Stufe A (
 geprüft, Live-Abnahme offen. Kein eigener MCP-Server; für B1 ein eigener, nur lesender MCP-Client.
 Root-CLAUDE.md war im Ausgangscheckout nicht vorhanden.
 
+## Aufbau: Datei → Verantwortung
+
+| Datei | Verantwortung |
+|---|---|
+| `linkedin_seite/domain.py` | Prüft Betreiberkonfiguration und Eingaben der Statistikberichte. |
+| `linkedin_seite/source_contract.py` | Bündelt Hersteller-Endpunkte, Scopes, Feldmengen und Mediengrenzen. |
+| `linkedin_seite/linkedin_adapter.py` | Holt Statistikdaten und projiziert sie auf die Berichtsergebnisse. |
+| `linkedin_seite/oauth.py` | Verwaltet OAuth-Transport, Grant-Prüfung, Tokenzustand und Tokenanfragen über die Worker-Pipe. |
+| `linkedin_seite/workers.py` | Verwaltet die Statistik-Worker samt Warteschlange, Fristen und HTTP-Zähler. |
+| `linkedin_seite/redaktion.py` | Prüft Redaktionseingaben und erstellt Eintragsmodell, Vorschau und Wirkungshash. |
+| `linkedin_seite/gateway.py` | Liest Redaktionseinträge und Medien über den MCP-Gatewayclient. |
+| `linkedin_seite/post_adapter.py` | Setzt Redaktionseinträge nach Hashvergleich in LinkedIn-Schreib- und Medienaufrufe um. |
+| `linkedin_seite/post_pool.py` | Verwaltet Schreibprozesse, IPC-Meldungen, Aufrufzähler und Ergebnis-Cache. |
+| `linkedin_seite/kommentare.py` | Definiert Kommentar-Eingaben, Textregeln, URN-Prüfung und Ausgabeprojektion. |
+| `linkedin_seite/community_adapter.py` | Liest Posts und Kommentare, prüft Antwortanlässe und sendet Organisationsantworten. |
+| `linkedin_seite/community_pool.py` | Verwaltet Kommentarprozesse, Antwortwarteschlange, Abstände und Kommentar-Sperrzeiten. |
+| `linkedin_seite/server.py` | Verbindet Bridge-Prüfung und REST-Routen mit drei Pools auf einem Tokenzustand. |
+| `linkedin_seite/safe_http.py` | Bindet die aiohttp-Protokollbehandlung für feste Parserfehler an den Server. |
+| `tools/zustimmung.py` | Führt die lokale OAuth-Zustimmung und die Ausgabe des Tresor-JSON durch. |
+| `config.example.json` | Zeigt Betreiberwerte für Statistik, Redaktion und Kommentare. |
+| `Dockerfile`, `requirements.in`, `requirements.lock` | Definieren Imagebau und Python-Abhängigkeiten mit Hash-Lock. |
+| `docker-compose.yml`, `deploy/env.example` | Verdrahten Image, Netzadressen, Konfiguration und Schlüsselordner. |
+| `deploy/linkedin-seite.conf.example` | Beschreibt den Dienst für den Update-Aktuator. |
+| `deploy/jnpt-plugins-linkedin-seite.conf.example` | Legt die tmpfiles-Vorlage für die drei Laufzeit-Schlüsselordner fest. |
+| `deploy/jnpt-linkedin-seite-key.path`, `deploy/jnpt-linkedin-seite-key.service` | Beobachten die Laufzeitschlüssel und erzeugen den Dienst bei Änderungen neu. |
+| `tests/support.py`, `tests/support_post.py`, `tests/support_kommentare.py` | Stellen synthetische Hersteller- und Gatewayadapter für die Testpfade bereit. |
+| `tests/wire_server.py`, `tests/wire_server_post.py`, `tests/wire_server_kommentare.py` | Starten die Dienste mit Loopback-Gegenstellen für Cross-Repo-Proben. |
+| `tests/mutations.py` | Führt gezielte Sperren-Mutationen mit Wiederherstellung aus. |
+
+## Implementierungsdetails
+
 - `domain.py`: fail-closed Konfiguration, Organisation ausschließlich Betreiberwert;
   drei feste Berichte. UTC, 7 Tage Vorgabe, 1–90 Tage, maximal 10 Beiträge.
   Follower-Ende höchstens heute−2, Seite höchstens gestern; spätere Eingabe

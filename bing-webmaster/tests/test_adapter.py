@@ -16,6 +16,8 @@ from support import (
     INDEXNOW_KEY,
     KEY_LOCATION,
     SITE,
+    URL_INFO_OK,
+    URL_INFO_UNKNOWN,
     VendorStub,
     config,
 )
@@ -70,6 +72,16 @@ class Reads(Base):
         self.assertEqual(out["item"]["last_crawled_date"], "2011-09-16T22:59:55Z")
         self.assertNotIn("must-not-appear", json.dumps(out))
         self.assertNotIn("TotalChildUrlCount", json.dumps(out))
+
+    async def test_url_info_unknown_url_is_no_data_without_a_status(self):
+        self.stub.replies["GetUrlInfo"] = (200, URL_INFO_UNKNOWN)
+        out = await self.run_req(Request("bing", "url_info", url=PAGE))
+        self.assertEqual((out["state"], out["item"]), ("no_data", None))
+
+    async def test_url_info_crawled_url_stays_ok_and_status_zero_is_null(self):
+        self.stub.replies["GetUrlInfo"] = (200, {"d": dict(URL_INFO_OK["d"], HttpStatus=0)})
+        out = await self.run_req(Request("bing", "url_info", url=PAGE))
+        self.assertEqual((out["state"], out["item"]["http_status"]), ("ok", None))
 
     async def test_sitemaps_and_quota(self):
         out = await self.run_req(Request("bing", "sitemaps"))

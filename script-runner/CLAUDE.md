@@ -36,32 +36,39 @@ siehe „Python-Bibliotheken“), keine zweite Sprache, keine Netzfreigabe je Sk
 Webhook, keine GUI. Der Git-Anbieter wird ausschließlich mit `ls-remote`
 und `fetch` gelesen.
 
-## Aufbau
+## Aufbau: Datei → Verantwortung
 
 | Pfad | Inhalt |
 |---|---|
 | `main.go` | Unterbefehle, feste Orte im Container |
-| `internal/contract` | Draht-Vertrag: Namen, Ende-Klassen, feste Sätze, `tools/list`, Header-Prüfung |
-| `internal/frame` | Rahmenprotokoll (Weg C): 4 Byte Länge BE + JSON |
-| `internal/gitref` | Allowlist-Prüfer: Commit (40/64 Hex), ssh-URL (M7), Pin-Pfad, Pin-Name |
-| `internal/pins` | Leser für `pins.json` (Nachtrag 2a) und separate `desktop-pins.json` (#1165 D2b) |
-| `internal/schedules` | Leser für `schedules.json` (#1039): streng, fail-closed, höchstens 20, Cron wie der Kern (`robfig/cron/v3`), `time/tzdata`, Sommerzeit-Lücken |
-| `internal/ticker` | Taktgeber (#1039 S1): reine Logik — fällige Termine, Merker, `missed`/`skipped_busy`, gespiegelte Pausen, `_meta.schedules` |
-| `internal/manifest` | Leser für `jnpt-script.yaml` und `jnpt-desktop.yaml` |
-| `internal/store` | Senke: Tree-Walk mit Hash-Nachrechnung jedes Objekts (M5); `LoadSkippingWheels`, `ListWheels`, `CopyBlob` für lokale Wheels (#1041), `DesktopPackage` für Desktop-Pakete (#1165) |
-| `internal/libs` | Python-Bibliotheken (#1041): Lock-Parser, Wheel-Tags, 1:1-Plan, gehärtetes Entpacken, `.jnpt-manifest`, Cache `libs/<lockhash>/` (`Manager`); kennt weder Git noch Netz |
-| `internal/mediator` | vermittler: MCP, Auth, Pins, Slot/V1, Lauf, Weg B |
-| `internal/guard` | Wächter (`guard_linux.go`; anderswo nur ein Platzhalter) |
-| `internal/fetcher` | abholer |
-| `internal/apphost` | Browser-Listener, tls-ask-Relay, verifizierte statische Apps und Browser-Anmeldung; eigener Gatewayadapter ohne Proxy-Umgebung oder Redirects |
-| `internal/gitobjects` | geprüfte Kopie des Paketvertrags: SHA-256, sortierte Objekte, vollständiger Baum ohne Git-Aufruf |
-| `internal/storagepins` | signierte Speicherliste, gehärteter Dateiadapter, atomarer Höchststand und Speicherfreigaben |
-| `internal/hygiene` | Wächter-Tests für Compose (Vertrag §6, SEC-Zeile 3), Seccomp-Profil, Dockerfile |
+| `internal/contract/contract.go`, `internal/contract/limits.go` | Draht-Vertrag: Namen, Ende-Klassen, feste Sätze, `tools/list`, Header-Prüfung |
+| `internal/frame/frame.go` | Rahmenprotokoll (Weg C): 4 Byte Länge BE + JSON |
+| `internal/gitref/gitref.go`, `internal/gitref/desktop.go` | Allowlist-Prüfer: Commit (40/64 Hex), ssh-URL (M7), Pin-Pfad, Pin-Name |
+| `internal/pins/pins.go`, `internal/pins/desktop.go` | Leser für `pins.json` (Nachtrag 2a) und separate `desktop-pins.json` (#1165 D2b) |
+| `internal/schedules/schedules.go` | Leser für `schedules.json` (#1039): streng, fail-closed, höchstens 20, Cron wie der Kern (`robfig/cron/v3`), `time/tzdata`, Sommerzeit-Lücken |
+| `internal/ticker/ticker.go` | Taktgeber (#1039 S1): reine Logik — fällige Termine, Merker, `missed`/`skipped_busy`, gespiegelte Pausen, `_meta.schedules` |
+| `internal/manifest/manifest.go`, `internal/manifest/desktop.go` | Leser für `jnpt-script.yaml` und `jnpt-desktop.yaml` |
+| `internal/store/store.go`, `internal/store/wheels.go`, `internal/store/desktop.go` | Senke: Tree-Walk mit Hash-Nachrechnung jedes Objekts (M5); `LoadSkippingWheels`, `ListWheels`, `CopyBlob` für lokale Wheels (#1041), `DesktopPackage` für Desktop-Pakete (#1165) |
+| `internal/libs/lock.go`, `internal/libs/wheel.go`, `internal/libs/plan.go`, `internal/libs/extract.go`, `internal/libs/manager.go` | Python-Bibliotheken (#1041): Lock-Parser, Wheel-Tags, 1:1-Plan, gehärtetes Entpacken, `.jnpt-manifest`, Cache `libs/<lockhash>/` (`Manager`); kennt weder Git noch Netz |
+| `internal/mediator/mediator.go`, `internal/mediator/run.go`, `internal/mediator/sandbox.go` | vermittler: MCP, Auth, Pins, Slot/V1, Lauf, Weg B |
+| `internal/guard/guard.go`, `internal/guard/guard_linux.go`, `internal/guard/guard_other.go` | Wächter (`guard_linux.go`; anderswo nur ein Platzhalter) |
+| `internal/fetcher/fetcher.go`, `internal/fetcher/storage.go` | abholer |
+| `internal/apphost/apphost.go`, `internal/apphost/package.go`, `internal/apphost/network.go` | Browser-Listener, tls-ask-Relay, verifizierte statische Apps und Browser-Anmeldung; eigener Gatewayadapter ohne Proxy-Umgebung oder Redirects |
+| `internal/gitobjects/copied_contract.go`, `internal/gitobjects/package.go`, `internal/gitobjects/objects.go` | geprüfte Kopie des Paketvertrags: SHA-256, sortierte Objekte, vollständiger Baum ohne Git-Aufruf |
+| `internal/storagepins/pins.go`, `internal/storagepins/state.go`, `internal/storagepins/reader.go`, `internal/storagepins/io_linux.go`, `internal/storagepins/io_other.go` | signierte Speicherliste, gehärteter Dateiadapter, atomarer Höchststand und Speicherfreigaben |
+| `internal/hygiene/hygiene.go` | Prüft Compose-Dienste, Netze, Mounts und Schlüsselgrenzen. |
 | `sandbox/bootstrap.py` | Python-Seite: Modul `januaport`, Fehlermeldung ohne Text, `sys.path.append` der Bibliotheken (#1041) |
-| `seccomp/` | Profil, Quelle (moby) und Herleitung `derive.py` |
-| `contract/golden/` | Golden-JSON für §2–§4 — P3 kopiert sie unverändert ins Gateway-Repo; dazu `tools_list_schedules.json` (S1 → Gateway-Repo) und `script-runner-schedules.golden.json` (unverändert aus dem Gateway-Repo) |
-| `probe/` | Docker-Sonden (Build-Tag `docker`), Test-Überlagerung, SSH-Git-Anbieter; `measure-libs.sh` (Messung P0), Sonden `numpy_ok`, `libs_readonly`, `libs_tampered`, `no_pip` (#1041) |
-| `deploy/` | Beispiele: tmpfiles-Zeilen, Host-Deskriptor (echtes `IMAGE_REPO`, runtime-key in `REQUIRE`), `.env.example`, `daemon.json.example` |
+| `seccomp/jnpt-sandbox-seccomp.json`, `seccomp/moby-default.json`, `seccomp/derive.py` | Profil, Quelle (moby) und Herleitung `derive.py` |
+| `contract/golden/tools_list_schedules.json`, `contract/golden/script-runner-schedules.golden.json` | Referenzieren Werkzeuglisten-Metadaten und den Zeitplanvertrag mit dem Gateway. |
+| `probe/probe_test.go`, `probe/libs_test.go`, `probe/measure-libs.sh`, `probe/run.sh`, `probe/runner.Dockerfile` | Docker-Sonden (Build-Tag `docker`), Test-Überlagerung, SSH-Git-Anbieter; `measure-libs.sh` (Messung P0), Sonden `numpy_ok`, `libs_readonly`, `libs_tampered`, `no_pip` (#1041) |
+| `deploy/jnpt-plugins-script-runner.conf.example`, `deploy/script-runner.conf.example`, `deploy/.env.example`, `deploy/daemon.json.example` | Beispiele: tmpfiles-Zeilen, Host-Deskriptor (echtes `IMAGE_REPO`, runtime-key in `REQUIRE`), `.env.example`, `daemon.json.example` |
+| `internal/mediator/pins.go` | Gleicht Pin-Dateien, Abholfreigaben, Manifestprüfung und Zustands-Caches ab. |
+| `internal/mediator/desktop.go` | Liefert Desktop-Metadaten und prüft Paketabrufe über `authorizedDesktop` gegen Commit und Pfad aktueller Desktop-Pins. |
+| `internal/mediator/libs.go` | Verbindet Pin-Prüfung und Lauf mit Bibliotheksvorbereitung und Cache-Pflege. |
+| `internal/mediator/storage.go`, `internal/store/storage.go` | Binden Speicherpins an Freigabeprüfung und Paket-Senke an. |
+| `internal/mediator/storage_fetch.go` | Holt Speicherlisten und Pakete vom Gateway in die Inbox. |
+| `internal/mediator/schedules.go` | Verbindet Zeitplandatei, bereite Pins und Gateway-Auslösung mit dem Taktgeber. |
+| `internal/runlog/buffer.go` | Sammelt begrenzte Skript-Logausgabe mit Abschneidemarke. |
 
 ## Draht-Vertrag (Kurzfassung, maßgeblich ist das Ticket)
 
@@ -88,6 +95,15 @@ und `fetch` gelesen.
   `CallToolResult` mit `_meta["januaport.ai/run"]` und festem Satz. Reihenfolge
   der Ablehnungen: `refused/pin` → `refused/commit` → `refused/state` →
   `refused/input` → `busy`.
+  Bei einem normalen Skript-Lauf vergleicht `internal/mediator/run.go` (`callTool`)
+  den übermittelten `X-Jnpt-Pin-Commit` mit dem Commit des über den Werkzeugnamen
+  gefundenen Pins; ein Aufrufer-Pfad ist nicht Teil dieses Lauf-Headers.
+  Der auszuführende Pfad stammt aus der lokalen Pin-Liste (`pins.go`, `loadTree`
+  in `libs.go`); das gilt auch für den Speicherpin-Weg über `pinSource`.
+  Commit **und** angefragter Pfad werden bei Desktop-Paketabrufen in
+  `internal/mediator/desktop.go` (`authorizedDesktop`) gegen aktuelle Desktop-Pins
+  geprüft, vor und nach dem Tree-Walk. Die Paketprüfung des Apphosts ist ein
+  eigener Weg: `internal/apphost/package.go` bindet an Commit und `apps/<app>`.
 - **Weg B:** eine MCP-Sitzung je Lauf an `JNPT_GATEWAY_URL/mcp` mit
   `Authorization: Bearer <Lauf-Token>`. Das Token verlässt den vermittler nie
   Richtung Sandbox.
