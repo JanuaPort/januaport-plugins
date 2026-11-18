@@ -437,6 +437,7 @@ func TestETLEndLineClassification(t *testing.T) {
 		{"leerer Strom ohne Endsatz", nil, contract.StreamAbgebrochen, 0},
 		{"leerer Strom mit Endsatz", ndjsonRows(0, "fertig"), contract.StreamFertig, 0},
 		{"Endsatz nicht letzte Zeile", append(ndjsonRows(3, "fertig"), rows...), contract.StreamAbgebrochen, 7},
+		{"Endsatz, danach eine angefangene Zeile", append(ndjsonRows(3, "fertig"), []byte(`{"t":"row"`)...), contract.StreamAbgebrochen, 4},
 		{"Endsatz ohne Zeilenumbruch", bytes.TrimSuffix(ndjsonRows(3, "fertig"), []byte("\n")), contract.StreamAbgebrochen, 3},
 		{"gefälschter Endsatz in einer Zeile", append(append([]byte{}, rows...), forged...), contract.StreamAbgebrochen, 4},
 		{"Endsatz mit falschem Typ", append(append([]byte{}, rows...), []byte(`{"t":"endx","grund":"fertig"}`+"\n")...), contract.StreamAbgebrochen, 4},
