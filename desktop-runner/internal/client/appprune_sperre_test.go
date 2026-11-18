@@ -48,27 +48,29 @@ func TestTaktUnterZustandssperreNimmtNieDieEngineSperre(t *testing.T) {
 	}
 }
 
-// Belastung ohne Hook: Takt und Pause/Fortsetzen laufen gegeneinander.
+// Belastung ohne Hook: Takt und Pause/Fortsetzen laufen gegeneinander. Zusatz, kein Rot-Beweis: Das Zeitfenster der
+// Kollision ist winzig, den Deadlock belegt der Hook-Test. Zeitbegrenzt statt nach Rundenzahl (jede
+// Pause schreibt mit fsync, auf langsamen Platten dauert eine feste Rundenzahl beliebig lange).
 func TestTaktGegenPauseFortsetzenBleibtLebendig(t *testing.T) {
 	b := zweiAppsAbgelegt(t)
-	const runden = 100
+	ende := time.Now().Add(2 * time.Second)
 	var wg sync.WaitGroup
 	wg.Add(3)
 	go func() {
 		defer wg.Done()
-		for range runden {
+		for time.Now().Before(ende) {
 			b.e.pruneStored()
 		}
 	}()
 	go func() {
 		defer wg.Done()
-		for i := range runden {
+		for i := 0; time.Now().Before(ende); i++ {
 			_ = b.e.Pause([]int{15, 0}[i%2])
 		}
 	}()
 	go func() {
 		defer wg.Done()
-		for range runden {
+		for time.Now().Before(ende) {
 			b.e.HaltStatus()
 		}
 	}()
