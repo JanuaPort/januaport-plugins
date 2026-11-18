@@ -88,8 +88,8 @@ MUTANTS = [
     (
         "url-info-extra-vendor-field",
         "domain.py",
-        '"is_page": _flag(data["IsPage"]),',
-        '"is_page": _flag(data["IsPage"]), "extra": data.get("Url"),',
+        '"is_page": is_page,',
+        '"is_page": is_page, "extra": data.get("Url"),',
         D + "Projections.test_url_info_keeps_only_the_positive_list_and_our_own_url",
     ),
     (
