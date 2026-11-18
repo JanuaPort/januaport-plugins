@@ -171,14 +171,15 @@ func TestToolsListGolden(t *testing.T) {
 		{Name: "waiting", Commit: strings.Repeat("5", 64), State: StatePending},
 		{Name: "broken", Commit: strings.Repeat("6", 40), State: StateInvalid, Reason: ReasonSymlink},
 	}
-	golden(t, "tools_list.json", ToolsList(listed, IsolationGVisor, nil))
+	golden(t, "tools_list.json", ToolsList(LegacyVersion, listed, IsolationGVisor, nil))
+	golden(t, "tools_list_v3.json", ToolsList(Version, listed, IsolationGVisor, nil))
 }
 
 func TestToolsListInvalidIsolationListsNoTool(t *testing.T) {
 	listed := []ListedPin{{Name: "a", Commit: strings.Repeat("3", 40), State: StateReady,
 		Script:      &ScriptMeta{Path: "a", TimeoutS: 1, ManifestSHA: strings.Repeat("4", 40)},
 		InputSchema: map[string]any{"type": "object"}}}
-	res := ToolsList(listed, IsolationInvalid, nil)
+	res := ToolsList(LegacyVersion, listed, IsolationInvalid, nil)
 	if len(res.Tools) != 0 {
 		t.Fatalf("Werkzeuge trotz isolation invalid: %d", len(res.Tools))
 	}
@@ -261,14 +262,14 @@ func TestToolsListSchedulesGolden(t *testing.T) {
 		{Name: "nachts", State: SchedulePaused, Reason: ScheduleReasonToken, LastRun: "2026-10-12T00:30:00Z", LastEnd: "paused/token", Missed: 2, SkippedBusy: 1},
 		{Name: "wochenende", State: ScheduleDisabled},
 	}
-	golden(t, "tools_list_schedules.json", ToolsList(listed, IsolationGVisor, sched))
+	golden(t, "tools_list_schedules.json", ToolsList(LegacyVersion, listed, IsolationGVisor, sched))
 }
 
 // Ohne Zeitpläne fehlt weiterhin der Schlüssel `schedules`. Die übrige Form
 // bleibt erhalten; das Golden tools_list.json trägt seit Fassung 5 contract 2.
 func TestToolsListWithoutSchedulesHasNoKey(t *testing.T) {
 	for _, s := range [][]ScheduleStatus{nil, {}} {
-		b, _ := json.Marshal(ToolsList(nil, IsolationGVisor, s))
+		b, _ := json.Marshal(ToolsList(LegacyVersion, nil, IsolationGVisor, s))
 		if strings.Contains(string(b), "schedules") {
 			t.Fatalf("schedules ohne Zeitpläne: %s", b)
 		}

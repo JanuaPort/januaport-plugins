@@ -1,0 +1,9 @@
+{
+  "type": "etl_open",
+  "id": 1,
+  "integration": "erp_db",
+  "query_id": "offene_posten",
+  "params": {
+    "stichtag": "2026-11-18"
+  }
+}

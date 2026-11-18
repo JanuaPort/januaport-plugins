@@ -1,0 +1,7 @@
+{
+  "type": "etl_end",
+  "id": 1,
+  "status": "abgewiesen",
+  "code": 429,
+  "retry_after_s": 12
+}
