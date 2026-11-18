@@ -1,4 +1,4 @@
-# bing-webmaster 0.1.0 — Modulvertrag (#1292)
+# bing-webmaster 0.1.1 — Modulvertrag (#1292, #1303)
 
 Privater Python-REST-Beisteller, Apache2.0. Stufe 1, gebaut/synthetisch geprüft, Live-Abnahme
 offen. Kein eigener MCP-Server oder Gateway-Auth-Typ. Grund für den Beisteller: Bing nimmt den
@@ -9,6 +9,9 @@ API-Schlüssel nur als `?apikey=` in der URL, die Connector-Specs setzen Credent
   `parse_get`/`parse_post` (Routenmengen, unbekannte und doppelte Schlüssel → 400),
   `parse_bing_date` (`/Date(ms±hhmm)/` → ISO UTC; ≤ Epoche = `None`), Projektionen als
   **Positivliste** (`project_url_info`, `project_feeds`, `project_quota`), `envelope`/`write_envelope`.
+  `project_url_info` (#1303): Bings `HttpStatus` 0 (kein Code bekannt) wird `null`, jeder andere Wert bleibt;
+  fehlen Entdeckungs- **und** Crawl-Datum (beide `null`, auch Bings „nie“), ist `state` `no_data` mit
+  `item: null` (wie bei `{"d": null}`). Die Formprüfung der Felder läuft vorher, Formfehler bleiben 502.
 - adapter.py: Herstellertransport (aiohttp-Client). `BING_BASE` und `INDEXNOW_URL` sind
   Modulkonstanten; nur Tests übergeben andere Basen. `_send` ordnet jede Ausnahme im `except`
   einem festen Code zu und wirft **nach** dem `except` (kein `__context__`). Lesen von
@@ -68,7 +71,7 @@ Schreib-/Dry-run-/Deckel-/Quoten-Regeln und die A1-Mutanten ab. `tests/wire_serv
 Server für den Cross-Repo-Test des Produkts (echter Dienst, echter Adapter, Loopback-Stub).
 Signatur/Katalog/Deployment sind nicht Teil der Implementierung.
 
-Release (#1292): Version 0.1.0 steht im Kopf dieser Datei, im README-Titel und im CHANGELOG (sonst
+Release (#1292, #1303): Version 0.1.1 steht im Kopf dieser Datei, im README-Titel und im CHANGELOG (sonst
 nirgends). Das Image baut nur `.github/workflows/bing-webmaster-release.yml` auf den Tag
 `bing-webmaster-vX.Y.Z` (Tag setzt GATE, nie ein Branch); Aufbau und Wächter
 (`tests/test_release_workflow.py`) wie bei `google-reporting`.

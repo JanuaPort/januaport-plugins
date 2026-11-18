@@ -259,15 +259,23 @@ def project_url_info(url, raw):
     if data is None:
         return {"state": "no_data", "item": None}
     data = _record(data, ("DiscoveryDate", "DocumentSize", "HttpStatus", "IsPage", "LastCrawledDate"))
+    discovery = parse_bing_date(data["DiscoveryDate"])
+    crawled = parse_bing_date(data["LastCrawledDate"])
+    status = _count(data["HttpStatus"])
+    document_size = _count(data["DocumentSize"])
+    is_page = _flag(data["IsPage"])
+    if discovery is None and crawled is None:
+        return {"state": "no_data", "item": None}
     return {
         "state": "ok",
         "item": {
             "url": url,
-            "discovery_date": parse_bing_date(data["DiscoveryDate"]),
-            "last_crawled_date": parse_bing_date(data["LastCrawledDate"]),
-            "http_status": _count(data["HttpStatus"]),
-            "document_size": _count(data["DocumentSize"]),
-            "is_page": _flag(data["IsPage"]),
+            "discovery_date": discovery,
+            "last_crawled_date": crawled,
+            # Bing sends 0 when it has no status code; 0 is not an HTTP status.
+            "http_status": status or None,
+            "document_size": document_size,
+            "is_page": is_page,
         },
     }
 

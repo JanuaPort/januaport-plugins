@@ -48,6 +48,19 @@ URL_INFO_OK = {
         "SomethingNew": "must-not-appear",
     }
 }
+# Synthetic shape of a URL Bing has never seen: "never" dates (at or before the epoch), status 0.
+URL_INFO_UNKNOWN = {
+    "d": {
+        "__type": "UrlInfo:#Microsoft.Bing.Webmaster.Api",
+        "AnchorCount": 0,
+        "DiscoveryDate": "/Date(-62135596800000)/",
+        "DocumentSize": 0,
+        "HttpStatus": 0,
+        "IsPage": False,
+        "LastCrawledDate": "/Date(-62135596800000)/",
+        "TotalChildUrlCount": 0,
+    }
+}
 FEEDS_OK = {
     "d": [
         {

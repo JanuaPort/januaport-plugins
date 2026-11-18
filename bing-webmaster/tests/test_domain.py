@@ -2,7 +2,7 @@ import json
 import unittest
 from bing_webmaster import domain
 from bing_webmaster.domain import Config, ReportError, Request
-from support import config, config_raw, INDEXNOW_KEY, KEY_LOCATION, URL_INFO_OK, FEEDS_OK, QUOTA_OK
+from support import config, config_raw, INDEXNOW_KEY, KEY_LOCATION, URL_INFO_OK, URL_INFO_UNKNOWN, FEEDS_OK, QUOTA_OK
 
 
 def rejects(case, fn, *args, code="invalid_input", status=400, **kw):
@@ -286,6 +286,40 @@ class Projections(unittest.TestCase):
 
     def test_url_info_without_data(self):
         self.assertEqual(domain.project_url_info("https://www.example.test/a", {"d": None}), {"state": "no_data", "item": None})
+
+    def test_url_info_http_status_zero_is_null_and_everything_else_is_kept(self):
+        good = URL_INFO_OK["d"]
+        for status, want in ((0, None), (200, 200), (404, 404), (503, 503)):
+            with self.subTest(status=status):
+                item = domain.project_url_info("https://www.example.test/a", {"d": dict(good, HttpStatus=status)})["item"]
+                self.assertEqual(item["http_status"], want)
+
+    def test_url_info_without_discovery_and_crawl_is_no_data(self):
+        never = "/Date(-62135596800000)/"
+        epoch = "/Date(0)/"
+        cases = {
+            "bing answer for an unknown url": URL_INFO_UNKNOWN,
+            "never dates": {"d": dict(URL_INFO_OK["d"], DiscoveryDate=never, LastCrawledDate=never)},
+            "epoch dates": {"d": dict(URL_INFO_OK["d"], DiscoveryDate=epoch, LastCrawledDate=epoch)},
+            "null dates": {"d": dict(URL_INFO_OK["d"], DiscoveryDate=None, LastCrawledDate=None)},
+        }
+        for name, raw in cases.items():
+            with self.subTest(name):
+                self.assertEqual(domain.project_url_info("https://www.example.test/a", raw), {"state": "no_data", "item": None})
+
+    def test_url_info_with_discovery_or_crawl_stays_ok(self):
+        good = URL_INFO_OK["d"]
+        never = "/Date(-62135596800000)/"
+        cases = {
+            "crawled and discovered": good,
+            "discovered, not crawled": dict(good, LastCrawledDate=never, HttpStatus=0),
+            "crawled, no discovery date": dict(good, DiscoveryDate=never),
+        }
+        for name, data in cases.items():
+            with self.subTest(name):
+                out = domain.project_url_info("https://www.example.test/a", {"d": data})
+                self.assertEqual(out["state"], "ok")
+                self.assertEqual(out["item"]["url"], "https://www.example.test/a")
 
     def test_url_info_shape_errors(self):
         good = URL_INFO_OK["d"]
