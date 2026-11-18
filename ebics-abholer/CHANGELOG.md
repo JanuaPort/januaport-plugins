@@ -47,8 +47,7 @@ negativ quittiert, der Lauf endet mit Exit 3, und der nächste Lauf holt den Aus
 erneut. Ebenso ein Container, aus dem nach dem Übergehen leerer Einträge nichts übrig
 bleibt. Leere Einträge werden weiter übergangen; Nicht-ZIP-Antworten (H004) und leere
 Rohdaten verhalten sich wie bisher. Die Meldung enthält weder Inhalt noch
-Eintragsnamen. Betrifft nur die Logik; Image, Digest und Scan stehen erst mit dem
-nächsten Release-Eintrag.
+Eintragsnamen.
 
 **Basis angehoben auf `php:8.5.12-cli-alpine3.24` (per Digest gepinnt).** Der K-Scan der
 alten Basis 8.5.11 vom 27.09. meldete behebbare Befunde in musl, zlib und libcurl
