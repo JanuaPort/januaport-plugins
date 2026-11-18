@@ -43,7 +43,8 @@ type Engine struct {
 	activeDone      chan struct{}
 	cancel          context.CancelFunc
 	syncErr         error
-	pruneFault      bool // guarded by mu; letzter Aufräumversuch scheiterte (Log nur beim ersten Mal)
+	pruneFault      bool   // guarded by mu; letzter Aufräumversuch scheiterte (Log nur beim ersten Mal)
+	pruneHook       func() // nur Tests: läuft in pruneStored unter der Zustandssperre (#1421)
 	halt            haltState
 	haltLoaded      bool
 	haltFault       bool

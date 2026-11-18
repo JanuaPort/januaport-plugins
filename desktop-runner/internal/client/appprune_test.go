@@ -110,6 +110,32 @@ func (b *pruneBed) sync(seq uint64, apps ...App) error {
 	return b.e.Sync(context.Background())
 }
 
+// speichere legt das Bündel als gespeicherten Stand ab (Platte, wie Sync) und setzt den Speicherstand gleich.
+// Der Takt liest die Platte (#1421); der Speicherstand darf ihm hier nicht widersprechen.
+func (b *pruneBed) speichere(bundle Bundle) {
+	b.t.Helper()
+	if err := b.st.Save("manifest", bundle); err != nil {
+		b.t.Fatal(err)
+	}
+	b.e.mu.Lock()
+	b.e.bundle = bundle
+	b.e.mu.Unlock()
+}
+
+func (b *pruneBed) speichereHuelle(huelle SignedManifest) {
+	b.t.Helper()
+	bundle := b.e.view()
+	bundle.Manifest.Envelope = huelle
+	b.speichere(bundle)
+}
+
+// huelle signiert ein gültiges Manifest mit den Apps für dieses Gerät.
+func (b *pruneBed) huelle(seq uint64, apps ...App) SignedManifest {
+	raw := encode(b.manifest(seq, apps...))
+	can, _ := canonical(raw)
+	return SignedManifest{Manifest: raw, Sig: base64.StdEncoding.EncodeToString(ed25519.Sign(b.key, can))}
+}
+
 func (b *pruneBed) path(parts ...string) string {
 	return filepath.Join(append([]string{b.st.Root}, parts...)...)
 }
@@ -533,23 +559,23 @@ func TestTaktLoeschtNurGegenPruefbaresGespeichertesManifest(t *testing.T) {
 		name  string
 		praep func(b *pruneBed)
 	}{
-		{"kein Manifest gespeichert", func(b *pruneBed) { b.e.bundle = Bundle{} }},
+		{"kein Manifest gespeichert", func(b *pruneBed) { b.speichere(Bundle{}) }},
 		{"Signatur von fremdem Schlüssel", func(b *pruneBed) {
 			raw := encode(b.manifest(2, b.demo))
 			can, _ := canonical(raw)
-			b.e.bundle.Manifest.Envelope = SignedManifest{Manifest: raw, Sig: base64.StdEncoding.EncodeToString(ed25519.Sign(fremderKey, can))}
+			b.speichereHuelle(SignedManifest{Manifest: raw, Sig: base64.StdEncoding.EncodeToString(ed25519.Sign(fremderKey, can))})
 		}},
 		{"Manifest nicht lesbar", func(b *pruneBed) {
 			raw := []byte(`{"unbekannt":1}`)
 			can, _ := canonical(raw)
-			b.e.bundle.Manifest.Envelope = SignedManifest{Manifest: raw, Sig: base64.StdEncoding.EncodeToString(ed25519.Sign(b.key, can))}
+			b.speichereHuelle(SignedManifest{Manifest: raw, Sig: base64.StdEncoding.EncodeToString(ed25519.Sign(b.key, can))})
 		}},
 		{"anderes Gerät", func(b *pruneBed) {
 			m := b.manifest(2, b.demo)
 			m.DeviceID = "fremd"
 			raw := encode(m)
 			can, _ := canonical(raw)
-			b.e.bundle.Manifest.Envelope = SignedManifest{Manifest: raw, Sig: base64.StdEncoding.EncodeToString(ed25519.Sign(b.key, can))}
+			b.speichereHuelle(SignedManifest{Manifest: raw, Sig: base64.StdEncoding.EncodeToString(ed25519.Sign(b.key, can))})
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -628,8 +654,9 @@ func TestManifestOhneAppsFeldLoeschtNichts(t *testing.T) {
 	})
 	t.Run("Takt", func(t *testing.T) {
 		b := zweiAppsAbgelegt(t)
-		b.e.bundle.Manifest.Envelope = ohneApps(b, 2)
-		if _, ok := b.e.storedManifest(); !ok {
+		huelle := ohneApps(b, 2)
+		b.speichereHuelle(huelle)
+		if _, err := VerifyManifest(huelle, b.pub, "own", 0); err != nil {
 			t.Fatal("Ausgangslage: Manifest müsste gültig signiert und prüfbar sein")
 		}
 		b.e.pruneStored()

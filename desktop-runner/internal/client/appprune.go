@@ -25,6 +25,9 @@ func (e *Engine) pruneStored() {
 	// Das Manifest wird unter der Zustandssperre gelesen: Ein Prepare derselben Sperre sieht damit nie ein älteres
 	// Manifest als das, gegen das es abgelegt hat, und der Takt löscht keine frisch abgelegte App.
 	err := e.State.Use(func() error {
+		if e.pruneHook != nil {
+			e.pruneHook()
+		}
 		m, ok := e.storedManifest()
 		if !ok || m.Apps == nil {
 			return nil
