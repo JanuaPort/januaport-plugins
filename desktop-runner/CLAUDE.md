@@ -22,7 +22,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 | `internal/client/manifest.go` | Manifestprüfung mit Ed25519, Cron/IANA und `OfflineAllowed` (Werkzeugdeklarationen, Pinfrist vor Gerätefrist und Zeitpunkt des letzten Syncs). |
 | `internal/client/environment.go`, `internal/client/copied_lock.go`, `internal/client/copied_zip.go` | Prüfen Python-Allowlist, Lock-Hashes und Wheel-Tags einschließlich reiner `py3`-/`py2.py3`-Wheels mit `none-any`, entpacken Pakete und versiegeln Umgebungen. |
 | `internal/client/engine.go`, `internal/client/halt.go`, `internal/client/bootstrap.py` | Gemeinsamer Laufplatz, Takt, Claim/Start, lokaler Halt und Rahmenkanal/MCP; `Sync`/`pinEnvironment` bereiten jeden Pin einzeln vor und trennen Pinfehler von Manifestfehlern. |
-| `internal/client/state.go`, `internal/client/replace_windows.go`, `internal/client/replace_other.go` | Atomare OS-geschützte Dateien, Journal/Marker/Slot-Transaktion, Löschung |
+| `internal/client/state.go`, `internal/client/replace_windows.go`, `internal/client/replace_other.go` | Atomare OS-geschützte Dateien, Journal/Marker/Slot-Transaktion, Löschung; `loadLocked`/`saveLocked` für Leser/Schreiber unter `State.Use` |
 | `internal/client/runtemp.go` | Lauf-TEMP: RunID/RunTemps, Anlegen nur neu, Aufräumen/Besen ohne Reparse-Punkte, Kind-Umgebung |
 | `internal/client/log.go` | Geschlossene numerische Codes (1–10), 5 × 1 MiB; Code 2: n = Klasse 1 hash, 2 runtime, 3 manifest, 4 sonst (Invariante 23); Code 10: n=1 Ablage, n=2 Aufräumen (Invariante 20) |
 | `cmd/bedienfeld/main_windows.go`, `internal/panel/model.go`, `internal/panelio/link.go` | Nativer Tray-Prozess, reines Modell und getrennter Pipe-I/O-Adapter |
@@ -39,7 +39,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 | internal/client/reader.go | `Reader`: nur lesender Zugriff des Bedienfelds auf Zugangsdaten, geprüftes Manifest und App-Siegel; `Reader.Hotkeys` liefert Tastenkürzel nur bei gültigem Siegel |
 | internal/client/apphotkeys.go, internal/panel/hotkey.go, cmd/bedienfeld/hotkey_windows.go | Tastenkürzel für Setups (#1240 F-T, Invariante 22): strenges Parsen von `tasten`, Modell (Taste gleich Klick, Warten, Abweisung), Windows-Anmeldung als einzige Stelle für `RegisterHotKey` |
 | `internal/client/apptoken.go`, `internal/client/applogin.go`, `internal/client/appstore.go`, `internal/client/appload.go`, `internal/client/copied_apphost.go` | Vertrag 5 im Client: App-Token, privates Ablegen mit Siegel, Ladeprüfung, markierte apphost-Kopie |
-| `internal/client/appprune.go` | Entzug (#1342): räumt nach jedem Sync und im Heartbeat-Takt Ablage, WebView-Profil und Siegel nicht mehr zugewiesener Apps gegen das gespeicherte, geprüfte Manifest ab (Invariante 20) |
+| `internal/client/appprune.go` | Entzug (#1342): räumt nach jedem Sync und im Heartbeat-Takt Ablage, WebView-Profil und Siegel nicht mehr zugewiesener Apps gegen das gespeicherte, geprüfte Manifest ab (Invariante 20); liest es von der Platte unter der Zustandssperre (Sperr-Reihenfolge, Invariante 24) |
 | `contract/golden-v5/SHA256SUMS` | Prüfsummen des bytegleichen Kernspiegels von Vertrag 5 (Manifest und Routen). |
 | probe/k6b_mutations.py | Mutationen K6b-1 im Container mit Go und Python |
 | `internal/testfixture/package.go` | Synthetische Gitpakete nur für Tests |
@@ -718,7 +718,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     kann; sonst bliebe `tray` falsch und `TakeNotice` würde nie geprüft (Test `TestTrayUpdateVersuche`).
 
 20. Entzug von Apps (#1342, Windows): `pruneStored` (`appprune.go`) räumt ab, was nicht mehr als App im
-    **zuletzt erfolgreich geprüften, gespeicherten** Manifest steht (`e.view()`, dieselbe Quelle wie die Läufe,
+    **zuletzt erfolgreich geprüften, gespeicherten** Manifest steht (seit #1421 der gespeicherte Stand auf der Platte, `State.loadLocked("manifest")`, nicht `e.view()`,
     erneut mit `VerifyManifest` geprüft). Es läuft (1) nach jedem erfolgreichen `Engine.Sync` (nach Signatur-,
     Geräte-, Sequenz- und Vertragsprüfung, Pin-Schritt und Speichern des Manifests; ein kaputter Pin hält den Sync nicht auf, Invariante 23) vor `ensureApps` und
     (2) **im Takt des Heartbeats** in `Run` (alle 60 s, rein lokal, auch offline und ohne neue Sequenz). Grund für
@@ -727,7 +727,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     typischerweise noch gesperrt, und der Takt löscht es beim nächsten Durchlauf. Keine Netzanfrage. Ist das
     gespeicherte Manifest leer oder nicht prüfbar (Signatur, Gerät, Format), wird nichts gelöscht; nie nach
     Offline-, Parse-, Signatur-, Lese- oder Sequenzfehlern eines Sync (der speichert dann nichts Neues; auch nicht nach offline gescheitertem Paketabruf, Invariante 23); Server
-    (Vertrag 2, `apps` fehlt) räumen nichts ab. Das Manifest wird unter `State.Use` gelesen, damit der Takt keine
+    (Vertrag 2, `apps` fehlt) räumen nichts ab. Das Manifest wird unter `State.Use` gelesen (Sperr-Reihenfolge: Invariante 24), damit der Takt keine
     App löscht, die ein gleichzeitiges `Prepare` gerade gegen ein neueres Manifest ablegt. **Pfade nur aus lokaler Aufzählung:** Der Läufer zählt die direkten
     Einträge von `<Zustand>\apps` und `<Zustand>\webview` selbst auf (`os.ReadDir`), nie aus Servernamen. Gelöscht
     wird nur ein Eintrag mit gültigem App-Namen (`fenster.ValidAppName`, wie im Manifest), der nicht im geprüften
@@ -760,7 +760,8 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     `TestVerweisAlsAppsOderWebviewWurzelBleibtUnberuehrt`, `TestKeinLoeschenBeiGescheitertemOderUngeprueftemAbgleich`,
     `TestGesperrterOrdnerBleibtUndWirdBeimNaechstenAbgleichGeloescht`, `TestAufraeumenLaeuftUnterZustandssperreOhneRemoveAll`, `TestTaktRaeumtGesperrtenOrdnerOhneNeueSequenzAb`,
     `TestTaktLoeschtNurGegenPruefbaresGespeichertesManifest`, `TestTaktOhneEntzugLaesstAllesUndLogtNichts`,
-    `TestRunRuftDenAufraeumtaktAuf`.
+    `TestRunRuftDenAufraeumtaktAuf`, `TestTaktNimmtDasGespeicherteManifestVonDerPlatte`, `TestTaktUnterZustandssperreNimmtNieDieEngineSperre`,
+    `TestTaktGegenPauseFortsetzenBleibtLebendig` (Invariante 24).
 21. Ad-hoc holt das Manifest nach (#1343): Ist die lokale Manifest-Sequenz kleiner als `manifest_seq` des Auftrags,
     ruft `adhoc` genau **einmal** `Sync` auf, liest den Stand neu und prüft Pin (Name, Commit, Pfad, Algorithmus)
     und Sequenz mit denselben Regeln wie zuvor; erst danach gilt `refused/manifest`. Vorbild ist der
@@ -836,6 +837,20 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     `TestGleicheSeqAndereHuelleBleibtErrManifest` (E2), `TestFehlerAufManifestEbeneVerwirftAlles`,
     `TestOfflinePaketabrufVerzoegertNurDenEntzug` (E1), `TestWiderrufUndAbbruchSchreibenKeinenSyncFehlerCode`,
     `TestSyncFehlerAufManifestEbeneSchreibtCodeMitKlasse`. Mutanten `sync-*` in `probe/mutations.py`.
+24. Sperr-Reihenfolge (#1421): **`e.mu` vor `State.mu`, unter `State.mu` nie `e.mu`.** `sync.Mutex` ist nicht reentrant;
+    zwei Wege in entgegengesetzter Reihenfolge hängen den Läufer dauerhaft (AB/BA-Deadlock). Erlaubt ist nur
+    `e.mu` → `State.mu`: `setHaltLocked` (`State.Save("halt")`), `loadHaltLocked` (`State.Load`) und `reserveScheduled`
+    (`State.ReserveRun`) laufen unter `e.mu`, ihre Atomarität gegen Halt und Reservierung ist gewollt und bleibt. Alle
+    Callbacks von `State.Use` (`pruneStored`, `AppStore.Prepare`, der `Prepare`-Schritt in `pinEnvironment`) und alle
+    anderen Stellen unter `s.mu` (`Revoke`, Journal, `Load`/`Save`, Cipher) nehmen `e.mu` nicht, auch nicht über
+    `e.view()`. Deshalb liest der Takt das Manifest nicht aus `e.bundle` (`e.view()`), sondern unter der schon gehaltenen
+    Zustandssperre den gespeicherten Stand (`State.loadLocked("manifest")`, Gegenstück zu `saveLocked`; `Load` darf dort
+    nicht gerufen werden). Das ist gleichwertig: `Sync` speichert das Bundle vor dem Setzen von `e.bundle`, die Platte ist
+    gleich neu oder neuer. `notePruneResult` (nimmt `e.mu`) läuft **nach** `State.Use`, nie darin. Wer in einen
+    `State.Use`-Callback Engine-Zustand holen will, liest ihn vorher oder holt ihn über die Platte. Der Hook `pruneHook`
+    (nur Tests) macht das Fenster deterministisch. Tests: `TestTaktUnterZustandssperreNimmtNieDieEngineSperre`
+    (Hook, deterministisch), `TestTaktGegenPauseFortsetzenBleibtLebendig` (Belastung, Frist 10 s; Zusatz, das Fenster ist winzig, den Deadlock belegt der Hook-Test),
+    `TestTaktNimmtDasGespeicherteManifestVonDerPlatte` (Tabelle: Platte neuer, Platte entzieht).
 
 ## Benannte Grenzen
 
