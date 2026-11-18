@@ -187,13 +187,16 @@ LITTLE_RESERVED = '|{}@[]()<>#\\*_~'
 
 # --- Stufe B3 (#1237, 0.4.0): comments under own posts, replies as the organization ---------
 # Cut c-6747016143, SEC c-6747087768 S1-S4, T1 c-6759978021. Aus Herstellerdoku 202610, live zu belegen:
-#   D_COMMENTS (above): Comment URN "urn:li:comment:(urn:li:activity:<id>,<id>)"; "Get Comments on Shares"
+#   D_COMMENTS (above): Comment URN "urn:li:comment:(urn:li:activity:<id>,<id>)" (0.4.1: the thread may also be ugcPost or share);
+#   "Get Comments on Shares"
 #   GET socialActions/{shareUrn|ugcPostUrn}/comments; "Get Comments on Comments" GET socialActions/{commentUrn}/comments;
 #   "Create a Comment on a Comment" POST socialActions/{commentUrn}/comments with "parentComment"
 #   ("composite URN, which is comprised of the activityUrn and parent comment ID") and "object" = share/ugcPost.
 #   Edit section: the URN built from the request target "is not a reliable identifier"; "An accurate key for a
 #   comment can always be constructed from the comment's object field ... and its ID" -> we key on object+id
-#   (object = the activity of commentUrn, or the listed post itself; see kommentare.kommentar_aus).
+#   (thread activity: object = that activity or the listed post itself; 0.4.1, thread ugcPost or share: the
+#   comment URN is urn:li:comment:(urn:li:ugcPost|share:<id>,<id>) and object must be the listed post AND the
+#   thread, [A] not live proven; see kommentare.kommentar_pruefen).
 #   D_POSTS: GET posts/{encoded postUrn} (author, createdAt, lifecycleState) and GET posts?q=author (as Stufe A).
 # Closed list: operation -> (method, path below API_ROOT). No delete, no edit, no reaction, no profile lookup.
 COMMUNITY_ENDPOINTS = {

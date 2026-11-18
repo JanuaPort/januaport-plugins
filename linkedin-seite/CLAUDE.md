@@ -1,4 +1,4 @@
-# linkedin-seite 0.4.0 — Modulvertrag (#1306 F4, #1237)
+# linkedin-seite 0.4.1 — Modulvertrag (#1306 F4, #1237)
 
 Privater Python-REST-Beisteller, Apache 2.0. PO 29.10.2026 Option (a): Stufe A (Lesen); seit
 0.2.0 Stufe B1 (Posten nach Freigabe, SEC c-6575359082 und c-6575837332); seit 0.4.0 Stufe B3
@@ -275,9 +275,13 @@ Route `/v1/linkedin-kommentare/`, derselbe Bridge-Key (SEC Frage 4: kein zweiter
 - `kommentare.py`: reiner Vertrag ohne IO. Eingaben (`parse_comments`, `parse_reply`, `parse_tagesliste`),
   `ANLAESSE` (`dank`, `sachfrage_zum_post`, `gespraech_anbieten`, S2), `TEXT_REGELN` als feste geordnete
   Liste mit je eigenem Code, geprüft auf einer NFKC+casefold-Kopie, gesendet wird der Text unverändert.
-  URN-Muster mit Ziffern in jedem ID-Teil (T1), `kommentar_aus` verifiziert ein Element: `commentUrn` in
-  Activity-Form, `id` = dessen Kommentar-Teil, `object` = diese Activity oder genau der gelistete Post;
-  sonst `nicht_lesbar`. `ausgabe` ist die einzige Projektion nach außen: nie `actor`, Name, Headline,
+  URN-Muster mit Ziffern in jedem ID-Teil (T1), `kommentar_pruefen` (`kommentar_aus` ist dessen Kurzform)
+  verifiziert ein Element: `commentUrn` in einer der Faden-Formen `urn:li:comment:(urn:li:(activity|ugcPost|share):<n>,<n>)`
+  (nur Ziffern, beide Teile höchstens 30 Stellen, 0.4.1), `id` = dessen Kommentar-Teil, `object`: bei `activity`
+  diese Activity oder der gelistete Post, bei `ugcPost`/`share` genau der gelistete Post, der zugleich der Faden
+  ist (ohne gelisteten Post fällt die Zeile heraus); sonst `nicht_lesbar`. Der Faden bleibt als `Kommentar.thread`
+  am Kommentar; Links, `antwort_urn` und `reply` bauen aus ihm (`feed/update/<faden-urn>`), nie aus einer
+  geratenen Activity; Antworten eines anderen Fadens fallen als `object` heraus. `ausgabe` ist die einzige Projektion nach außen: nie `actor`, Name, Headline,
   Personen-URN, Erwähnung oder Bild. Links baut das Plugin selbst aus Ziffern (`link_kommentar`,
   `link_antwort`). `MERKMALE` sind feste Werte. Eigene Personen (`kommentare.eigene_personen` in der
   Konfiguration) zählen als „von uns“ und werden nie ausgegeben oder geloggt.
@@ -293,8 +297,12 @@ Route `/v1/linkedin-kommentare/`, derselbe Bridge-Key (SEC Frage 4: kein zweiter
   HTTP-Decke (`comments` 25, `tagesliste` 40, `reply` 12, Prüfungen zwei darunter). Autor ist immer
   `cfg.organization`. Der POST trägt genau `actor`, `object` (Post), `parentComment`, `message.text`.
   Nach dem Senden Nachlesen: `antwort_urn` aus `x-restli-id` (Ziffern), `doppelt`, `nachgelesen`.
+  Formdiagnose (0.4.1): `verworfen` reicht je verworfener Zeile eine Zeile nach `link.diagnose`, höchstens
+  fünf je Aufruf (`diagnose_offen`); die Antwort an den Aufrufer ändert das nicht.
 - `community_pool.py`: ein spawn-Prozess je Aufruf, Token über die Pipe, Permit vor jeder Anfrage, im
-  Job ist Logging abgeschaltet. **Kein Antwort-Zähler** (S3): der Deckel ist `daily_cap: 8` am Werkzeug
+  Job ist Logging abgeschaltet; die Formdiagnose-Zeilen gehen als `('diag', zeile)` über die Pipe, der
+  Serverprozess loggt sie als WARN (`_diagnose`), nur wenn sie `DIAGNOSE_ZEILE` voll entsprechen und
+  höchstens fünf je Aufruf. **Kein Antwort-Zähler** (S3): der Deckel ist `daily_cap: 8` am Werkzeug
   `reply` im Kern und zählt Versuche. Gezählt werden nur LinkedIn-HTTP-Versuche des Pfads (60/UTC-Tag,
   `kommentare_http_tageslimit`), wie bei Lesen (50) und Schreiben (45). Antworten laufen in einer
   Warteschlange im Prozess (asyncio-Sperre, FIFO, höchstens ein Wartender, gezählt über `in_reihe` statt
@@ -317,6 +325,18 @@ Antwort trägt nur URNs, Code, `anlass` und `doppelt`. Die Tagesliste trägt nur
 (T1), `anlass` ist mangels Speicher nicht rekonstruierbar und fehlt. Kein Gateway, kein Redaktionsplan
 im Community-Pfad (S1). Die B1-Freigabe für `create_comment` ist unverändert.
 
+**Formdiagnose (0.4.1, SEC L1/L2 c-6800122813).** Eine verworfene Zeile ergibt genau eine WARN-Zeile
+`route=… grund=… schluessel=… comment_praefix=… object_praefix=… actor_praefix=…`. `route` ist `comments`,
+`tagesliste` oder `reply`; `grund` eine feste Klasse (`urn_form`, `object`, `actor`, `zeit`, `text_typ`,
+`attribute`, `geloescht_typ`, `kein_objekt`), die erste Abweichung in der Reihenfolge der Prüfung.
+**L1:** ein Präfix ist nur der passende Teil von `^urn:li:[A-Za-z]{1,30}:`, sonst `andere`; fehlendes
+Feld `fehlt`, Nicht-String `typ`; nie ein anderer Teil des Werts (Kanarienwort ohne Ziffer im Test und
+Mutant). **L2:** nur Schlüssel der obersten Ebene nach `^[A-Za-z][A-Za-z0-9_]{0,39}$`, sortiert, höchstens
+20; jeder andere zählt als `?` und wird nie geschrieben (Freitext-Schlüssel im Test und Mutant). Nie Text,
+volle Kennung oder Name. Log-Deckel 5 Zeilen je Aufruf. Zwei Wächter für die Form: `diagnose_zeile` baut
+sie, `DIAGNOSE_ZEILE` lässt im Serverprozess nur diese Form durch. Keine neuen Antwortfelder, kein
+zusätzlicher LinkedIn-Aufruf. Die Links der Formen `ugcPost`/`share` sind nicht live belegt.
+
 Aktivierungsregel (S1, T2): Das Antwort-Token trägt genau `linkedin-seite-community:comments`,
 `linkedin-seite-community:reply` und `linkedin-seite:posts`, sonst nichts. `tagesliste` liegt am
 Redaktions-Token, nie `comments` dort. Not-Aus: der PO entzieht `linkedin-seite-community:reply` in der
@@ -333,6 +353,9 @@ Eltern von uns oder eigener Person, zweite Ebene, gelöscht, blinde Antwort, Zwe
 Live-Lesen, gleicher Verfasser, unvollständige Liste, Prüfdecke, Autor, geschlossene Endpunkte, Text-
 und Anlass-Wiederholung, unklar nach dem Senden (Adapter und Pool), Anlass-Enum, Länge, Link, Erwähnung,
 NFKC, Preis, Prozent, Personen-, Log- und Tageslisten-Kanarienvogel, T1-Ziffern, Schlüssel object+id,
+0.4.1: Faden-Form, Ziffern und Länge je Teil, `object` gleich Post gleich Faden, Faden am Kommentar statt
+geratener Activity (Antwort-URN, Link, Tagesliste), Faden der Antworten, Formdiagnose (Klasse, Deckel 5 in
+Adapter und Serverprozess, Zeilenform, L1- und L2-Kanarienvogel, Muster, Route, Stufe WARN),
 Abstand, Warteschlange, Sperre und In-Flight, Lese-Job ohne Schreibrecht, HTTP-Deckel, kein Antwort-
 Zähler, Bridge, 200 vor dem Dispatch, Fünf-Scope-Menge, Statistik-Leser mit `_feed`-Scope und Endpunkt,
 Vorlagen-Enum und `daily_cap`.

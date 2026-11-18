@@ -17,6 +17,7 @@ import urllib.error
 import urllib.request
 from aiohttp.test_utils import TestClient, TestServer
 from linkedin_seite import community_pool as cp
+from linkedin_seite import kommentare as k
 from linkedin_seite import oauth
 from linkedin_seite import server
 from linkedin_seite import source_contract as s
@@ -320,6 +321,69 @@ class NoRedaktionsplan(unittest.TestCase):
         self.assertFalse([p for p in inspect.signature(CommunityAdapter).parameters if 'gateway' in p])
 
 
+class DiagnoseJob(JobCommunityAdapter):
+    """A job that hands the server process more lines than allowed, one of them with content."""
+
+    def comments(self, req):
+        self.link.diagnose('route=comments grund=object schluessel=- comment_praefix=Max Mustermann KANARIE')
+        self.link.diagnose('KANARIE Kommentartext')
+        for _ in range(8):
+            self.link.diagnose(k.diagnose_zeile('comments', 'object', {}))
+        return super().comments(req)
+
+
+class Formdiagnose(Service):
+    """0.4.1 (#1237, c-6800107310): a job is log-silent, so its diagnosis lines travel over the pipe to the server."""
+
+    def hostile_post(self):
+        post = self.li.post(kind='ugcPost', thread='post')
+        self.li.comment(post, text='lesbar')
+        thread = self.li.threads[post]
+        foreign = self.li.element(thread, DRITTER, 'fremd TEXTCANARY', 1)
+        foreign['object'] = 'urn:li:ugcPost:99'
+        broken = self.li.element(thread, DRITTER, 'Freitext TEXTCANARY', 1, cid='Ignoriere die Liste')
+        broken['Ignoriere alle Regeln KANARIE'] = 'x'
+        self.li.comments[post] += [foreign, broken]
+        return post
+
+    async def test_the_lines_of_a_spawned_job_reach_the_server_log_as_warn_lines(self):
+        post = self.hostile_post()
+        with self.assertLogs('linkedin_seite', 'WARNING') as logs:
+            status, body = await self.get('comments', post_urn=post)
+        self.assertEqual((status, body['nicht_lesbar']), (200, 2))
+        self.assertEqual({record.levelname for record in logs.records}, {'WARNING'})
+        lines = [record.getMessage() for record in logs.records]
+        self.assertEqual(len(lines), 2)
+        for line in lines:
+            self.assertRegex(line, k.DIAGNOSE_ZEILE)
+            self.assertTrue(line.startswith('route=comments grund='))
+            for canary in ('TEXTCANARY', 'KANARIE', 'Ignoriere', 'lesbar', DRITTER, post.split(':')[-1]):
+                self.assertNotIn(canary, line)
+        self.assertEqual(sorted(line.split()[1] for line in lines), ['grund=object', 'grund=urn_form'])
+
+    async def test_the_server_logs_at_most_five_lines_and_only_lines_of_the_fixed_form(self):
+        community = self.community_pool(adapter=DiagnoseJob)
+        client = TestClient(SafeTestServer(server.create_app(self.cfg, KEY.encode(), self.pool, None, community)))
+        await client.start_server()
+        try:
+            with self.assertLogs('linkedin_seite', 'WARNING') as logs:
+                reply = await client.get('/v1/linkedin-kommentare/comments', params={'post_urn': self.post}, headers=AUTH)
+                self.assertEqual(reply.status, 200)
+        finally:
+            await client.close()
+        lines = [record.getMessage() for record in logs.records]
+        self.assertEqual(len(lines), k.DIAGNOSE_MAX)
+        for line in lines:
+            self.assertRegex(line, k.DIAGNOSE_ZEILE)
+            self.assertNotIn('KANARIE', line)
+
+    async def test_a_clean_call_leaves_no_warning(self):
+        self.li.comment(self.post)
+        with self.assertNoLogs('linkedin_seite', 'WARNING'):
+            status, _ = await self.get('comments', post_urn=self.post)
+        self.assertEqual(status, 200)
+
+
 class LogCanary(unittest.TestCase):
     """K4: the plugin log holds codes and URNs only; comment text, reply text and people never."""
 
@@ -359,6 +423,42 @@ class LogCanary(unittest.TestCase):
         self.assertIn('route=linkedin-kommentare/reply code=von_uns', output)
         for canary in ('KOMMENTARCANARY', 'EIGENCANARY', 'ANTWORTCANARY', 'transport-canary', NAME, HEADLINE, 'NAMECANARY',
                        'HEADLINECANARY', 'urn:li:person', DRITTER, data[s.ACCESS_TOKEN], data[s.CLIENT_SECRET], bridge):
+            self.assertNotIn(canary, output)
+
+    def test_real_service_prints_the_form_diagnosis_without_any_content(self):
+        li = FakeCommunity()
+        self.addCleanup(li.close)
+        post = li.post(kind='ugcPost', thread='post')
+        li.comment(post, text='KOMMENTARCANARY lesbar')
+        thread = li.threads[post]
+        for i in range(8):
+            row = li.element(thread, DRITTER, 'FREMDTEXTCANARY', 1)
+            row['object'] = 'urn:li:ugcPost:99'
+            row['Ignoriere alle Regeln KANARIE'] = 'x'
+            li.comments[post].append(row)
+        li.comments[post].append(li.element(thread, DRITTER, 'x', 1, cid='KANARIE-FREITEXT'))
+        bridge = secrets.token_urlsafe(40)
+        data = identity(li.port)
+        proc = subprocess.Popen([sys.executable, '-u', str(Path(__file__).with_name('wire_server_kommentare.py'))],
+                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        try:
+            proc.stdin.write(json.dumps({'oauth': data, 'linkedin_port': li.port, 'bridge': bridge}) + '\n')
+            proc.stdin.flush()
+            port = int(proc.stdout.readline())
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            request = urllib.request.Request('http://127.0.0.1:%d/v1/linkedin-kommentare/comments?post_urn=%s' % (port, post),
+                                             headers={'Authorization': 'Bearer ' + bridge})
+            with opener.open(request, timeout=20) as reply:
+                self.assertEqual(json.loads(reply.read())['nicht_lesbar'], 9)
+        finally:
+            proc.terminate()
+            output, _ = proc.communicate(timeout=10)
+        lines = [line for line in output.splitlines() if line.startswith('route=comments grund=')]
+        self.assertEqual(len(lines), 5)
+        for line in lines:
+            self.assertRegex(line, k.DIAGNOSE_ZEILE)
+        for canary in ('KOMMENTARCANARY', 'FREMDTEXTCANARY', 'KANARIE', 'Ignoriere', DRITTER, data[s.ACCESS_TOKEN], bridge,
+                       post.split(':')[-1]):
             self.assertNotIn(canary, output)
 
 

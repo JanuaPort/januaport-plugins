@@ -59,6 +59,9 @@ class PipeLink:
     def write_request(self):
         self.ask('write')
 
+    def diagnose(self, line):
+        self.conn.send(('diag', line))   # no answer: the job is log-silent, the server process logs the line
+
 
 def job_main(conn, cfg, req, adapter_factory=None):
     logging.disable(logging.CRITICAL)  # no library or request logging inside a job: comment text lives here
@@ -85,6 +88,7 @@ class Job:
         self.req, self.proc, self.conn, self.budget = req, proc, conn, budget
         self.future = loop.create_future()
         self.write_started = False  # IPC acknowledgement precedes the one possible provider write
+        self.diagnose = 0           # form diagnosis lines of this call already logged
         self.task = None
 
     @property
@@ -233,6 +237,12 @@ class CommunityPool:
             job.conn.send(('error', exc.status, exc.code))
         return None
 
+    def _diagnose(self, job, line):
+        """Log one form diagnosis line of a job as a WARN: only the fixed form (L1/L2), at most five per call."""
+        if job.diagnose < k.DIAGNOSE_MAX and isinstance(line, str) and k.DIAGNOSE_ZEILE.fullmatch(line):
+            job.diagnose += 1
+            LOG.warning(line)
+
     async def _supervise(self, job):
         loop = asyncio.get_running_loop()
         deadline = loop.time() + job.budget
@@ -248,6 +258,9 @@ class CommunityPool:
                 message = job.conn.recv()
                 if message[0] == 'token':
                     await self._send_token(job)
+                    continue
+                if message[0] == 'diag':
+                    self._diagnose(job, message[1])
                     continue
                 outcome = self._reply(job, message)
             if outcome[0] != 'ok':

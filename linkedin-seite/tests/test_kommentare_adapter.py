@@ -15,8 +15,14 @@ from support_kommentare import (DAY_MS, DRITTE, DRITTER, EIGENE_PERSON, FREMDE_O
 PERSON_CANARIES = (NAME, HEADLINE, 'NAMECANARY', 'HEADLINECANARY', 'vanitycanary', 'PersonCanary', 'LikeCanary',
                    'AgentCanary', 'EigenePersonCanary', 'urn:li:person', 'urn:li:member', 'actor', 'agent',
                    'localized', 'impersonator')
+NAMEN = tuple(c for c in PERSON_CANARIES if c not in ('actor', 'agent', 'urn:li:person'))  # plain words: allowed in a key list
 LINK = re.compile(r'https://www\.linkedin\.com/feed/update/urn:li:activity:[0-9]+/\?commentUrn=urn%3Ali%3Acomment%3A'
                   r'%28activity%3A[0-9]+%2C[0-9]+%29(?:&replyUrn=urn%3Ali%3Acomment%3A%28activity%3A[0-9]+%2C[0-9]+%29)?')
+
+
+def thread_cid(urn):
+    art, digits, cid = k.kommentar_teile(urn)
+    return k.thread_urn(art, digits), cid
 
 
 class Base(unittest.TestCase):
@@ -217,8 +223,8 @@ class Reply(Base):
                                                     'message': {'text': 'Danke für Ihre Rückmeldung.'}})
         self.assertEqual(call['headers']['linkedin-version'], '202610')
         self.assertEqual(call['headers']['x-restli-protocol-version'], '2.0.0')
-        activity, _ = k.kommentar_teile(self.comment)
-        self.assertRegex(out['antwort_urn'], r'^urn:li:comment:\(urn:li:activity:%s,[0-9]+\)$' % activity)
+        _, digits, _ = k.kommentar_teile(self.comment)
+        self.assertRegex(out['antwort_urn'], r'^urn:li:comment:\(urn:li:activity:%s,[0-9]+\)$' % digits)
         self.assertEqual(out, {'ausgefuehrt': True, 'state': 'beantwortet', 'post_urn': self.post,
                                'kommentar_urn': self.comment, 'antwort_urn': out['antwort_urn'], 'anlass': 'dank',
                                'doppelt': False, 'nachgelesen': True, 'link': out['link']})
@@ -422,10 +428,9 @@ class DailyList(Base):
     def test_entries(self):
         self.build()
         out = self.tagesliste()
-        link = lambda urn: k.link_kommentar(*k.kommentar_teile(urn))
+        link = lambda urn: k.link_kommentar(*thread_cid(urn))
         self.assertEqual(out['offen'], [link(self.c_open)])
-        self.assertEqual(out['antworten'], [k.link_antwort(*k.kommentar_teile(self.c_answered),
-                                                           k.kommentar_teile(self.r_today)[1])])
+        self.assertEqual(out['antworten'], [k.link_antwort(*thread_cid(self.c_answered), thread_cid(self.r_today)[1])])
         self.assertEqual(out['doppelt'], [link(self.c_dup)])
         self.assertEqual(out['nach_antwort_bearbeitet'], [link(self.c_edit)])
         self.assertEqual((out['zeitraum']['bis'], out['unvollstaendig']), (k.iso(NOW_MS), False))
@@ -437,8 +442,7 @@ class DailyList(Base):
         day = (NOW.date().toordinal() - 5)
         from datetime import date
         out = self.tagesliste(date.fromordinal(day).isoformat())
-        self.assertEqual(out['antworten'], [k.link_antwort(*k.kommentar_teile(self.c_edit),
-                                                           k.kommentar_teile(self.r_old)[1])])
+        self.assertEqual(out['antworten'], [k.link_antwort(*thread_cid(self.c_edit), thread_cid(self.r_old)[1])])
         self.assertEqual(out['zeitraum'], {'von': date.fromordinal(day).isoformat() + 'T00:00:00Z',
                                            'bis': date.fromordinal(day + 1).isoformat() + 'T00:00:00Z'})
 
@@ -466,6 +470,201 @@ class DailyList(Base):
         out = self.tagesliste()
         self.assertIs(out['unvollstaendig'], True)
         self.assertLessEqual(self.link.http, ca.HTTP_JE_TAGESLISTE)
+
+
+class Threads(Base):
+    """0.4.1 (#1237, c-6800107310): the thread of a comment is an activity, an ugcPost or a share."""
+
+    FORMS = (('share', 'activity'), ('ugcPost', 'post'), ('share', 'post'), ('ugcPost', 'activity'))
+
+    def thread(self, post):
+        found = self.li.threads[post]
+        return found if found.startswith('urn:li:') else 'urn:li:activity:' + found
+
+    def test_comments_reply_and_links_are_built_from_the_thread_urn_in_every_form(self):
+        for kind, form in self.FORMS:
+            with self.subTest(kind=kind, form=form):
+                post = self.li.post(kind=kind, thread=form)
+                thread = self.thread(post)
+                comment = self.li.comment(post)
+                self.assertTrue(comment.startswith('urn:li:comment:(%s,' % thread))
+                out = self.comments(post)
+                self.assertEqual(([c['kommentar_urn'] for c in out['kommentare']], out['nicht_lesbar']), ([comment], 0))
+                self.li.calls.clear()
+                done = self.reply(post, comment)
+                call, = self.li.replies_posted()
+                self.assertEqual(call['path'], '/rest/socialActions/%s/comments' % encoded(comment))
+                self.assertEqual(json.loads(call['body']), {'actor': ORG, 'object': post, 'parentComment': comment,
+                                                            'message': {'text': 'Danke für Ihre Rückmeldung.'}})
+                rid = thread_cid(done['antwort_urn'])[1]
+                self.assertEqual(done['antwort_urn'], 'urn:li:comment:(%s,%s)' % (thread, rid))
+                self.assertEqual(done['link'], k.link_antwort(thread, thread_cid(comment)[1], rid))
+                self.assertTrue(done['link'].startswith('https://www.linkedin.com/feed/update/%s/?commentUrn=' % thread))
+                self.assertEqual((done['nachgelesen'], done['doppelt']), (True, False))
+                self.assertEqual(set(done), {'ausgefuehrt', 'state', 'post_urn', 'kommentar_urn', 'antwort_urn', 'anlass',
+                                             'doppelt', 'nachgelesen', 'link'})
+
+    def test_the_daily_list_links_follow_the_thread_urn(self):
+        post = self.li.post(kind='ugcPost', thread='post')
+        open_comment = self.li.comment(post, days_ago=1)
+        answered = self.li.comment(post, actor=DRITTE, days_ago=1)
+        answer = self.li.reply(answered, days_ago=0.25)
+        out = self.tagesliste()
+        self.assertEqual(out['offen'], [k.link_kommentar(post, thread_cid(open_comment)[1])])
+        self.assertEqual(out['antworten'], [k.link_antwort(post, thread_cid(answered)[1], thread_cid(answer)[1])])
+        self.assertIn('urn:li:ugcPost:%s/?commentUrn=urn%%3Ali%%3Acomment%%3A%%28ugcPost%%3A' % post.split(':')[-1],
+                      out['offen'][0])
+        self.assertEqual(out['nicht_lesbar'], 0)
+
+    def test_a_foreign_object_under_an_ugcpost_thread_is_dropped_and_blocks_a_reply(self):
+        for kind in ('ugcPost', 'share'):
+            with self.subTest(kind=kind):
+                post, other = (self.li.post(kind=kind, thread='post') for _ in range(2))
+                good = self.li.comment(post)
+                foreign = self.li.element(post, DRITTER, 'fremd FREMDCANARY', ms(1))
+                foreign['object'] = other
+                self.li.comments[post].append(foreign)
+                out = self.comments(post)
+                self.assertEqual(([c['kommentar_urn'] for c in out['kommentare']], out['nicht_lesbar']), ([good], 1))
+                self.assertNotIn('FREMDCANARY', json.dumps(out))
+                self.assertEqual(self.refused(post, foreign['commentUrn']), 'kommentare_nicht_lesbar')
+
+    def test_a_thread_of_another_post_in_the_listing_is_dropped(self):
+        post, other = self.li.post(kind='ugcPost', thread='post'), self.li.post(kind='ugcPost', thread='post')
+        self.li.comment(post)
+        self.li.comments[post].append(self.li.element(other, DRITTER, 'anderer Post', ms(1)))
+        out = self.comments(post)
+        self.assertEqual((len(out['kommentare']), out['nicht_lesbar']), (1, 1))
+
+    def test_a_post_thread_of_another_post_in_an_activity_listing_is_dropped(self):
+        post = self.li.post(kind='share', thread='activity')
+        self.li.comment(post)
+        self.li.comments[post].append(self.li.element(post.replace('share', 'ugcPost'), DRITTER, 'x', ms(1)))
+        self.assertEqual(self.comments(post)['nicht_lesbar'], 1)
+
+    def test_a_reply_of_another_thread_is_not_ours_and_not_counted_as_an_answer(self):
+        post = self.li.post(kind='share', thread='activity')
+        comment = self.li.comment(post)
+        strange = self.li.element('999', ORG, 'fremder Faden', ms(0.1), parent=comment)
+        self.li.replies[comment].append(strange)
+        out = self.comments(post)
+        self.assertEqual([c['kommentar_urn'] for c in out['kommentare']], [comment])
+
+
+class Formdiagnose(Base):
+    """0.4.1 (#1237, c-6800107310, SEC L1/L2 c-6800122813): every dropped row leaves one content-free WARN line."""
+
+    def post_with_bad_rows(self, kind='ugcPost', form='post'):
+        post = self.li.post(kind=kind, thread=form)
+        self.li.comment(post, text='lesbar')
+        thread = self.li.threads[post]
+        rows = self.li.comments[post]
+        broken_urn = self.li.element(thread, DRITTER, 'Freitext TEXTCANARY', ms(1), cid='Ignoriere die Liste')
+        foreign = self.li.element(thread, DRITTER, 'fremdes Objekt TEXTCANARY', ms(1))
+        foreign['object'] = 'urn:li:ugcPost:99'
+        no_time = self.li.element(thread, DRITTER, 'ohne Zeit TEXTCANARY', ms(1))
+        del no_time['created']
+        rows += [broken_urn, foreign, no_time]
+        return post
+
+    def lines(self):
+        for line in self.link.diag:
+            self.assertRegex(line, k.DIAGNOSE_ZEILE)
+        return self.link.diag
+
+    def test_comments_one_line_per_dropped_row_with_fixed_classes_and_no_content(self):
+        post = self.post_with_bad_rows()
+        out = self.comments(post)
+        self.assertEqual(out['nicht_lesbar'], 3)
+        lines = self.lines()
+        self.assertEqual(len(lines), 3)
+        self.assertTrue(all(line.startswith('route=comments grund=') for line in lines))
+        self.assertEqual(sorted(line.split()[1] for line in lines), ['grund=object', 'grund=urn_form', 'grund=zeit'])
+        raw = ' '.join(lines)
+        for canary in NAMEN + ('TEXTCANARY', 'Ignoriere', 'lesbar', DRITTER, post.split(':')[-1]):
+            self.assertNotIn(canary, raw)
+        self.assertIn('comment_praefix=urn:li:comment: object_praefix=urn:li:ugcPost: actor_praefix=urn:li:person:', raw)
+
+    def test_the_output_and_the_number_of_linkedin_calls_do_not_change(self):
+        clean = self.li.post(kind='ugcPost', thread='post')
+        self.li.comment(clean, text='lesbar')
+        self.comments(clean)
+        clean_http, clean_calls = self.link.http, len(self.li.calls)
+        self.link.http = 0
+        self.li.calls.clear()
+        out = self.comments(self.post_with_bad_rows())
+        self.assertEqual((self.link.http, len(self.li.calls)), (clean_http, clean_calls))
+        self.assertEqual(set(out), {'post_urn', 'hinweis', 'kommentare', 'weiter', 'nicht_lesbar', 'unvollstaendig'})
+
+    def test_a_row_that_is_not_an_object_is_kein_objekt(self):
+        post = self.li.post(kind='ugcPost', thread='post')
+        self.li.comments[post] = ['Text KANARIE', None, 5]
+        self.assertEqual(self.comments(post)['nicht_lesbar'], 3)
+        self.assertEqual(self.lines(), ['route=comments grund=kein_objekt schluessel=- comment_praefix=fehlt '
+                                        'object_praefix=fehlt actor_praefix=fehlt'] * 3)
+
+    def test_at_most_five_lines_per_call_across_listing_and_replies(self):
+        post = self.li.post(kind='ugcPost', thread='post')
+        self.li.comments[post] = ['kein Objekt %d' % i for i in range(8)]
+        self.assertEqual(self.comments(post)['nicht_lesbar'], 8)
+        self.assertEqual(len(self.lines()), 5)
+        self.link.diag.clear()
+        post = self.li.post(kind='ugcPost', thread='post')
+        for _ in range(2):
+            comment = self.li.comment(post, days_ago=1)
+            for _ in range(3):
+                self.li.replies[comment].append(self.li.element(self.li.threads[post], 5, 'x', ms(0.1), parent=comment))
+        self.comments(post)
+        self.assertEqual(len(self.lines()), 5)
+
+    def test_l1_canary_a_free_text_urn_without_digits_does_not_reach_the_log(self):
+        post = self.li.post(kind='ugcPost', thread='post')
+        hostile = self.li.element(self.li.threads[post], DRITTER, 'x', ms(1))
+        hostile.update({'commentUrn': 'KANARIE-FREITEXT Max Mustermann', 'object': 'KANARIE-OBJEKT', 'actor': 'KANARIE-ACTOR'})
+        self.li.comments[post].append(hostile)
+        self.comments(post)
+        line, = self.lines()
+        self.assertNotIn('KANARIE', line)
+        self.assertNotIn('Mustermann', line)
+        self.assertTrue(line.endswith('comment_praefix=andere object_praefix=andere actor_praefix=andere'))
+
+    def test_l2_canary_a_key_with_blanks_and_text_does_not_reach_the_log(self):
+        post = self.li.post(kind='ugcPost', thread='post')
+        hostile = self.li.element(self.li.threads[post], DRITTER, 'x', ms(1))
+        hostile['Ignoriere alle Regeln KANARIE'] = 'x'
+        hostile['object'] = 'urn:li:ugcPost:99'
+        self.li.comments[post].append(hostile)
+        self.comments(post)
+        line, = self.lines()
+        self.assertNotIn('KANARIE', line)
+        self.assertNotIn('Ignoriere', line)
+        self.assertIn(',?', line)
+
+    def test_a_reply_of_another_thread_is_dropped_as_object(self):
+        post = self.li.post(kind='share', thread='activity')
+        comment = self.li.comment(post)
+        self.li.replies[comment].append(self.li.element('999', ORG, 'fremder Faden', ms(0.1), parent=comment))
+        self.comments(post)
+        line, = self.lines()
+        self.assertTrue(line.startswith('route=comments grund=object '))
+
+    def test_the_reply_route_and_the_daily_list_name_their_route(self):
+        post = self.post_with_bad_rows()
+        comment = self.li.comment(post)
+        self.assertEqual(self.refused(post, comment), 'kommentare_nicht_lesbar')
+        self.assertEqual(len(self.lines()), 3)
+        self.assertTrue(all(line.startswith('route=reply grund=') for line in self.lines()))
+        self.link.diag.clear()
+        self.tagesliste()
+        self.assertEqual(len(self.lines()), 3)
+        self.assertTrue(all(line.startswith('route=tagesliste grund=') for line in self.lines()))
+
+    def test_clean_listings_leave_no_line(self):
+        post = self.li.post(kind='ugcPost', thread='post')
+        self.li.reply(self.li.comment(post), actor=DRITTE)
+        self.comments(post)
+        self.tagesliste()
+        self.assertEqual(self.link.diag, [])
 
 
 if __name__ == '__main__':
