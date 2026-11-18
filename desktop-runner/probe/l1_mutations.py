@@ -1,7 +1,7 @@
 """L1 gate mutations in the existing l1-test container; restore exact bytes.
 
 Run exclusively, without concurrent tests: python probe/l1_mutations.py [case ...]
-The container must mount the repository at /workspace and use golang:1.26.10.
+The container must mount the repository at /workspace and use golang:1.26.11.
 Compilation failure, missing tests and infrastructure failures never count as red.
 """
 from pathlib import Path

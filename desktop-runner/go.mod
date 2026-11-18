@@ -1,6 +1,6 @@
 module github.com/januaport/januaport-plugins/desktop-runner
 
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/go-ole/go-ole v1.3.0

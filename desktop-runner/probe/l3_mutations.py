@@ -1,4 +1,4 @@
-"""L3 gates, exclusively in l3-test (golang:1.26.10, /workspace).
+"""L3 gates, exclusively in l3-test (golang:1.26.11, /workspace).
 
 Default: compile each mutant, run the Linux gate, restore exact bytes. Native
 mutants are cross-compiled only, explicitly NOT counted as rejected. LEAD can

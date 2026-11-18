@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Go 1.26.11** (GO-2026-6859, `net/http`, behoben in 1.26.11): `go.mod` und Build-Image `golang:1.26.11` per Digest `sha256:4165ee6b…` gepinnt, wie der Kern mit JanuaPort/januaport#1372. Ohne diesen Sprung schlägt `govulncheck` auf dem ausgelieferten Binary fehl.
+
 - JanuaPort/januaport#1246: Die Hygiene-Prüfung erkennt Windows-Laufwerksquellen
   (`C:\…:/ziel`, `c:/…`) als Host-Pfad und meldet sie fail-closed, statt sie
   als benanntes Volume `C` durchzulassen. Tabellentest über alle vier Dienste.

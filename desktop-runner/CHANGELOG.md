@@ -13,6 +13,8 @@
   `10 2` unverändert; ohne gespeichertes oder prüfbares Manifest wird nichts gelöscht.
 - Halt-Semantik, Journal-Format, Manifestprüfung und Pipe unverändert.
 
+- **Go 1.26.11** (GO-2026-6859, `net/http`, behoben in 1.26.11): `go.mod` und Build-Image `golang:1.26.11` per Digest `sha256:4165ee6b…` gepinnt, wie der Kern mit JanuaPort/januaport#1372. Ohne diesen Sprung schlägt `govulncheck` auf dem ausgelieferten Binary fehl.
+
 ### Bedienfeld zeigt „zuletzt gelaufen“ (JanuaPort/januaport#1398)
 
 - **Eine graue Zeile unter jedem Setup im Menü:** „zuletzt gelaufen (seit Start): 17.11.2026 14:05 · ok“. Das Ergebnis ist

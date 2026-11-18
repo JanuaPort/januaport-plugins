@@ -41,7 +41,7 @@ http://:8085 {
     Check-RAM
     # Full package suite, including the actual Caddy and network tests; never -run.
     $containers += 'k4-apphost-suite'
-    & docker run --rm --name k4-apphost-suite --network k4-apphost-apps --network-alias script-runner-apphost -v "${repo}:/repo" -v "${probeDir}:/probe" -v "$env:USERPROFILE/go/pkg/mod:/go/pkg/mod" -w /repo/script-runner -e K4_CADDY_ADMIN=http://k4-caddy:2019 -e "K4_RUNNER_IP=$runnerIP" golang:1.26.10 go test -count=1 -v ./internal/apphost
+    & docker run --rm --name k4-apphost-suite --network k4-apphost-apps --network-alias script-runner-apphost -v "${repo}:/repo" -v "${probeDir}:/probe" -v "$env:USERPROFILE/go/pkg/mod:/go/pkg/mod" -w /repo/script-runner -e K4_CADDY_ADMIN=http://k4-caddy:2019 -e "K4_RUNNER_IP=$runnerIP" golang:1.26.11 go test -count=1 -v ./internal/apphost
     $suiteExit = $LASTEXITCODE
     Docker-Checked logs k4-apphost-caddy
     if ($suiteExit -ne 0) { throw 'Volle Apphost-Suite mit Caddy rot; Paketzeilen oben lesen.' }

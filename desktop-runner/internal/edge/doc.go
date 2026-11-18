@@ -13,7 +13,7 @@
 //
 // Abweichungen vom Original zeigt upstream-diff.sh reproduzierbar (nur Lesen):
 //
-//	docker run --rm -v "$PWD:/w" -w /w golang:1.26.10 sh internal/edge/upstream-diff.sh
+//	docker run --rm -v "$PWD:/w" -w /w golang:1.26.11 sh internal/edge/upstream-diff.sh
 //
 // Sie sind gewollt und in desktop-runner/CLAUDE.md beschrieben: Importpfade, //go:build windows, gofmt; kein
 // os.Exit und kein log.Fatal; Begin/Ready/Cancel/Close statt Embed (begrenzter Start, Aufrufer wartet);

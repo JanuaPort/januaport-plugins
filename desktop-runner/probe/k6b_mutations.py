@@ -1,7 +1,7 @@
-"""K6b-1 mutations: exclusive, in a container with Go 1.26.10 and Python 3 (no desktop, no native run).
+"""K6b-1 mutations: exclusive, in a container with Go 1.26.11 and Python 3 (no desktop, no native run).
 
 Start, for example (the worktree is mounted at /workspace, nothing else runs in it):
-  docker run --rm -v <worktree>:/workspace -w /workspace/desktop-runner golang:1.26.10 \
+  docker run --rm -v <worktree>:/workspace -w /workspace/desktop-runner golang:1.26.11 \
     sh -c 'apt-get update -qq && apt-get install -y -qq python3 >/dev/null && python3 probe/k6b_mutations.py'
 
 Every mutant must COMPILE and turn its named target test red; a compile error is not a rejection.

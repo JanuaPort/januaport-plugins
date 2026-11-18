@@ -1,7 +1,7 @@
 #!/bin/sh
 # Zeigt, worin internal/edge vom Original abweicht (nur Lesen, ändert nichts im Repo).
 # Aufruf im Modul desktop-runner, mit Netz für den ersten Abruf des Originals:
-#   docker run --rm -v "$PWD:/w" -w /w golang:1.26.10 sh internal/edge/upstream-diff.sh
+#   docker run --rm -v "$PWD:/w" -w /w golang:1.26.11 sh internal/edge/upstream-diff.sh
 # Ausgabe: erst die Herkunftsprüfung, dann ein unified diff (Original links, Kopie rechts). Das Original wird
 # vor dem Vergleich nur mit den mechanischen Schritten der Kopie behandelt: Importpfade, gofmt. Der Rest des
 # Diffs ist die gewollte Abweichung (siehe doc.go und desktop-runner/CLAUDE.md).

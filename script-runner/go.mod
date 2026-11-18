@@ -1,6 +1,6 @@
 module github.com/januaport/januaport-plugins/script-runner
 
-go 1.26.10
+go 1.26.11
 
 require (
 	filippo.io/edwards25519 v1.1.1
