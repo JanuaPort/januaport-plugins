@@ -28,7 +28,7 @@ höchstens 90 Tage. CRITICAL- und HIGH-Befunde ohne Fix blocken nicht, stehen ab
 | Art | Job (einmaliger Lauf per systemd-Timer), kein Dienst |
 | Basis | `php:8.5.12-cli-alpine3.24` (per Digest gepinnt), Composer 2.10.3 nur in der Bau-Stufe |
 | Bibliothek | unverändert gegenüber 1.0.0 (`composer.lock`) |
-| Geprüft mit | Teststrecke `tests/run.php` (104 Fälle, lokal im Image, ohne Netz); Laufbeleg an der Pilot-Anlage steht aus |
+| Geprüft mit | Teststrecke `tests/run.php` (104 Fälle, lokal im Image, ohne Netz, auch auf der Pilot-Anlage); Laufbeleg an der Pilot-Anlage am 19.11.2026: Lauf von Hand mit genau diesem Digest, Exit 0 („die Bank hatte nichts Neues“) |
 | Datum | 18. November 2026 |
 
 **Bindender Scan (18. November 2026, Release-Lauf 44347623555):** Trivy 0.75.0 gegen
