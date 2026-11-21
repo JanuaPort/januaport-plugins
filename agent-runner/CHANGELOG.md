@@ -1,6 +1,6 @@
 # Changelog
 
-## Unveröffentlicht
+## 0.2.3 — 2026-11-21
 
 Audit-Befunde JanuaPort/januaport#1431, JanuaPort/januaport#1436, JanuaPort/januaport#1438. Version 0.2.3.
 

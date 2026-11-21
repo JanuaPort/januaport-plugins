@@ -5,7 +5,7 @@
 Beisteller für die Schleife Modell ↔ Werkzeuge, JanuaPort/januaport#1099 B1,
 Apache 2.0 wie das Repository. Ein statisches Go-Binary, ein Dienst.
 Anthropic Messages und OpenAI Chat Completions sind die implementierten
-Adapter seit 0.2.0, aktuell 0.2.3 (unveröffentlicht; zuletzt veröffentlicht 0.2.2), JanuaPort/januaport#1193, Epic #1191.
+Adapter seit 0.2.0, aktuell 0.2.3 (Tag `agent-runner-v0.2.3`), JanuaPort/januaport#1193, Epic #1191.
 Zeitpläne/Ticker gehören zu Release B. Betreiberanleitung: `README.md`.
 
 OpenAI-Format braucht JanuaPort mit `model.protocol` (Version folgt); ein älterer Kern schickt kein Protokoll, dann gilt Anthropic.

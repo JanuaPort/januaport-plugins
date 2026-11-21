@@ -1,7 +1,7 @@
-# Agenten-Läufer 0.2.3 (unveröffentlicht)
+# Agenten-Läufer 0.2.3
 
-Zuletzt veröffentlicht: 0.2.2 (Tag `agent-runner-v0.2.2`). 0.2.3 meldet erstmals
-die richtige Version über `serverInfo` (JanuaPort/januaport#1436).
+Tag `agent-runner-v0.2.3`. Seit 0.2.3 meldet `serverInfo` die richtige Version
+(JanuaPort/januaport#1436); 0.2.2 meldete noch 0.2.1.
 
 **Gebaut, Live-Durchstich ausstehend.** Der Beisteller führt ein vom Kern
 freigegebenes Agenten-Profil aus: Modell aufrufen, Werkzeuge ausführen,
