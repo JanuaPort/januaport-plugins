@@ -299,7 +299,7 @@ func TestOpenAIToolAuthorizationAndLimits(t *testing.T) {
 		limit, steps, wantCalls, wantSteps int
 	}{
 		{"unknown", strings.Replace(openAIUse("a", `{}`), "erp_list_things", "unknown", 1), "error", "rejected", 10, 10, 0, 1},
-		{"duplicate", openAIUse("a", `{"q":"`+secret+`"}`) + "," + openAIUse("a", `{}`), "error", "rejected", 10, 10, 1, 1},
+		{"duplicate", openAIUse("a", `{"q":"`+secret+`"}`) + "," + openAIUse("a", `{}`), "error", "rejected", 10, 10, 0, 1},
 		{"zero calls", openAIUse("a", `{}`), "limit", "tool_calls", 0, 10, 0, 1},
 		{"call limit", openAIUse("a", `{"q":"`+secret+`"}`) + "," + openAIUse("b", `{}`), "limit", "tool_calls", 1, 10, 1, 1},
 		{"step limit", openAIUse("a", `{"q":"`+secret+`"}`), "limit", "steps", 10, 1, 1, 1},

@@ -51,6 +51,14 @@ jobs:
           cache-dependency-path: agent-runner/go.sum
       - name: Tag-Schema agent-runner-vX.Y.Z
         run: echo "$GITHUB_REF_NAME" | grep -Eq '^agent-runner-v[0-9]+\.[0-9]+\.[0-9]+$'
+      # JanuaPort/januaport#1436: Der Tag muss zur Versionskonstante passen,
+      # die der Läufer als serverInfo meldet. Sonst bricht der Release ab.
+      - name: Tag passt zur Versionskonstante
+        run: |
+          set -eu
+          const=$(sed -n 's/^const Version = "\([0-9][0-9.]*\)"$/\1/p' internal/runner/version.go)
+          [ -n "$const" ] || { echo "Versionskonstante nicht gefunden" >&2; exit 1; }
+          [ "agent-runner-v${const}" = "$GITHUB_REF_NAME" ] || { echo "Tag $GITHUB_REF_NAME passt nicht zur Konstante $const" >&2; exit 1; }
       - name: go vet
         run: go vet ./...
       - name: go test

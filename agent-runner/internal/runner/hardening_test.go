@@ -222,7 +222,12 @@ func TestToolListAndMultiToolGuards(t *testing.T) {
 			want = "error"
 		}
 		end(t, b, want, 1)
-		if f.calls != 1 {
+		// Ein doppelter Aufruf weist die Antwort ab, bevor einer läuft (#1438).
+		wantCalls := 1
+		if duplicate {
+			wantCalls = 0
+		}
+		if f.calls != wantCalls {
 			t.Fatal(f.calls)
 		}
 	}
@@ -342,27 +347,40 @@ func TestCancelBeforeSessionCloseAtAdapter(t *testing.T) {
 func TestResponseBody4MiBLimitAtAdapter(t *testing.T) {
 	const ceiling = 4 * 1024 * 1024
 	for _, path := range []string{ModelPath, MCPPath} {
-		for _, size := range []int{ceiling - 1, ceiling + 1} {
-			t.Run(fmt.Sprintf("%s/%d", path, size), func(t *testing.T) {
-				f := &fakeCore{before: func(w http.ResponseWriter, r *http.Request) bool {
-					_, _ = io.WriteString(w, strings.Repeat("x", size))
-					return true
-				}}
-				r, _, _ := setup(t, f)
-				res, err := r.client("<lauf-token>").Get(r.cfg.GatewayURL + path)
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer func() { _ = res.Body.Close() }()
-				body, err := io.ReadAll(res.Body)
-				if size < ceiling {
-					if err != nil || len(body) != size {
-						t.Fatalf("allowed body: bytes=%d err=%v", len(body), err)
+		for _, size := range []int{ceiling - 1, ceiling, ceiling + 1} {
+			// Mit Content-Length meldet der Transport das Ende zusammen mit dem
+			// letzten Byte; chunked kommt es erst beim nächsten Lesen.
+			// JanuaPort/januaport#1438: genau 4 MiB werden in beiden Fällen angenommen.
+			for _, chunked := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%d/chunked=%v", path, size, chunked), func(t *testing.T) {
+					f := &fakeCore{before: func(w http.ResponseWriter, r *http.Request) bool {
+						if chunked {
+							w.(http.Flusher).Flush()
+						}
+						_, _ = io.WriteString(w, strings.Repeat("x", size))
+						if chunked {
+							// Das Ende-Zeichen kommt erst nach dem letzten Datenbyte an.
+							w.(http.Flusher).Flush()
+							time.Sleep(100 * time.Millisecond)
+						}
+						return true
+					}}
+					r, _, _ := setup(t, f)
+					res, err := r.client("<lauf-token>").Get(r.cfg.GatewayURL + path)
+					if err != nil {
+						t.Fatal(err)
 					}
-				} else if err == nil || err.Error() != "antwort ist zu groß" || len(body) != ceiling {
-					t.Fatalf("4 MiB size guard missing: bytes=%d err=%v", len(body), err)
-				}
-			})
+					defer func() { _ = res.Body.Close() }()
+					body, err := io.ReadAll(res.Body)
+					if size <= ceiling {
+						if err != nil || len(body) != size {
+							t.Fatalf("allowed body: bytes=%d err=%v", len(body), err)
+						}
+					} else if err == nil || err.Error() != "antwort ist zu groß" || len(body) != ceiling {
+						t.Fatalf("4 MiB size guard missing: bytes=%d err=%v", len(body), err)
+					}
+				})
+			}
 		}
 	}
 }

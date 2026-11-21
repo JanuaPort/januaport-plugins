@@ -5,7 +5,7 @@
 Beisteller für die Schleife Modell ↔ Werkzeuge, JanuaPort/januaport#1099 B1,
 Apache 2.0 wie das Repository. Ein statisches Go-Binary, ein Dienst.
 Anthropic Messages und OpenAI Chat Completions sind die implementierten
-Adapter seit 0.2.0, aktuell 0.2.1 (unveröffentlicht), JanuaPort/januaport#1193, Epic #1191.
+Adapter seit 0.2.0, aktuell 0.2.3 (unveröffentlicht; zuletzt veröffentlicht 0.2.2), JanuaPort/januaport#1193, Epic #1191.
 Zeitpläne/Ticker gehören zu Release B. Betreiberanleitung: `README.md`.
 
 OpenAI-Format braucht JanuaPort mit `model.protocol` (Version folgt); ein älterer Kern schickt kein Protokoll, dann gilt Anthropic.
@@ -14,7 +14,9 @@ OpenAI-Format braucht JanuaPort mit `model.protocol` (Version folgt); ein älter
 
 | Pfad | Aufgabe |
 |---|---|
-| `main.go` | HTTP auf 8090, Prozess-Abbruch, Healthcheck-Unterbefehl |
+| `main.go` | HTTP auf 8090 (`newHTTPServer`, Fristen aus `runner.WriteTimeout`), Prozess-Abbruch, Healthcheck-Unterbefehl |
+| `internal/runner/version.go` | `Version`: die einzige Quelle für serverInfo und clientInfo |
+| `internal/runner/timeouts.go` | `ParseWallS` (wirksame Wandzeit aus der Umgebung), `WriteTimeout` (Lese- + Wandzeit + Aufräumfrist) |
 | `internal/runner/contract.go` | Eingang, Lauf-Header, feste Ende-Sätze je Klasse und je Grenz-/Fehlerdetail |
 | `internal/runner/server.go` | MCP, runtime-key, genau `run_agent`, `/healthz` |
 | `internal/runner/loop.go` | Historie, Grenzen, MCP-Sitzung, Werkzeugfreigabe und Wertung des letzten Werkzeug-Schritts |
@@ -70,7 +72,11 @@ Lauf-Token an derselben Betreiberadresse `JNPT_GATEWAY_URL`.
 | Thinking und redacted_thinking bleiben in der angehängten Historie erhalten | `TestLoopGoldenThinkingAndLog`, `TestThinkingAndCache` |
 | Anthropic-Bilder nur base64 mit image/png, image/jpeg, image/gif oder image/webp; andere MCP-Bilder/URL-Bilder werden fester Platzhalter. OpenAI projiziert alle Nichttext-Blöcke zum Platzhalter | `TestImageMediaTypesAtAdapter`, `TestURLImageToolResultAtAdapter`, `TestToolResultSanitization`, `TestToolResultTextProjection` |
 | error/rejected nennt unabhängig vom Feld die abgewiesene Läuferanfrage | `TestRejectedMessageAtAdapter`, `TestAllResultGoldens` |
-| Antworten auf beiden Gateway-Pfaden höchstens 4 MiB, ohne Fristablauf abgewiesen | `TestResponseBody4MiBLimitAtAdapter` |
+| Antworten auf beiden Gateway-Pfaden höchstens 4 MiB: genau 4 MiB werden angenommen (auch chunked), ein Byte mehr ohne Fristablauf abgewiesen | `TestResponseBody4MiBLimitAtAdapter` |
+| Alle Werkzeugaufrufe einer Antwort (Name, ID) werden geprüft, bevor einer läuft; ein unzulässiger weist die ganze Antwort ab (`error/rejected`), ohne Wirkung vorher (#1438) | `TestInvalidCallRejectsWholeAnswerBeforeAnyExecution`, `TestToolListAndMultiToolGuards`, `TestOpenAIToolAuthorizationAndLimits` |
+| Die HTTP-Schreibfrist folgt aus der wirksamen Wandzeit (0 = Standard 300 s), plus Lesefrist und Aufräumfrist; ungültige Werte scheitern beim Start (#1431) | `TestParseWallS`, `TestWriteTimeoutCoversReadWallAndCleanup`, `TestNewHTTPServerTimeouts` |
+| Eine Versionskonstante; der Release-Tag muss zu ihr passen, sonst bricht der Release ab (#1436) | `TestServerInfoReportsVersion`, `TestClientInfoReportsVersion`, `TestNoVersionLiteralOutsideConstant`, `TestReleaseTagMatchesVersionConstant`, `TestDocsNameVersionConstant` |
+| `agent-runner.yml` läuft bei Push auf `main` und bei Pull Requests auf die Modulpfade (#1438) | `TestCIRunsOnPullRequestWithModulePaths` |
 | AG8: Fehlertext und unbekannte Fehlerdetails gelangen nicht in Antwort/Protokoll | `TestGatewayErrorsFixed`, `TestLogErrorContentAbsent`, `TestRevocationAtBothGateways` |
 | Werkzeugaufrufe nur aus tools/list; eindeutige IDs, gültige Namen, begrenzte Liste/Pagination | `TestUnsafeResponseAndUnknownToolAtAdapter`, `TestToolListAndMultiToolGuards`, `TestToolListSizeLimit` |
 | Schritte/Aufrufe lokal begrenzt, Wandzeit = min(Anfrage, Meldung), Standard 300 s; Context-Abbruch beendet laufendes HTTP samt SDK-Cleanup, cancel vor Close | `TestLimitsAtAdapter`, `TestCancellationAndWallAtAdapter`, `TestAdvertisedWallCapEnforcedAtAdapter`, `TestCleanupWithinWallAtAdapter`, `TestCancelBeforeSessionCloseAtAdapter` |
@@ -143,7 +149,8 @@ Lauf-Token an derselben Betreiberadresse `JNPT_GATEWAY_URL`.
 ## Prüfen
 
 Release B1.1: `.github/workflows/agent-runner-release.yml`, nur
-`agent-runner-vX.Y.Z`, ein Build `linux/amd64` mit SBOM und Provenance,
+`agent-runner-vX.Y.Z` (der Tag muss `internal/runner/version.go` entsprechen; die
+Konstante wird vor dem Tag angehoben), ein Build `linux/amd64` mit SBOM und Provenance,
 Push per Digest ohne Tag → Config-Digest-Vergleich (SEC C1) und
 `pwsh`/`probe/smoke.ps1` gegen genau diesen Digest → Tag `X.Y.Z`.
 Die vorhandene PowerShell-Sonde bleibt die einzige Implementierung;
