@@ -261,7 +261,7 @@ Describe 'JanuaPort.Kartei' {
             $ups[0].Body.params.arguments.source | Should -Be 'roboter:buchung'
         }
 
-        It 'schickt jedes gelesene Feld zurueck (vollstaendiges Ueberschreiben)' {
+        It 'schickt jedes gelesene Feld zurueck (update fuehrt seit Kern #930 ohnehin zusammen)' {
             Add-TestGet (New-TestSatz)
             Add-TestUpdate (New-TestSatz -Felder @{ status = 'in_buchung' })
             Lock-JnptSatz -Session (New-TestSitzung) -Id 'a1b2c3d4' -Lauf 'L1' | Out-Null
@@ -283,6 +283,30 @@ Describe 'JanuaPort.Kartei' {
         It 'verweigert einen Satz, der nicht auf geprueft steht' {
             Add-TestGet (New-TestSatz -Felder @{ status = 'verbucht' })
             { Lock-JnptSatz -Session (New-TestSitzung) -Id 'a1b2c3d4' -Lauf 'L1' } | Should -Throw '*geprueft*'
+            (Get-TestAufrufe 'zahlungseingang_update').Count | Should -Be 0
+        }
+
+        It 'verweigert einen geprueften Satz mit gesetzter Buchungsnummer und schreibt nichts' {
+            Add-TestGet (New-TestSatz -Felder @{ buchungs_nr = 'BU-4711' })
+            { Lock-JnptSatz -Session (New-TestSitzung) -Id 'a1b2c3d4' -Lauf 'L1' } |
+                Should -Throw '*buchungs_nr ist schon gesetzt ("BU-4711")*nicht doppelt buchen*'
+            (Get-TestAufrufe 'zahlungseingang_update').Count | Should -Be 0
+        }
+
+        It 'sperrt einen Satz, dessen Buchungsnummer nur aus Leerzeichen besteht (gilt als leer)' {
+            Add-TestGet (New-TestSatz -Felder @{ buchungs_nr = '   ' })
+            Add-TestUpdate (New-TestSatz -Felder @{ status = 'in_buchung' })
+            Lock-JnptSatz -Session (New-TestSitzung) -Id 'a1b2c3d4' -Lauf 'L1' | Out-Null
+
+            $ups = Get-TestAufrufe 'zahlungseingang_update'
+            $ups.Count | Should -Be 1
+            $ups[0].Body.params.arguments.status | Should -Be 'in_buchung'
+        }
+
+        It 'prueft die konfigurierte Buchungsnummer-Spalte, nicht den Standardnamen' {
+            $s = New-TestSitzung -Felder @{ Buchungsnr = 'beleg_ref' }
+            Add-TestGet (New-TestSatz -Felder @{ beleg_ref = 'BU-4711' })
+            { Lock-JnptSatz -Session $s -Id 'a1b2c3d4' -Lauf 'L1' } | Should -Throw '*beleg_ref ist schon gesetzt*'
             (Get-TestAufrufe 'zahlungseingang_update').Count | Should -Be 0
         }
 
