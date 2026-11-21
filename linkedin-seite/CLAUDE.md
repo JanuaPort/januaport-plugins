@@ -78,7 +78,10 @@ Root-CLAUDE.md war im Ausgangscheckout nicht vorhanden.
   gleich `GRANT_SCOPES`; JSON ohne `scope` oder mit anderer Menge startet nicht. Laufzeiten bis
   Höchstwert + 1 Tag (`OVERSHOOT_TOLERANCE_SECONDS`) werden auf 60/365 Tage gedeckelt
   (`lifetime`), darüber/nicht int/≤0 = `unexpected_source_shape`. Erneuerung fünf Minuten vor Ablauf
-  beim nächsten Abruf ausschließlich RAM; kein Tresor-Rückschreiben. Warnung ab 14 Tagen
+  beim nächsten Abruf ausschließlich RAM; kein Tresor-Rückschreiben. Scheitert die Erneuerung im Fenster
+  und gilt das Token noch (`now < expiry`), gibt `access()` das vorhandene zurück und loggt
+  `token_erneuerung_fehlgeschlagen code=…` (nur der Fehlercode, nie Token-Inhalt; #1435); ab Ablauf bleibt
+  der Fehler. Warnung ab 14 Tagen
   vor Access-Ablauf ohne Refresh bzw. Refresh-Ablauf mit Refresh, nur Datum; danach
   ohne nutzbaren Access `token_abgelaufen`. Der Token-Zustand: Abschnitt unten.
 - `workers.py`: Vorbild google-reporting, zwei spawn-Prozesse, vier Queueplätze,
@@ -188,6 +191,8 @@ der frühere Konfigurationsschlüssel freigabe ist entfernt und wird abgewiesen.
   mehrfacher, falsch formatierter oder abweichender Wert ergibt 409 nicht_freigegeben.
   Diese Gate-Antwort trägt weder nicht_ausgefuehrt noch ausgefuehrt.
   Vor Hash-Gleichheit erfolgt kein LinkedIn-Schreibaufruf.
+- `post_adapter.py` (`api`): `tokens.access()` läuft **vor** `begin_action()`. Ohne Token entsteht kein
+  LinkedIn-Aufruf und wird keine der fünf Tagesaktionen verbraucht (#1435, wie die README zusagt).
 - `post_adapter.py`: ein Gateway-Lesevorgang, ein unveränderliches Entry-Objekt für
   Vorschau UND Wirkung (H3); Medien einmal in private RAM-Kopien lesen und prüfen.
   Die Vorschau entspricht dem F2-Anschlussvertrag: exakt eintrag_id, aktion, format,
@@ -244,6 +249,13 @@ der frühere Konfigurationsschlüssel freigabe ist entfernt und wird abgewiesen.
   liegt in eigener Tresor-Stelle.
 
 Medien-/Umfrage-Grenzen und Upload-Host-/Teile-/Status-Prüfungen aus B1 gelten weiter.
+Upload-Pfad (`redaktion._pfad_im_praefix`, #1438): Präfix `/dms-uploads/`, danach je Segment nach dem Dekodieren
+kein `.`/`..`, kein `/`, `\`, `%` (kein kodierter Trenner, keine doppelte Kodierung), kein Steuerzeichen.
+Zerlegt wird vor dem Dekodieren. Host, Schema, Port, Zugangsdaten und Fragment bleiben exakt.
+
+**Sicherheitshinweis (#1438):** Der Freigabe-Hash ist kein Geheimnis (die Vorschau liefert ihn). Die menschliche
+Freigabe liegt allein im Kern. Wer den Bridge-Key hat, kann ohne sie posten, bearbeiten, löschen und kommentieren;
+der Bridge-Key ist wie ein Schreibrecht zu schützen.
 Kein GET des Ziel-Posts, kein DRAFT; Kommentartext ohne URN; little escaped reservierte
 Zeichen, Hashtags bleiben. post_urn wird durch die KI gepflegt und ist nur Komfort.
 B2/B3, Kern-Code, GUI, Kern-Specs und Live-Abnahme sind außerhalb F4.
@@ -341,6 +353,13 @@ Aktivierungsregel (S1, T2): Das Antwort-Token trägt genau `linkedin-seite-commu
 `linkedin-seite-community:reply` und `linkedin-seite:posts`, sonst nichts. `tagesliste` liegt am
 Redaktions-Token, nie `comments` dort. Not-Aus: der PO entzieht `linkedin-seite-community:reply` in der
 Admin-Oberfläche; danach der Widerruf bei LinkedIn.
+
+Leere optionale Parameter: Der Kern lässt nicht gesetzte (und `null`) optionale Query-Parameter ganz weg
+(`fillValue` in `internal/connector/runtime/fill.go`), sendet also nie `limit=` oder `weiter=`. `parse_comments`
+bleibt streng: ein ausdrücklich leerer Wert ist `invalid_input` (geprüft #1438, keine Änderung nötig).
+Eine Sperre je (Verfasser, Post) im Serverprozess gibt es bewusst nicht: Der Verfasser ist dort unbekannt, nur
+der Job liest ihn live; sie bräuchte ein neues Pipe-Feld und eine Personenkennung im RAM (#1438). Es bleibt
+bei `verfasser_beantwortet` aus dem Live-Lesen nach 60 s Abstand.
 
 Bewusste Grenzen: Sperre und Abstand überleben keinen Neustart; danach hält nur das Live-Nachlesen,
 und das steht unter LinkedIns Lesekonsistenz. Ein Prozess, ein Server: mehr Instanzen hebeln die

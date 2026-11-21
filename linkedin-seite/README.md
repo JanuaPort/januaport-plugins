@@ -99,6 +99,9 @@ HTTP-Parserfehler vor der Middleware behalten das feste Fehler-JSON ohne Tokenme
   Toleranz höchstens ein Tag (`OVERSHOOT_TOLERANCE_SECONDS`), darüber, nicht ganzzahlig oder
   nicht positiv ergibt `unexpected_source_shape`. Gilt auch für die Erneuerung. Fünf Minuten
   vor Access-Ablauf erneuert ein nächster Abruf im Serverprozess, einmal für beide Pfade.
+  Scheitert die Erneuerung in diesem Fenster und gilt das Access-Token noch, wird es weiter ausgegeben
+  (WARN-Zeile `token_erneuerung_fehlgeschlagen` mit Fehlercode, ohne Token-Inhalt); der nächste Abruf
+  versucht es erneut. Nach Ablauf bleibt es bei `token_abgelaufen` bzw. dem Fehler der Erneuerung.
   Neue Tokens bleiben im RAM;
   die ursprüngliche Refresh-Frist wird niemals verlängert. Kein Tresor-Rückschreiben.
   Ohne Refresh ab 14 Tagen vor Access-Ablauf die Warnung, danach `token_abgelaufen`.
@@ -341,6 +344,14 @@ sind immer die konfigurierte Organisation; übrige Post-Felder feste Konstanten.
 Ablauf: Eintrag einmal lesen → Dateien einmal in private RAM-Kopien → Prüfung/Wirkung/Hash →
 Header-Gleichheit → report_hash → Zählen/LinkedIn → Kopien überschreiben und verwerfen.
 
+**Sicherheitshinweis (#1438):** Der Freigabe-Hash ist kein Geheimnis: Die Vorschau liefert ihn jedem
+Aufrufer, der den Bridge-Key hat. Der Beisteller kann nicht prüfen, ob ein Mensch freigegeben hat. Die
+menschliche Freigabe liegt allein im Kern (Freigabe-Block der Vorlage, Werkzeugrechte, Sperrvermerke).
+Wer den Bridge-Key hat, kann ohne diese Freigabe an LinkedIn posten, bearbeiten, löschen und kommentieren
+(Vorschau lesen, Hash als `X-Jnpt-Freigabe` zurückschicken). Der Bridge-Key ist deshalb wie ein Schreibrecht
+zu schützen: nur die Stelle `plugin-linkedin-seite` und das Connector-Credential, nie in Logs, Tickets oder
+Tools, Rotation wie im Abschnitt Betreiberschritte, der Dienst nur im Plugin-Netz.
+
 ### Rückverbindung zum Gateway (W2, SEC Bed. 3)
 
 Der Beisteller hängt im Netz **`jnpt_plugins`** (`internal: true`). Dort hängt auch der Gateway-
@@ -383,7 +394,8 @@ Erben-Bit. Die Medien-Ablage darf **nicht** pseudonymisiert sein (sonst verweige
 - **Gateway-Token:** eigene Stelle `plugin-linkedin-seite-gateway` (Hausmuster #887), nie Env, nie
   Datei im Klartext, nie im Log.
 - **Bremse (SEC Bed. 5):** 5 schreibende Aktionen je UTC-Tag über alle vier Aktionen zusammen, gezählt
-  im Serverprozess unmittelbar vor dem ersten LinkedIn-Aufruf der Aktion (Video ab
+  im Serverprozess unmittelbar vor dem ersten LinkedIn-Aufruf der Aktion, nach einem erfolgreich
+  beschafften Access-Token (scheitert dieses, ist nichts gezählt; Video ab
   `initializeUpload`, auch wenn es danach abbricht). Zusätzlich 45 LinkedIn-HTTP-Versuche je UTC-Tag
   für Schreibaufträge (Development Tier: 100 je Mitglied; Stufe A hat eigene 50). Höchstens ein
   Schreibauftrag gleichzeitig, harte Grenze 25 Minuten; Vorschau 20 Sekunden, 10 je Minute.
@@ -398,7 +410,9 @@ Erben-Bit. Die Medien-Ablage darf **nicht** pseudonymisiert sein (sonst verweige
 ### Uploads (SEC V1–V3)
 
 Upload-Adressen kommen aus der LinkedIn-Antwort und gehen nur an `https://www.linkedin.com/dms-uploads/…`
-(exakter Host, kein Port, keine Zugangsdaten, kein Fragment, keine Umleitung). Bild und Dokument:
+(exakter Host, kein Port, keine Zugangsdaten, kein Fragment, keine Umleitung). Der Pfad wird vor dem
+Präfixvergleich je Segment dekodiert und abgewiesen bei `.`- oder `..`-Segmenten, kodierten Trennern
+(`%2f`, `%5c`, auch groß geschrieben), doppelter Kodierung (`%25`) und Steuerzeichen, alles vor dem ersten Byte. Bild und Dokument:
 `PUT` mit Bearer (Images-/Documents-/Vector-Asset-Doku); Video: `PUT` je Teil **ohne** Token
 (Videos-Doku: „The upload call shouldn't include an OAuth token“). Video-Teile müssen die Datei
 lückenlos und ohne Überlappung abdecken, höchstens `ceil(Größe / 4 MiB)` Teile; sonst kein

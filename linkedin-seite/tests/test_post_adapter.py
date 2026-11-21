@@ -260,6 +260,23 @@ class ClosedEndpoints(Base):
         self.assertEqual(self.fails(rid, link=Link(cap=0)), 'schreib_tageslimit')
         self.assertEqual(self.li.calls, [])
 
+    def test_a_failed_token_does_not_consume_a_daily_action(self):
+        # #1435: README: counted immediately before the first LinkedIn request. No token, no request, no count.
+        class NoToken:
+            def access(self):
+                raise ReportError(502, 'source_unavailable')
+        for aktion, fields in (('posten', {'post_text': 'x'}),
+                               ('kommentar', {'post_urn': 'urn:li:share:7', 'kommentar_text': 'c'})):
+            rid = self.plan(**fields)
+            self.approve(rid, aktion)
+            adapter = self.adapter()
+            adapter.tokens = NoToken()
+            with self.subTest(aktion=aktion), self.assertRaises(ReportError) as cm:
+                adapter.run(r.WriteRequest(aktion, rid, freigabe=self.approvals[(rid, aktion)]))
+            self.assertEqual(cm.exception.code, 'source_unavailable')
+            self.assertTrue(cm.exception.nicht_ausgefuehrt)
+            self.assertEqual((self.link.actions, self.link.http, self.li.calls), (0, 0, []))
+
 
 class Approval(Base):
     """SEC Bed. 2: exact core header approval, bound to content and bytes, for all four actions."""
@@ -346,6 +363,32 @@ class UploadTarget(Base):
             with self.subTest(url=url), self.assertRaises(ReportError) as cm:
                 r.upload_ziel(url)
             self.assertEqual(cm.exception.code, 'upload_ziel_abgewiesen')
+
+    def test_path_traversal_and_encoded_variants_are_refused(self):
+        # #1438: the prefix check alone let '..' and encoded separators climb out of /dms-uploads/.
+        base = 'https://www.linkedin.com'
+        for path in ('/dms-uploads/../other/x', '/dms-uploads/..', '/dms-uploads/./x', '/dms-uploads/a/../../x',
+                     '/dms-uploads/%2e%2e/other', '/dms-uploads/%2E%2E/other', '/dms-uploads/.%2e/other',
+                     '/dms-uploads/%2e./other', '/dms-uploads/%2e/x', '/dms-uploads/..%2fother',
+                     '/dms-uploads/a%2fb', '/dms-uploads/a%2Fb', '/dms-uploads/a%5cb', '/dms-uploads/a%5Cb',
+                     '/dms-uploads/a\\b','/dms-uploads/%252e%252e/other', '/dms-uploads/a%252fb',
+                     '/dms-uploads%2f..%2fother', '/dms-uploads/%00x', '/dms-uploads/a%'):
+            with self.subTest(path=path), self.assertRaises(ReportError) as cm:
+                r.upload_ziel(base + path + '?ut=x')
+            self.assertEqual(cm.exception.code, 'upload_ziel_abgewiesen')
+
+    def test_ordinary_paths_and_dots_elsewhere_still_pass(self):
+        for url in ('https://www.linkedin.com/dms-uploads/C4E10AQ/uploaded-image/0?ca=vector_ads&sync=0',
+                    'https://www.linkedin.com/dms-uploads/sp/a.b-c_d/file.0?ut=a..b&x=%2e%2e%2f',
+                    'https://www.linkedin.com/dms-uploads/a%3Db%20c/x', 'https://www.linkedin.com/dms-uploads/x...y/z'):
+            with self.subTest(url=url):
+                self.assertEqual(r.upload_ziel(url), url)
+
+    def test_a_traversal_target_never_gets_a_byte(self):
+        for files in (('a.png', PNG), ('c.mp4', mp4(8192))):
+            with self.subTest(kind=files[0]):
+                self.li.calls.clear()
+                self.check_target('https://www.linkedin.com/dms-uploads/%2e%2e/other/x?ut=TOKENTARGET', files)
 
     def check_target(self, url, entry_files):
         def override(call):

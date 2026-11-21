@@ -108,6 +108,36 @@ class OneState(unittest.TestCase):
         self.assertEqual(self.tokens.access(self.transport()), RENEWED)
         self.assertEqual(len(self.exchanges()), 2)
 
+    def in_window(self, minutes):
+        self.tokens.data['access_expires_at'] = (datetime.now(timezone.utc) + timedelta(minutes=minutes)).isoformat()
+
+    def test_failed_renewal_in_the_window_returns_the_still_valid_token(self):
+        # #1435: inside the last five minutes a failed renewal must not fail callers while the token still holds.
+        self.in_window(2)
+        for status in (503, 401, 429):
+            self.fake.status = status
+            with self.subTest(status=status), self.assertLogs('linkedin_seite', 'WARNING') as logs:
+                self.assertEqual(self.tokens.access(self.transport()), self.data[s.ACCESS_TOKEN])
+            text = ' '.join(logs.output)
+            for secret_value in (self.data[s.ACCESS_TOKEN], self.data[s.REFRESH_TOKEN], self.data[s.CLIENT_SECRET]):
+                self.assertNotIn(secret_value, text)
+        self.assertEqual(len(self.exchanges()), 3)
+        self.fake.status = 200  # the next caller still renews: the failure is not remembered
+        self.assertEqual(self.tokens.access(self.transport()), RENEWED)
+
+    def test_failed_renewal_after_expiry_stays_an_error(self):
+        self.fake.status = 503
+        with self.assertRaises(ReportError) as cm:
+            self.tokens.access(self.transport())
+        self.assertEqual((cm.exception.status, cm.exception.code), (502, 'source_unavailable'))
+
+    def test_failed_renewal_at_the_expiry_instant_stays_an_error(self):
+        self.in_window(0)
+        self.tokens.now = lambda: timestamp(self.tokens.data['access_expires_at'])
+        self.fake.status = 503
+        with self.assertRaises(ReportError):
+            self.tokens.access(self.transport())
+
     def hammer(self, permit):
         # A renewal counts from a thread while the event loop counts for the workers.
         threads = [threading.Thread(target=lambda: [permit() for _ in range(5)]) for _ in range(8)]

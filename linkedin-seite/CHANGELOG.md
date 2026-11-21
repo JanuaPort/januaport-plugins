@@ -1,5 +1,22 @@
 # Changelog
 
+## Unveröffentlicht
+
+- JanuaPort/januaport#1435: **Refresh-Fehlschlag.** Scheitert der Token-Refresh im Fünf-Minuten-Fenster vor
+  Ablauf und gilt das Access-Token noch, gibt `Tokens.access()` das vorhandene Token zurück (WARN-Zeile
+  `token_erneuerung_fehlgeschlagen code=…`, nie Token-Inhalt); der nächste Abruf versucht den Refresh erneut.
+  Nach Ablauf bleibt der Fehler. **Tagesaktion:** `access()` läuft vor `begin_action()`; ohne Token wird keine der
+  fünf Schreibaktionen je UTC-Tag verbraucht (README: „unmittelbar vor dem ersten LinkedIn-Aufruf“).
+- JanuaPort/januaport#1438: **Upload-Pfad.** `upload_ziel` zerlegt den Pfad vor dem Dekodieren und weist `.`- und
+  `..`-Segmente, kodierte Trenner (`%2f`, `%5c`), doppelte Kodierung (`%25`) und Steuerzeichen ab, bevor das
+  Präfix `/dms-uploads/` gilt. Host, Schema, Port, Zugangsdaten und Fragment bleiben exakt geprüft.
+- JanuaPort/januaport#1438: **Doku.** README und Modulvertrag halten fest: Der Freigabe-Hash ist kein Geheimnis,
+  die menschliche Freigabe liegt allein im Kern, und wer den Bridge-Key hat, kann ohne sie posten; der Bridge-Key
+  ist wie ein Schreibrecht zu schützen. Geprüft ohne Codeänderung: Der Kern sendet nicht gesetzte optionale
+  Query-Parameter nicht (`tagesliste` ohne `datum` ist unbedenklich); eine Sperre je (Verfasser, Post) wird nicht
+  gebaut (Begründung im Modulvertrag).
+- Keine Versionsnummer geändert, kein Image-Tag.
+
 ## 0.4.1 — 2026-11-11
 
 - JanuaPort/januaport#1237, Schnitt c-6800107310, SEC L1/L2 c-6800122813: `KOMMENTAR_URN` kannte nur die

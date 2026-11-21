@@ -23,6 +23,7 @@ H = 'test_acceptance.DualLoopback.'
 S = 'test_sec_tightening.StrictSource.'
 F = 'test_sec_tightening.FirstRequest.'
 T = 'test_oauth_toleranz.'
+TO = 'test_token_state.OneState.'
 # Stufe B1 (#1237): SEC c-6575359082 Bed. 1-5, c-6575837332 V1-V3, poll limits.
 PF = 'test_post_adapter.Formats.'
 PC = 'test_post_adapter.ClosedEndpoints.'
@@ -89,7 +90,7 @@ MUTANTS = [
     ('post-created-order', 'linkedin_adapter.py', 'if previous is not None and created > previous:', 'if False:', A+'test_post_statistics_id_and_created_order_fail_closed'),
     ('source-byte-cap', 'oauth.py', 'if len(raw) > MAX_SOURCE:', 'if False:', A+'test_oversized_and_malformed_source'),
     ('response-byte-cap', 'domain.py', 'if len(data) > MAX_RESPONSE:', 'if False:', B+'test_output_limit'),
-    ('token-expired', 'oauth.py', 'if now >= expiry:', 'if False:', A+'test_expired_without_refresh_never_calls_http'),
+    ('token-expired', 'oauth.py', 'if now >= expiry:\n                raise ReportError(503', 'if False:\n                raise ReportError(503', A+'test_expired_without_refresh_never_calls_http'),
     ('refresh-no-extension', 'oauth.py', 'expiry = min(expiry, original_refresh_expiry)', 'expiry = expiry', A+'test_refresh_ram_only_no_extension_and_single_exchange'),
     ('warning', 'oauth.py', 'if now >= expiry - timedelta(days=WARNING_DAYS):', 'if False:', A+'test_token_response_bounds_and_warning_dates'),
     ('token-log-library', 'workers.py', 'logging.disable(logging.CRITICAL)', 'logging.disable(logging.NOTSET)', 'test_logs.Logs.test_real_server_worker_library_logs_redact_tokens'),
@@ -260,7 +261,7 @@ MUTANTS = [
     ('v1-host', 'redaktion.py', ' or host not in s.UPLOAD_HOSTS', '', PU+'test_foreign_host_http_userinfo_and_port_never_get_a_byte'),
     ('v1-https', 'redaktion.py', "parts.scheme != 'https' or ", '', PU+'test_foreign_host_http_userinfo_and_port_never_get_a_byte'),
     ('v1-userinfo-port', 'redaktion.py', ' or parts.netloc != host', '', PU+'test_table_of_upload_targets'),
-    ('v1-path-prefix', 'redaktion.py', '            or parts.fragment or not parts.path.startswith(s.UPLOAD_PATH_PREFIX)):', '            or parts.fragment):', PU+'test_table_of_upload_targets'),
+    ('v1-path-prefix', 'redaktion.py', '            or parts.fragment or not _pfad_im_praefix(parts.path)):', '            or parts.fragment):', PU+'test_table_of_upload_targets'),
     ('v1-no-redirect', 'oauth.py', 'return None\n\n\nclass Transport:', 'return super().redirect_request(*args, **kwargs)\n\n\nclass Transport:', PU+'test_redirect_of_an_api_answer_is_not_followed_and_carries_no_token'),
     ('v1-video-without-token', 'source_contract.py', "UPLOAD_TOKEN = {'bild': True, 'dokument': True, 'video': False}", "UPLOAD_TOKEN = {'bild': True, 'dokument': True, 'video': True}", PF+'test_video_parts_without_token_finalize_status_then_post'),
     ('v1-check-before-put', 'post_adapter.py', '        ziel = r.upload_ziel(url)  # SEC V1', '        ziel = url  # SEC V1', PU+'test_foreign_host_http_userinfo_and_port_never_get_a_byte'),
@@ -377,6 +378,21 @@ MUTANTS = [
     ('b3-diag-route-of-reply', 'community_adapter.py', "self.route, self.ceiling = 'reply', HTTP_JE_ANTWORT", "self.route, self.ceiling = 'comments', HTTP_JE_ANTWORT", KA+'Formdiagnose.test_the_reply_route_and_the_daily_list_name_their_route'),
     ('b3-template-enum', 'entwurf/linkedin-seite-community.yaml', 'enum: [dank, sachfrage_zum_post, gespraech_anbieten]', 'enum: [dank, sachfrage_zum_post, gespraech_anbieten, beschwerde]', 'test_template_entwurf.TemplateDraft.test_anlass_is_the_exact_enum'),
     ('b3-template-cap', 'entwurf/linkedin-seite-community.yaml', '    daily_cap: 8\n', '    daily_cap: 20\n', 'test_template_entwurf.TemplateDraft.test_reply_is_a_write_with_daily_cap_8_attempts_and_without_freigabe'),
+    # --- #1435: Refresh-Rückgriff und Zählung der Tagesaktion ---
+    ('f1435-fallback-token', 'oauth.py', "                    return self.data[s.ACCESS_TOKEN]\n                # RAM only", "                    raise\n                # RAM only", TO+'test_failed_renewal_in_the_window_returns_the_still_valid_token'),
+    ('f1435-fallback-after-expiry', 'oauth.py', "                    if now >= expiry:\n                        raise\n", "                    if False:\n                        raise\n", TO+'test_failed_renewal_after_expiry_stays_an_error'),
+    ('f1435-fallback-at-expiry-instant', 'oauth.py', "                    if now >= expiry:\n                        raise\n", "                    if now > expiry:\n                        raise\n", TO+'test_failed_renewal_at_the_expiry_instant_stays_an_error'),
+    ('f1435-log-token', 'oauth.py', "vorhandenes Token gilt noch', exc.code)", "vorhandenes Token gilt noch' + self.data[s.ACCESS_TOKEN], exc.code)", TO+'test_failed_renewal_in_the_window_returns_the_still_valid_token'),
+    ('f1435-count-before-token', 'post_adapter.py', "        token = self.tokens.access()  # before the count: no token, no LinkedIn request, no spent action (#1435)\n        self._begin()\n", "        self._begin()\n        token = self.tokens.access()\n", PC+'test_a_failed_token_does_not_consume_a_daily_action'),
+    # --- #1438: Upload-Pfad wird vor der Präfix-Prüfung normalisiert ---
+    ('f1438-prefix-itself', 'redaktion.py', "    if not path.startswith(s.UPLOAD_PATH_PREFIX):\n        return False\n", "    pass\n", PU+'test_table_of_upload_targets'),
+    ('f1438-dot-segments', 'redaktion.py', "part in ('.', '..') or any(", "any(", PU+'test_path_traversal_and_encoded_variants_are_refused'),
+    ('f1438-encoded-slash', 'redaktion.py', "any(c in '/\\\\%' or ord(c) < 32", "any(c in '\\\\%' or ord(c) < 32", PU+'test_path_traversal_and_encoded_variants_are_refused'),
+    ('f1438-backslash', 'redaktion.py', "any(c in '/\\\\%' or ord(c) < 32", "any(c in '/%' or ord(c) < 32", PU+'test_path_traversal_and_encoded_variants_are_refused'),
+    ('f1438-double-encoding', 'redaktion.py', "any(c in '/\\\\%' or ord(c) < 32", "any(c in '/\\\\' or ord(c) < 32", PU+'test_path_traversal_and_encoded_variants_are_refused'),
+    ('f1438-control-chars', 'redaktion.py', " or ord(c) < 32 or ord(c) == 127 for c in part)", " for c in part)", PU+'test_path_traversal_and_encoded_variants_are_refused'),
+    ('f1438-split-after-decoding', 'redaktion.py', "decoded = [unquote(segment, errors='strict') for segment in path.split('/')]", "decoded = unquote(path, errors='strict').split('/')", PU+'test_path_traversal_and_encoded_variants_are_refused'),
+    ('f1438-wire', 'redaktion.py', "or parts.fragment or not _pfad_im_praefix(parts.path)):", "or parts.fragment or not parts.path.startswith(s.UPLOAD_PATH_PREFIX)):", PU+'test_a_traversal_target_never_gets_a_byte'),
 ]
 
 

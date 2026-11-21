@@ -161,8 +161,9 @@ class PostAdapter:
             raise ReportError(404, 'route_not_found')
         method, template = s.WRITE_ENDPOINTS[op]
         path = template.format(urn=quote(urn, safe='')) if '{urn}' in template else template
+        token = self.tokens.access()  # before the count: no token, no LinkedIn request, no spent action (#1435)
         self._begin()
-        headers = {'Authorization': 'Bearer ' + self.tokens.access(), s.VERSION_HEADER: self.cfg.linkedin_version,
+        headers = {'Authorization': 'Bearer ' + token, s.VERSION_HEADER: self.cfg.linkedin_version,
                    s.PROTOCOL_HEADER: s.PROTOCOL_VERSION}
         if op in s.RESTLI_METHODS:
             headers[s.RESTLI_METHOD] = s.RESTLI_METHODS[op]
