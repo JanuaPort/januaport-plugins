@@ -39,7 +39,9 @@ Alle Berichte erlauben `period_days` (28/90, Default 28), `end_date` (ISO),
 `segment` (`all_public`/`atas`/`gateway`/`shared`, Default all_public).
 GSC erlaubt optional `page_path` innerhalb des Segments; Ranglisten `limit`
 (1–100, Default 25). Übersicht maximal 90 Tageszeilen. Unbekannte, doppelte,
-falsch typisierte oder unzulässige Parameter scheitern **vor Auth/Google**.
+falsch typisierte oder unzulässige Parameter scheitern **nach der Bridge-Key-Prüfung
+und Site-Auflösung, vor Google**: erst der Bridge-Key, dann die Parameterprüfung;
+beides geschieht vor jedem Google-Aufruf.
 JanuaPort validiert Enums/einfache Typen; das Zahlenintervall prüft dieser Dienst
 (Connector-Enums unterstützen heute nur Strings). Zusätzliche MCP-Argumente
 ignoriert die Runtime und schwärzt das Audit; sie erreichen den Dienst nicht.
@@ -69,8 +71,14 @@ Eine echte zulässige Null bleibt Null; unterdrückte/fehlende Zeilen werden nie
 Fehler: 400 Eingabe (`invalid_input`, `end_date_not_available`), 401/403 Bridge, 429 lokale Bremse, 502 Quelle, 503 Betrieb/
 Quoten, 504 Budget. Nur feste Codes, keine URLs/Exceptions/Secrets. Nur get_status
 übersetzt Zugriffs-/Betriebsfehler in feste Diagnosezustände ready, not_configured,
-access_denied, quota_limited, unavailable. Normale Berichte behalten HTTP-Fehler;
+access_denied, quota_limited, definition_invalid, unavailable. `definition_invalid`
+steht für `report_definition_unverified`, `report_definition_incompatible` oder
+`source_timezone_mismatch`. Fehlerzustände enthalten den festen Diagnosecode als
+`code`, ohne Google-Fehlertext. Normale Berichte behalten HTTP-Fehler;
 JanuaPort zeigt bei Nicht-2xx seine bestehende Statusmeldung ohne Fehlerbody.
+
+`traffic_summary` übernimmt auch die Google-Standardkanäle „Paid Other“ und
+„AI Assistant“. Unbekannte Kanalnamen werden weiterhin unterdrückt.
 
 ## Verwaltungshandgriffe (JanuaPort/januaport#1148)
 
@@ -392,7 +400,8 @@ keine relativen Links; `tests/test_setup_guide.py` prüft das.
    Workloads; Host-Firewall/DNS-/Egress-Policy auf tatsächlich benötigte Google-Ziele.
    Compose allein setzt keine Domain-Allowlist durch. Initiale Ziele:
    oauth2.googleapis.com:443, searchconsole.googleapis.com:443 (gebündelter GSC-
-   Discoveryvertrag), analyticsdata.googleapis.com:443; www.googleapis.com nur
+   Discoveryvertrag), analyticsdata.googleapis.com:443,
+   analyticsadmin.googleapis.com:443 (Annotationen und Kanalgruppen); www.googleapis.com nur
    aufnehmen, falls Testlauf dessen Notwendigkeit belegt. Kein TLS-/Proxy-Bypass.
    Von Egress-Seite und außerhalb Plugin-Netz darf Port8092 nicht erreichbar sein.
    Ohne diesen Nachweis ist der Host nicht fertig provisioniert.

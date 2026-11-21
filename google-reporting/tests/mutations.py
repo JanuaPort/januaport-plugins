@@ -10,6 +10,82 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 MUTANTS = [
+    # Audit #1433/#1437/#1438: HTTP diagnostics, real adapter guards, API egress.
+    *[
+        (
+            "status-definition-" + code,
+            "server.py",
+            '"' + code + '": "definition_invalid",',
+            '"' + code + '": "unavailable",',
+            "test_audit_reporting.StatusHTTP.test_status_code_matrix_for_both_sources",
+        )
+        for code in ("report_definition_unverified", "report_definition_incompatible", "source_timezone_mismatch")
+    ],
+    (
+        "status-diagnostic-code-missing", "server.py",
+        '                        "code": code,\n', "",
+        "test_audit_reporting.StatusHTTP.test_status_code_matrix_for_both_sources",
+    ),
+    (
+        "status-raw-google-error", "google_adapter.py",
+        "raise safe_error(exc) from None", "raise ReportError(502, str(exc)) from None",
+        "test_audit_reporting.StatusHTTP.test_actual_google_error_text_is_discarded",
+    ),
+    (
+        "status-missing-definition-allowed", "google_adapter.py",
+        '    if any(name not in states for name in requested):\n        raise ReportError(503, "report_definition_unverified")\n', "",
+        "test_audit_reporting.StatusHTTP.test_actual_adapter_definition_failures_at_http_boundary",
+    ),
+    (
+        "status-incompatible-definition-allowed", "google_adapter.py",
+        '    if any(state != "COMPATIBLE" for values in states.values() for state in values):\n        raise ReportError(503, "report_definition_incompatible")\n', "",
+        "test_audit_reporting.StatusHTTP.test_actual_adapter_definition_failures_at_http_boundary",
+    ),
+    (
+        "status-wrong-timezone-allowed", "domain.py",
+        '    if req.source == "ga4" and raw.get("metadata", {}).get("timeZone") not in (\n        None,\n        cfg.ga4_time_zone,\n    ):',
+        '    if False:',
+        "test_audit_reporting.StatusHTTP.test_actual_adapter_definition_failures_at_http_boundary",
+    ),
+    (
+        "bridge-bypassed-before-actual-adapter", "server.py",
+        "if not authorized:", "if False:",
+        "test_audit_reporting.StatusHTTP.test_bridge_then_parameters_before_actual_adapter",
+    ),
+    (
+        "unknown-parameter-before-actual-adapter", "domain.py",
+        "k not in allowed or k in args", "k in args",
+        "test_audit_reporting.StatusHTTP.test_bridge_then_parameters_before_actual_adapter",
+    ),
+    *[
+        (
+            "channel-missing-" + channel.lower().replace(" ", "-"), "domain.py",
+            '                            "' + channel + '",\n', "",
+            "test_audit_reporting.Channels.test_standard_channels_survive_actual_adapter_projection",
+        )
+        for channel in ("Paid Other", "AI Assistant")
+    ],
+    (
+        "unknown-channel-allowed", "domain.py",
+        "if value not in channels:", "if False:",
+        "test_audit_reporting.Channels.test_unknown_channel_is_suppressed_by_actual_adapter",
+    ),
+    (
+        "admin-egress-host-missing", "../README.md",
+        "analyticsadmin.googleapis.com:443", "synthetic-missing.invalid:443",
+        "test_audit_reporting.Egress.test_readme_lists_all_adapter_api_hosts",
+    ),
+    (
+        "new-discovery-api-undocumented", "google_adapter.py",
+        'self.service("ga4-admin-read", "analyticsadmin",',
+        'self.service("ga4-admin-read", "synthetic-new-api",',
+        "test_audit_reporting.Egress.test_readme_lists_all_adapter_api_hosts",
+    ),
+    (
+        "new-ga4-transport-host-undocumented", "google_adapter.py",
+        'host="analyticsdata.googleapis.com"', 'host="synthetic-new-api.googleapis.com"',
+        "test_audit_reporting.Egress.test_readme_lists_all_adapter_api_hosts",
+    ),
     (
         "bridge-key-auth",
         "server.py",
@@ -291,6 +367,7 @@ def main():
                     probe / directory,
                     ignore=shutil.ignore_patterns("__pycache__"),
                 )
+            shutil.copyfile(ROOT / "README.md", probe / "README.md")
             path = probe / "google_reporting" / module
             original = path.read_text()
             if original.count(before) != 1:

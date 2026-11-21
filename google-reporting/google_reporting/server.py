@@ -165,6 +165,9 @@ def create_app(sites, key, pool):
                     "source_access_denied": "access_denied",
                     "source_quota_limited": "quota_limited",
                     "configuration_invalid": "not_configured",
+                    "report_definition_unverified": "definition_invalid",
+                    "report_definition_incompatible": "definition_invalid",
+                    "source_timezone_mismatch": "definition_invalid",
                 }.get(code, "unavailable")
                 return web.json_response(
                     {
@@ -172,6 +175,7 @@ def create_app(sites, key, pool):
                         "source": route.split("/")[0],
                         "report": "get_status",
                         "state": state,
+                        "code": code,
                         "checked_at": datetime.now(timezone.utc).isoformat(),
                         "definition_version": cfg.definition_version,
                         "site": cfg.site,

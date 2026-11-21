@@ -1,5 +1,16 @@
 # Änderungen — Google Reporting
 
+## Unveröffentlicht
+
+- JanuaPort/januaport#1433: Beide `get_status`-Routen melden Definitions- und
+  Zeitzonenfehler als `definition_invalid`; Fehlerzustände führen den festen `code`
+  ohne Google-Fehlertext. HTTP-Regressionsprüfungen einschließlich echtem Google-Adapter.
+- JanuaPort/januaport#1437: Egress-Liste um `analyticsadmin.googleapis.com:443`
+  ergänzt; Wächter liest API-Namen und GA4-Transporthost aus dem Adaptercode.
+- JanuaPort/januaport#1438: GA4-Berichte behalten „Paid Other“ und „AI Assistant“.
+  README beschreibt Bridge-Key, Site und Parameterprüfung vor Google in der
+  tatsächlichen Reihenfolge. Proxy-Variablen und Transportverhalten bleiben unverändert.
+
 ## 1.1.0 — 2026-11-14
 
 - JanuaPort/januaport#1379 (Teil A): **mehrere Sites in einem Dienst, Rechte je Site.** `config.json`
