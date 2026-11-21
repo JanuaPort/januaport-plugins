@@ -10,6 +10,7 @@ from google_reporting.manage import ManageRequest, envelope
 from google_reporting.safe_http import serve_app
 from google_reporting.domain import Sites, project
 from google_reporting.server import create_app
+from google_reporting import workers
 from google_reporting.workers import WorkerPool
 from site_fixtures import januaport_entry, sites_raw, terminagent_entry
 
@@ -37,6 +38,18 @@ class SyntheticAdapter:
                 before=None,
                 after={},
             )
+        if req.report == "page_compare":
+            # Two periods, one approved page each; B has fewer clicks, so the delta is not zero.
+            url = cfg.gsc_urls[req.paths[0]][0]
+
+            def rows(clicks, position):
+                return {
+                    "rows": [
+                        {"keys": [url], "clicks": clicks, "impressions": 20, "ctr": 0.1, "position": position}
+                    ]
+                }
+
+            return project(cfg, req, {"a": rows(2, 3), "b": rows(1, 4)})
         if req.source == "gsc":
             key = (
                 req.end_date
@@ -71,6 +84,9 @@ class SyntheticAdapter:
 
 
 def main():
+    # The probes of the Go cross-repo tests make far more than 30 calls per source and minute in a
+    # row. The budget itself (also page_compare counting twice) is tested in test_page_compare.py.
+    workers.RATE_PER_MINUTE = 10_000
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=18092)
     args = parser.parse_args()

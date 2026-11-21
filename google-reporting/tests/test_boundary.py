@@ -129,7 +129,9 @@ class HTTP(unittest.IsolatedAsyncioTestCase):
             "end_date=2999-01-01",
             "segment=atas&page_path=/gateway",
             "page_path=%2Fprivate%3Femail%3Dx",
-            "period_days=29",
+            "period_days=91",
+            "period_days=0",
+            "period_days=07",
             "x=" + ("A" * 8200),
         ):
             with self.subTest(query=query[:50]):
