@@ -194,10 +194,20 @@ bricht es mit „Platzhalter nicht ersetzt" ab.
 ## Was das Modul garantiert
 
 - **Jedes Schreiben liest vorher.** Es gibt genau eine Stelle, die
-  `<satzart>_update` ruft; davor steht immer ein `get` mit Prüfung. Weil
-  `update` vollständig überschreibt, gehen **alle** gelesenen Felder zurück.
-- **Nie doppelt buchen:** Schritt 3 verweigert einen Satz mit schon gefüllter
-  Buchungsnummer und eine leere Buchungsnummer.
+  `<satzart>_update` ruft; davor steht immer ein `get` mit Prüfung (Status,
+  Lauf-Kennung, Buchungsnummer). Seit JanuaPort-Kern #930 führt `update`
+  zusammen: Felder, die ein Aufruf nicht nennt, bleiben erhalten. Das Modul
+  schickt trotzdem alle gelesenen Felder samt Änderung zurück; zwischen `get`
+  und `update` von Hand geänderte Felder gehen dabei auf den gelesenen Stand
+  zurück (ein Zeitfenster von Sekunden).
+- **Nie doppelt buchen:** Schritt 2 sperrt nur einen Satz mit Status `geprueft`
+  **und** leerer Buchungsnummer; trägt ein `geprueft`-Satz schon eine (etwa nach
+  einem Bedienfehler), bricht Schritt 2 ab, ohne zu schreiben. Schritt 3
+  verweigert einen Satz mit schon gefüllter Buchungsnummer und eine leere
+  Buchungsnummer. Ein Abbruch in Schritt 2 beendet den Lauf (der Flow beendet
+  sich, `Invoke-Lauf.ps1` bricht ab); der Satz bleibt auf `geprueft` und stoppt
+  jeden weiteren Lauf, bis ein Mensch im Fachsystem nachgesehen und den Satz in
+  der Kartei berichtigt hat.
 - **Nur eigene Sätze:** Schritt 3 und 4 verlangen `in_buchung` **und** die
   Lauf-Kennung dieses Laufs. Einen fremden Lauf fasst der Roboter nicht an.
 - **Die Bremse:** Steht schon ein Satz auf `in_buchung`, bricht Schritt 1 ab.
@@ -226,7 +236,7 @@ bricht es mit „Platzhalter nicht ersetzt" ab.
 
 - **Getestet:** mit Pester unter Windows PowerShell 5.1, Transport gemockt
   (Workflow `kartei-rpa`). Die Tests prüfen jede Verweigerung, das
-  vollständige Überschreiben, die Einstellungen, die Ausgabeformen der vier
+  Zurücksenden aller gelesenen Felder, die Einstellungen, die Ausgabeformen der vier
   PAD-Skripte und den Quelltext selbst (nur ASCII, kein Token-Wert, keine
   fremden Prozent-Paare in `pad/`).
 - **Herkunft:** Die Vorfassung dieses Moduls wurde gegen eine echte Anlage
