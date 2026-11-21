@@ -1,4 +1,7 @@
-# Agenten-Läufer 0.2.1 (unveröffentlicht)
+# Agenten-Läufer 0.2.3
+
+Tag `agent-runner-v0.2.3`. Seit 0.2.3 meldet `serverInfo` die richtige Version
+(JanuaPort/januaport#1436); 0.2.2 meldete noch 0.2.1.
 
 **Gebaut, Live-Durchstich ausstehend.** Der Beisteller führt ein vom Kern
 freigegebenes Agenten-Profil aus: Modell aufrufen, Werkzeuge ausführen,
@@ -28,8 +31,8 @@ für UID/GID 65532 lesbar sein; der Schlüsselordner wird nur lesend gemountet.
 Der Ordner-Mount unterstützt atomare Schlüsselrotation.
 
 ```sh
-docker build -t agent-runner:0.2.1 .
-export JNPT_AGENT_RUNNER_IMAGE=agent-runner:0.2.1
+docker build -t agent-runner:0.2.3 .
+export JNPT_AGENT_RUNNER_IMAGE=agent-runner:0.2.3
 docker compose -f docker-compose.yml up -d
 docker compose -f docker-compose.yml ps
 ```
@@ -47,7 +50,7 @@ Ein veröffentlichtes Image und ein Katalogeintrag stehen noch aus.
 |---|---|---|
 | `JNPT_AGENT_RUNNER_IMAGE` | Pflicht in Compose | Gebautes Image oder kuratierter Digest |
 | `JNPT_GATEWAY_URL` | `http://jnpt:8484` | Kern-Adresse ohne Pfad, Query oder Zugangsdaten |
-| `JNPT_AGENT_MAX_WALL_S` | `300` | Prozessoption 1–300 Sekunden (0 = Standard); im ausgelieferten Compose bleibt der Standard |
+| `JNPT_AGENT_MAX_WALL_S` | `300` | Prozessoption 1–300 Sekunden (leer und 0 = Standard 300); im ausgelieferten Compose bleibt der Standard. Die HTTP-Schreibfrist des Dienstes folgt aus der wirksamen Wandzeit: 10 s Lesefrist + Wandzeit + 10 s Aufräumen |
 
 ## Internes Netz und Gesundheit
 
@@ -84,8 +87,12 @@ Wechsel auf `max_tokens`, auch bei HTTP 400 wegen eines unbekannten Felds.
 Beendet der Kern den Relay-Kontext, endet der laufende HTTP-Aufruf ebenfalls.
 Vor dem Schließen der MCP-Sitzung wird der Lauf-Kontext abgebrochen; das
 SDK-Cleanup kann den Lauf dadurch nicht verlängern. Der HTTP-Transport
-begrenzt Antworten auf Modell- und MCP-Pfad auf 4 MiB, unabhängig von der
-Wandzeit.
+begrenzt Antworten auf Modell- und MCP-Pfad auf höchstens 4 MiB, unabhängig von
+der Wandzeit: genau 4 MiB werden angenommen, ein Byte mehr nicht.
+
+Enthält eine Modellantwort mehrere Werkzeugaufrufe, prüft der Läufer vor dem
+ersten Aufruf alle auf erlaubten Namen und eindeutige IDs. Ist einer unzulässig,
+endet der Lauf `error/rejected`, ohne dass einer der Aufrufe gelaufen ist.
 
 Im Anthropic-Pfad werden Bilder nur als base64 mit `image/png`, `image/jpeg`, `image/gif`
 oder `image/webp` weitergegeben. Andere Bild-Medientypen und URL-Bilder aus

@@ -35,12 +35,11 @@ func New(cfg Config) (*Runner, error) {
 		return nil, errors.New("gateway-Adresse ist ungültig")
 	}
 	cfg.GatewayURL = strings.TrimSuffix(cfg.GatewayURL, "/")
-	if cfg.MaxWallS == 0 {
-		cfg.MaxWallS = DefaultMaxWallS
+	wall, e := effectiveWallS(cfg.MaxWallS)
+	if e != nil {
+		return nil, e
 	}
-	if cfg.MaxWallS < 1 || cfg.MaxWallS > DefaultMaxWallS {
-		return nil, errors.New("wandzeit muss zwischen 1 und 300 Sekunden liegen")
-	}
+	cfg.MaxWallS = wall
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.Proxy = nil
 	return &Runner{cfg: cfg, log: runlog.New(cfg.Log), transport: tr}, nil
@@ -62,7 +61,7 @@ func (r *Runner) key() string {
 	return key
 }
 func (r *Runner) Handler() http.Handler {
-	s := mcp.NewServer(&mcp.Implementation{Name: "agent-runner", Version: "0.2.1"}, &mcp.ServerOptions{Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}}})
+	s := mcp.NewServer(&mcp.Implementation{Name: "agent-runner", Version: Version}, &mcp.ServerOptions{Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}}})
 	s.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
 			switch method {

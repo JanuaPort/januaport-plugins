@@ -36,7 +36,7 @@ func (r *Runner) run(parent context.Context, a Arguments, token string) (out *mc
 	defer func() { record.DurationMS = time.Since(start).Milliseconds(); r.log.Write(record) }()
 	client := r.client(token)
 	client.Transport = bearer{token: token, base: r.transport, revoked: &revoked, scope: ctx}
-	mc := mcp.NewClient(&mcp.Implementation{Name: "agent-runner", Version: "0.2.1"}, nil)
+	mc := mcp.NewClient(&mcp.Implementation{Name: "agent-runner", Version: Version}, nil)
 	session, e := mc.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: r.cfg.GatewayURL + MCPPath, HTTPClient: client, DisableStandaloneSSE: true}, nil)
 	if e != nil {
 		return finish("error", "gateway", "")
@@ -105,14 +105,18 @@ func (r *Runner) run(parent context.Context, a Arguments, token string) (out *mc
 		if response.Stop != "tool_use" || len(response.Calls) == 0 {
 			return finish("error", "gateway", "")
 		}
-		results := []toolResult{}
-		stepFailed := false
+		// Erst die ganze Antwort prüfen, dann ausführen: Ein unzulässiger Aufruf
+		// weist die Antwort ab, bevor ein anderer eine Wirkung hatte.
 		ids := map[string]bool{}
 		for _, b := range response.Calls {
 			if !allowed[b.Name] || ids[b.ID] {
 				return finish("error", "rejected", "")
 			}
 			ids[b.ID] = true
+		}
+		results := []toolResult{}
+		stepFailed := false
+		for _, b := range response.Calls {
 			if record.ToolCalls >= a.Limits.ToolCalls {
 				return finish("limit", "tool_calls", "")
 			}

@@ -73,6 +73,12 @@ Danach im KI-Client den Katalog neu einlesen und je Quelle `get_status` aufrufen
 Property liegt. Für die Verwaltungsvorlagen genügt `list_sitemaps` bzw. `list_annotations`; ein
 Schreibwerkzeug lässt sich gefahrlos mit `dry_run` prüfen.
 
+`definition_invalid` meldet eine unbestätigte oder inkompatible Berichtsdefinition
+(`code: report_definition_unverified` bzw. `report_definition_incompatible`) oder
+eine abweichende Property-Zeitzone (`code: source_timezone_mismatch`). Definition
+bzw. konfigurierte Zeitzone durch den Betreiber prüfen lassen. Die Diagnose enthält
+keinen Google-Fehlertext.
+
 ## Mehrere Sites
 
 Der Beisteller kann mehrere Websites bedienen, jede mit eigener Property. Der Betreiber führt

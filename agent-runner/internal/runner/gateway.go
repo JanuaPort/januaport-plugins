@@ -58,7 +58,13 @@ type boundedBody struct {
 
 func (b *boundedBody) Read(p []byte) (int, error) {
 	if b.remaining <= 0 {
-		return 0, errors.New("antwort ist zu groß")
+		// Genau die Grenze ist erlaubt: erst ein weiteres Byte ist zu groß.
+		var probe [1]byte
+		n, e := b.ReadCloser.Read(probe[:])
+		if n > 0 {
+			return 0, errors.New("antwort ist zu groß")
+		}
+		return 0, e
 	}
 	if len(p) > b.remaining {
 		p = p[:b.remaining]

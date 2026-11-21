@@ -1,6 +1,27 @@
 # Changelog
 
-## Unveröffentlicht
+## 0.2.3 — 2026-11-21
+
+Audit-Befunde JanuaPort/januaport#1431, JanuaPort/januaport#1436, JanuaPort/januaport#1438. Version 0.2.3.
+
+- **Version 0.2.3:** `serverInfo` und die Client-Kennung gegenüber dem Kern
+  melden eine Version aus einer Konstante (`internal/runner/version.go`). Zuvor
+  meldeten auch die Releases 0.2.2 noch `0.2.1`. Der Release-Workflow bricht ab,
+  wenn der Tag nicht zur Konstante passt.
+- **Schreibfrist bei `JNPT_AGENT_MAX_WALL_S=0`:** Die HTTP-Schreibfrist folgt aus
+  der wirksamen Wandzeit (0 = Standard 300 s) statt aus der rohen Umgebung. Zuvor
+  galten bei 0 nur 10 s: Läufe über 10 s führten Werkzeuge aus, ihre Antwort
+  erreichte den Kern nicht. Die Frist ist jetzt 10 s Lesen + Wandzeit + 10 s
+  Aufräumen, auch im Standardfall (vorher 310 s ohne Luft). Ungültige Werte
+  scheitern weiter beim Start.
+- **Genau 4 MiB:** Antworten von genau 4 MiB auf Modell- und MCP-Pfad werden
+  angenommen („höchstens 4 MiB“), ein weiteres Byte nicht. Zuvor wurde auch die
+  Grenze selbst abgewiesen, wenn das Ende der Antwort erst nach dem letzten
+  Datenbyte kam (chunked).
+- **Vorab-Prüfung der Werkzeugaufrufe:** Name und ID aller Aufrufe einer
+  Antwort werden geprüft, bevor einer läuft. Ein unzulässiger Aufruf weist die
+  ganze Antwort ab (`error/rejected`), ohne dass ein anderer Aufruf Wirkung hatte.
+- `agent-runner.yml` läuft auch bei Pull Requests auf die Modulpfade.
 
 - **Go 1.26.11** (GO-2026-6859, `net/http`, behoben in 1.26.11): `go.mod` und Build-Image `golang:1.26.11` per Digest `sha256:4165ee6b…` gepinnt, wie der Kern mit JanuaPort/januaport#1372. Ohne diesen Sprung schlägt `govulncheck` auf dem ausgelieferten Binary fehl.
 
