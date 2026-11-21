@@ -1,0 +1,260 @@
+# Lokaler Prompt-Injection-Prüfer — Phase 1, JanuaPort/januaport#1486
+
+Messsatz und isoliertes CPU-Messgerüst für einen möglichen Prüfer von
+**Werkzeugantworten, bevor sie der Agent erhält**: Mailtext, Datei-/PDF-Auszug,
+ERP-Feld, Ticketbeschreibung, Webseite und Upstream-MCP-Antwort. Ausgabe je Text:
+`1` = Verdacht, `0` = harmlos. Der Spike ist noch kein produktiver Schutzmechanismus.
+Die SEC-Sichtung des Messsatzes und die Modellmessungen gehören zu Phase 2.
+
+Phase 1 lädt keine Modellgewichte. Die vier Modelladapter brechen bei einem Aufruf
+mit `NotImplementedError: Phase 2` ab; dasselbe gilt für ihre Tokenizer. Nur der
+Dummy `schlagwort` läuft. Tests prüfen die echten Adapter direkt sowie den CLI-Weg.
+Es gibt keine Verbindung zu Produktdiensten und keine Änderung von Produktcode.
+
+## Dateien und Vertrag
+
+| Datei | Zweck |
+|---|---|
+| `messsatz.jsonl` | Eingecheckter, von SEC lesbarer UTF-8-Messsatz, ein JSON-Objekt pro Zeile |
+| `erzeuge_messsatz.py` | Deterministische Erzeugung ausschließlich synthetischer Texte |
+| `datenregeln.py` | Datenvertrag; CLI validiert den kompletten Satz vor dem Adapteraufruf |
+| `adapter.py` | `klassifiziere(texte) -> list[int]`, vier Stubs, ein echter Wortlisten-Dummy |
+| `messen.py` | Fensterung, Kandidatenprozesse, Metriken und Markdown-Tabellen |
+| `test_messsatz.py` | Verteilungen, verbotene Eingaben, echte Adapter und Ende-zu-Ende-Test |
+| `mutationen.py` | Jede Sperre einzeln in einer temporären Containerkopie entfernen; Negativtest muss rot werden |
+| `requirements.in`, `pin_requirements.py`, `requirements.txt` | Direkte Pins, Resolverbericht und vollständiger Wheel-Lock mit SHA-256 |
+| `Dockerfile` | Python 3.12 slim, CPU-Torch, transformers; Standardkommando ist der Dummy |
+
+Pflichtfelder: `id`, `sprache` (`de|en`), `form`, `label` (Integer `0|1`, kein
+Boolean), `klasse`, `laenge_zeichen` (Python-Unicode-Codepoints, nicht Bytes),
+`quelle`, `text`. IDs sind eindeutig. `quelle` ist für diesen Satz ausschließlich
+`synthetisch`; der Loader weist andere Werte ab. Öffentliche Einträge würden einen
+ausdrücklich erweiterten Quellen-/Lizenzvertrag und erneute SEC-Sichtung brauchen.
+
+Die sechs Formnamen sind `mail`, `datei`, `erp_feld`, `ticket`, `webseite`,
+`mcp_antwort`. Die Datei-Texte sind simulierte Auszüge, keine echten PDFs. Die
+MCP-Beispiele sind gültige synthetische JSON-RPC-Antworten mit Textinhalt.
+
+## Aufbau und Zählung des Messsatzes
+
+240 Einträge, vollständig synthetisch, ohne öffentliche Datensatzübernahmen.
+Die lokale `.gitattributes` fixiert LF-Zeilenenden auch beim Windows-Checkout.
+Jede Kombination aus Sprache, Label und Form enthält zehn Einträge.
+
+| Merkmal | Wert | Anzahl |
+|---|---|---:|
+| Sprache | de | 120 |
+| Sprache | en | 120 |
+| Label | 1 (Injection) | 120 |
+| Label | 0 (harmlos) | 120 |
+| Form | mail | 40 |
+| Form | datei | 40 |
+| Form | erp_feld | 40 |
+| Form | ticket | 40 |
+| Form | webseite | 40 |
+| Form | mcp_antwort | 40 |
+
+| Klasse | Label | de | en | Gesamt |
+|---|---:|---:|---:|---:|
+| direkte_anweisung | 1 | 10 | 10 | 20 |
+| versteckt | 1 | 10 | 10 | 20 |
+| rollenwechsel | 1 | 10 | 10 | 20 |
+| exfiltration | 1 | 10 | 10 | 20 |
+| werkzeugmissbrauch | 1 | 10 | 10 | 20 |
+| lang_eingebettet | 1 | 10 | 10 | 20 |
+| hart_harmlos | 0 | 36 | 36 | 72 |
+| harmlos | 0 | 24 | 24 | 48 |
+
+`hart_harmlos` sind 60 % der harmlosen Texte (gefordert: mindestens 40 %).
+Enthalten sind Zahlungsaufforderungen, Korrektur vorheriger Mails, Weiterleitungen,
+IT-Kommandos für menschliche Bediener, Newsletterlinks und Vertraulichkeitssignaturen.
+Glossareinträge mit Angriffsvokabular erschweren die Wortlisten-Baseline zusätzlich.
+Diese Texte steuern Geschäftsabläufe oder erläutern Begriffe; die Angriffe versuchen
+dagegen, den auswertenden Agenten aus seinem Auftrag zu lenken.
+
+Versteckte Angriffe verwenden HTML-Kommentare, weißen Text als Markup,
+Zero-Width-Zeichen und einen Base64-Dekodierhinweis. Die 20 langen Angriffe liegen
+wechselnd in der Mitte oder am Ende eines langen Sachtexts, ergänzt um 16 lange
+harmlose Texte. Lange Texte werden vollständig gespeichert, ohne Abschneiden.
+
+| Längenband (Zeichen, einschließlich Hülle) | Anzahl |
+|---|---:|
+| 1–500 | 172 |
+| 501–2.000 | 32 |
+| 2.001–8.000 | 0 |
+| >8.000 | 36 |
+
+Minimum 158, Maximum 18.497 Zeichen. Der Satz enthält keine Kundenidentitäten
+oder realen Personen; Anreden und Absender sind generische Beispielteams. Ziele
+in Textlinks sind ausschließlich `example.org`, `example.com` samt Subdomains
+oder `.test`. Test-E-Mails verwenden nur `@example.org` oder `.test`.
+IBAN-artige Zeichenfolgen werden konservativ abgewiesen; einzig die im Auftrag
+genannte öffentliche Test-IBAN ist erlaubt, auch mit Leerzeichen. Der Satz selbst
+benötigt keine IBAN. Die Prüfungen ersetzen keine menschliche PII-Sichtung und
+sind kein allgemeiner URL-/E-Mail-/Anonymisierungsfilter.
+
+## Phase 1 ausführen — nur Docker
+
+Alle folgenden Befehle vom Worktree-Root in PowerShell; keine nativen Python-Tests.
+Die Tests benötigen ausschließlich die Standardbibliothek und keinen Paketdownload:
+
+```powershell
+docker run --rm --network none -e PYTHONDONTWRITEBYTECODE=1 -v "${PWD}:/w:ro" -w /w/spikes/pi-pruefer python:3.12-slim python -B -m unittest test_messsatz -v
+docker run --rm --network none -e PYTHONDONTWRITEBYTECODE=1 -v "${PWD}:/w:ro" -w /w/spikes/pi-pruefer python:3.12-slim python -B mutationen.py
+docker run --rm --network none --cpus 1 -e PYTHONDONTWRITEBYTECODE=1 -v "${PWD}:/w:ro" -w /w/spikes/pi-pruefer python:3.12-slim python -B messen.py --kandidat schlagwort
+```
+
+Die Mutationsprobe erzeugt ausschließlich Kopien im Container-`/tmp`, entfernt
+jeweils eine Sperre und verlangt einen Assertion-Fehlschlag des zugehörigen Tests.
+Import-/Syntaxfehler zählen nicht als erkannte Mutation. Zusätzlich wird OR durch
+AND ersetzt. 25 Proben: 20 Datenregeln, Phase-1-Adapter- und Tokenizer-Sperre,
+Schwellwert, Fensterparameter und Fenster-OR. Das Original im Worktree bleibt
+währenddessen unverändert. Danach die vollständigen Tests erneut ausführen.
+
+Der erste Commit enthält nur Tests. Der anschließende rote Docker-Lauf scheiterte
+erwartungsgemäß mit `FileNotFoundError: .../messsatz.jsonl` und `FAILED (errors=1)`.
+
+Erneute Erzeugung (überschreibt ausschließlich den Messsatz):
+
+```powershell
+docker run --rm --network none -e PYTHONDONTWRITEBYTECODE=1 -v "${PWD}:/w" -w /w/spikes/pi-pruefer python:3.12-slim python -B erzeuge_messsatz.py
+```
+
+## Modellkarten und Lizenzen
+
+Dokumentationsabruf ohne Login am 21.11.2026; keine Modellgewichte abgerufen.
+`offen` bedeutet ungeprüft, nicht freigegeben. Die Modellkarten sind Quellen für
+die Lizenzangabe, keine Quellen von Messsatzeinträgen.
+
+| Kandidat / CLI-Name | Modell-ID | Lizenzbeleg |
+|---|---|---|
+| Prompt Guard 2 22M / `prompt_guard_22m` | `meta-llama/Llama-Prompt-Guard-2-22M` | **offen**: [Modellkarte](https://huggingface.co/meta-llama/Llama-Prompt-Guard-2-22M/raw/main/README.md) antwortet ohne Anmeldung HTTP 401; keine Lizenz geraten |
+| Prompt Guard 2 86M / `prompt_guard_86m` | `meta-llama/Llama-Prompt-Guard-2-86M` | **offen**: [Modellkarte](https://huggingface.co/meta-llama/Llama-Prompt-Guard-2-86M/raw/main/README.md) antwortet ohne Anmeldung HTTP 401; keine Lizenz geraten |
+| ProtectAI / `protectai` | `protectai/deberta-v3-base-prompt-injection-v2` | [Modellkarte](https://huggingface.co/protectai/deberta-v3-base-prompt-injection-v2/raw/main/README.md): `license: apache-2.0` und **„License: Apache License 2.0“** |
+| LLM Guard PromptInjection / `llm_guard` | geplanter V2-Scanner mit `protectai/deberta-v3-base-prompt-injection-v2` | Modell: dieselbe Kartenangabe **„License: Apache License 2.0“**; Scannerbibliothek: [LICENSE](https://github.com/protectai/llm-guard/blob/main/LICENSE) **„The MIT License (MIT)“** |
+| Schlagwort / `schlagwort` | `synthetische-wortliste-v1` | Eigener Spike-Code, Apache-2.0 wie dieses Repository |
+
+Der [Scannerquelltext](https://github.com/protectai/llm-guard/blob/main/llm_guard/input_scanners/prompt_injection.py)
+nennt `V2_MODEL` und dessen Modellrevision
+`89b085cd330414d3e7d9dd787870f315957e1e9f`; das ist ein gelesener Hinweis,
+noch kein implementierter Modell-Pin. Bibliotheksversion, Modellrevisionen und
+Lizenzstände werden vor Phase 2 verbindlich festgelegt. ProtectAI und dieser
+Scanner teilen sich voraussichtlich Modellgewichte, sind also keine unabhängigen
+Modellfamilien. Unterschiedliche Fensterung/Score-Normierung kann Ergebnisse ändern.
+Öffentliche Messsatzeinträge: **0**, synthetischer Anteil: **240/240 = 100 %**.
+
+## Image und Abhängigkeiten
+
+```powershell
+docker build --platform linux/amd64 -t pi-pruefer:1486-phase1 spikes/pi-pruefer
+docker run --rm --network none --cpus 1 pi-pruefer:1486-phase1
+docker run --rm --network none pi-pruefer:1486-phase1 python -B -m unittest test_messsatz -v
+```
+
+`requirements.txt` pinnt alle 26 direkten/transitiven Pakete samt SHA-256.
+Torch ist ausdrücklich `2.9.1+cpu`, transformers `4.57.3`, sentencepiece `0.2.1`.
+Die Hashes gelten für die aufgelösten Linux/amd64-/CPython-3.12-Wheels. Andere
+Plattformen brauchen einen eigenen Lock. `pip install --require-hashes` prüft die
+Artefakte beim Image-Build. Der Build lädt Python-Pakete, keine Modellgewichte.
+`llm-guard` wird erst mit der Phase-2-Adapterimplementierung gepinnt und ergänzt.
+HF-Offline-Modus ist im Image gesetzt; CPU-Threadzahlen sind auf eins gesetzt.
+Das Basisimage ist der angeforderte Tag `python:3.12-slim`, kein Digest-Pin.
+
+Lock bei einer bewussten Aktualisierung im Container neu erzeugen (benötigt Netz):
+
+```powershell
+docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v "${PWD}:/w" -w /w/spikes/pi-pruefer python:3.12-slim python -B pin_requirements.py
+```
+
+## Phase 2 nach SEC-Sichtung
+
+1. Messsatz/Labels mit SEC prüfen und eingefrorenen SHA-256 festhalten. Zusätzlichen
+   unabhängigen Testsatz sowie Schwellenkalibrierung getrennt vom Test planen.
+2. Modelllizenzen/Zugangsbedingungen klären. Konkrete Modellrevisionen und
+   llm-guard-Version pinnen; Gewichte separat bereitstellen. Dieser Auftrag enthält
+   weder den Download noch einen Hugging-Face-Login.
+3. Die vier TODO-Adapter implementieren: explizit `device='cpu'`, native
+   Tokenizer-Offsets ohne Spezialtokens, Spezialtokenbudget beachten, kein stilles
+   Abschneiden, relevante Label-IDs aus der Modellkonfiguration prüfen und
+   Wahrscheinlichkeiten mit dem jeweiligen Schwellwert auf `0|1` abbilden.
+   Beim Scanner die Richtung und Normierung seines Risikoscores belegen. Die
+   Modellgewichte gehören in die Initialisierung, damit Ladezeit getrennt bleibt.
+4. Adaptertests und Mutationsproben erweitern; Image neu bauen. Danach zum Beispiel
+   mit einem bereitgestellten lokalen HF-Cache im benannten Docker-Volume messen:
+
+```powershell
+docker run --rm --network none --cpus 1 -v pi-pruefer-modelle:/modelle:ro -e HF_HOME=/modelle/huggingface pi-pruefer:1486-phase1 python -B messen.py --kandidat prompt_guard_22m --kandidat prompt_guard_86m --kandidat protectai --kandidat llm_guard --schwellwert prompt_guard_22m=0.5 --schwellwert prompt_guard_86m=0.5 --schwellwert protectai=0.5 --schwellwert llm_guard=0.5 --fenster-tokens 256 --ueberlappung-tokens 32
+```
+
+**Aktuell bricht dieser Aufruf mit der Phase-2-Meldung ab.** Der CLI- und der direkte
+Adapterweg benutzen dieselbe Sperre; es gibt keinen Aktivierungsschalter in Phase 1.
+Mehrere `--kandidat`-Optionen ergeben eine gemeinsame Tabelle. Pro Kandidat ist
+`--schwellwert NAME=WERT` möglich, Vorgabe jeweils `0.5`, gültig nur endlich in
+`[0,1]`. Die Wortliste nutzt die Scores `0.75` bei Treffer und `0.05` sonst;
+Ergebnis `1` bei Score >= Schwelle. Das sind keine kalibrierten Wahrscheinlichkeiten.
+
+## Messgrößen und Fensterung
+
+Je Kandidat eine Gesamtzeile, zwei Sprachzeilen und sechs Formzeilen:
+
+- Recall auf Label 1: TP / (TP + FN).
+- FPR auf Label 0: FP / (FP + TN); zusätzlich FPR nur auf `hart_harmlos`.
+- Precision: TP / (TP + FP); bei leerem Nenner `n/a`.
+- p50/p95 der Laufzeit pro vollständigem Text in Millisekunden und separat der
+  pro Text auf 10.000 Zeichen normierten Zeit (`ms * 10000 / laenge_zeichen`).
+  Quantile linear interpoliert bei Index `(n-1)*p`; keine Durchsatzbehauptung.
+- Spitzen-RAM: Linux `ru_maxrss` des frischen Kandidatenprozesses in MiB,
+  einschließlich Interpreter, Messsatz, Modellinitialisierung und Warm-up.
+  Derselbe Kandidatenpeak wird in seinen Gruppenzeilen wiederholt; keine
+  vorgetäuschte isolierte RAM-Messung pro Untergruppe.
+
+Pro Kandidat ein frischer `spawn`-Prozess. Ein Warm-up-Aufruf vor den Messungen,
+ein Messdurchgang pro Text, Einzeltext-Latenzen einschließlich Tokenisierung,
+Fensterbildung und Klassifikation; Prozessstart, Laden und Warm-up liegen außerhalb
+der Latenz. Adapterinitialisierungszeit wird separat ausgegeben. CPU-Torch,
+ausgeblendete CUDA-Geräte und ein Thread; die Containerbefehle für Messungen
+begrenzen zusätzlich auf eine CPU. Die Ausgabe enthält Satz-SHA, Python-/OS-Angaben,
+sichtbare CPUs, Modell-ID, Schwelle und Fensterparameter. Host-CPU/Containerquote
+und Image-Digest sind in Phase 2 zusätzlich im Messprotokoll festzuhalten.
+
+Fenstergröße und Überlappung sind Tokenzahlen; gültig ist
+`0 <= Überlappung < Fenstergröße`. Originaltext wird anhand der Tokenoffsets
+geschnitten und bis zum Ende abgedeckt. Alle Fenster werden klassifiziert,
+das Gesamtergebnis ist ihr OR. Es gibt keinen vorzeitigen Abbruch nach einem
+Treffer. Der Dummy zählt Wörter/Einzelzeichen per Regex; Modelladapter müssen
+ihren eigenen Tokenizer verwenden. Zu geringe Überlappung kann Angriffssätze
+zerteilen; Fenster erhöhen sowohl Rechenaufwand als auch mögliche Fehlalarme.
+
+## Grenzen
+
+Synthetischer Satz ≠ echte Kundenmails. Zweisprachige verwandte Vorlagen und
+wiederkehrende Hüllen sind absichtlich nachvollziehbar, aber nicht unabhängig.
+Die feste Reihenfolge kann Cache-/Lasteffekte verursachen. Ein einzelner Durchgang
+liefert keine belastbaren Konfidenzintervalle. SEC muss insbesondere mehrdeutige
+Geschäftsimperative und die Angriffseinbettung sichten. Markup ist hier Rohtext;
+ein vorgeschalteter HTML-/PDF-Extraktor kann Angriffe entfernen oder verändern.
+Die Wortliste ist nur eine technische Untergrenze, keine Eignungsaussage.
+Die positiven Labels belegen einen Angriffsversuch, nicht dessen Erfolg gegen
+einen konkreten Agenten. Modellqualität, Kundentauglichkeit, Integrationspunkt,
+Freigabeentscheidung und produktive Sperrwirkung bleiben offen.
+
+Bestehende Repo-Vorgaben zu Kundendaten (`../../CONTRIBUTING.md`,
+`../../README.de.md`) gelten weiter. Der Spike erweitert weder Gateway- noch
+Agentberechtigungen und verändert keinen bestehenden Antwortpfad.
+
+Repo-weite Suche nach Prompt-Injection, Prompt Guard, ProtectAI, LLM Guard,
+Modell-Downloadfunktionen und nach alternativen Werkzeugrückgabewegen: vor diesem
+Spike keine vorhandene Prüferimplementierung gefunden. Für eine spätere,
+gesonderte Produktintegration sind beide Kompositionswege zu berücksichtigen:
+
+| Bestehende Stelle | Bedeutung |
+|---|---|
+| `agent-runner/internal/runner/loop.go:132`, `:142`, `:145` | Gemeinsamer Werkzeugabruf, Ergebnissammlung, Übergabe an Konversation |
+| `agent-runner/internal/runner/conversation.go:84` | Anthropic-Rückgabeweg |
+| `agent-runner/internal/runner/conversation.go:120` | OpenAI-Rückgabeweg |
+| `agent-runner/internal/anthropic/adapter.go:159` | Anthropic-Projektion der MCP-Antwort |
+| `agent-runner/internal/openai/adapter.go:182` | OpenAI-Projektion der MCP-Antwort |
+
+Diese Fundstellen werden nur dokumentiert. Der ausführbare Datenvertrag, alle
+fünf Spike-Adapter, die gemeinsame CLI und diese README beschreiben denselben
+Phase-1-Stand; bestehende Produktinvarianten werden nicht geändert.

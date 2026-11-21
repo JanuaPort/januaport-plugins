@@ -61,7 +61,7 @@ class DatenSperrenTests(unittest.TestCase):
     def abgelehnt(self, regel, aenderung):
         zeilen = copy.deepcopy(self.zeilen)
         aenderung(zeilen)
-        with self.assertRaisesRegex(ValueError, regel):
+        with self.assertRaisesRegex(ValueError, f"^{regel}$"):
             self.daten.validiere(zeilen)
 
     def test_pflichtfelder(self):
@@ -192,6 +192,14 @@ class GeruestTests(unittest.TestCase):
             for wert in (-.1, 1.1, float("nan"), float("inf")):
                 with self.assertRaisesRegex(ValueError, "schwellwert"):
                     adapter(schwellwert=wert)
+
+    def test_phase1_tokenizer_sperre(self):
+        from adapter import KANDIDATEN
+        for name, adapter in KANDIDATEN.items():
+            if name != "schlagwort":
+                with self.subTest(kandidat=name):
+                    with self.assertRaisesRegex(NotImplementedError, "Phase 2: Tokenizer"):
+                        adapter(.5).token_spannen("Test")
 
     def test_dummy_echte_klassifikation(self):
         from adapter import Schlagwort
