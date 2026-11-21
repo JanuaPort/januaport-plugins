@@ -222,7 +222,12 @@ func TestToolListAndMultiToolGuards(t *testing.T) {
 			want = "error"
 		}
 		end(t, b, want, 1)
-		if f.calls != 1 {
+		// Ein doppelter Aufruf weist die Antwort ab, bevor einer läuft (#1438).
+		wantCalls := 1
+		if duplicate {
+			wantCalls = 0
+		}
+		if f.calls != wantCalls {
 			t.Fatal(f.calls)
 		}
 	}
