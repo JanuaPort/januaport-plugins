@@ -1,5 +1,6 @@
 """Fixed HTTPS transport and RAM-only OAuth lifecycle. No provider diagnostics."""
 from datetime import datetime, timedelta, timezone
+import logging
 from pathlib import Path
 import re
 import threading
@@ -8,6 +9,8 @@ import urllib.error
 from urllib.parse import urlencode
 from . import source_contract as s
 from .domain import ReportError, strict_json
+
+LOG = logging.getLogger('linkedin_seite')
 
 ACCESS_DAYS = 60
 REFRESH_DAYS = 365
@@ -199,9 +202,16 @@ class Tokens:
             refresh = self.data.get(s.REFRESH_TOKEN)
             refresh_expiry = timestamp(self.data['refresh_expires_at']) if refresh else None
             if refresh and now >= expiry - timedelta(minutes=5) and now < refresh_expiry:
-                raw = transport.token({s.GRANT_TYPE: s.REFRESH_TOKEN, s.REFRESH_TOKEN: refresh,
-                                       s.CLIENT_ID: self.data[s.CLIENT_ID], s.CLIENT_SECRET: self.data[s.CLIENT_SECRET]})
-                update = token_result(raw, now, refresh_expiry)
+                try:
+                    raw = transport.token({s.GRANT_TYPE: s.REFRESH_TOKEN, s.REFRESH_TOKEN: refresh,
+                                           s.CLIENT_ID: self.data[s.CLIENT_ID], s.CLIENT_SECRET: self.data[s.CLIENT_SECRET]})
+                    update = token_result(raw, now, refresh_expiry)
+                except ReportError as exc:
+                    if now >= expiry:
+                        raise
+                    # #1435: the window opens five minutes early; a token that still holds serves until then.
+                    LOG.warning('token_erneuerung_fehlgeschlagen code=%s, vorhandenes Token gilt noch', exc.code)
+                    return self.data[s.ACCESS_TOKEN]
                 # RAM only, source file untouched. One step: warning() reads without the lock.
                 self.data = {**self.data, **update}
                 expiry = timestamp(self.data['access_expires_at'])

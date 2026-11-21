@@ -8,7 +8,7 @@ import hashlib
 import json
 import math
 import re
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 from . import source_contract as s
 from .domain import ReportError, strict_json
 
@@ -342,9 +342,26 @@ def upload_ziel(url):
         fail(502, 'upload_ziel_abgewiesen')
     # netloc == hostname rules out userinfo ('@'), any port and a non-canonical host in one check.
     if (parts.scheme != 'https' or parts.netloc != host or host not in s.UPLOAD_HOSTS
-            or parts.fragment or not parts.path.startswith(s.UPLOAD_PATH_PREFIX)):
+            or parts.fragment or not _pfad_im_praefix(parts.path)):
         fail(502, 'upload_ziel_abgewiesen')
     return url
+
+
+def _pfad_im_praefix(path):
+    """The path stays below the fixed prefix once every segment is decoded.
+
+    The URL is sent as given, so the server may decode it differently from a prefix check on the raw
+    text. Per segment: no '.' or '..', no encoded separator (slash or backslash), no second encoding level
+    ('%25') and no control character. A '/' split before decoding keeps '%2f' from becoming a separator.
+    """
+    if not path.startswith(s.UPLOAD_PATH_PREFIX):
+        return False
+    try:
+        decoded = [unquote(segment, errors='strict') for segment in path.split('/')]
+    except UnicodeDecodeError:
+        return False
+    return not any(part in ('.', '..') or any(c in '/\\%' or ord(c) < 32 or ord(c) == 127 for c in part)
+                   for part in decoded)
 
 
 def video_teile(instructions, size):
