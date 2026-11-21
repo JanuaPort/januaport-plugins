@@ -18,6 +18,9 @@ C = "internal/runner/contract.go"
 G = "internal/runner/gateway.go"
 L = "internal/runner/loop.go"
 S = "internal/runner/server.go"
+T = "internal/runner/timeouts.go"
+M = "main.go"
+CI = "../.github/workflows/agent-runner.yml"
 W = "../.github/workflows/agent-runner-release.yml"
 
 # label, Go test regex, edits (path, original, replacement)
@@ -70,7 +73,7 @@ CASES = [
     ("Schluesseldatei unbegrenzt", "TestConfigAndKeyFailClosed", [(S, 'io.LimitReader(f, 4097)', 'io.LimitReader(f, 8193)'), (S, 'len(b) > 4096', 'len(b) > 8192')]),
     ("Schluessel mit Zeilenumbruch", "TestConfigAndKeyFailClosed", [(S, 'strings.ContainsAny(key, "\\r\\n \\t")', 'false')]),
     ("Gateway-Konfiguration ungeprueft", "TestConfigAndKeyFailClosed", [(S, 'if e != nil || u.Host == ""', 'if false && (e != nil || u.Host == ""'), (S, '(u.Path != "" && u.Path != "/") {', '(u.Path != "" && u.Path != "/")) {')]),
-    ("Wandzeit-Konfiguration ungeprueft", "TestConfigAndKeyFailClosed", [(S, 'cfg.MaxWallS < 1 || cfg.MaxWallS > DefaultMaxWallS', 'false')]),
+    ("Wandzeit-Konfiguration ungeprueft", "TestConfigAndKeyFailClosed", [(T, 'n < 1 || n > DefaultMaxWallS', 'false')]),
     ("Daten hinter JSON", "TestMalformedArgumentsAtAdapter", [(S, 'e != nil || !json.Valid(body)', 'e != nil || (false && !json.Valid(body))')]),
     ("Antwortgroesse aufgeweicht", "TestResponseBody4MiBLimitAtAdapter", [(G, 'remaining: maxBody', 'remaining: maxBody * 2')]),
     ("Anfragegroesse aufgeweicht", "TestSizeBoundsAndMalformedModelAtAdapter", [(S, 'http.MaxBytesReader(w, req.Body, maxBody)', 'http.MaxBytesReader(w, req.Body, maxBody * 2)'), (S, 'MaxRequestBodyBytes: maxBody', 'MaxRequestBodyBytes: maxBody * 2'), (C, 'len(raw) > maxBody', 'len(raw) > maxBody * 2')]),
@@ -102,6 +105,15 @@ CASES = [
     ("B1.1 Release zweite Plattform", "TestReleaseWorkflowBuildPushByDigest", [(W, 'platforms: linux/amd64', 'platforms: linux/amd64,linux/arm64')]),
     ("B1.1 Release weiterer Build", "TestReleaseWorkflowBuildPushByDigest", [(W, '    steps:', '    steps:\n      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8')]),
     ("B1.1 Release Scan als Gate", "TestReleaseWorkflowOrderAndC1", [(W, '--exit-code 0', '--exit-code 1')]),
+    ("#1431 Null nicht auf Standard", "TestParseWallS", [(T, 'if n == 0 {', 'if n == -999 {')]),
+    ("#1431 Aufraeumfrist entfernt", "TestWriteTimeoutCoversReadWallAndCleanup", [(T, ' + time.Duration(effectiveWallS)*time.Second + CleanupMargin', ' + time.Duration(effectiveWallS)*time.Second')]),
+    ("#1431 Schreibfrist wieder Wandzeit plus 10", "TestNewHTTPServerTimeouts", [(M, 'WriteTimeout: runner.WriteTimeout(effectiveWallS)', 'WriteTimeout: time.Duration(effectiveWallS+10) * time.Second')]),
+    ("#1436 Versionsliteral zurueck", "TestServerInfoReportsVersion|TestNoVersionLiteralOutsideConstant", [(S, 'Version: Version', 'Version: "0.2.1"')]),
+    ("#1436 Client-Version abweichend", "TestClientInfoReportsVersion|TestNoVersionLiteralOutsideConstant", [(L, 'Version: Version', 'Version: "0.2.1"')]),
+    ("#1436 Release ohne Versionspruefung", "TestReleaseTagMatchesVersionConstant", [(W, '[ "agent-runner-v${const}" = "$GITHUB_REF_NAME" ] ||', '[ true ] ||')]),
+    ("#1438 Grenze exklusiv", "TestResponseBody4MiBLimitAtAdapter", [(G, 'if n > 0 {', 'if n >= 0 {')]),
+    ("#1438 Vorabpruefung entfernt", "TestInvalidCallRejectsWholeAnswerBeforeAnyExecution", [(L, 'if !allowed[b.Name] || ids[b.ID] {', 'if false {')]),
+    ("#1438 CI ohne pull_request", "TestCIRunsOnPullRequestWithModulePaths", [(CI, '  pull_request:' + chr(10), '  merge_group:' + chr(10))]),
 ]
 
 def main():
@@ -118,7 +130,7 @@ def main():
                     raise RuntimeError(f"mutation anchor missing: {label}: {old}")
                 path.write_text(body.replace(old, new, 1), encoding="utf-8", newline="\n")
             command = ["go"] if CONTAINER == "local" else ["docker", "exec", CONTAINER, "go"]
-            proc = subprocess.run(command + ["test", "./internal/...", "-run", test, "-count=1", "-timeout=8s"], cwd=ROOT, text=True, encoding="utf-8", errors="replace", capture_output=True, timeout=30)
+            proc = subprocess.run(command + ["test", "./...", "-run", test, "-count=1", "-timeout=8s"], cwd=ROOT, text=True, encoding="utf-8", errors="replace", capture_output=True, timeout=30)
             output = proc.stdout + proc.stderr
             killed = proc.returncode != 0 and ("--- FAIL:" in output or "test timed out" in output) and "build failed" not in output
             if label.startswith("B1.1"):

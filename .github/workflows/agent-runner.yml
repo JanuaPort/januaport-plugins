@@ -14,6 +14,12 @@ on:
       - '.github/workflows/agent-runner.yml'
       - '.github/workflows/agent-runner-release.yml'
       - '.github/workflows/script-runner-release.yml'
+  pull_request:
+    paths:
+      - 'agent-runner/**'
+      - '.github/workflows/agent-runner.yml'
+      - '.github/workflows/agent-runner-release.yml'
+      - '.github/workflows/script-runner-release.yml'
   workflow_dispatch:
 
 permissions:

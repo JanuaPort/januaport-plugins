@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -20,6 +19,13 @@ func main() {
 		os.Exit(1)
 	}
 }
+
+// newHTTPServer leitet die Schreibfrist aus der wirksamen Wandzeit ab
+// (runner.ParseWallS), nie aus der rohen Umgebungsvariable.
+func newHTTPServer(handler http.Handler, effectiveWallS int) *http.Server {
+	return &http.Server{Addr: ":8090", Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: runner.ServerReadTimeout, WriteTimeout: runner.WriteTimeout(effectiveWallS), IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
+}
+
 func serve() error {
 	if len(os.Args) == 2 && os.Args[1] == "healthcheck" {
 		c := &http.Client{Timeout: 3 * time.Second}
@@ -37,13 +43,9 @@ func serve() error {
 	if gateway == "" {
 		gateway = "http://jnpt:8484"
 	}
-	wall := runner.DefaultMaxWallS
-	if s := os.Getenv("JNPT_AGENT_MAX_WALL_S"); s != "" {
-		n, e := strconv.Atoi(s)
-		if e != nil {
-			return e
-		}
-		wall = n
+	wall, e := runner.ParseWallS(os.Getenv("JNPT_AGENT_MAX_WALL_S"))
+	if e != nil {
+		return e
 	}
 	r, e := runner.New(runner.Config{GatewayURL: gateway, KeyFile: "/run/jnpt/plugins/agent-runner/runtime-key", MaxWallS: wall, Log: os.Stdout})
 	if e != nil {
@@ -52,7 +54,7 @@ func serve() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	handler := r.Handler()
-	server := &http.Server{Addr: ":8090", ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: time.Duration(wall+10) * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
+	server := newHTTPServer(nil, wall)
 	// Cancellation of the process also reaches each active request.
 	server.Handler = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		requestCtx, cancel := context.WithCancel(req.Context())
