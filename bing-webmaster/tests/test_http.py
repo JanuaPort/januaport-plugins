@@ -229,6 +229,60 @@ class WriteRoutes(Full):
         self.assertEqual((response.status, await response.json()), (429, {"error": "source_quota_exceeded"}))
         self.assertEqual([c["name"] for c in self.stub.calls], ["GetUrlSubmissionQuota"])
 
+    async def test_concurrent_batches_cannot_exceed_the_remaining_daily_quota(self):
+        remaining = 150
+        submitted = []
+        quota_reads = []
+        batch_started = asyncio.Event()
+        release_batch = asyncio.Event()
+        second_quota_read = asyncio.Event()
+
+        async def vendor(request, body):
+            nonlocal remaining
+            name = request.path.rsplit("/", 1)[-1]
+            if name == "GetUrlSubmissionQuota":
+                quota_reads.append(remaining)
+                if len(quota_reads) == 2:
+                    second_quota_read.set()
+                return web.json_response({"d": {"DailyQuota": remaining, "MonthlyQuota": 1000}})
+            self.assertEqual(name, "SubmitUrlBatch")
+            batch_started.set()
+            await release_batch.wait()
+            urls = json.loads(body)["urlList"]
+            submitted.extend(urls)
+            remaining -= len(urls)
+            return web.json_response({"d": None})
+
+        self.stub.handler = vendor
+        batches = [
+            [f"https://www.example.test/{batch}/{i}" for i in range(100)]
+            for batch in ("first", "second")
+        ]
+        route = "/v1/bing/submit_urls"
+        tasks = [asyncio.create_task(self.post(route, {"urls": ",".join(batches[0])}))]
+        try:
+            # The first call has read 150 and is still submitting when the second starts.
+            await asyncio.wait_for(batch_started.wait(), timeout=2)
+            tasks.append(asyncio.create_task(self.post(route, {"urls": ",".join(batches[1])})))
+            try:
+                # An unguarded second read sees the stale 150 while the first POST waits.
+                await asyncio.wait_for(second_quota_read.wait(), timeout=2)
+            except TimeoutError:
+                pass
+        finally:
+            release_batch.set()
+            results = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=2)
+
+        self.assertLessEqual(len(submitted), 150)
+        self.assertEqual(submitted, batches[0], "the rejected batch must not reach Bing")
+        first, second = results
+        self.assertEqual(first.status, 200)
+        applied = await first.json()
+        self.assertEqual((applied["state"], applied["submitted_count"], applied["quota_before"]), ("applied", 100, 150))
+        self.assertEqual((second.status, await second.json()), (429, {"error": "source_quota_exceeded"}))
+        self.assertEqual(quota_reads, [150, 50])
+        self.assertEqual([c["name"] for c in self.stub.calls], ["GetUrlSubmissionQuota", "SubmitUrlBatch", "GetUrlSubmissionQuota"])
+
     async def test_foreign_and_malformed_urls_are_rejected_before_any_vendor_call(self):
         for route, key in (("/v1/bing/submit_urls", "urls"), ("/v1/indexnow/submit_urls", "urls"), ("/v1/bing/submit_sitemap", "sitemap_url")):
             for value in ("https://evil.test/a", "http://www.example.test/a", "https://www.example.test:444/a",

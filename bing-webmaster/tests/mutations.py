@@ -207,6 +207,20 @@ MUTANTS = [
         A + "Writes.test_never_submits_above_the_reported_quota",
     ),
     (
+        "quota-submit-lock-removed",
+        "adapter.py",
+        "async with self._submit_lock:",
+        "if True:",
+        H + "WriteRoutes.test_concurrent_batches_cannot_exceed_the_remaining_daily_quota",
+    ),
+    (
+        "batch-outside-quota-lock",
+        "adapter.py",
+        '            await self._write_answer("SubmitUrlBatch", {"siteUrl": self._cfg.site_url, "urlList": list(req.urls)})\n            return write_envelope(req, "applied", quota_before=available)',
+        '        await self._write_answer("SubmitUrlBatch", {"siteUrl": self._cfg.site_url, "urlList": list(req.urls)})\n        return write_envelope(req, "applied", quota_before=available)',
+        H + "WriteRoutes.test_concurrent_batches_cannot_exceed_the_remaining_daily_quota",
+    ),
+    (
         "http-status-zero-kept",
         "domain.py",
         '"http_status": status or None,',

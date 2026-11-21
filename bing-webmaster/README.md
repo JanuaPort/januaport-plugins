@@ -60,8 +60,11 @@ Gateway, nicht der Dienst.
   und zählt nicht gegen den Tagesdeckel. Deshalb ist `quota_before` bei `bing/submit_urls` mit
   `dry_run` `null`: Die Vorschau liest die Quote nicht.
 - **Quote:** `bing/submit_urls` liest vor dem Batch die gemeldete Tagesquote und reicht nie mehr
-  Adressen ein, als sie erlaubt (`source_quota_exceeded`, 429, ohne Batch-Aufruf). Bing nennt
-  500 Adressen je Batch als Grenze; hier gilt 100.
+  Adressen ein, als sie erlaubt (`source_quota_exceeded`, 429, ohne Batch-Aufruf). Quotenlesung,
+  Prüfung und Batch liegen unter einer gemeinsamen `asyncio.Lock` je Adapterinstanz (eine
+  konfigurierte Site), auch bei gleichzeitigen Aufrufen. Der wartende Aufruf liest die Quote
+  nach Abschluss des vorherigen Batches erneut; reicht sie nicht, wird sein gesamter Batch
+  abgewiesen. Bing nennt 500 Adressen je Batch als Grenze; hier gilt 100 je Aufruf.
 - **Tagesdeckel:** höchstens 20 Versuche je Schreibroute und UTC-Tag (`write_cap_per_day` in der
   Konfiguration kann nur nach unten abweichen). Der Zähler liegt im Serverprozess, zählt den
   Versuch nach der Validierung und vor dem Herstelleraufruf, also auch Herstellerfehler und
@@ -118,7 +121,7 @@ Integration. Keine Datenbank, kein Cache, keine geplanten Abfragen.
 ## Laufzeitgrenzen
 
 512 KiB JSON vor Ausgabe, 8 KiB URL/Query und Body, Pfad 512 Zeichen. **20 Sekunden**
-Gesamtbudget je Aufruf (`bing/submit_urls` mit Quotenlesung und Batch inklusive), 10 Sekunden je
+Gesamtbudget je Aufruf (`bing/submit_urls` mit Warten auf die Sperre, Quotenlesung und Batch inklusive), 10 Sekunden je
 Herstellerverbindung; Connector-Timeout **25 s**. Ein Prozess, kein Worker: Der Dienst hat kein
 Google-SDK und keine Token. Client-Abbruch bricht den laufenden Herstelleraufruf ab.
 
@@ -216,8 +219,10 @@ PO-Kontos):**
   (`%22example.com%22`), das XML-Beispiel nicht. Der Dienst sendet die Adresse ohne Anführungszeichen
   (Konstante an einer Stelle). Liefert Bing damit keine Daten, ist das die erste Stelle zum Prüfen.
 - `GetUrlSubmissionQuota`: Die Doku nennt `DailyQuota` und `MonthlyQuota` ohne Erklärung. Der Dienst
-  behandelt `DailyQuota` als verbleibende Tageskontingente und reicht nie mehr Adressen ein. Ist
-  der Wert eine Obergrenze statt eines Rests, bleibt die Prüfung harmlos, schützt aber nicht.
+  behandelt `DailyQuota` als verbleibendes Tageskontingent und reicht auch bei gleichzeitigen
+  Aufrufen derselben Adapterinstanz nie mehr Adressen ein: Quotenlesung und Batch sind gemeinsam
+  gesperrt. Die Garantie setzt voraus, dass Bing den nach einem Batch verbleibenden Rest meldet.
+  Ist der Wert eine Obergrenze statt eines Rests, bleibt die Prüfung harmlos, schützt aber nicht.
 - `ErrorCode` 3 (InvalidApiKey) stammt aus dem Auftrag; die übrigen ErrorCodes werden bewusst
   nicht einzeln ausgewertet.
 - Das Format der Datums-Werte (`/Date(ms±hhmm)/`) und die Feldnamen von `Feed` stammen aus den
