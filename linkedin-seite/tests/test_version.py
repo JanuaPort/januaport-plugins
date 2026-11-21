@@ -64,14 +64,21 @@ class Version(unittest.TestCase):
                        'comments', 'reply', 'tagesliste', 'daily_cap', '--gesamt', 'Versuche', 'T1'):
             self.assertIn(phrase, section.group(0))
 
-    def test_the_thread_urn_fix_ships_consistently_as_0_4_1(self):
-        self.assertEqual(self.versions(), ('0.4.1',)*3)
-        self.assertIn('org.opencontainers.image.version="0.4.1"', self.read('Dockerfile'))
-        self.assertIn("'version': '0.4.1'", self.read('linkedin_seite/gateway.py'))
+    def test_the_thread_urn_fix_ships_from_0_4_1_with_its_changelog_entry(self):
+        self.assertGreaterEqual(triple(self.versions()[2]), (0, 4, 1))
         section = re.search(r'^## 0\.4\.1 — .*?(?=^## |\Z)', self.read('CHANGELOG.md'), re.M | re.S)
         self.assertIsNotNone(section)
         for phrase in ('JanuaPort/januaport#1237', 'ugcPost', 'share', 'activity', 'Formdiagnose', 'grund=', 'L1', 'L2',
                        'nicht_lesbar', 'Digest', 'nicht live belegt'):
+            self.assertIn(phrase, section.group(0))
+
+    def test_the_audit_fixes_ship_consistently_as_0_4_2(self):
+        self.assertEqual(self.versions(), ('0.4.2',)*3)
+        self.assertIn('org.opencontainers.image.version="0.4.2"', self.read('Dockerfile'))
+        self.assertIn("'version': '0.4.2'", self.read('linkedin_seite/gateway.py'))
+        section = re.search(r'^## 0\.4\.2 — .*?(?=^## |\Z)', self.read('CHANGELOG.md'), re.M | re.S)
+        self.assertIsNotNone(section)
+        for phrase in ('JanuaPort/januaport#1435', 'JanuaPort/januaport#1438'):
             self.assertIn(phrase, section.group(0))
 
 

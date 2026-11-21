@@ -1,6 +1,6 @@
 # Änderungen — Bing Webmaster
 
-## Unveröffentlicht
+## 0.1.2 — 2026-11-21
 
 - Audit-Befund JanuaPort/januaport#1432: `bing/submit_urls` sperrt Quotenlesung, Prüfung und Batch
   mit einer gemeinsamen `asyncio.Lock` je Adapterinstanz (eine konfigurierte Site). Gleichzeitige

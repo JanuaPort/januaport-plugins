@@ -1,6 +1,6 @@
 # Changelog
 
-## Unveröffentlicht
+## 0.4.2 — 2026-11-21
 
 - JanuaPort/januaport#1435: **Refresh-Fehlschlag.** Scheitert der Token-Refresh im Fünf-Minuten-Fenster vor
   Ablauf und gilt das Access-Token noch, gibt `Tokens.access()` das vorhandene Token zurück (WARN-Zeile

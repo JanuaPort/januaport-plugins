@@ -1,4 +1,4 @@
-# linkedin-seite 0.4.1 — Modulvertrag (#1306 F4, #1237)
+# linkedin-seite 0.4.2 — Modulvertrag (#1306 F4, #1237)
 
 Privater Python-REST-Beisteller, Apache 2.0. PO 29.10.2026 Option (a): Stufe A (Lesen); seit
 0.2.0 Stufe B1 (Posten nach Freigabe, SEC c-6575359082 und c-6575837332); seit 0.4.0 Stufe B3

@@ -1,7 +1,7 @@
-# Bing Webmaster 0.1.1 — #1292
+# Bing Webmaster 0.1.2 — #1292
 
 Stufe 1 „Sicher verbinden“. Gebaut und synthetisch geprüft; **noch nicht live abgenommen oder
-produktiv provisioniert**. Fassung 0.1.1; den Tag `bing-webmaster-vX.Y.Z` setzt GATE über den
+produktiv provisioniert**. Fassung 0.1.2; den Tag `bing-webmaster-vX.Y.Z` setzt GATE über den
 Release-Workflow. Apache 2.0.
 Ein privater Python-Beisteller übersetzt sechs feste Routen in Aufrufe der Bing Webmaster API
 (JSON-Endpunkt) und in IndexNow. JanuaPort behält Rechte und Audit.

@@ -1,4 +1,4 @@
-# LinkedIn-Seite 0.4.1 — #1237, Stufe A, Stufe B1 und Stufe B3
+# LinkedIn-Seite 0.4.2 — #1237, Stufe A, Stufe B1 und Stufe B3
 
 Privater Python-REST-Beisteller für Kennzahlen einer fest konfigurierten LinkedIn-Seite.
 PO-Entscheid vom 29.10.2026: Option (a), Stufe A. Seit 0.2.0 zusätzlich Stufe B1: Posten,
