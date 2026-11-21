@@ -1,4 +1,4 @@
-# Draht-Vertrag — agent-runner 0.2.1 (Contract 1)
+# Draht-Vertrag — agent-runner 0.2.3 (Contract 1)
 
 Maßgeblich: `cmd/jnpt/testdata/agent-runner-contract/` des Kerns, geliefert
 für JanuaPort/januaport#1099. Die sieben JSON-Dateien und SHA256SUMS wurden
@@ -229,7 +229,7 @@ Der Kern übersetzt die Sätze in eigene (Antwort und Audit des Kerns nennen die
 Grenze); der Satz des Läufers erreicht den Aufrufer nie unverändert.
 
 Beide ausgehenden HTTP-Pfade begrenzen Antwortkörper im Bearer-Transport auf
-4 MiB. Diese Sperre gilt beim Lesen und benötigt keinen Fristablauf. Vor
+höchstens 4 MiB (genau 4 MiB werden angenommen, ein weiteres Byte nicht). Diese Sperre gilt beim Lesen und benötigt keinen Fristablauf. Vor
 `session.Close()` wird der Lauf-Kontext abgebrochen, auch nach erfolgreichem
 Lauf; dadurch endet das vom SDK abgekoppelte Cleanup innerhalb des Laufs.
 
