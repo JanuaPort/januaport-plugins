@@ -1,4 +1,4 @@
-# bing-webmaster 0.1.1 — Modulvertrag (#1292, #1303)
+# bing-webmaster 0.1.2 — Modulvertrag (#1292, #1303)
 
 Privater Python-REST-Beisteller, Apache2.0. Stufe 1, gebaut/synthetisch geprüft, Live-Abnahme
 offen. Kein eigener MCP-Server oder Gateway-Auth-Typ. Grund für den Beisteller: Bing nimmt den
@@ -102,7 +102,7 @@ Der erste Batch wartet im Hersteller-Fake; insgesamt gehen 100 Adressen ein, der
 endet mit 429 `source_quota_exceeded` ohne Batch. Die Mutanten `quota-submit-lock-removed` und
 `batch-outside-quota-lock` müssen diese Probe rot machen.
 
-Release (#1292, #1303): Version 0.1.1 steht im Kopf dieser Datei, im README-Titel und im CHANGELOG (sonst
+Release (#1292, #1303): Version 0.1.2 steht im Kopf dieser Datei, im README-Titel und im CHANGELOG (sonst
 nirgends). Das Image baut nur `.github/workflows/bing-webmaster-release.yml` auf den Tag
 `bing-webmaster-vX.Y.Z` (Tag setzt GATE, nie ein Branch); Aufbau und Wächter
 (`tests/test_release_workflow.py`) wie bei `google-reporting`.
