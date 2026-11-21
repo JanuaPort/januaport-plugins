@@ -245,7 +245,8 @@ function ConvertTo-JnptSaetze {
 }
 
 function New-JnptUpdateArgs {
-    # Vollstaendiges Ueberschreiben: alle Felder aus get zurueck, dann aendern.
+    # Alle gelesenen Felder zurueck, dann aendern. update fuehrt seit Kern #930
+    # zusammen; das Zuruecksenden ist ueberfluessig, aber harmlos und bleibt.
     param([Parameter(Mandatory)]$Satz, [hashtable]$Aenderung = @{}, [Parameter(Mandatory)][string]$Quelle)
     $a = @{}
     foreach ($p in $Satz.fields.PSObject.Properties) { $a[$p.Name] = $p.Value }
@@ -352,9 +353,12 @@ function Lock-JnptSatz {
     .SYNOPSIS
       Setzt einen freigegebenen Satz auf in_buchung - der Status IST die Sperre.
     .DESCRIPTION
-      Liest den Satz frisch, verlangt status = geprueft und schreibt in_buchung
-      mit der eigenen Lauf-Kennung. Liefert den GELESENEN Satz zurueck - aus
-      ihm nimmt die Klickfolge im Fachsystem ihre Werte.
+      Liest den Satz frisch, verlangt status = geprueft UND ein leeres
+      Buchungsnummer-Feld und schreibt in_buchung mit der eigenen Lauf-Kennung.
+      Ein Satz, der durch einen Bedienfehler wieder auf geprueft steht, aber
+      schon eine Buchungsnummer traegt, ist im Fachsystem gebucht: Er wird
+      nicht gesperrt, es wird nichts geschrieben. Liefert den GELESENEN Satz
+      zurueck - aus ihm nimmt die Klickfolge im Fachsystem ihre Werte.
     #>
     param(
         [Parameter(Mandatory)]$Session,
@@ -365,6 +369,11 @@ function Lock-JnptSatz {
     $status = Get-JnptFeld -Satz $satz -Name 'status'
     if ($status -ne $script:StatusFrei) {
         throw ('Satz {0}: Status ist "{1}", erwartet "{2}" - zwischenzeitlich geaendert.' -f $Id, $status, $script:StatusFrei)
+    }
+    $feld = $Session.Felder.Buchungsnr
+    $alt = Get-JnptFeld -Satz $satz -Name $feld
+    if (-not [string]::IsNullOrWhiteSpace($alt)) {
+        throw ('Satz {0}: {1} ist schon gesetzt ("{2}") - nicht sperren, nicht doppelt buchen.' -f $Id, $feld, $alt)
     }
     $aenderung = New-JnptAenderung -Session $Session -Status $script:StatusGesperrt -Lauf $Lauf
     Set-JnptSatz -Session $Session -Satz $satz -Aenderung $aenderung

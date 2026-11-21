@@ -62,7 +62,10 @@ Ein Schreibwerkzeug bleibt in Grenzen: höchstens 20 Aufrufe je Route und UTC-Ta
 des Beistellers setzt den Zähler zurück), höchstens 100 Adressen je Aufruf, nur https-Adressen
 der erlaubten Hosts aus `config.json`, jedes mit Vorschau über `dry_run`. Die Vorschau prüft die
 Eingabe und ruft Bing nicht auf. Vor einer Einreichung bei Bing liest der Dienst die gemeldete
-Tagesquote und reicht nie mehr Adressen ein, als sie erlaubt.
+Tagesquote und reicht nie mehr Adressen ein, als sie erlaubt. Quotenlesung und Einreichung sind
+je Adapterinstanz (eine konfigurierte Site) gemeinsam gesperrt, auch bei gleichzeitigen Aufrufen.
+Der wartende Aufruf liest die Restquote erneut; reicht sie nicht für seinen ganzen Batch, endet
+er mit 429 `source_quota_exceeded` ohne Einreichung. Das setzt Bings aktualisierte Restquote voraus.
 
 ## 5. Prüfen
 

@@ -110,6 +110,21 @@ Describe 'Invoke-Lauf.ps1 - Lauf-Deckel' {
         @($updates | Where-Object { $_.Body.params.arguments.status -eq 'verbucht' }).Count | Should -Be 2
     }
 
+    It 'bricht den Lauf ab, wenn die Sperre an einer gesetzten Buchungsnummer scheitert (kein Ueberspringen, keine Klickfolge)' {
+        Add-TestHandschlag
+        Add-TestSearch @()
+        Add-TestSearch @((New-TestSatz -Id 's1' -Felder @{ buchungs_nr = 'BU-4711' }), (New-TestSatz -Id 's2'))
+        Add-TestGet (New-TestSatz -Id 's1' -Felder @{ buchungs_nr = 'BU-4711' })
+
+        { . $script:LaufSkript -Endpoint 'https://example.com/mcp' -Token 'test-token' 2>&1 | Out-Null } |
+            Should -Throw '*nicht doppelt buchen*'
+
+        (Get-TestAufrufe 'zahlungseingang_update').Count | Should -Be 0
+        $gets = Get-TestAufrufe 'zahlungseingang_get'
+        $gets.Count | Should -Be 1
+        ($gets | ForEach-Object { $_.Body.params.arguments.id }) | Should -Not -Contain 's2'
+    }
+
     It 'nimmt die Satzart als Parameter' {
         Add-TestHandschlag
         Add-TestSearch @()

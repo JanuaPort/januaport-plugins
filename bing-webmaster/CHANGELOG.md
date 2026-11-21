@@ -1,5 +1,17 @@
 # Änderungen — Bing Webmaster
 
+## Unveröffentlicht
+
+- Audit-Befund JanuaPort/januaport#1432: `bing/submit_urls` sperrt Quotenlesung, Prüfung und Batch
+  mit einer gemeinsamen `asyncio.Lock` je Adapterinstanz (eine konfigurierte Site). Gleichzeitige
+  Aufrufe lesen die Restquote nacheinander; bei zu wenig Rest bleibt es bei 429
+  `source_quota_exceeded` ohne Batch. Die Grenze von 100 Adressen gilt weiterhin je Aufruf.
+- Regression am echten HTTP-Dienst/Adapter mit zustandsbehaftetem Hersteller-Fake: Restquote 150,
+  zweimal 100 Adressen gleichzeitig; nur der erste Batch wird eingereicht, der zweite abgewiesen.
+  Mutationsproben entfernen die Sperre bzw. verschieben den Batch aus dem geschützten Abschnitt.
+- Quotenvertrag in README, Modulvertrag und SETUP um Parallelität und Sperrumfang präzisiert;
+  die offene Herstellerannahme zur aktualisierten Restquote bleibt dokumentiert.
+
 ## 0.1.1 — 2026-11-18
 
 **Korrektur von `bing/url_info`** (JanuaPort/januaport#1303, Befunde aus dem Live-Betrieb von 0.1.0).

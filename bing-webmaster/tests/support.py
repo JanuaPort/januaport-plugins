@@ -5,6 +5,7 @@ answer or exception text is recognisable by plain substring search.
 """
 
 import asyncio
+import inspect
 import json
 import logging
 from aiohttp import web
@@ -92,7 +93,7 @@ class VendorStub:
 
     def __init__(self):
         self.calls = []
-        self.handler = None  # callable(request, body) -> web.Response, optional
+        self.handler = None  # callable(request, body) -> web.Response or awaitable, optional
         self.replies = {}  # method name -> (status, body) overrides
         self.delay = 0
         self.runner = None
@@ -126,7 +127,8 @@ class VendorStub:
         if self.delay:
             await asyncio.sleep(self.delay)
         if self.handler is not None:
-            return self.handler(request, body)
+            response = self.handler(request, body)
+            return await response if inspect.isawaitable(response) else response
         status, payload = self.replies.get(name, self.default(name))
         raw = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
         return web.Response(status=status, body=raw, content_type="application/json")

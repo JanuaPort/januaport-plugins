@@ -74,15 +74,26 @@ verschiedene Satzarten tragen kann.
 
 1. **Jedes Schreiben liest vorher.** Genau eine Stelle ruft `…_update`:
    `Set-JnptSatz`. Jeder Aufrufer hat davor `Get-JnptSatz` gerufen und den
-   Zustand geprüft. `update` überschreibt vollständig — `New-JnptUpdateArgs`
-   schickt alle gelesenen Felder zurück.
+   Zustand geprüft. `update` führt seit Kern #930 zusammen (nicht genannte
+   Felder bleiben erhalten); `New-JnptUpdateArgs` schickt trotzdem alle
+   gelesenen Felder zurück — überflüssig, aber bewusst unverändert. Folge:
+   Ein zwischen `get` und `update` von Hand geändertes Feld fällt auf den
+   gelesenen Stand zurück.
 2. **Kein Retry auf Schreibschritten.** JanuaPort sendet einen `tools/call`
    genau einmal, ohne Deduplizierung. Eine Wiederholungsschleife hier wäre ein
    Fehler, kein Feature.
 3. **Nur eigene Sätze fortschreiben.** `Assert-JnptEigenerLauf` verlangt
    `status = in_buchung` **und** Lauf-Feld = dieser Lauf.
-4. **Nie doppelt buchen.** `Set-JnptSatzErgebnis` verweigert ein gefülltes
-   Buchungsnummer-Feld und eine leere Buchungsnummer (letzteres ohne Aufruf).
+4. **Nie doppelt buchen.** `Lock-JnptSatz` prüft Status **und** leere
+   Buchungsnummer (nur Leerraum gilt als leer): Ein `geprueft`-Satz mit
+   gesetzter Buchungsnummer ist im Fachsystem gebucht und wird nicht gesperrt,
+   es wird nichts geschrieben (JanuaPort/januaport#1514). `Set-JnptSatzErgebnis`
+   verweigert ein gefülltes Buchungsnummer-Feld und eine leere Buchungsnummer
+   (letzteres ohne Aufruf). Das Rezept `zahlungseingang` verspricht dieselbe
+   Regel für Schritt 2. Der Abbruch ist ein `throw` und beendet den Lauf — kein
+   Überspringen: `pad/2` meldet `ScriptError`, der Flow beendet sich;
+   `Invoke-Lauf.ps1` bricht ab (`tests/Invoke-Lauf.Tests.ps1`). Der Satz bleibt
+   `geprueft` und stoppt auch jeden Folgelauf, bis ein Mensch ihn berichtigt.
 5. **Kein Aufräumen.** Ein hängender `in_buchung`-Satz bricht den nächsten
    Lauf ab (`Get-JnptArbeitsliste`). Wer das „repariert", nimmt dem Betreiber
    die einzige Absicherung gegen Doppelbuchungen.

@@ -10,8 +10,10 @@
 # Klickfolge mit dem arbeitet, was JETZT dasteht:
 #   {"id":"...", <Ausgabefelder>}
 #
-# Schlaegt fehl (ScriptError), wenn der Satz nicht mehr auf geprueft steht -
-# dann hat jemand dazwischen gefunkt. Der Flow beendet den Lauf.
+# Schlaegt fehl (ScriptError), wenn der Satz nicht mehr auf geprueft steht
+# oder schon eine Buchungsnummer traegt - dann hat jemand dazwischen gefunkt,
+# oder der Satz ist schon gebucht. Es wird nichts geschrieben; der Flow
+# beendet den Lauf.
 
 $ErrorActionPreference = 'Stop'
 
