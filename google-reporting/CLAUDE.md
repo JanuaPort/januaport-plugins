@@ -82,6 +82,16 @@ Schreibhandgriffe (#1148, SEC-Auflagen P1–P4, W1–W6, H1–H3), Invarianten:
   Property. `check_definitions` filtert auf die angefragten `apiName`s (`verify_compatible`):
   fehlt einer, `report_definition_unverified`; ist einer nicht `COMPATIBLE`,
   `report_definition_incompatible`; Fremdeinträge zählen nie. Kein Längenvergleich.
+- **Statusdiagnose (#1433):** Beide `get_status`-Routen übersetzen
+  `report_definition_unverified`, `report_definition_incompatible` und
+  `source_timezone_mismatch` in HTTP 200 mit `state=definition_invalid`.
+  Fehlerzustände tragen den festen `code`, ohne Google-Fehlertext; normale Berichte
+  behalten ihre HTTP-Fehler. Vertrag auf HTTP-Ebene: `tests/test_audit_reporting.py`.
+- **GA4-Kanäle (#1438):** Die Berichts-Allowlist umfasst auch „Paid Other“ und
+  „AI Assistant“ aus `manage.py::STANDARD_CHANNELS`; unbekannte Namen bleiben unterdrückt.
+- **Egress (#1437):** Die README-Liste enthält die Discovery-API-Hosts einschließlich
+  `analyticsadmin.googleapis.com:443` und den GA4-REST-Host. Der Wächter in
+  `tests/test_audit_reporting.py` liest diese aus dem Adaptercode.
 - **Spätes `end_date` (#1150):** wohlgeformt, aber nach „Quelle-heute minus 3 Tage“ ist es
   `end_date_not_available` (400, fester Code, kein Datum im Fehler, kein Klemmen); nur ein
   kaputtes Datum bleibt `invalid_input`. Die Fehler-JSON trägt weiter nur `{"error": code}`.
