@@ -77,6 +77,7 @@ class BingAdapter:
         self._indexnow_url = indexnow_url
         self._timeout = request_timeout
         self._session = session
+        self._submit_lock = asyncio.Lock()
 
     def __repr__(self):
         return "BingAdapter()"
@@ -159,11 +160,13 @@ class BingAdapter:
             raise shape_error()
 
     async def _bing_submit_urls(self, req):
-        available = await self._quota()
-        if available < len(req.urls):
-            raise ReportError(429, "source_quota_exceeded")
-        await self._write_answer("SubmitUrlBatch", {"siteUrl": self._cfg.site_url, "urlList": list(req.urls)})
-        return write_envelope(req, "applied", quota_before=available)
+        # One configured site per adapter: keep quota read and batch in one section.
+        async with self._submit_lock:
+            available = await self._quota()
+            if available < len(req.urls):
+                raise ReportError(429, "source_quota_exceeded")
+            await self._write_answer("SubmitUrlBatch", {"siteUrl": self._cfg.site_url, "urlList": list(req.urls)})
+            return write_envelope(req, "applied", quota_before=available)
 
     async def _bing_submit_sitemap(self, req):
         await self._write_answer("SubmitFeed", {"siteUrl": self._cfg.site_url, "feedUrl": req.url})

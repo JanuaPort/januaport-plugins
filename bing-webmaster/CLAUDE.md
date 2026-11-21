@@ -35,7 +35,9 @@ API-Schlüssel nur als `?apikey=` in der URL, die Connector-Specs setzen Credent
   Modulkonstanten; nur Tests übergeben andere Basen. `_send` ordnet jede Ausnahme im `except`
   einem festen Code zu und wirft **nach** dem `except` (kein `__context__`). Lesen von
   `GetUrlInfo`/`GetFeeds`/`GetUrlSubmissionQuota`, Schreiben von `SubmitUrlBatch`/`SubmitFeed`
-  (Antwort muss `{"d": null}` sein) und IndexNow. `bing/submit_urls` liest zuerst die Quote.
+  (Antwort muss `{"d": null}` sein) und IndexNow. `bing/submit_urls` hält eine gemeinsame
+  `asyncio.Lock` je Adapterinstanz über Quotenlesung, Prüfung und Batch (#1432). Jede Instanz
+  hat genau eine konfigurierte Site; `server.py` erzeugt einen Adapter für den Serverprozess.
 - server.py: feste Routen `/v1/bing/{url_info,sitemaps,submission_quota,submit_urls,submit_sitemap}`
   und `/v1/indexnow/submit_urls`, Bridge-Bearer (`hmac.compare_digest`), strikte Vorprüfung vor
   jedem Herstelleraufruf, `WriteCap`, Budget 20 s, `/healthz` lokal. Log je Aufruf genau
@@ -55,7 +57,11 @@ Invarianten (an allen Code-/Dokuorten nachziehen):
   Herstelleraufruf. Antworten bestehen nur aus der festen Feldliste; Herstellerfelder werden
   verworfen, `url` in `url_info` ist die geprüfte Eingabe.
 - **Schreibrouten:** höchstens 100 Adressen je Aufruf, `bing/submit_urls` nie über der gemeldeten
-  Tagesquote, Tagesdeckel 20 je Route und UTC-Tag (`write_cap_per_day` nur nach unten), gezählt im
+  Tagesquote, auch bei gleichzeitigen Aufrufen derselben Adapterinstanz: Quotenlesung und Batch
+  unter einer `asyncio.Lock`, danach erneute Quotenlesung für den wartenden Aufruf. Zu wenig Rest
+  ergibt 429 `source_quota_exceeded` ohne Batch; Voraussetzung ist Bings aktualisierte Restquote
+  (offene Herstellerunsicherheit im README). Tagesdeckel 20 je Route und UTC-Tag
+  (`write_cap_per_day` nur nach unten), gezählt im
   Serverprozess nach der Validierung und vor dem Herstelleraufruf (Herstellerfehler zählen),
   `dry_run` validiert, ruft nicht auf und zählt nicht, keine Retries. IndexNow ohne Konfiguration:
   `not_configured` (503), kein Aufruf.
@@ -89,6 +95,12 @@ Tests enthalten nur synthetische Daten; der Bing-Schlüssel der Tests ist ein la
 Schreib-/Dry-run-/Deckel-/Quoten-Regeln und die A1-Mutanten ab. `tests/wire_server.py` ist der
 Server für den Cross-Repo-Test des Produkts (echter Dienst, echter Adapter, Loopback-Stub).
 Signatur/Katalog/Deployment sind nicht Teil der Implementierung.
+
+Parallelitätsprobe #1432: `tests/test_http.py::WriteRoutes.test_concurrent_batches_cannot_exceed_the_remaining_daily_quota`
+startet zwei Aufrufe mit je 100 Adressen gegen eine Restquote von 150 am echten Dienst/Adapter.
+Der erste Batch wartet im Hersteller-Fake; insgesamt gehen 100 Adressen ein, der zweite Aufruf
+endet mit 429 `source_quota_exceeded` ohne Batch. Die Mutanten `quota-submit-lock-removed` und
+`batch-outside-quota-lock` müssen diese Probe rot machen.
 
 Release (#1292, #1303): Version 0.1.1 steht im Kopf dieser Datei, im README-Titel und im CHANGELOG (sonst
 nirgends). Das Image baut nur `.github/workflows/bing-webmaster-release.yml` auf den Tag
