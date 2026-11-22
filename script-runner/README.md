@@ -87,6 +87,7 @@ Protokollfehler abgewiesen. Details und Golden-Dateien: [Vertrag](contract/READM
 | Eingabe / Ausgabe | ≤ 256 KiB / Gateway-Vorgabe, gekürzt auf höchstens 16 MiB |
 | Lauf-Protokoll | ≤ 64 KiB einschließlich `\n[gekürzt]\n`; Platz für die Marke wird reserviert |
 | Werkzeugaufrufe je Lauf | Gateway-Vorgabe, gekürzt auf höchstens 10 000 |
+| Ergebnis eines Werkzeugaufrufs | ≤ 8 MiB abzüglich Umschlag; ein größeres Ergebnis kommt als Werkzeugfehler („Werkzeugergebnis zu groß“) beim Skript an, der Lauf geht weiter |
 | Gleichzeitige Läufe | 1 |
 | Läufe in Folge | etwa 6 je Minute; dazwischen antwortet der Läufer „belegt, in etwa 10 Sekunden erneut versuchen“ |
 | Gepinnter Ordner | ≤ 4 MiB, ≤ 1000 Dateien (der Code, ohne `wheels/`) |

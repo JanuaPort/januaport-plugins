@@ -35,7 +35,7 @@ type storageCourier struct {
 }
 
 func newStorageCourier(base, keyPath, storeDir string, now func() time.Time, log *slog.Logger) *storageCourier {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport := directTransport()
 	transport.DisableCompression = true
 	return &storageCourier{base: strings.TrimRight(base, "/"), keyPath: keyPath, root: filepath.Join(storeDir, "speicher"), now: now, log: log,
 		client:      &http.Client{Timeout: 35 * time.Second, Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},

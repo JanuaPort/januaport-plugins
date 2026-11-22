@@ -109,7 +109,11 @@ und `fetch` gelesen.
   eigener Weg: `internal/apphost/package.go` bindet an Commit und `apps/<app>`.
 - **Weg B:** eine MCP-Sitzung je Lauf an `JNPT_GATEWAY_URL/mcp` mit
   `Authorization: Bearer <Lauf-Token>`. Das Token verlässt den vermittler nie
-  Richtung Sandbox.
+  Richtung Sandbox. Der Client (`newGatewayHTTPClient`, #1538) nutzt einen
+  eigenen Transport mit `Proxy: nil` und lehnt jede Umleitung ab
+  (`CheckRedirect` gibt `errGatewayRedirect` zurück): Das Token geht an genau
+  die eine Gateway-Adresse. Dasselbe `Proxy: nil` (`directTransport`) gilt für
+  Taktgeber und Speicherboten.
 - **Weg C** (plugin-intern): Unix-Socket `/run/script-runner/sandbox.sock`.
   Wächter → vermittler: `hello{instance,isolation,seccomp}`,
   `tool_call{id,name,arguments}`, `output{data}`, `log{data}`,
@@ -555,7 +559,14 @@ nicht von `isolation` ab; `/healthz` behält seine lokale Sandbox-Bedeutung.
    Ausgabe und 61 Aufrufe am echten Wächter-Adapter; der MCP-Adapter prüft
    zusätzlich Ausgabe über der Altgrenze und 60 erfolgreiche Aufrufe.
    `guard.MaxJobFrame` (8 MiB) begrenzt Job-/Bootstrap-Nachrichten, nicht die
-   Ausgabe eines Laufs; ein volles Stück des ETL-Stroms (349 584 Byte) passt hindurch,
+   Ausgabe eines Laufs. Dieselbe Grenze gilt für das, was der vermittler an den
+   Wächter schreibt: Ein `tool_result` über `maxToolResultBytes`
+   (`guard.MaxJobFrame` minus 4 KiB Umschlag, `run.go`) wird nie geschrieben, sondern
+   zum festen Werkzeugfehler „Werkzeugergebnis zu groß (Grenze 8 MiB).“ ohne
+   Inhalt; der Lauf geht weiter, kein `limit/sandbox_lost` (#1538; Auslöser: `get_file`
+   einer Ablage ab etwa 6 MiB, Base64 4/3). Tests `TestToolResultFitsBoundary`,
+   `TestToolResultJustUnderLimitIsDelivered`, `TestToolResultOverLimitBecomesToolError`.
+   Ein volles Stück des ETL-Stroms (349 584 Byte) passt hindurch,
    Strom-Bytes zählen nie in die Ausgabe (16 MiB bleiben für stdout). Nach dem Ende hängt der Lauf
    ab (`detach`), jeder weitere Rahmen wird verworfen, der Wächter bekommt EOF.
    Socket-Ordner in der Sandbox read-only.
@@ -699,7 +710,9 @@ nicht von `isolation` ab; `/healthz` behält seine lokale Sandbox-Bedeutung.
     - **Kein pip, kein Paketindex:** `TestNoDownloadClientInSource` (HTTP-Clients
       ausschließlich in MCP, Taktgeber, Speicherboten, ETL-Strom (`mediator/etl.go`) und Apphost; `libs`/`store` und Abholer ohne HTTP-Client,
       kein pip, keine Index-Adresse; `http.*`-Client nur in Weg B, Apphost und
-      Taktgeber), Sonden `TestLibsNoPip` und `TestR12ImageHasNoPipAndSha1dcGit`,
+      Taktgeber). Weg B, Taktgeber und Speicherbote haben `Proxy: nil`, Weg B lehnt
+      Umleitungen ab (#1538: `TestGatewayClientRejectsRedirectWithoutLeakingToken`,
+      `TestOutboundTransportsIgnoreProxyEnvironment`), Sonden `TestLibsNoPip` und `TestR12ImageHasNoPipAndSha1dcGit`,
       `net_probe` unverändert.
     - **Hash-Abweichung ist fail-closed:** `TestEnsureTamperedWheelFailsClosed`,
       `TestLibsReasonsFailClosed` (manipuliertes Wheel, Wheel ohne Eintrag,

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **JanuaPort/januaport#1538: Werkzeugergebnis über der Rahmengrenze ist ein Werkzeugfehler,
+  Weg B ohne Proxy und Umleitung.**
+  - Ein Ergebnis des Gateways, das mit Umschlag nicht in `guard.MaxJobFrame` (8 MiB) passt
+    (etwa `get_file` einer Ablage mit einem PDF ab 6 MiB), wurde bisher in einen Rahmen
+    geschrieben, den der Wächter nicht liest, und kostete den Lauf als `limit/sandbox_lost`.
+    Jetzt prüft der Vermittler vorher und liefert den festen Werkzeugfehler „Werkzeugergebnis zu
+    groß (Grenze 8 MiB).“ ohne Inhalt; der Lauf geht weiter. Die Grenzen des Wächters sind
+    unverändert.
+  - Härtung: Der Client von Weg B hat einen eigenen Transport mit `Proxy: nil` und lehnt
+    Umleitungen ab; Taktgeber und Speicherbote nutzen ebenfalls keinen Proxy aus der Umgebung.
+
 ## 0.5.0 — 2026-11-22 (JanuaPort/januaport#1215 P2)
 
 - **JanuaPort/januaport#1215 (P2): ETL-Rohstrom über den Vermittler, Vertragsfassung 3.**

@@ -135,7 +135,8 @@ type gatewayTrigger struct {
 
 func newGatewayTrigger(base, keyPath string, timeout time.Duration) *gatewayTrigger {
 	return &gatewayTrigger{base: base, keyPath: keyPath, client: &http.Client{
-		Timeout: timeout,
+		Timeout:   timeout,
+		Transport: directTransport(),
 		// Der Schlüssel geht an genau eine Adresse, keiner Umleitung nach.
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}}
