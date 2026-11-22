@@ -642,6 +642,13 @@ func (e *Engine) deliverOne(ctx context.Context) {
 		e.logCode(LogResultDropped, after)
 	}
 }
+
+// abschluss beendet einen Lauf, dessen Marker schon steht, nach einem internen Fehler (Speichern, Uhr): Ohne
+// Abschluss bliebe der Marker bis zum Neustart stehen und jeder weitere Auftrag endete mit ErrBusy (#1434).
+// Nach gesetztem Marker gibt es keinen Rückweg ohne report; ein Fehler des Abschlusses selbst (Widerruf, Platte)
+// geht an den Aufrufer.
+func (e *Engine) abschluss(r Result) error { return e.report(finish(r, "internal", "")) }
+
 func (e *Engine) report(r Result) error {
 	if err := e.State.Append(r); err != nil {
 		return err
@@ -680,7 +687,7 @@ func (e *Engine) scheduled(ctx context.Context, p Pin, s Schedule, slot time.Tim
 		if e.Container == nil {
 			now, err = e.State.ObserveTime(now)
 			if err != nil {
-				return err
+				return e.abschluss(r)
 			}
 		}
 		// Windows K8 also marks refusals for the core's offline counters.
@@ -728,7 +735,7 @@ func (e *Engine) scheduled(ctx context.Context, p Pin, s Schedule, slot time.Tim
 				return e.report(refused(r, ErrRuntime))
 			}
 			if err = e.State.Mark(r, "claimed"); err != nil {
-				return err
+				return e.abschluss(r)
 			}
 			if len(p.DeclaredTools) > 0 {
 				start, err = e.API.Start(ctx, r)
@@ -819,7 +826,7 @@ func (e *Engine) adhoc(ctx context.Context, j Job) error {
 	order := NewTestOrder(b.Manifest.Envelope, j)
 	if e.Container == nil && order.verified(e.Credential) {
 		if err = e.State.Save("test-"+j.JobID, order); err != nil {
-			return err
+			return e.abschluss(r)
 		}
 	}
 	if pin.Container != nil {
