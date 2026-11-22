@@ -224,9 +224,10 @@ func (e *Engine) pinEnvironment(ctx context.Context, old Bundle, p Pin, key stri
 
 // manifestLevel trennt die Fehler, die den ganzen Abgleich verwerfen, vom Fehler eines einzelnen Pins. Offline
 // gehört dazu (SEC E1): Bei kurzem Netzausfall laufen die alten, versiegelten Umgebungen weiter, und ein Entzug
-// wartet nur bis zum nächsten Abgleich mit Netz.
+// wartet nur bis zum nächsten Abgleich mit Netz. Nur der Netzfehler zählt, nicht IsOffline: Ein 5xx beim Abruf des
+// Pakets trifft diesen einen Pin und hält weder Entzug noch die übrigen Pins auf (#1391).
 func manifestLevel(ctx context.Context, err error) bool {
-	return errors.Is(err, ErrRevoked) || ctx.Err() != nil || IsOffline(err)
+	return errors.Is(err, ErrRevoked) || ctx.Err() != nil || isNetworkFailure(err)
 }
 
 // sameEnvelope: Dieselbe signierte Hülle (SEC E2). Verglichen werden die Signatur und die kanonischen Bytes, also
