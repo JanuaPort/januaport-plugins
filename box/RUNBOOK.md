@@ -270,7 +270,12 @@ cp .env.example .env && $EDITOR .env
 #   JNPT_UPDATE_*    Feed-URL und Prüfschlüssel (Abschnitt 7; Pflicht vor Auslieferung)
 
 # Master-Key als Datei-Secret — uid 65532, sonst kann der Container ihn nicht lesen
-printf '%s\n' '<Master-Key aus 2.3>' > /tmp/mk
+# Der Schlüssel kommt per read -rs (ohne Echo, nicht in den Shell-Verlauf), nie als
+# Literal in eine Zeile. Die Zeilen einzeln eingeben, nicht als Block einfügen:
+# read liest sonst die nächste Zeile als Wert.
+read -rs MK                                   # Master-Key aus 2.3 eingeben, Enter
+( umask 077; printf '%s\n' "$MK" > /tmp/mk )  # Datei von Anfang an 0600
+unset MK
 install -o 65532 -g 65532 -m 0400 /tmp/mk secrets/jnpt_master_key
 shred -u /tmp/mk
 
@@ -532,7 +537,9 @@ im Kompromittierungsfall ein Sprungbrett zu allen.
 ```bash
 cd /opt/jnpt/box
 # Auth-Key aus der Tailscale-Konsole: nicht-ephemeral, mit ACL-Tag, einmal nutzbar
-printf '%s\n' '<tskey-auth-…>' > /tmp/ak
+read -rs AK                                   # Schlüssel eingeben (ohne Echo, nicht im Verlauf), Enter
+( umask 077; printf '%s\n' "$AK" > /tmp/ak )  # Datei von Anfang an 0600
+unset AK
 install -m 0600 /tmp/ak secrets/tailscale_authkey
 shred -u /tmp/ak
 # .env: COMPOSE_PROFILES=wartung  (dann startet jeder Aufruf das Modul mit, auch der Boot)
@@ -549,7 +556,12 @@ und bringt den Host **nicht** ins Tailnet:
 
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sh
-tailscale up --ssh=false --accept-dns=false --hostname=<box>-host --authkey '<tskey-auth-…>'
+# Eigener Schlüssel für den Host-Knoten aus der Tailscale-Konsole: EINMAL nutzbar
+# (nicht wiederverwendbar), kurzlebig (Ablauf höchstens 1 Tag), mit ACL-Tag. Per
+# read -rs eingeben, nie als Literal in die Zeile (Shell-Verlauf, Prozessliste).
+read -rs TSKEY
+tailscale up --ssh=false --accept-dns=false --hostname=<box>-host --authkey "$TSKEY"
+unset TSKEY
 ip -brief addr show tailscale0        # jetzt greift die nftables-Regel für Port 22
 tailscale dns status | head -3        # disabled
 ```
@@ -1122,6 +1134,18 @@ Auf der Box kommen drei Dinge dazu:
       driver_opts:
         com.docker.network.bridge.name: jnpt-ebics0
   ```
+
+  ```ini
+  # /etc/systemd/system/ebics-abholer.service.d/box-netz.conf
+  # Box-Anpassung: Abholer-Netz mit gepinntem Bridge-Namen jnpt-ebics0
+  # (die Regel in /etc/nftables.conf greift nur auf diesen Namen).
+  [Service]
+  ExecStart=
+  ExecStart=/usr/bin/docker compose -f /opt/jnpt/ebics-abholer/docker-compose.ebics-abholer.yml -f /opt/jnpt/ebics-abholer/docker-compose.box-netz.yml run --rm -T --no-deps ebics-abholer
+  ```
+
+  Die leere Zeile `ExecStart=` ist nötig: Sie löscht den Start der Unit, sonst
+  hätte sie zwei. Danach `systemctl daemon-reload`.
 
 - **Image per Digest, nicht bauen.** In die `.env` neben der Abholer-Compose
   kommt `JNPT_EBICS_IMAGE=ghcr.io/januaport/ebics@sha256:…` (Digest aus dem

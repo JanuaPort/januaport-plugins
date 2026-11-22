@@ -94,16 +94,18 @@ printf '%s' "$REBOOT_ZEIT" | grep -qE '^([01][0-9]|2[0-3]):[0-5][0-9]$' \
 # ── Hilfsfunktion: idempotent schreiben ──────────────────────────────────────
 # Schreibt stdin nach <pfad>, aber NUR wenn sich der Inhalt unterscheidet.
 # Rückgabe 0 = geändert, 1 = unverändert. Deshalb IMMER in einem `if` aufrufen
-# (sonst bricht `set -e` beim „unverändert"-Fall ab).
+# (sonst bricht `set -e` beim „unverändert"-Fall ab). Ein Schreibfehler beendet
+# das Skript über fehler(), auch im `if` — dort greift `set -e` nicht.
 schreibe_datei() {
   local pfad="$1" modus="$2" tmp
   tmp="$(mktemp)"
-  cat >"$tmp"
+  cat >"$tmp" || { rm -f "$tmp"; fehler "Zwischendatei für $pfad nicht beschreibbar"; }
   if [ -f "$pfad" ] && cmp -s "$tmp" "$pfad"; then
     rm -f "$tmp"
     return 1
   fi
-  install -D -o root -g root -m "$modus" "$tmp" "$pfad"
+  install -D -o root -g root -m "$modus" "$tmp" "$pfad" \
+    || { rm -f "$tmp"; fehler "$pfad nicht schreibbar"; }
   rm -f "$tmp"
   return 0
 }
