@@ -127,3 +127,26 @@ func TestOeffnenZugewieseneAppUndSpaeterEntzug(t *testing.T) {
 		t.Fatalf("Entzug nach dem Öffnen: Fenster %d, Close %d", len(a.surfaces), o.surfaces[0].closed)
 	}
 }
+
+// Kommt die Liste ohne die App, während NewSurface Nachrichten pumpt, bleibt sie im Kanal (drainApps kehrt bei
+// embedding sofort zurück) und schließt das gerade gebaute Fenster danach über CloseMissing.
+func TestListeWaehrendNewSurfaceSchliesstDasNeueFenster(t *testing.T) {
+	o := newOpening(t, "kasse", "lager")
+	a := o.a
+	build := a.newSurface
+	a.newSurface = func(op *fensterio.Opened, cfg fensterio.SurfaceConfig) (appSurface, error) {
+		a.appLists <- fensterio.AppList{Names: []string{"lager"}, ManifestSeq: 2} // trifft in der Nachrichtenpumpe ein
+		a.drainApps()
+		if !a.embedding || len(a.appLists) != 1 {
+			t.Error("drainApps muss bei embedding zurückkehren und die Liste im Kanal lassen")
+		}
+		return build(op, cfg)
+	}
+	a.openApp("kasse")
+	o.finish(newOpened(t, "kasse"), nil)
+	a.drainApps()
+
+	if len(a.surfaces) != 0 || len(o.surfaces) != 1 || o.surfaces[0].closed != 1 {
+		t.Fatalf("Fenster %d, gebaut %d, Close %d", len(a.surfaces), len(o.surfaces), o.surfaces[0].closed)
+	}
+}
