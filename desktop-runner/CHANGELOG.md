@@ -2,6 +2,25 @@
 
 ## Unveröffentlicht
 
+### Prüfbefunde aus #1438: Speicher, 5xx, Kürzel-Kennung, Moduswechsel, Instanzsperre (JanuaPort/januaport#1537)
+
+- **Speicher:** `envs\<key>`, `packages\<key>` und die Siegel `env-<key>` wurden nur vom Widerruf abgeräumt; jede neue Pin-Version ließ
+  die alte liegen, und `test-<job_id>` blieb für immer. **Jetzt:** Am Ende jedes erfolgreichen, geprüften Syncs löscht der Läufer unter der
+  Zustandssperre alle drei, deren Schlüssel nicht im Manifest steht (nur gültige Schlüssel, kein Verweis wird verfolgt, bei Sperre bleibt der
+  Rest bis zum nächsten Sync liegen, Logcode `10 2` nur beim ersten Fehlschlag). Die Umgebung des laufenden Jobs bleibt. `test-<job_id>`
+  fällt nach bestätigtem `ReportTest` und gespeichertem Journal weg. Kein Takt wie beim App-Entzug (Invariante 28).
+- **5xx als offline:** `IsOffline` erkennt auch `*HTTPError` mit Status ab 500. Ein 503 im Sync bucht kein `refused/hash` mehr, sondern greift
+  die Offline-Kulanz bzw. `refused/offline`. Ein 5xx beim Paketabruf trifft weiter nur diesen Pin (#1391), ein 5xx ist nie ein Widerruf.
+- **Kennung der Tastenkürzel:** Die Anmeldung läuft unter der Nummer der F-Taste statt unter der Listenposition. Ein `WM_HOTKEY` aus der
+  Warteschlange trifft nach einer Neuanmeldung mit verschobener Liste keinen anderen Eintrag mehr. Keine Änderung an `cmd/bedienfeld`.
+- **Moduswechsel b nach a:** Eine offene App vergisst beim Wechsel die persönliche Sitzung (Gateway sperren, Dokument beenden, Browserdaten
+  löschen, neu laden) und nimmt danach den Gerätezweig, statt dauerhaft „nicht angemeldet“ zu liefern.
+- **Instanzsperre:** Statt des benannten Mutex `Global\JanuaPort-Desktop-<SID>`, das ein anderes lokales Konto vorab belegen konnte, sperrt
+  `LockFileEx` exklusiv die Datei `instance.lock` im privat abgesicherten Wurzelordner. Die zweite Instanz desselben Benutzers scheitert wie
+  bisher, `main.go` unverändert. Der Widerruf löscht die Wurzel samt Sperrdatei weiter.
+- Kein neues Format, kein neues Setting, keine Änderung am Pipe-Protokoll. Nicht Teil dieses Stands (Sonden auf dem Testgerät): COM-Release
+  nach dem Entzug und Verlauf nach Personenwechsel.
+
 ## 0.5.6 — 2026-11-22 (JanuaPort/januaport#1342)
 
 ### Upstream-Prüfpunkt

@@ -23,7 +23,16 @@ Es gelten zusätzlich die Regeln in `../../CLAUDE.md`, insbesondere Invarianten 
 - #1321, unverändert Vertrag 5: `apps[].mode` optional, nur a/b/leer, sonst Manifestfehler.
   Anmeldeleiste mit Knöpfen/Meldungen nur bei b oder fehlendem/leerem Feld (alter Kern);
   in a erscheint nichts davon. Ausschließlich Bedienhilfe: Rechte, `/token`, Login-Fluss
-  und K6b-2/K6c-Sperren unverändert. `Reader` → `Runtime.Open` übernimmt den geprüften Modus;
+  und K6b-2/K6c-Sperren unverändert. **Eine Ausnahme (#1537):** Wechselt eine offene App
+  von b (oder leer) nach a, vergisst `Surface.UpdateApps` die persönliche Sitzung:
+  `Login.ToDeviceMode` ruft wie beim Personenwechsel `Gateway.Forget` auf, wechselt die
+  Host-Epoche, beendet das Dokument (`about:blank`), löscht die Browserdaten und lädt neu;
+  danach gibt `Gateway.useDevice` den Gerätezweig frei (`personal=false`), sonst lieferte die
+  App dauerhaft `ErrNichtAngemeldet`. Ein laufender Anmeldeversuch wird verworfen, ein Fehler
+  im Übergang schließt das Fenster und lässt das Gateway gesperrt. a → a und a → b tun nichts
+  davon. Tests: `login_moduswechsel_test.go` (Ablauf, Fehlerpfade, laufende Anmeldung; Mutanten
+  ohne `Forget` und mit `personal=true`), `login_moduswechsel_windows_test.go` (Verdrahtung in
+  `Surface.UpdateApps`; das echte WebView-Löschen bleibt Sache der nativen Sonde unten). `Reader` → `Runtime.Open` übernimmt den geprüften Modus;
   `Runtime.Apps/Watch` → `Surface.UpdateApps` aktualisiert offene Fenster beim nächsten
   Manifestabgleich. Die Sequenz verhindert einen älteren Anzeigestand beim asynchronen Öffnen.
   Die Startmeldung „Bitte mit dem eigenen Konto anmelden.“ bleibt nach dem ersten `Login.Pump`:
