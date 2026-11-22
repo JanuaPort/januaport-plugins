@@ -357,8 +357,14 @@ function Lock-JnptSatz {
       Buchungsnummer-Feld und schreibt in_buchung mit der eigenen Lauf-Kennung.
       Ein Satz, der durch einen Bedienfehler wieder auf geprueft steht, aber
       schon eine Buchungsnummer traegt, ist im Fachsystem gebucht: Er wird
-      nicht gesperrt, es wird nichts geschrieben. Liefert den GELESENEN Satz
-      zurueck - aus ihm nimmt die Klickfolge im Fachsystem ihre Werte.
+      nicht gesperrt, es wird nichts geschrieben.
+      Das update traegt erwartet = status geprueft (Kern #1540): Der Kern prueft
+      es atomar gegen den frischen Stand. Hat ein gleichzeitiger Lauf den Satz
+      zuerst gesperrt, antwortet der Kern mit einem Konflikt und schreibt nichts -
+      dann ist der Satz vergeben, Lock schreibt eine Log-Zeile und liefert $null:
+      NICHT buchen, naechster Satz. Jeder andere Fehler wirft wie bisher.
+      Liefert sonst den GELESENEN Satz zurueck - aus ihm nimmt die Klickfolge im
+      Fachsystem ihre Werte.
     #>
     param(
         [Parameter(Mandatory)]$Session,
@@ -376,7 +382,14 @@ function Lock-JnptSatz {
         throw ('Satz {0}: {1} ist schon gesetzt ("{2}") - nicht sperren, nicht doppelt buchen.' -f $Id, $feld, $alt)
     }
     $aenderung = New-JnptAenderung -Session $Session -Status $script:StatusGesperrt -Lauf $Lauf
-    Set-JnptSatz -Session $Session -Satz $satz -Aenderung $aenderung
+    try {
+        Set-JnptSatz -Session $Session -Satz $satz -Aenderung $aenderung -Erwartet @{ status = $script:StatusFrei }
+    } catch {
+        if (-not (Test-JnptVorbedingungVerfehlt -Fehler $_)) { throw }
+        # Ohne Satzinhalte: Id und Lauf genuegen, damit ein Mensch den Satz findet.
+        Write-Host ('Satz {0}: von einem anderen Lauf schon vergeben (Vorbedingung status = {1} nicht mehr erfuellt) - uebersprungen, Lauf {2}.' -f $Id, $script:StatusFrei, $Lauf)
+        return $null
+    }
     return $satz
 }
 
@@ -406,7 +419,7 @@ function Set-JnptSatzErgebnis {
     }
     $aenderung = New-JnptAenderung -Session $Session -Status $script:StatusVerbucht -Lauf $Lauf
     $aenderung[$feld] = $Buchungsnr.Trim()
-    Set-JnptSatz -Session $Session -Satz $satz -Aenderung $aenderung
+    Set-JnptSatz -Session $Session -Satz $satz -Aenderung $aenderung -Erwartet (New-JnptEigenerLaufErwartung -Session $Session -Lauf $Lauf)
     return [pscustomobject]@{ id = $Id; status = $script:StatusVerbucht }
 }
 
@@ -431,7 +444,7 @@ function Set-JnptSatzFehler {
     Assert-JnptEigenerLauf -Session $Session -Satz $satz -Id $Id -Lauf $Lauf
     $aenderung = New-JnptAenderung -Session $Session -Status $script:StatusFehler -Lauf $Lauf
     $aenderung[$Session.Felder.FehlerText] = Format-JnptFehlerText -Schritt $Schritt -Meldung $Meldung
-    Set-JnptSatz -Session $Session -Satz $satz -Aenderung $aenderung
+    Set-JnptSatz -Session $Session -Satz $satz -Aenderung $aenderung -Erwartet (New-JnptEigenerLaufErwartung -Session $Session -Lauf $Lauf)
     return [pscustomobject]@{ id = $Id; status = $script:StatusFehler }
 }
 
@@ -459,10 +472,33 @@ function Get-JnptSatz {
 
 function Set-JnptSatz {
     # Das einzige Schreiben im Modul: genau ein update, kein Retry.
-    param([Parameter(Mandatory)]$Session, [Parameter(Mandatory)]$Satz, [hashtable]$Aenderung = @{})
+    # -Erwartet (Feld -> Wert) geht als erwartet mit (Kern #1540); ohne den
+    # Parameter bleibt die Anfrage unveraendert. Ein aelterer Kern lehnt das
+    # Argument ab - fail-closed, es wird nichts geschrieben.
+    param([Parameter(Mandatory)]$Session, [Parameter(Mandatory)]$Satz, [hashtable]$Aenderung = @{},
+          [hashtable]$Erwartet)
+    $argumente = New-JnptUpdateArgs -Satz $Satz -Quelle $Session.Quelle -Aenderung $Aenderung
+    if ($Erwartet -and $Erwartet.Count -gt 0) { $argumente['erwartet'] = $Erwartet }
     Invoke-JnptTool -Endpoint $Session.Endpoint -Token $Session.Token -TimeoutSec $Session.TimeoutSec `
-        -Tool ('{0}_update' -f $Session.Satzart) `
-        -Arguments (New-JnptUpdateArgs -Satz $Satz -Quelle $Session.Quelle -Aenderung $Aenderung) | Out-Null
+        -Tool ('{0}_update' -f $Session.Satzart) -Arguments $argumente | Out-Null
+}
+
+function Test-JnptVorbedingungVerfehlt {
+    # Der feste Satz des Kerns (#1540): "Konflikt: Vorbedingung ..." ohne Werte.
+    # Nur er heisst "vergeben"; jeder andere Fehler (auch ein Konflikt der
+    # parallelen Schreiber ohne Vorbedingung) bleibt ein Fehler.
+    param([Parameter(Mandatory)]$Fehler)
+    return ([string]$Fehler.Exception.Message) -like '*Konflikt: Vorbedingung*'
+}
+
+function New-JnptEigenerLaufErwartung {
+    # Was beim Fortschreiben eines eigenen Satzes noch gelten muss: in_buchung
+    # und die eigene Lauf-Kennung - zwischen get und update darf ihn niemand
+    # uebernommen oder zurueckgesetzt haben.
+    param([Parameter(Mandatory)]$Session, [Parameter(Mandatory)][string]$Lauf)
+    $e = @{ status = $script:StatusGesperrt }
+    $e[$Session.Felder.Lauf] = $Lauf
+    return $e
 }
 
 function New-JnptAenderung {
