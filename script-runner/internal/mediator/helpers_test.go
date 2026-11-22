@@ -55,9 +55,11 @@ func (b *syncBuffer) String() string {
 type stubGateway struct {
 	srv   *httptest.Server
 	calls atomic.Int64
-	mu    sync.Mutex
-	auth  []string
-	args  []string
+	// pad > 0: kartei_find liefert einen Text dieser Länge (Ergebnisgrenze, #1538).
+	pad  atomic.Int64
+	mu   sync.Mutex
+	auth []string
+	args []string
 
 	// Kern-Stub für #1215 P2: /healthz meldet version (leer = Pfad unbekannt),
 	// /api/etl/stream ruft etl (nil = 404). healthz nimmt auch eine fertige
@@ -94,6 +96,9 @@ func newStubGateway(t *testing.T) *stubGateway {
 		g.mu.Lock()
 		g.args = append(g.args, string(req.Params.Arguments))
 		g.mu.Unlock()
+		if n := g.pad.Load(); n > 0 {
+			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: strings.Repeat("x", int(n))}}}, nil
+		}
 		return &mcp.CallToolResult{
 			Content:           []mcp.Content{&mcp.TextContent{Text: `{"found":2}`}},
 			StructuredContent: map[string]any{"found": 2},
