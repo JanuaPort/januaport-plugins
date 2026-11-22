@@ -95,6 +95,57 @@ Describe 'PAD-Skripte' {
         }
     }
 
+    Context 'Schritt 2: vergebener Satz (#1545)' {
+
+        It 'vergebener Satz ergibt Ausgabe vergeben, kein Fehler (Lock liefert $null)' {
+            Add-TestHandschlag
+            Mock -CommandName Lock-JnptSatz -MockWith { $null }
+
+            { $script:aus = @(Invoke-TestPad -Name '2-satz-sperren.ps1' -Werte (Get-TestWerte @{ SatzId = 's1'; Lauf = 'TEST-LAUF' })) } |
+                Should -Not -Throw
+
+            $script:aus.Count | Should -Be 1
+            $script:aus[0] | Should -BeOfType [string]
+            $script:aus[0] | Should -Be '{"id":"s1","vergeben":true}'
+            Should -Invoke -CommandName Lock-JnptSatz -Times 1 -Exactly
+        }
+
+        It 'Konflikt des Kerns: genau eine JSON-Zeile auf stdout, die Log-Zeile des Moduls nicht' {
+            Add-TestHandschlag
+            Add-TestGet (New-TestSatz -Id 's1')
+            Add-TestKonflikt
+
+            # 6>&1 holt die Information-Ausgabe (Write-Host) in die Pipeline:
+            # PAD wuerde sie sonst als zweite Zeile vor das JSON setzen.
+            $script:aus = @(Invoke-TestPad -Name '2-satz-sperren.ps1' -Werte (Get-TestWerte @{ SatzId = 's1'; Lauf = 'TEST-LAUF' }) 6>&1)
+
+            $script:aus.Count | Should -Be 1
+            $script:aus[0] | Should -Be '{"id":"s1","vergeben":true}'
+            (Get-TestAufrufe 'zahlungseingang_update').Count | Should -Be 1
+        }
+
+        It 'Normalfall traegt vergeben false' {
+            Add-TestHandschlag
+            Add-TestGet (New-TestSatz -Id 's1')
+            Add-TestUpdate (New-TestSatz -Id 's1' -Felder @{ status = 'in_buchung' })
+
+            $j = ConvertFrom-Json (Invoke-TestPad -Name '2-satz-sperren.ps1' -Werte (Get-TestWerte @{ SatzId = 's1'; Lauf = 'TEST-LAUF' }))
+
+            # BeFalse allein liesse auch ein fehlendes Feld (null) durch.
+            $j.vergeben | Should -BeOfType [bool]
+            $j.vergeben | Should -BeFalse
+            $j.id | Should -Be 's1'
+        }
+
+        It 'jeder andere Fehler beim Sperren bleibt ein Fehler (ScriptError)' {
+            Add-TestHandschlag
+            Add-TestGet (New-TestSatz -Id 's1' -Felder @{ status = 'in_buchung' })
+
+            { Invoke-TestPad -Name '2-satz-sperren.ps1' -Werte (Get-TestWerte @{ SatzId = 's1'; Lauf = 'TEST-LAUF' }) } |
+                Should -Throw '*zwischenzeitlich geaendert*'
+        }
+    }
+
     Context 'Ausgabeformen' {
 
         It '1-arbeitsliste liefert lauf, anzahl und saetze mit id und Ausgabefeldern' {
@@ -131,9 +182,10 @@ Describe 'PAD-Skripte' {
             $zeile = Invoke-TestPad -Name '2-satz-sperren.ps1' -Werte (Get-TestWerte @{ SatzId = 's1'; Lauf = 'TEST-LAUF' })
 
             $j = ConvertFrom-Json $zeile
-            @($j.PSObject.Properties.Name) | Should -Be @('id', 'beleg_nummer', 'nummer_art', 'betrag', 'buchungsdatum')
+            @($j.PSObject.Properties.Name) | Should -Be @('id', 'beleg_nummer', 'nummer_art', 'betrag', 'buchungsdatum', 'vergeben')
             $j.id | Should -Be 's1'
             $j.betrag | Should -Be '12.34'
+            $j.vergeben | Should -BeFalse
         }
 
         It '3-satz-verbuchen liefert id und status verbucht' {

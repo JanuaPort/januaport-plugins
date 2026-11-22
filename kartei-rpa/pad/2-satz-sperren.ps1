@@ -6,11 +6,20 @@
 #
 # Timeout der Aktion: 120 Sekunden. "Bei Fehler wiederholen": AUS.
 #
-# Ausgabe (PowershellOutput), eine Zeile JSON - frisch aus get, damit die
+# Ausgabe (PowershellOutput), genau eine Zeile JSON - frisch aus get, damit die
 # Klickfolge mit dem arbeitet, was JETZT dasteht:
-#   {"id":"...", <Ausgabefelder>}
+#   {"id":"...", <Ausgabefelder>, "vergeben":false}
+# Das Feld vergeben steht immer da, damit der Flow es immer findet.
 #
-# Schlaegt fehl (ScriptError), wenn der Satz nicht mehr auf geprueft steht
+# Fall "vergeben": Hat ein gleichzeitiger Lauf den Satz zuerst gesperrt
+# (Vorbedingung am update, Kern #1540), liefert Lock-JnptSatz nichts. Dann gibt
+# das Skript genau eine Zeile aus, ohne Fehler und ohne Schreibzugriff:
+#   {"id":"...","vergeben":true}
+# Der Flow springt zum naechsten Satz - kein Buchen, kein Fehlerstatus, kein
+# Aufruf von Aktion 4. Die Log-Zeile des Moduls wird unterdrueckt, damit auf
+# stdout nur diese eine Zeile steht.
+#
+# Schlaegt sonst fehl (ScriptError), wenn der Satz nicht mehr auf geprueft steht
 # oder schon eine Buchungsnummer traegt - dann hat jemand dazwischen gefunkt,
 # oder der Satz ist schon gebucht. Es wird nichts geschrieben; der Flow
 # beendet den Lauf.
@@ -47,6 +56,15 @@ foreach ($p in @($Modulpfad, $Endpoint, $Satzart, $SatzId, $Lauf)) {
 Import-Module (Join-Path $Modulpfad.Trim() 'JanuaPort.Kartei.psm1') -Force
 
 $jnpt = Connect-JnptKartei -Endpoint $Endpoint.Trim() -Satzart $Satzart.Trim()
-$satz = Lock-JnptSatz -Session $jnpt -Id $SatzId.Trim() -Lauf $Lauf.Trim()
+# 6>$null: Lock-JnptSatz meldet "vergeben" per Write-Host; die Zeile soll nicht
+# vor das JSON auf stdout geraten.
+$satz = Lock-JnptSatz -Session $jnpt -Id $SatzId.Trim() -Lauf $Lauf.Trim() 6>$null
 
-Write-Output (ConvertTo-Json (ConvertTo-JnptAusgabe -Session $jnpt -Satz $satz) -Depth 5 -Compress)
+if ($null -eq $satz) {
+    Write-Output (ConvertTo-Json ([ordered]@{ id = $SatzId.Trim(); vergeben = $true }) -Compress)
+    return
+}
+
+$ausgabe = ConvertTo-JnptAusgabe -Session $jnpt -Satz $satz
+$ausgabe['vergeben'] = $false
+Write-Output (ConvertTo-Json $ausgabe -Depth 5 -Compress)
