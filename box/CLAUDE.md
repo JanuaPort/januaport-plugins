@@ -125,7 +125,16 @@ drei.
    Unit schaltet es selbst ein. Tailnet-ACLs sperren per Standard; der Zugang
    ist eine benannte, entfernbare Regel.
 7. **Kein Phone-Home, kein stehendes Monitoring durch den Hersteller.**
-8. **Kein `:latest`.** `JANUAPORT_IMAGE` ist Pflicht ohne Default.
+8. **Kein `:latest`, kein wandernder Tag.** `JANUAPORT_IMAGE` ist Pflicht ohne
+   Default; `caddy` und `tailscale` stehen mit Version **und** Digest in der
+   Compose (Caddy ab 2.11.9, Tailscale v1.104.7, JanuaPort/januaport#1428).
+   Anheben: Digest per `docker buildx imagetools inspect <tag>` lesen, Version
+   und Digest gemeinsam ändern, `script-runner/internal/hygiene/box_proxy_test.go`
+   nachziehen. Alle drei Proxys laufen mit `no-new-privileges` und
+   `cap_drop: [ALL]`; Caddy ergänzt `NET_BIND_SERVICE` und läuft `read_only` mit
+   tmpfs `/tmp`. Tailscale braucht im Userspace-Modus keine Capability und läuft
+   bewusst ohne `read_only` (Laufzeitdateien von `containerboot` ohne Gerät nicht
+   belegt). Der Start mit der Härtung ist am Gerät nicht belegt.
 9. **Keine echten Secrets, Namen, Adressen oder Kundendaten im Repository.**
    Nur `*.example`, RFC-5737-Adressen, `example.com`; `.gitignore` hält `.env`
    und `secrets/*` draußen.

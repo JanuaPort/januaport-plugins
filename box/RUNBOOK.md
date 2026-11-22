@@ -263,7 +263,7 @@ systemctl enable --now docker
 ```bash
 cd /opt/jnpt/box
 cp .env.example .env && $EDITOR .env
-#   JANUAPORT_IMAGE  gepinnter Tag, kein :latest
+#   JANUAPORT_IMAGE  gepinnter Tag, kein :latest (caddy und tailscale pinnt die Compose selbst, per Digest)
 #   JNPT_DOMAIN      der Box-Name (<BOX_NAME>), JNPT_CADDY_TLS="tls internal"
 #   JNPT_BIND_ADDR   <LAN-IP> — leer heißt zu
 #   JNPT_SSO_* / JNPT_PUBLIC_URL   Abschnitt 5.1

@@ -43,7 +43,7 @@ Die Hülle berührt das Gateway nur an benannten Stellen:
 
 | Naht | Richtung | Was |
 |---|---|---|
-| Image | Box → GHCR | `JANUAPORT_IMAGE`, gepinnter Tag, kein `:latest` |
+| Image | Box → GHCR | `JANUAPORT_IMAGE`, gepinnter Tag, kein `:latest`; `caddy` und `tailscale` mit Version und Digest |
 | Umgebung | `.env` → Container | `JNPT_*`-Variablen, Durchreiche nach dem Muster `${VAR:-}` (leer = aus) |
 | Master-Key | Host → Container | Docker-Secret `jnpt_master_key` (64 Hex-Zeichen, uid 65532, 0400) |
 | Daten | Volume | `jnpt_jnpt-data` → `/data` (SQLite, lokale Sicherungen) |
