@@ -16,14 +16,19 @@ import (
 //   - das Abholer-Netz egress (jnpt-fetch0): ssh zum Git-Server, sonst nichts.
 //     Mit zufälligem br-<hash> verwirft die Kette jedes Paket, die Container
 //     laufen fehlerfrei weiter und holen nie einen Pin — symptomlos.
+//     Der Name steht NUR in der Box-Override-Datei: Ein fester Bridge-Name in
+//     der allgemeinen Compose ließe auf einem Host kein zweites Projekt zu
+//     (Tests, Probeläufe, Kern-Hosts: "networks have same bridge name").
 //   - das Apps-Netz jnpt_apps (jnpt-apps0): das der Apphost als external
-//     erwartet. Ohne Anlage in der Box-Compose scheitert `--profile apps`.
+//     erwartet. Es liegt in der Box-Compose, die nur auf der Box läuft.
+//     Ohne Anlage dort scheitert `--profile apps`.
 
 const (
-	fetcherBridgeZeile = "      com.docker.network.bridge.name: jnpt-fetch0\n"
-	egressBlock        = "  egress:\n    driver_opts:\n" + fetcherBridgeZeile
-	hardeningPath      = "../../../box/scripts/hardening.sh"
-	boxComposePath     = "../../../box/docker-compose.box.yml"
+	bridgeOptKey     = "com.docker.network.bridge.name"
+	hardeningPath    = "../../../box/scripts/hardening.sh"
+	boxComposePath   = "../../../box/docker-compose.box.yml"
+	boxOverridePath  = "../../../box/docker-compose.script-runner.box.yml"
+	boxRunnerCompose = "../../../box/docker-compose.script-runner.yml"
 )
 
 func readFile(t *testing.T, path string) string {
@@ -48,51 +53,68 @@ func firewallRegeln(t *testing.T) []string {
 	return regeln
 }
 
-func TestFetcherNetworkHasFixedBridgeName(t *testing.T) {
-	base := readCompose(t)
-	if !strings.Contains(base, egressBlock) {
-		t.Fatalf("egress trägt keinen festen Bridge-Namen: %q fehlt", egressBlock)
+// overrideBridge liest den Bridge-Namen des Abholer-Netzes aus der Box-Override-
+// Datei. Sie setzt genau diesen einen Schlüssel und sonst nichts.
+func overrideBridge(t *testing.T) string {
+	t.Helper()
+	var o struct {
+		Services map[string]any `yaml:"services"`
+		Volumes  map[string]any `yaml:"volumes"`
+		Networks map[string]struct {
+			DriverOpts map[string]string `yaml:"driver_opts"`
+			Name       string            `yaml:"name"`
+			External   bool              `yaml:"external"`
+		} `yaml:"networks"`
 	}
-	if v := CheckCompose([]byte(base)); len(v) != 0 {
-		t.Fatalf("Verstöße:\n%s", strings.Join(v, "\n"))
+	d := yaml.NewDecoder(strings.NewReader(readFile(t, boxOverridePath)))
+	d.KnownFields(true)
+	if err := d.Decode(&o); err != nil {
+		t.Fatalf("Override-Datei: %v", err)
 	}
-	for name, mutated := range map[string]string{
-		"Pin entfernt":       strings.Replace(base, egressBlock, "  egress: {}\n", 1),
-		"anderer Name":       strings.Replace(base, "jnpt-fetch0", "jnpt-x0", 1),
-		"Name zu lang":       strings.Replace(base, "jnpt-fetch0", "jnpt-fetcher-egress0", 1),
-		"leerer driver_opts": strings.Replace(base, fetcherBridgeZeile, "      foo: bar\n", 1),
-	} {
-		t.Run(name, func(t *testing.T) {
-			v := CheckCompose([]byte(mutated))
-			if !hasViolation(v, "Bridge") {
-				t.Fatalf("Mutation nicht als Bridge-Verstoß erkannt: %v", v)
-			}
-		})
+	if len(o.Services) != 0 || len(o.Volumes) != 0 || len(o.Networks) != 1 {
+		t.Fatalf("Override darf nur networks.egress setzen: services %v, volumes %v, networks %v", o.Services, o.Volumes, o.Networks)
 	}
+	egress, ok := o.Networks["egress"]
+	if !ok || egress.Name != "" || egress.External || len(egress.DriverOpts) != 1 {
+		t.Fatalf("Override setzt nicht genau driver_opts an networks.egress: %+v", o.Networks)
+	}
+	name := egress.DriverOpts[bridgeOptKey]
+	if name == "" || len(name) > 15 {
+		t.Fatalf("Bridge-Name %q: leer oder länger als 15 Zeichen (IFNAMSIZ)", name)
+	}
+	return name
 }
 
-func hasViolation(v []string, part string) bool {
-	for _, s := range v {
-		if strings.Contains(s, part) {
-			return true
+// Die allgemeine Compose und ihre Box-Kopie tragen KEINEN festen Bridge-Namen:
+// zwei Compose-Projekte auf einem Host müssten sich sonst dieselbe Bridge teilen.
+func TestRunnerComposeHasNoFixedBridgeName(t *testing.T) {
+	for _, quelle := range []string{readCompose(t), readFile(t, boxRunnerCompose)} {
+		if strings.Contains(quelle, bridgeOptKey) {
+			t.Errorf("Compose trägt %s — der Pin gehört in die Box-Override-Datei", bridgeOptKey)
 		}
 	}
-	return false
 }
 
-// Die Firewall gibt dem Abholer genau ssh frei. Der Abholer spricht nur ssh
-// (gitref.CheckRepoURL lehnt https ab); ein allgemeines accept für die Bridge
-// ließe ihn überall hin.
+func TestBoxOverrideSetsFetcherBridgeName(t *testing.T) {
+	if got := overrideBridge(t); got != "jnpt-fetch0" {
+		t.Errorf("Bridge-Name der Override-Datei = %q, erwartet jnpt-fetch0", got)
+	}
+}
+
+// Die Firewall gibt dem Abholer genau ssh frei, unter demselben Namen, den die
+// Override-Datei setzt. Der Abholer spricht nur ssh (gitref.CheckRepoURL lehnt
+// https ab); ein allgemeines accept für die Bridge ließe ihn überall hin.
 func TestBoxFirewallAllowsOnlySSHFromFetcherBridge(t *testing.T) {
+	name := overrideBridge(t)
 	var fetch []string
 	for _, r := range firewallRegeln(t) {
-		if strings.Contains(r, "jnpt-fetch0") {
+		if strings.Contains(r, `"`+name+`"`) {
 			fetch = append(fetch, r)
 		}
 	}
-	want := []string{`iifname "jnpt-fetch0" tcp dport 22 accept`}
-	if len(fetch) != len(want) || fetch[0] != want[0] {
-		t.Fatalf("Regeln für jnpt-fetch0 = %q, erwartet genau %q", fetch, want)
+	want := `iifname "` + name + `" tcp dport 22 accept`
+	if len(fetch) != 1 || fetch[0] != want {
+		t.Fatalf("Regeln für %s = %q, erwartet genau %q", name, fetch, want)
 	}
 }
 
