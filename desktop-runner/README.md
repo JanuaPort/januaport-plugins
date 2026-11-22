@@ -225,7 +225,7 @@ Token; ein Ergebnis mit Token-Muster wird zu `antwort_ungueltig`. Zeitgrenze 60 
 (`connect-src 'none'`); alles geht über die Brücke. Der Läufer setzt `<meta charset="utf-8">` und die CSP selbst
 ein, Seiten sind nur `https://app-<name mit - statt _>-pc.jnpt.invalid/<pfad>.html` (Einstieg `/index.html`).
 
-## Skript-Helfer `jnpt` (0.4.0 in Arbeit, L5)
+## Skript-Helfer `jnpt` (seit 0.4.0, L5)
 
 `import jnpt` steht neben `januaport` bereit. Alle Aufrufe verwenden ausschließlich
 den vorhandenen Rahmenkanal. Der Helfer eröffnet keinen Netzweg.
@@ -271,7 +271,7 @@ cross-kompiliert. LEAD startet CI/GATE mit `JNPT_GDI_PROBE=1`; der Hilfsprozess
 hat eine feste 15-Sekunden-Grenze. Ohne Opt-in bzw. interaktive Sitzung sichtbarer
 Skip, keine lokale Aufnahme. H3: `TestWindowsPythonKindOhneBedienfeldPipe`.
 
-## Lokaler Halt (0.4.0 in Arbeit, L2)
+## Lokaler Halt (seit 0.4.0, L2)
 
 Der Windows-Engine bietet intern `Halt(state, until)`, `Pause(15|60|0)` und
 `HaltStatus()`. Es gibt in L2 noch keinen CLI-Befehl und keine Bedienoberfläche.
@@ -323,7 +323,7 @@ Prüfung: `python probe/l2_mutations.py` im exklusiven Worktree mit Container
 `TestWindowsAnhaltenBeendetEnkel` prüft in Windows-CI den echten Job-Baum und
 DPAPI-Neustart. Lokal wird diese native Sonde nur kompiliert.
 
-## Bedienfeld (0.4.0 in Arbeit, L4)
+## Bedienfeld (seit 0.4.0, L4)
 
 `cmd/bedienfeld` baut `jnpt-bedienfeld.exe`, Windows-only, ohne CGO:
 `CGO_ENABLED=0 GOOS=windows go build -ldflags=-H=windowsgui -o jnpt-bedienfeld.exe ./cmd/bedienfeld`.
@@ -429,7 +429,7 @@ ein Tray-Rauchtest ist nicht enthalten. Lokal native Tests/Mutanten nur kompilie
 Fokusverhalten, Tray und signierte Verbindung bleiben Nachweise durch CI/GATE
 auf dem Testgerät, niemals lokale GUI-Proben auf dem Arbeitsrechner.
 
-## Lokale Pipe (0.4.0 in Arbeit, L3)
+## Lokale Pipe (seit 0.4.0, L3)
 
 Der Windows-Läufer bietet genau einen benannten Listener unter
 `\\.\pipe\JanuaPort.Bedienfeld.<SHA-256(SID)[:16]>` an; der Suffix sind die ersten

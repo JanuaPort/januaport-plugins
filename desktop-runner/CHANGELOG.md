@@ -2,6 +2,12 @@
 
 ## Unveröffentlicht
 
+## 0.5.5 — 2026-11-22 (JanuaPort/januaport#1425, JanuaPort/januaport#1426, JanuaPort/januaport#1434, JanuaPort/januaport#1421, JanuaPort/januaport#1398, JanuaPort/januaport#1391, JanuaPort/januaport#1392)
+
+### Upstream-Prüfpunkt
+
+- `wailsapp/go-webview2` v1.0.19 unverändert (Upstream v1.0.23), 0 Advisories (BOX, 22.11.); Build mit gepinntem `golang:1.26.11`.
+
 ### Unfertige Umgebung ohne Siegel macht den Pin nicht mehr dauerhaft unbrauchbar (JanuaPort/januaport#1425)
 
 - **Fehler:** `pinEnvironment` benennt die vorbereitete Umgebung nach `envs\<key>` um, schreibt das Paket und speichert erst
