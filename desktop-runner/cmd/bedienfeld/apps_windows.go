@@ -13,6 +13,14 @@ import (
 // Pipe-Gespräch auf (TestBedienfeldUIThreadOhneNetzUndBruecke): Er startet fensterio-Goroutinen und holt
 // deren Ergebnisse über Kanäle ab, geweckt per PostMessage.
 
+// appSurface ist, was der UI-Thread vom App-Fenster braucht; fensterio.Surface erfüllt es, Tests setzen ein Double ein.
+type appSurface interface {
+	Focus()
+	Pump()
+	Close()
+	UpdateApps(fensterio.AppList)
+}
+
 type openResult struct {
 	name string
 	o    *fensterio.Opened
@@ -62,7 +70,7 @@ func (a *application) drainApps() {
 }
 
 func (a *application) openApp(name string) {
-	if a.rt == nil {
+	if a.openAsync == nil {
 		return
 	}
 	if s := a.surfaces[name]; s != nil {
@@ -73,7 +81,7 @@ func (a *application) openApp(name string) {
 		return
 	}
 	a.opening[name] = true
-	a.rt.OpenAsync(name, func(o *fensterio.Opened, err error) {
+	a.openAsync(name, func(o *fensterio.Opened, err error) {
 		select {
 		case a.opened <- openResult{name, o, err}:
 			a.wake()
@@ -93,8 +101,14 @@ func (a *application) handleOpened(r openResult) {
 		return
 	}
 	name := r.name
+	// Die Liste ohne diese App kann eingetroffen sein, während sie noch öffnete: CloseMissing fand dann kein Fenster,
+	// und die Liste meldet nur Änderungen (#1342). Ohne diese Prüfung bliebe das Fenster samt gesperrtem Profil offen.
+	if !fensterio.StillAssigned(a.apps.Names, name) {
+		r.o.Close()
+		return
+	}
 	a.embedding = true
-	s, err := fensterio.NewSurface(r.o, fensterio.SurfaceConfig{OnLink: a.askLink, OnClosed: func() { delete(a.surfaces, name) }})
+	s, err := a.newSurface(r.o, fensterio.SurfaceConfig{OnLink: a.askLink, OnClosed: func() { delete(a.surfaces, name) }})
 	a.embedding = false
 	if err != nil {
 		r.o.Close()
@@ -170,4 +184,13 @@ func (a *application) auxCommand(button int) {
 	if link != nil && button == 0 {
 		_ = fensterio.OpenInBrowser(link.URL)
 	}
+}
+
+// newWindowSurface ist die echte WebView; ein Fehler liefert nie einen Nicht-nil-Wert in der Schnittstelle.
+func newWindowSurface(o *fensterio.Opened, cfg fensterio.SurfaceConfig) (appSurface, error) {
+	s, err := fensterio.NewSurface(o, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
 }

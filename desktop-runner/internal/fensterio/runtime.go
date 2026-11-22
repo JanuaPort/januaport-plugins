@@ -212,12 +212,16 @@ func Watch(ctx context.Context, interval time.Duration, read func() (AppList, er
 	}
 }
 
+// StillAssigned sagt, ob die App in der zuletzt geprüften Liste steht (nur der exakte Name). Eine App, die hier
+// fehlt, bekommt kein Fenster mehr: weder zum Öffnen (Bedienfeld, handleOpened) noch zum Weiterlaufen (CloseMissing).
+func StillAssigned(names []string, name string) bool { return slices.Contains(names, name) }
+
 // CloseMissing schließt die Fenster aller Apps, die in names nicht mehr vorkommen (Widerruf, Entzug), und liefert
 // deren Namen. Close darf den Eintrag selbst aus der Menge entfernen (OnClosed). Das Bedienfeld löscht nichts.
 func CloseMissing[T interface{ Close() }](open map[string]T, names []string) []string {
 	var closed []string
 	for name, w := range open {
-		if !slices.Contains(names, name) {
+		if !StillAssigned(names, name) {
 			closed = append(closed, name)
 			w.Close()
 		}
