@@ -125,6 +125,31 @@ Describe 'Invoke-Lauf.ps1 - Lauf-Deckel' {
         ($gets | ForEach-Object { $_.Body.params.arguments.id }) | Should -Not -Contain 's2'
     }
 
+    It 'ueberspringt einen Satz, den ein anderer Lauf zuerst reserviert hat, und arbeitet den Rest ab (#1540)' {
+        Add-TestHandschlag
+        Add-TestSearch @()
+        Add-TestSearch @((New-TestSatz -Id 's1'), (New-TestSatz -Id 's2'))
+        Add-TestGet (New-TestSatz -Id 's1')
+        Add-TestKonflikt
+        Add-TestSatzVerbucht 's2'
+        Add-TestSearch @()
+        Add-TestSearch @()
+
+        $ausgabe = (. $script:LaufSkript -Endpoint 'https://example.com/mcp' -Token 'test-token' *>&1 | Out-String)
+
+        $updates = Get-TestAufrufe 'zahlungseingang_update'
+        $updates.Count | Should -Be 3
+        $s1 = @($updates | Where-Object { $_.Body.params.arguments.id -eq 's1' })
+        $s1.Count | Should -Be 1
+        $s1[0].Body.params.arguments.status | Should -Be 'in_buchung'
+        @($updates | Where-Object { $_.Body.params.arguments.status -in @('fehler', 'verbucht') -and $_.Body.params.arguments.id -eq 's1' }).Count |
+            Should -Be 0
+        $updates[-1].Body.params.arguments.id | Should -Be 's2'
+        $updates[-1].Body.params.arguments.status | Should -Be 'verbucht'
+        $ausgabe | Should -BeLike '*s1*uebersprungen*'
+        $ausgabe | Should -BeLike '*1 verbucht, 0 auf fehler, 1 uebersprungen*'
+    }
+
     It 'nimmt die Satzart als Parameter' {
         Add-TestHandschlag
         Add-TestSearch @()

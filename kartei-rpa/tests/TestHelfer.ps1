@@ -55,6 +55,19 @@ function Add-TestUpdate {
     Add-TestErgebnis @{ structuredContent = @{ record = $Satz } }
 }
 
+function Get-TestKonfliktText {
+    # Der feste Satz des Kerns (#1540), ohne Werte. Die Umlaute kommen aus
+    # Zeichencodes: Quelltext dieses Ordners ist ASCII.
+    param([string]$Feld = 'status')
+    return 'Konflikt: Vorbedingung f{0}r Feld "{1}" nicht erf{2}llt.' -f [char]0xFC, $Feld, [char]0xFC
+}
+
+function Add-TestKonflikt {
+    # Antwort des Kerns, wenn erwartet nicht mehr stimmt: ein Werkzeugfehler.
+    param([string]$Feld = 'status')
+    Add-TestErgebnis @{ isError = $true; content = @(@{ type = 'text'; text = (Get-TestKonfliktText -Feld $Feld) }) }
+}
+
 function New-TestSatz {
     # Die Felder der generischen Satzart "zahlungseingang" aus dem Rezept.
     param([string]$Id = 'a1b2c3d4', [hashtable]$Felder = @{})
@@ -119,9 +132,66 @@ function Reset-TestTransport {
         Antworten = New-Object System.Collections.ArrayList
         Aufrufe   = New-Object System.Collections.ArrayList
         Wirft     = $null
+        Kern      = $null
     }
 }
 
+function New-TestKern {
+    # Ein kleiner Kern im Speicher, der erwartet WIRKLICH prueft (#1540): Er
+    # haelt die Felder je Satz und weist ein update ab, dessen erwartet nicht
+    # zum gespeicherten Stand passt. Eine feste Antwort-Warteschlange kann das
+    # nicht - sie lieferte den Konflikt auch dann, wenn das Modul erwartet gar
+    # nicht schickt, und ein Mutant ohne erwartet bliebe unentdeckt.
+    # VorUpdate laeuft einmal vor dem ersten update und ist der gleichzeitige
+    # Roboter; Updates zaehlt die angenommenen Schreibvorgaenge.
+    # Der Handler ist selbsttragend: Er laeuft im Mock, also in der Sitzung des
+    # Moduls, und sieht die Helfer dieser Datei nicht.
+    param([hashtable[]]$Saetze, [scriptblock]$VorUpdate)
+    $store = @{}
+    foreach ($s in $Saetze) { $store[$s.id] = [ordered]@{} + $s.fields }
+    $handler = {
+        param($Body, $Kern)
+        $antwort = {
+            param($Status, $Result)
+            $rpc = @{ jsonrpc = '2.0'; id = 1; result = $Result }
+            $bytes = [Text.Encoding]::UTF8.GetBytes("event: message`ndata: $(ConvertTo-Json $rpc -Depth 12 -Compress)`n`n")
+            [pscustomobject]@{
+                StatusCode       = $Status
+                Headers          = @{ 'Content-Type' = 'text/event-stream' }
+                RawContentStream = New-Object System.IO.MemoryStream(, $bytes)
+            }
+        }
+        if ($Body.method -eq 'initialize') { return (& $antwort 200 @{ protocolVersion = '2025-11-25' }) }
+        if ($Body.method -ne 'tools/call') {
+            return [pscustomobject]@{ StatusCode = 202; Headers = @{ 'Content-Type' = 'text/plain' }
+                                      RawContentStream = New-Object System.IO.MemoryStream(, [byte[]]@()) }
+        }
+        $arg = $Body.params.arguments
+        if ($Body.params.name -like '*_get') {
+            return (& $antwort 200 @{ structuredContent = @{ record = @{ id = $arg.id; fields = $Kern.Store[$arg.id] } } })
+        }
+        if ($Kern.VorUpdate) {
+            $vor = $Kern.VorUpdate
+            $Kern.VorUpdate = $null
+            & $vor
+        }
+        $stand = $Kern.Store[$arg.id]
+        if ($null -ne $arg.erwartet) {
+            foreach ($p in $arg.erwartet.PSObject.Properties) {
+                if (([string]$stand[$p.Name]).Trim() -ne ([string]$p.Value).Trim()) {
+                    $text = 'Konflikt: Vorbedingung f{0}r Feld "{1}" nicht erf{0}llt.' -f [char]0xFC, $p.Name
+                    return (& $antwort 200 @{ isError = $true; content = @(@{ type = 'text'; text = $text }) })
+                }
+            }
+        }
+        $Kern.Updates++
+        foreach ($p in $arg.PSObject.Properties) {
+            if ($p.Name -notin @('id', 'source', 'as_of', 'erwartet')) { $stand[$p.Name] = $p.Value }
+        }
+        return (& $antwort 200 @{ structuredContent = @{ record = @{ id = $arg.id; fields = $stand } } })
+    }
+    $global:JnptTest.Kern = @{ Store = $store; VorUpdate = $VorUpdate; Updates = 0; Handler = $handler }
+}
 function Register-TestTransport {
     # Muss aus einem BeforeAll heraus gerufen werden (Mock gilt fuer den Block).
     Mock -ModuleName JanuaPort.Kartei -CommandName Invoke-WebRequest -MockWith {
@@ -132,6 +202,9 @@ function Register-TestTransport {
             Body    = (ConvertFrom-Json $roh)
         }) | Out-Null
         if ($global:JnptTest.Wirft) { throw $global:JnptTest.Wirft }
+        if ($global:JnptTest.Kern) {
+            return (& $global:JnptTest.Kern.Handler $global:JnptTest.Aufrufe[-1].Body $global:JnptTest.Kern)
+        }
         if ($global:JnptTest.Antworten.Count -eq 0) {
             throw 'Test: die Antwort-Warteschlange ist leer - der Aufruf war nicht vorgesehen.'
         }
