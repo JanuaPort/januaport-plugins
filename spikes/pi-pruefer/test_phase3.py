@@ -85,6 +85,15 @@ class AuswertungTests(unittest.TestCase):
                          dict(recall=True, fpr_hart=True, fpr_ki=True, kurz_p95=True))
         self.assertFalse(any(erfolg(dict(recall=.799, fpr_hart=.101, fpr_ki=.151, kurz_p95=2001)).values()))
 
+    def test_fremde_oder_unvollstaendige_resultate_abgewiesen(self):
+        from phase3 import pruefe_lauf
+        daten = [{"id": "h-001"}]
+        lauf = dict(messsatz_sha256="richtig", scores=[.5], dauern=[1], fenster=[1], budget=[512])
+        pruefe_lauf(lauf, daten, "richtig")
+        for feld, wert in (("messsatz_sha256", "falsch"), ("scores", []), ("dauern", []), ("fenster", []), ("budget", [])):
+            with self.subTest(feld=feld), self.assertRaises(ValueError):
+                pruefe_lauf(dict(lauf, **{feld: wert}), daten, "richtig")
+
     def test_bericht_ohne_texte_ohne_kleine_klassenraten(self):
         from phase3 import schreibe_bericht
         from messen import lade_satz
