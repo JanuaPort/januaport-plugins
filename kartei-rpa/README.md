@@ -186,7 +186,7 @@ Aktion **„PowerShell-Skript ausführen"** einfügen:
 | Skript | Schritt | Ausgabe (eine Zeile JSON) |
 |---|---|---|
 | `pad/1-arbeitsliste.ps1` | Vorprüfung + freigegebene Sätze holen | `{"lauf","anzahl","saetze":[{"id", <Ausgabefelder>}]}` |
-| `pad/2-satz-sperren.ps1` | Satz auf `in_buchung` | `{"id", <Ausgabefelder>}`, frisch gelesen |
+| `pad/2-satz-sperren.ps1` | Satz auf `in_buchung` | `{"id", <Ausgabefelder>, "vergeben":false}`, frisch gelesen; bei einem vergebenen Satz `{"id","vergeben":true}` |
 | `pad/3-satz-verbuchen.ps1` | Satz auf `verbucht` mit Buchungsnummer | `{"id","status"}` |
 | `pad/4-satz-fehler.ps1` | Satz auf `fehler` mit Schritt und Meldung | `{"id","status"}` |
 
@@ -248,10 +248,11 @@ bricht es mit „Platzhalter nicht ersetzt" ab.
   durch gleichzeitige Läufe, verbindet aber nichts mit dem Fachsystem: Bricht
   ein Lauf nach der Reservierung ab, bleibt der Satz auf `in_buchung`, und
   ein Mensch klärt ihn (die Bremse).
-- **Im PAD-Flow beendet ein vergebener Satz den Flow.** `pad/2-satz-sperren.ps1`
-  kennt das Überspringen noch nicht: Liefert die Sperre `$null`, endet der
-  Schritt mit einem Skriptfehler (`ScriptError`), gebucht wird nichts. Das
-  Überspringen im Flow ist ein getrennter Folgeschritt.
+- **Im PAD-Flow springt ein vergebener Satz zum nächsten.** Liefert die Sperre
+  `$null`, gibt `pad/2-satz-sperren.ps1` `{"id":"…","vergeben":true}` aus, ohne
+  Fehler; der Flow springt bei `Aktuell.vergeben` = `true` zum nächsten
+  Schleifenelement (`pad/FLOW-VORLAGE.md`, Schritt 6c′). Ein älterer Flow ohne
+  diesen Schritt braucht ihn nachgetragen.
 - **Pseudonyme reisen wörtlich mit.** Der Roboter bekommt nur die
   Ausgabefelder — wählen Sie sie so, dass er nichts anderes braucht.
 - **Kein Ersatz für einen Connector.** Hat das Fachsystem eine Schnittstelle,

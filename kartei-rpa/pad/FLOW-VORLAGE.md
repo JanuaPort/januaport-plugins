@@ -85,8 +85,9 @@ Vor jeder Skript-Aktion gilt: **Timeout 120** (Abschnitt 4) und
 | 6 | **Für jeden** / *For each* | über `Arbeitsliste.saetze`, aktuelles Element `Satz` |
 | 6a | **Variable festlegen** / *Set variable* | `SatzId` = Wert von `Satz.id` |
 | 6a′ | **PowerShell-Skript ausführen** | Inhalt: `2-satz-sperren.ps1` (nutzt `SatzId` und `Lauf`). Ausgabe → `SperreOutput`, Fehler → `SperreError` |
-| 6b | **Wenn** / *If* | `SperreError` ist nicht leer → **Flow beenden**. Kein „Weiter": Scheitert die Sperre, hat jemand dazwischengefunkt oder der Satz trägt schon eine Buchungsnummer (dann ist er im Fachsystem gebucht) |
-| 6c | **JSON in benutzerdefiniertes Objekt konvertieren** | `SperreOutput` → `Aktuell` (trägt `id` und die Ausgabefelder, per Voreinstellung `beleg_nummer`, `nummer_art`, `betrag`, `buchungsdatum`) |
+| 6b | **Wenn** / *If* | `SperreError` ist nicht leer → **Flow beenden**. Kein „Weiter": Scheitert die Sperre mit einem Fehler, hat jemand dazwischengefunkt oder der Satz trägt schon eine Buchungsnummer (dann ist er im Fachsystem gebucht). **Ausgenommen** ist ein vergebener Satz: Er ist kein Fehler, `SperreError` bleibt leer, und 6c′ springt weiter |
+| 6c | **JSON in benutzerdefiniertes Objekt konvertieren** | `SperreOutput` → `Aktuell` (trägt `id`, `vergeben` und die Ausgabefelder, per Voreinstellung `beleg_nummer`, `nummer_art`, `betrag`, `buchungsdatum`) |
+| 6c′ | **Wenn** / *If* | `Aktuell.vergeben` = `true` → **Nächstes Schleifenelement** / *Next loop item*. Ein anderer Lauf hat den Satz zuerst gesperrt: nicht buchen, **kein** Fehlerblock, **kein** `Fehlerhaft`-Zähler, **kein** `4-satz-fehler.ps1` (es erwartet den eigenen Lauf und träfe den fremden Satz nicht) |
 | 6d | **Bei Blockfehler** / *On block error* | umschließt 6e; im Fehlerfall: **Ausnahmebehandlung → Nächste Aktion ausführen** (siehe 6g) |
 | 6e | *(die Klickfolge im Fachsystem)* | UI-Aktionen: Maske nach `Aktuell.nummer_art` öffnen, `Aktuell.beleg_nummer`, `Aktuell.betrag`, `Aktuell.buchungsdatum` eintragen, buchen, **Buchungsnummer auslesen** → `Buchungsnr`. **Nimmt ein Mensch vor Ort auf** — hier steht bewusst nichts Erfundenes |
 | 6f | **PowerShell-Skript ausführen** | Inhalt: `3-satz-verbuchen.ps1`; `SatzId`, `Lauf`, `Buchungsnr`. Danach **Variable erhöhen** `Gebucht` |

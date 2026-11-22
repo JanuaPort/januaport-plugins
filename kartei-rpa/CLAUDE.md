@@ -46,8 +46,9 @@ Nicht exportiert und frei änderbar: `Find-JnptSaetze`, `Get-JnptSatz`,
 
 **Rückgabe von `Lock-JnptSatz`:** der gelesene Satz, oder `$null`, wenn ein
 gleichzeitiger Lauf den Satz zuerst reserviert hat (siehe Invariante 11). Jeder
-Aufrufer prüft auf `$null`; `Invoke-Lauf.ps1` tut es, `pad/2-satz-sperren.ps1`
-(Stand #1540) noch nicht und endet dann mit einem Skriptfehler.
+Aufrufer prüft auf `$null`; `Invoke-Lauf.ps1` überspringt den Satz,
+`pad/2-satz-sperren.ps1` meldet ihn als `vergeben` (Stand #1545, siehe
+„Ausgabeformen“).
 
 **Mindest-Kernversion:** ein Kern mit #1540 (Kartei-Vorbedingung `erwartet`).
 Ein älterer Kern lehnt `erwartet` als nicht deklariertes Feld ab (fail-closed:
@@ -66,8 +67,21 @@ in die Einstellungsdatei.
 
 Die **Ausgabeformen** der vier Skripte sind der Vertrag mit dem Flow:
 Schritt 1 `{"lauf","anzahl","saetze":[{"id",<Ausgabefelder>}]}`, Schritt 2
-`{"id",<Ausgabefelder>}` frisch aus `get`, Schritte 3/4 `{"id","status"}`,
-Abbruch = `throw` (ScriptError).
+`{"id",<Ausgabefelder>,"vergeben":false}` frisch aus `get`, Schritte 3/4
+`{"id","status"}`, Abbruch = `throw` (ScriptError).
+
+**Schritt 2 und „vergeben“ (#1545):** Das Feld `vergeben` steht in jeder Ausgabe
+von Schritt 2, damit PAD es immer findet; ein Ausgabefeld gleichen Namens würde
+es überschreiben, also nicht so nennen. Liefert `Lock-JnptSatz` `$null` (ein
+paralleler Lauf hat den Satz reserviert, Invariante 11), schreibt das Skript
+genau eine Zeile `{"id":"<SatzId>","vergeben":true}`, ohne Fehler und ohne
+weitere Ausgabe — das Skript leitet den Informationsstrom von `Lock-JnptSatz`
+mit `6>$null` um, sonst stünde die Log-Zeile des Moduls als zweite Zeile vor dem
+JSON. Der Flow springt bei `Aktuell.vergeben` = `true` zum nächsten
+Schleifenelement: kein Fehlerblock, kein `Fehlerhaft`-Zähler, kein Schritt 4
+(`Set-JnptSatzFehler` erwartet den eigenen Lauf und träfe den fremden Satz
+nicht). Jeder andere Fehler in Schritt 2 bleibt `throw`/ScriptError und beendet
+den Flow (Invariante 4).
 
 ## Einstellungen
 
@@ -166,11 +180,14 @@ kein Prozent-Paar außer den bekannten Platzhaltern steht.
 - **Eine Mindest-Kernversion statt Versionsprüfung.** Ein Kern ohne #1540 lehnt
   `erwartet` ab (`additionalProperties: false`); das ist fail-closed und braucht
   keine Prüfung im Modul. Wer es doch baut, hat zwei Wahrheiten über die Version.
-- **Überspringen nur im Modul und in `Invoke-Lauf.ps1`.** `pad/2-satz-sperren.ps1`
-  fragt `$null` nicht ab (Stand #1540; die PAD-Skripte gehörten einem anderen
-  Branch): Der Schritt endet mit einem Skriptfehler, nichts wird gebucht. Ein
-  Überspringen im Flow braucht eine Ausgabeform für „vergeben" im Vertrag der
-  Schritte.
+- **Überspringen im Modul, in `Invoke-Lauf.ps1` und im PAD-Flow (#1545).**
+  Das Modul liefert `$null`; `Invoke-Lauf.ps1` zählt den Satz als übersprungen;
+  `pad/2-satz-sperren.ps1` übersetzt `$null` in die Ausgabe `vergeben`, weil ein
+  PAD-Schritt nur Text liefern kann und der Flow sonst nur zwischen „Fehler“ und
+  „Satz“ unterscheiden könnte. Vor #1545 reichte das Skript `$null` an
+  `ConvertTo-JnptAusgabe` weiter und endete mit einem Parameter-Bindungsfehler.
+  Ein Flow, der vor #1545 gebaut wurde, kennt `vergeben` nicht und braucht den
+  Schritt 6c′ aus `pad/FLOW-VORLAGE.md`.
 - **Kein `Set-StrictMode`.** Der Transport lebt davon, dass ein fehlendes Feld
   `$null` ist (`isError`, `structuredContent.record`).
 - **Kein Modul-Manifest, kein Installer.** Eine `.psm1`, vier `.ps1` und eine
