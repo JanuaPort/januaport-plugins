@@ -26,11 +26,19 @@ const csp = "default-src 'self'; script-src 'self'; connect-src 'self'; frame-an
 
 const packageFlightTimeout = 30 * time.Second
 
+// defaultProxyTimeout ist die Obergrenze für einen /mcp-Aufruf: die längste
+// Wandzeit eines Skript-Werkzeugs laut Vertrag (max_wall_s 86400) plus Puffer.
+// Eine kürzere Anfrage des Browsers gilt vorher (Abbruch bricht den Upstream ab).
+const defaultProxyTimeout = 24*time.Hour + time.Minute
+
 // Config contains operator-controlled endpoints, never request-controlled URLs.
 type Config struct {
 	Domain, GatewayURL, LoginURL, KeyPath string
 	Logger                                *slog.Logger
 	Now                                   func() time.Time
+	// ProxyTimeout begrenzt einen /mcp-Aufruf samt Antwortkörper; 0 heißt
+	// defaultProxyTimeout. Paketabruf und Anmeldung behalten ihre 30 s.
+	ProxyTimeout time.Duration
 }
 type cached struct {
 	checked time.Time
@@ -49,12 +57,16 @@ type binding struct {
 
 // Host holds only RAM state. A restart requires a fresh browser login.
 type Host struct {
-	c        Config
-	client   *http.Client
-	mu       sync.Mutex
-	cache    map[string]cached
-	flights  map[string]*packageFlight
-	sessions map[string]binding
+	c      Config
+	client *http.Client // Paketabruf und Anmeldung: 30 s Gesamtfrist
+	// proxyClient bedient nur /mcp: keine Gesamtfrist am Client, die Frist
+	// kommt über den Kontext der Anfrage (proxyTimeout).
+	proxyClient  *http.Client
+	proxyTimeout time.Duration
+	mu           sync.Mutex
+	cache        map[string]cached
+	flights      map[string]*packageFlight
+	sessions     map[string]binding
 }
 
 var label = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
@@ -89,7 +101,12 @@ func New(c Config) (*Host, error) {
 			return nil, errors.New("apphost: Gateway-URLs fehlen oder sind ungültig")
 		}
 	}
-	h := &Host{c: c, client: &http.Client{Timeout: 30 * time.Second, Transport: newTransport(), CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}, cache: map[string]cached{}, flights: map[string]*packageFlight{}, sessions: map[string]binding{}}
+	if c.ProxyTimeout <= 0 {
+		c.ProxyTimeout = defaultProxyTimeout
+	}
+	noRedirect := func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	proxyClient := &http.Client{Transport: newProxyTransport(c.ProxyTimeout), CheckRedirect: noRedirect}
+	h := &Host{c: c, proxyClient: proxyClient, proxyTimeout: c.ProxyTimeout, client: &http.Client{Timeout: 30 * time.Second, Transport: newTransport(), CheckRedirect: noRedirect}, cache: map[string]cached{}, flights: map[string]*packageFlight{}, sessions: map[string]binding{}}
 	return h, nil
 }
 func (h *Host) key() (string, error) {
@@ -451,7 +468,9 @@ func (h *Host) proxy(w http.ResponseWriter, r *http.Request, app string) {
 		status(w, 413)
 		return
 	}
-	out, e := http.NewRequestWithContext(r.Context(), "POST", h.c.GatewayURL+"/mcp", bytes.NewReader(b))
+	ctx, cancel := context.WithTimeout(r.Context(), h.proxyTimeout)
+	defer cancel()
+	out, e := http.NewRequestWithContext(ctx, "POST", h.c.GatewayURL+"/mcp", bytes.NewReader(b))
 	if e != nil {
 		status(w, 502)
 		return
@@ -463,7 +482,7 @@ func (h *Host) proxy(w http.ResponseWriter, r *http.Request, app string) {
 		}
 	}
 	out.Header.Set("Authorization", "Bearer "+token)
-	resp, e := h.client.Do(out)
+	resp, e := h.proxyClient.Do(out)
 	if e != nil {
 		status(w, 502)
 		return
@@ -481,7 +500,24 @@ func (h *Host) proxy(w http.ResponseWriter, r *http.Request, app string) {
 		}
 	}
 	status(w, resp.StatusCode)
-	_, _ = io.Copy(w, resp.Body)
+	// Nach dem Header-Versand lässt sich kein Status mehr setzen; der Fehler
+	// wird nur gezählt und benannt, nie mit Inhalt, Token oder Query geloggt.
+	if _, e := io.Copy(w, resp.Body); e != nil {
+		h.c.Logger.Warn("apphost_proxy_copy_failed", "cause", copyFailureCause(ctx, r))
+	}
+}
+
+// copyFailureCause ordnet einen Kopierfehler einer festen Ursache zu, ohne den
+// Fehlertext (er könnte Adressen tragen) zu übernehmen.
+func copyFailureCause(ctx context.Context, r *http.Request) string {
+	switch {
+	case r.Context().Err() != nil:
+		return "browser_gone"
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return "deadline"
+	default:
+		return "upstream"
+	}
 }
 
 // RelayHandler is exclusively :8081, never exposed by the browser proxy.

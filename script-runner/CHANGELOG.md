@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- JanuaPort/januaport#1424: Der `/mcp`-Proxy des Apphost schneidet Werkzeugaufrufe nicht mehr nach 30 Sekunden ab. Eigener HTTP-Client ohne Gesamtfrist, die Frist läuft über den Anfrage-Kontext (Obergrenze: Wandzeit-Decke 86400 s plus eine Minute; Abbruch des Browsers bricht den Upstream ab), `ResponseHeaderTimeout` folgt der Proxy-Frist. Kopierfehler nach dem Header-Versand werden ohne Inhalt geloggt. Paketabruf und Anmeldung behalten ihre 30 Sekunden; gleiche Netz-Vorgaben (kein Umgebungs-Proxy, kein Redirect, expliziter TCP-Dialer).
+
 - **Go 1.26.11** (GO-2026-6859, `net/http`, behoben in 1.26.11): `go.mod` und Build-Image `golang:1.26.11` per Digest `sha256:4165ee6b…` gepinnt, wie der Kern mit JanuaPort/januaport#1372. Ohne diesen Sprung schlägt `govulncheck` auf dem ausgelieferten Binary fehl.
 
 - JanuaPort/januaport#1246: Die Hygiene-Prüfung erkennt Windows-Laufwerksquellen

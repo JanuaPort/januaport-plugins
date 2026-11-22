@@ -462,6 +462,10 @@ und übernimmt nur MIME-/MCP-Protokollheader. Browser-Cookies, Authorization,
 Forwarded- und X-Jnpt-Header gehen nicht weiter; Gateway-Cookies kommen nicht
 zurück. 401 löscht die lokale Sitzung und das Cookie. Logout widerruft über
 `exchange {revoke}`. Es gibt keine Gateway-Redirects und keinen Umgebungsproxy.
+Ein `/mcp`-Aufruf hat keine 30-Sekunden-Grenze mehr (Werkzeuge laufen bis zur Wandzeit,
+höchstens 24 h): Der Proxy hat einen eigenen Client ohne Gesamtfrist, die Obergrenze
+ist die Wandzeit-Decke des Vertrags plus eine Minute, und ein Abbruch des Browsers
+bricht den Upstream-Aufruf ab. Paketabruf und Anmeldung behalten ihre 30 Sekunden.
 Logs enthalten keine Cookies, Tokens, Codes, Verifier oder Query-Werte.
 
 Alle Antworten tragen `no-store`, `nosniff`, `no-referrer` und die feste CSP:
