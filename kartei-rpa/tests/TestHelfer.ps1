@@ -148,7 +148,10 @@ function New-TestKern {
     # Moduls, und sieht die Helfer dieser Datei nicht.
     param([hashtable[]]$Saetze, [scriptblock]$VorUpdate)
     $store = @{}
-    foreach ($s in $Saetze) { $store[$s.id] = [ordered]@{} + $s.fields }
+    foreach ($s in $Saetze) {
+        $store[$s.id] = [ordered]@{}
+        foreach ($k in $s.fields.Keys) { $store[$s.id][$k] = $s.fields[$k] }
+    }
     $handler = {
         param($Body, $Kern)
         $antwort = {
