@@ -12,6 +12,12 @@ Messsatzes** abgeleitete Schwelle mit FPR <= 5 %. Dies ist ausdrücklich eine
 nachträgliche Kalibrierung auf dem Testsatz und keine unabhängige Validierung.
 Fensterbudget 512 Tokens, Überlappung 64; zusätzlich Abschneiden ohne Fensterung.
 
+Abgeschlossen: vier Kandidaten, beide Modi und beide Betriebspunkte;
+[vollständiger Bericht](ergebnisse/phase2.md) und
+[7360 Rohscore-Zeilen ohne Texte](ergebnisse/phase2-scores.jsonl).
+Strands erreicht bei der auf diesem Satz kalibrierten Schwelle 87,39 % Recall,
+aber 28,57 % FPR auf A3; p95 81,734 s je 10k Zeichen, Spitzen-RAM 9,87 GiB.
+
 Messsatz und isoliertes CPU-Messgerüst für einen möglichen Prüfer von
 **Werkzeugantworten, bevor sie der Agent erhält**: Mailtext, Datei-/PDF-Auszug,
 ERP-Feld, Ticketbeschreibung, Webseite und Upstream-MCP-Antwort. Ausgabe je Text:
@@ -351,6 +357,9 @@ docker run --rm --memory 10g --cpus 4 -v pi-pruefer-hf:/hf -v "${PWD}:/w" -e HF_
 LEAD startet den Strands-Resume erst bei mehr als 15 GB freiem Host-RAM.
 Diese Freigabe liegt für den aktuellen Resume vor; keine eigene Prüfschleife.
 Download und Inferenz laufen nacheinander mit 10 GiB und vier CPUs.
+Strands wird pro Fenster einzeln mit einer Frage ausgewertet (Batchgröße 1).
+Nach dem externen Speicherabbruch hat LEAD einen neuen einzelnen Messversuch bei
+mehr als 21 GB freiem Host-RAM und ohne parallelen Lauf freigegeben.
 Images/Größen vorher mit `docker image inspect` lesen und als `PI_IMAGE_ID` und
 `PI_IMAGE_BYTES` übergeben. Die Roh-Erhebung schreibt ausschließlich ins externe
 Volume und enthält keine Texte. Je Kandidat einen frischen Container aufrufen:
