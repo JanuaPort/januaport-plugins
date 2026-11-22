@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -862,4 +863,115 @@ func dirEntries(dir string) []string {
 		out = append(out, e.Name())
 	}
 	return out
+}
+
+// currentKey liest den zuletzt abgeglichenen runtime-key.
+func (e *env) currentKey() string {
+	e.m.mu.Lock()
+	defer e.m.mu.Unlock()
+	return e.m.key
+}
+
+// writePinsURL schreibt pins.json mit anderer Repository-URL.
+func (e *env) writePinsURL(url string, rows ...pinRow) {
+	e.t.Helper()
+	b, _ := json.Marshal(map[string]any{"version": 1, "repo_url": url, "pins": rows})
+	if err := os.WriteFile(filepath.Join(e.keys, "pins.json"), b, 0o600); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+// Ein URL-Wechsel, während ein Skript mit Bibliotheken läuft (#1423), hält den
+// Abgleich nicht an: refresh kehrt zurück, der runtime-key wird weiter neu
+// gelesen, das Verzeichnis des Laufs bleibt vollständig, neue Läufe starten
+// nicht (fail-closed), und nach dem Ende des Laufs ist libs geleert. Ein
+// zweiter Wechsel während des Entwässerns räumt nicht doppelt auf.
+func TestLibsURLChangeWithHeldLeaseDoesNotBlockRefresh(t *testing.T) {
+	const original = "ssh://git@git.example.com/org/scripts.git"
+	for _, tc := range []struct {
+		name string
+		urls []string
+	}{
+		{"ein Wechsel", []string{"ssh://git@git.example.com/org/other.git"}},
+		{"zweiter Wechsel während des Entwässerns", []string{"ssh://git@git.example.com/org/other.git", "ssh://git@git.example.com/org/third.git"}},
+		{"Rückwechsel auf die alte URL", []string{"ssh://git@git.example.com/org/other.git", original}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := libsPin{dir: "pin-a", name: "pin_a", libs: []testLib{demoLib, helperLib}}
+			e, fx := libsEnv(t, []libsPin{a}, withPoll(time.Hour))
+			g := dialGuard(t, e.sock, "i1", 2)
+			defer func() { _ = g.conn.Close() }()
+			waitFor(t, "Pin ready", func() bool {
+				e.m.refresh(context.Background())
+				s, _ := e.pinState("pin_a")
+				return s == contract.StateReady
+			})
+			hash := a.lockHash(t)
+			dir := filepath.Join(e.libs, hash)
+
+			jobSeen, releaseRun := make(chan struct{}), make(chan struct{})
+			var once sync.Once
+			release := func() { once.Do(func() { close(releaseRun) }) }
+			defer release()
+			go func() {
+				g.job()
+				close(jobSeen)
+				<-releaseRun
+				g.exited(0)
+			}()
+			first := make(chan *mcpResult, 1)
+			go func() {
+				res, err := e.call("pin_a", map[string]any{}, e.fx.commit)
+				first <- &mcpResult{res, err}
+			}()
+			<-jobSeen // der Lauf hält sein Verzeichnis
+
+			for i, url := range tc.urls {
+				e.writePinsURL(url, a.row(fx))
+				refreshed := make(chan struct{})
+				go func() { e.m.refresh(context.Background()); close(refreshed) }()
+				select {
+				case <-refreshed:
+				case <-time.After(5 * time.Second):
+					t.Fatalf("refresh nach Wechsel %d blockiert auf den laufenden Lauf", i+1)
+				}
+				// Die Schleife lebt: ein rotierter Schlüssel wird gelesen.
+				rotated := "rotated-key-not-a-secret-" + strconv.Itoa(i)
+				e.writeKey(rotated)
+				e.m.refresh(context.Background())
+				if got := e.currentKey(); got != rotated {
+					t.Fatalf("runtime-key nach Wechsel %d nicht neu gelesen", i+1)
+				}
+			}
+
+			// Der Testclient authentifiziert mit testKey: zurückrotieren, und auch das
+			// muss der laufende Abgleich übernehmen.
+			e.writeKey(testKey)
+			e.m.refresh(context.Background())
+			if got := e.currentKey(); got != testKey {
+				t.Fatal("zurückrotierter runtime-key nicht neu gelesen")
+			}
+			if r, ok := e.m.libs.Acquire(hash); ok {
+				r()
+				t.Fatal("Leihe während des Entwässerns")
+			}
+			assertEnd(t, e.mustCall("pin_a", map[string]any{}), contract.EndRefused, contract.DetailState)
+			if _, err := os.Stat(filepath.Join(dir, "helper", "__init__.py")); err != nil {
+				t.Fatalf("Baum des laufenden Skripts nicht mehr vollständig: %v", err)
+			}
+			select {
+			case r := <-first:
+				t.Fatalf("der Lauf endete vor der Freigabe: %+v", r)
+			default:
+			}
+
+			release()
+			r1 := <-first
+			if r1.err != nil {
+				t.Fatal(r1.err)
+			}
+			assertEnd(t, r1.res, contract.EndOK, "")
+			waitFor(t, "libs geleert", func() bool { return len(dirNames(t, e.libs)) == 0 })
+		})
+	}
 }

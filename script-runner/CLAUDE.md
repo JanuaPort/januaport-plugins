@@ -618,7 +618,10 @@ nicht von `isolation` ab; `/healthz` behält seine lokale Sandbox-Bedeutung.
     - **Pin-Wechsel und Cache:** `TestLibsSameLockTwoPinsPreparedOnce`,
       `TestLibsNewLockNewDirectoryAndPruneUnreferenced`,
       `TestLibsPruneWaitsForPendingPins`, `TestLibsRepositoryURLChangeClearsLibs`,
-      `TestLibsRunWithoutReadyLibsRefusedState`.
+      `TestLibsRunWithoutReadyLibsRefusedState`; ein URL-Wechsel blockiert den
+      Abgleich nicht, solange ein Lauf leiht (#1423):
+      `TestLibsURLChangeWithHeldLeaseDoesNotBlockRefresh`,
+      `TestBeginResetWhileDrainingJoinsRunningReset`.
     - **Altbestand:** `TestLibsLegacyPinWithWheelsDirectoryBehavesAsBefore`,
       `TestLibsLegacyPinWithOversizedWheelsDirectoryStaysInvalid`,
       `TestJobLibsFieldOnlyWhenSet`, `TestRequirementsFieldInvalidContent`.
@@ -779,7 +782,19 @@ Aufräumen und Reset). Aufräumen überspringt Verliehenes; ein Reset (URL-Wechs
 sperrt neue Leihen und wartet auf laufende Läufe (höchstens ihre Wandzeit); wer
 dabei oder danach startet, bekommt `refused/state` — nie ein `ok` mit teilweisem
 Baum (`TestAcquireHoldsDirectoryAgainstPruneAndReset`,
-`TestLibsRunStartingDuringRemovalIsFailClosed`). Der Importpfad zeigt nur auf
+`TestLibsRunStartingDuringRemovalIsFailClosed`).
+**Der Abgleich wartet nie darauf (#1423):** `refresh` ruft
+`Manager.BeginReset` — das sperrt neue Leihen und Vorbereitungen sofort und
+kehrt zurück; Warten auf die Leihen und Aufräumen laufen in einer
+Hintergrund-Goroutine (`drain`). Ein weiterer URL-Wechsel während des
+Entwässerns bekommt denselben Kanal zurück (kein zweites Aufräumen, keine Leihe
+auf halb gelöschtem Stand); erst nach dem Ende startet der nächste Wechsel ein
+neues Entwässern. `Reset` ist nur noch `<-BeginReset()` für Tests und Aufrufer,
+die warten dürfen. Zeitplan-Takte, runtime-key und Pin-Stände laufen währenddessen
+weiter (`TestLibsURLChangeWithHeldLeaseDoesNotBlockRefresh` mit drei
+Wechselfolgen; Manager: `TestBeginResetReturnsWhileLeaseIsHeld`,
+`TestBeginResetWhileDrainingJoinsRunningReset`,
+`TestBeginResetAfterCompletionStartsNewReset`). Der Importpfad zeigt nur auf
 ein fertig umbenanntes `libs/<64 Hex>` mit Manifest, nie auf `.tmp`: `libs`
 im job ist ein geprüfter Lock-Hash, `<hash>.tmp`/`.wheel` sind keine gültigen
 Werte (`TestLibsArg`). `.tmp` und `<hash>.wheel` liegen außerhalb ihrer

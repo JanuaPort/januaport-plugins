@@ -109,7 +109,10 @@ func (m *Mediator) loadTree(ctx context.Context, p pinState) (store.Tree, error)
 // resetLibsOnURLChange leert libs bei einem Wechsel der Repository-URL. Nur
 // eine gültige pins.json zählt; der erste Abgleich nach dem Start ist kein
 // Wechsel (libs überlebt den Neustart; was nicht mehr referenziert ist, räumt
-// pruneLibs auf).
+// pruneLibs auf). Der Abgleich wartet nicht auf laufende Skripte (#1423): Er
+// stößt das Entwässern an, das im Hintergrund auf die Leihen wartet; bis dahin
+// bekommt kein Lauf eine Leihe (fail-closed), Pins mit Bibliotheken bleiben
+// pending.
 func (m *Mediator) resetLibsOnURLChange(f pins.File, parsedOK bool) {
 	if !parsedOK || f.RepoURL == "" {
 		return
@@ -119,7 +122,7 @@ func (m *Mediator) resetLibsOnURLChange(f pins.File, parsedOK bool) {
 	m.libsURL = f.RepoURL
 	m.mu.Unlock()
 	if changed && m.libs != nil {
-		m.libs.Reset()
+		m.libs.BeginReset()
 	}
 }
 

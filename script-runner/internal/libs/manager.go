@@ -89,6 +89,7 @@ type Manager struct {
 	prepared int
 	leases   map[string]int // laufende Läufe je Lock-Hash
 	draining bool           // Reset läuft: keine neuen Leihen
+	reset    chan struct{}  // offen, solange ein Entwässern läuft
 	leaseCh  *sync.Cond
 }
 
@@ -547,16 +548,44 @@ func (m *Manager) Prune(keep map[string]bool) {
 	}
 }
 
-// Reset leert libs: Laufende Vorbereitungen werden abgebrochen, alles wird
-// entfernt (Wechsel der Repository-URL). Verliehene Verzeichnisse (Acquire) bleiben,
-// bis ihr Lauf endet; bis dahin gibt es keine neue Leihe.
-func (m *Manager) Reset() {
+// BeginReset stößt das Leeren von libs an und kehrt sofort zurück (Wechsel der
+// Repository-URL, #1423): Ab der Rückkehr gibt es keine neue Leihe und keine neue
+// Vorbereitung, laufende Vorbereitungen sind abgebrochen. Das Warten auf die
+// Läufe, die ihr Verzeichnis halten (höchstens ihre Wandzeit), und das
+// Entfernen laufen im Hintergrund; der Kanal schließt, wenn libs leer und der
+// Manager wieder annahmebereit ist. Läuft schon ein Entwässern, schließt sich
+// der Aufruf ihm an (derselbe Kanal): Während des Entwässerns kann nichts
+// Neues entstanden sein, das eine zweite Runde entfernen müsste, und ein
+// zweites Aufräumen riskierte eine Leihe auf halb gelöschtem Stand.
+func (m *Manager) BeginReset() <-chan struct{} {
 	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.reset != nil {
+		return m.reset
+	}
+	done := make(chan struct{})
+	m.reset = done
 	m.draining = true // ab jetzt keine neue Leihe
 	for _, j := range m.jobs {
 		j.cancel()
 	}
-	m.mu.Unlock()
+	go m.drain(done)
+	return done
+}
+
+// Reset leert libs und kehrt erst danach zurück: Laufende Vorbereitungen werden
+// abgebrochen, alles wird entfernt. Verliehene Verzeichnisse (Acquire) bleiben,
+// bis ihr Lauf endet; bis dahin gibt es keine neue Leihe. Wer nicht warten
+// darf, nimmt BeginReset.
+func (m *Manager) Reset() {
+	<-m.BeginReset()
+}
+
+// drain ist der Hintergrundteil von BeginReset: auf die abgebrochenen
+// Vorbereitungen und die Leihen warten, dann alles entfernen. Das Entwässern
+// endet unter demselben Schloss, unter dem das Entfernen lief.
+func (m *Manager) drain(done chan struct{}) {
+	defer close(done)
 	m.wg.Wait()
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -574,10 +603,12 @@ func (m *Manager) Reset() {
 		}
 	}
 	m.draining = false
+	m.reset = nil
 }
 
-// Close bricht laufende Vorbereitungen ab und wartet auf sie. Mehrfaches
-// Schließen ist zulässig.
+// Close bricht laufende Vorbereitungen ab und wartet auf sie, nicht auf ein
+// laufendes Entwässern (das wartet auf Läufe). Mehrfaches Schließen ist
+// zulässig.
 func (m *Manager) Close() {
 	m.cancel()
 	m.wg.Wait()
