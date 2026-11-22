@@ -36,7 +36,8 @@ prüft, ob die Änderung dort nachgezogen werden muss — und umgekehrt.
 | Datei | Verantwortung |
 |---|---|
 | `docker-compose.box.yml`, `.env.example` | Verdrahten Gateway, Proxy-Flächen, Wartungsprofil, Netze, Volumes und Betreiberwerte. |
-| `docker-compose.script-runner.yml` | Bindet Vermittler, Sandbox, Abholer, Bibliotheks-Init und optionalen Apphost an die Box an. |
+| `docker-compose.script-runner.yml` | Bindet Vermittler, Sandbox, Abholer, Bibliotheks-Init und optionalen Apphost an die Box an. Byte-gleich mit `../script-runner/docker-compose.yml` (Wächter `internal/hygiene`), trägt daher keinen festen Bridge-Namen. |
+| `docker-compose.script-runner.box.yml` | Box-Override, setzt nur `networks.egress.driver_opts` mit der festen Bridge `jnpt-fetch0` des Abholers. Auf der Box zusammen mit der Compose oben starten (zwei `-f`). |
 | `Caddyfile`, `Caddyfile.admin` | Konfigurieren Werkzeug- und Betreiber-Fläche des Reverse-Proxys. |
 | `apps-global.caddy`, `apps.caddy` | Konfigurieren Zertifikatsfreigabe, Apphost-Proxy und App-Zugriffsprotokoll. |
 | `tailscale-serve.json` | Konfiguriert den TLS-Proxy des Wartungs-Containers zum Gateway. |
@@ -51,7 +52,7 @@ prüft, ob die Änderung dort nachgezogen werden muss — und umgekehrt.
 | `sharepoint/ablage.app.example`, `sharepoint/sicherung.app.example`, `sharepoint/zugang-sp.sh` | Stellen App-Kennungen und die lokale Eingabe der beiden SharePoint-Secrets bereit. |
 | `sharepoint/sp-token-probe.py` | Prüft Tokenbezug, Rollen und Zugriff auf Wurzel-Site sowie Site-Suche. |
 | `sharepoint/sp-einrichten.py`, `sharepoint/rclone-probe.sh` | Richten den Site-Remote ein und prüfen die rclone-Dateioperationen. |
-| `sharepoint/jnpt-ablage-abgleich.sh`, `sharepoint/jnpt-ablage-abgleich.service`, `sharepoint/jnpt-ablage-abgleich.timer` | Führen den periodischen Zwei-Wege-Abgleich der Ablage mit SharePoint aus. |
+| `sharepoint/jnpt-ablage-abgleich.sh`, `sharepoint/jnpt-ablage-abgleich.service`, `sharepoint/jnpt-ablage-abgleich.timer` | Führen den periodischen Zwei-Wege-Abgleich der Ablage mit SharePoint aus. Die Unit führt `/var/lib/jnpt/rclone-ablage` in `ReadWritePaths`; `rclone-bisync` und `rclone-ablage` gehören 65532 (0700), das Runbook legt sie vor dem Erstlauf an, `sp-einrichten.py` setzt auch das Verzeichnis (JanuaPort/januaport#1430, Wächter `box_sharepoint_test.go`). |
 | `sharepoint/jnpt-sicherung-sharepoint.sh`, `sharepoint/jnpt-sicherung-sharepoint.service`, `sharepoint/jnpt-sicherung-sharepoint.timer` | Erzeugen und übertragen die periodische Box-Sicherung nach SharePoint. |
 
 ## Öffentliche Schnittstelle
@@ -64,7 +65,9 @@ Pfad kennen `boot/jnpt-stack-nachstart.service`, `smb/jnpt-backup.sh`,
 **Compose (`docker-compose.box.yml`):** Projekt `jnpt` (Top-Level `name:`),
 Dienste `jnpt`, `caddy`, `caddy-admin`, `tailscale` (Profil `wartung`), Netz
 `jnpt_default` mit Bridge `jnpt0`, internes Netz `jnpt_plugins` mit Bridge
-`jnpt-plug0` (nur `jnpt` und der vermittler des Skript-Läufers), Volumes `jnpt_jnpt-data`, `jnpt_caddy-data`,
+`jnpt-plug0` (nur `jnpt` und der vermittler des Skript-Läufers), internes Netz `jnpt_apps`
+mit Bridge `jnpt-apps0` (Mitglied in dieser Compose nur `caddy`; erwartet vom Apphost des
+Skript-Läufers als `external`), Volumes `jnpt_jnpt-data`, `jnpt_caddy-data`,
 `jnpt_caddy-admin-data`, `jnpt_tailscale-state` (+ `*-config`), Secrets
 `jnpt_master_key`, `tailscale_authkey`.
 
@@ -123,7 +126,16 @@ drei.
    Unit schaltet es selbst ein. Tailnet-ACLs sperren per Standard; der Zugang
    ist eine benannte, entfernbare Regel.
 7. **Kein Phone-Home, kein stehendes Monitoring durch den Hersteller.**
-8. **Kein `:latest`.** `JANUAPORT_IMAGE` ist Pflicht ohne Default.
+8. **Kein `:latest`, kein wandernder Tag.** `JANUAPORT_IMAGE` ist Pflicht ohne
+   Default; `caddy` und `tailscale` stehen mit Version **und** Digest in der
+   Compose (Caddy ab 2.11.9, Tailscale v1.104.7, JanuaPort/januaport#1428).
+   Anheben: Digest per `docker buildx imagetools inspect <tag>` lesen, Version
+   und Digest gemeinsam ändern, `script-runner/internal/hygiene/box_proxy_test.go`
+   nachziehen. Alle drei Proxys laufen mit `no-new-privileges` und
+   `cap_drop: [ALL]`; Caddy ergänzt `NET_BIND_SERVICE` und läuft `read_only` mit
+   tmpfs `/tmp`. Tailscale braucht im Userspace-Modus keine Capability und läuft
+   bewusst ohne `read_only` (Laufzeitdateien von `containerboot` ohne Gerät nicht
+   belegt). Der Start mit der Härtung ist am Gerät nicht belegt.
 9. **Keine echten Secrets, Namen, Adressen oder Kundendaten im Repository.**
    Nur `*.example`, RFC-5737-Adressen, `example.com`; `.gitignore` hält `.env`
    und `secrets/*` draußen.
@@ -175,6 +187,12 @@ drei.
   beliebige Kundensysteme anspricht, nicht wartbar.
 - **SMB/SharePoint als Host-Sache.** Das Gateway sieht nur ein Verzeichnis; ein
   Client im Binary bräche das statische, CGO-freie Binary.
+- **SMB: zwei Credential-Dateien, zwei Konten.** `srv-jnpt-sicherung.mount` liest
+  `/etc/jnpt/smb/sicherung.cred`, die Ablage-Mounts `/etc/jnpt/smb/ablage.cred`
+  (JanuaPort/januaport#1429). Ein gemeinsames Konto ließe die Seite, über die
+  Ordner für die KI eingehängt werden, die Vollsicherungen lesen — und ein Konto
+  nur für die Sicherung ließe die Ablage-Mounts scheitern. Wächter:
+  `script-runner/internal/hygiene/box_smb_test.go`.
 
 ## Stolperfallen
 
@@ -193,6 +211,21 @@ drei.
   `jnpt-plug0`) erreicht die forward-Kette deshalb nicht. Die Freigabe
   `iifname "jnpt-plug0" oifname "jnpt-plug0"` ist Versicherung für den Fall,
   dass ein späteres Docker das Modul lädt. Beleg: `lsmod | grep br_netfilter`.
+- **Jedes Netz mit Weg durch die forward-Kette braucht einen festen Bridge-Namen
+  und eine eigene Zeile.** Der Abholer des Skript-Läufers hängt am Netz `egress`
+  (`jnpt-fetch0`); die Kette gibt ihm genau `tcp dport 22` frei, kein allgemeines
+  `accept`. Ein zufälliges `br-<hash>` ließe die Container fehlerfrei laufen, aber
+  nie einen Pin holen. Der Name steht **nur** in `docker-compose.script-runner.box.yml`:
+  In der allgemeinen Läufer-Compose ließe ein fester Bridge-Name auf einem Host kein
+  zweites Projekt zu („networks have same bridge name"; Tests, Probeläufe). `jnpt-apps0`
+  steht in der Box-Compose, die nur auf der Box läuft, und ist dort unbedenklich.
+  Der Plugin-Aktuator kennt je Plugin genau **eine** Compose-Datei (`COMPOSE_FILE`
+  ohne Liste); ein Aktuator-Lauf ohne den Override würde `egress` ohne den Namen
+  neu anlegen — vor dem Aktuator-Betrieb klären (RUNBOOK 12). `jnpt-apps0` ist wie `jnpt-plug0` nur innerhalb der Bridge
+  frei. Wächter: `script-runner/internal/hygiene/box_netz_test.go` (Compose,
+  Firewall-Zeilen und Apps-Netz zugleich). Die Gateway-Seite des Apps-Profils
+  (Adresse im Netz, Listener, Caddy-Importe) ist in dieser Vorlage nicht
+  nachgezogen; der Kern pflegt sie (RUNBOOK 12).
 - **`flush ruleset` räumt Dockers Regeln ab.** `hardening.sh` startet Docker
   nach einem Ruleset-Wechsel neu; bleibt „No chain … DOCKER-FORWARD", hilft
   `systemctl restart docker`.

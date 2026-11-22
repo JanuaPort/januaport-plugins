@@ -430,7 +430,9 @@ Der Kern legt das interne Netz `jnpt_apps` an; Apphost hängt ausschließlich da
 Vermittler, Abholer, Sandbox und Init hängen nie daran. `read_only`, `cap_drop: ALL`,
 `no-new-privileges` und UID 65532 sind Pflicht; weder Host-Port noch Store,
 Deploy-Key, Socket oder zusätzlicher Mount sind vorgesehen. Die Box-Kopie
-`box/docker-compose.script-runner.yml` ist bytegleich und wird zusammen mit dem
+`box/docker-compose.script-runner.yml` ist bytegleich (der feste Bridge-Name des
+Abholers steht deshalb nicht dort, sondern im Box-Override
+`box/docker-compose.script-runner.box.yml`) und wird zusammen mit dem
 Läufer-Paket einschließlich `seccomp/` in dessen Installationsordner verwendet.
 Die Box-Gateway-Compose und deren Listener-/Subnetzprüfung werden im Kern gepflegt.
 

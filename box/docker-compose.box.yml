@@ -173,7 +173,12 @@ services:
     # MCP-Rundlauf (RUNBOOK.md, Prüfen).
 
   caddy:
-    image: caddy:2-alpine
+    # Version UND Digest, kein wandernder Tag an der Grenze der Box
+    # (JanuaPort/januaport#1428). Bewusst anheben: Digest per
+    # `docker buildx imagetools inspect <tag>` lesen (nur Registry-Abfrage),
+    # Version und Digest gemeinsam ändern, Wächter und Doku nachziehen.
+    # Mindestens 2.11.9 (Go 1.27.3, golang.org/x/net 0.60.0).
+    image: caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
     ports:
       # ── Host-Bind der Werkzeug-Fläche, PARAMETRISIERT ──────────────────────
       # Default `127.0.0.1` = zu (deny-by-default): frisch hochgezogen ist die
@@ -212,8 +217,23 @@ services:
       - caddy-config:/config
     depends_on:
       - jnpt
+    # Härtung (JanuaPort/januaport#1428): kein Gewinn an Rechten, keine
+    # Capabilities außer dem Binden der Ports unter 1024. Schreibbar ist nur, was
+    # Volume oder tmpfs ist: /data und /config (Zertifikate, interne CA, Autosave)
+    # und /tmp. Am Gerät zu belegen: der Start mit dieser Härtung.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    read_only: true
+    tmpfs:
+      - /tmp
     restart: unless-stopped
     networks:
+      # Browser-App-Netz (Profil apps des Skript-Laeufers): Caddy ist sein einziges
+      # Mitglied in dieser Datei und haelt es damit am Leben, damit die Plugin-
+      # Compose es als external finden kann.
+      apps: {}
       default:
         # Der Box-Name existiert nur in der Box. Im Compose-Netz löst er per
         # Alias auf DIESEN Caddy auf — so erreicht der Tunnel-Client (eigener
@@ -233,7 +253,7 @@ services:
   # Instanz besitzen kann (Begründung in Caddyfile.admin). Die Host-Firewall
   # gibt 8443 ausschließlich im Modus `--https lan` fürs Kunden-CIDR frei.
   caddy-admin:
-    image: caddy:2-alpine
+    image: caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
     ports:
       - "${JNPT_BIND_ADDR:-127.0.0.1}:8443:8443"
     environment:
@@ -247,6 +267,14 @@ services:
       - caddy-admin-config:/config
     depends_on:
       - jnpt
+    # Härtung wie beim Haupt-Caddy.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    read_only: true
+    tmpfs:
+      - /tmp
     restart: unless-stopped
     networks:
       default:
@@ -265,7 +293,8 @@ services:
     # Entzug ist mehr als das Profil (Auth-Key widerrufen, Knoten entfernen,
     # Host-tailscaled abschalten) — vollständige Prozedur: RUNBOOK.md.
     profiles: ["wartung"]
-    image: tailscale/tailscale:stable
+    # Version UND Digest (JanuaPort/januaport#1428), anheben wie bei Caddy.
+    image: tailscale/tailscale:v1.104.7@sha256:72c1e19e0aedca96b8533bbb0b4368564410ff20b17e53b804eb6c1f04a31be4
     hostname: ${TS_HOSTNAME:-jnpt-box}
     # containerboot wertet KEIN TS_AUTHKEY_FILE aus — nur TS_AUTHKEY. Ein
     # schlanker Wrapper liest den Auth-Key zur Laufzeit aus dem gemounteten
@@ -296,6 +325,15 @@ services:
       - jnpt
     # KEIN Inbound-Firewall-Port: Tailscale baut die Verbindung per
     # NAT-Traversal/DERP ausschließlich über Outbound auf.
+    # Härtung (JanuaPort/januaport#1428): Der Userspace-Modus (TS_USERSPACE)
+    # braucht keine einzige Capability und kein TUN-Gerät. Kernel-TUN bräuchte
+    # NET_ADMIN, NET_RAW und /dev/net/tun — wer den Modus wechselt, ergänzt genau
+    # diese. Bewusst KEIN read_only: containerboot schreibt außer State und /tmp
+    # weitere Laufzeitdateien, deren vollständige Liste ohne Gerät nicht belegt
+    # ist — lieber ein Dienst weniger gehärtet als einer, der nicht startet.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
     restart: unless-stopped
     networks:
       default:
@@ -304,6 +342,24 @@ services:
         ipv4_address: 10.201.44.11
 
 networks:
+  # Internes Netz fuer den Apphost des Skript-Laeufers (docker-compose.script-
+  # runner.yml, Profil apps). Der feste Name jnpt_apps ist der Vertrag mit der
+  # Plugin-Compose (dort `external`): Legt diese Datei es nicht an, scheitert
+  # `--profile apps` am fehlenden Netz. `internal: true`: kein Weg hinaus.
+  # Fester Bridge-Name jnpt-apps0, die forward-Kette in scripts/hardening.sh gibt
+  # nur Verkehr INNERHALB frei; festes Subnetz ausserhalb von Dockers Pools.
+  # Stand der Vorlage: Netz, Beitritt von Caddy und Firewall sind hier angelegt.
+  # Die Gateway-Seite (apps-Adresse, Listener, Caddy-Importe von apps.d/ und
+  # apps-global.d/) pflegt der Kern; sie ist in dieser Vorlage nicht nachgezogen
+  # (box/README.md, Status).
+  apps:
+    name: jnpt_apps
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: jnpt-apps0
+    ipam:
+      config:
+        - subnet: ${JNPT_APPS_SUBNET:-172.31.250.0/28}
   default:
     driver_opts:
       # Fester Bridge-Name statt br-<hash>: Die Host-Firewall

@@ -263,7 +263,7 @@ systemctl enable --now docker
 ```bash
 cd /opt/jnpt/box
 cp .env.example .env && $EDITOR .env
-#   JANUAPORT_IMAGE  gepinnter Tag, kein :latest
+#   JANUAPORT_IMAGE  gepinnter Tag, kein :latest (caddy und tailscale pinnt die Compose selbst, per Digest)
 #   JNPT_DOMAIN      der Box-Name (<BOX_NAME>), JNPT_CADDY_TLS="tls internal"
 #   JNPT_BIND_ADDR   <LAN-IP> — leer heißt zu
 #   JNPT_SSO_* / JNPT_PUBLIC_URL   Abschnitt 5.1
@@ -956,18 +956,30 @@ chattr +i /srv/jnpt/ablage /srv/jnpt/sicherung
 
 ### SMB/CIFS (`smb/`)
 
-Der Betreiber stellt ein Konto bereit, das **nur** diese Freigabe darf, und
-eine Server-ACL, die **nur diesem Konto** Lesen erlaubt — ein
-Sicherungsartefakt ist die vollständige Installation.
+Der Betreiber stellt ein Konto bereit, das **nur** die Sicherungsfreigabe darf,
+und eine Server-ACL, die **nur diesem Konto** Lesen erlaubt — ein
+Sicherungsartefakt ist die vollständige Installation. Die Ablage-Einstiegspunkte
+bekommen ein **eigenes** Konto mit eigener Datei (`ablage.cred`): Das Sicherungskonto
+hängt nie eine Ablage ein, das Ablage-Konto nie die Sicherung.
 
 ```bash
 apt-get install -y cifs-utils
 install -d -m 700 /etc/jnpt/smb
-umask 077; cat > /etc/jnpt/smb/ablage.cred <<'ENDE'
-username=<konto>
+# Zwei Dateien, zwei Konten: sicherung.cred nur für die Sicherungsfreigabe,
+# ablage.cred nur für die Ablage-Einstiegspunkte. Ein gemeinsames Konto ließe das
+# Ablage-Konto der KI-Seite die Vollsicherungen lesen.
+umask 077; cat > /etc/jnpt/smb/sicherung.cred <<'ENDE'
+username=<konto-sicherung>
 password=<passwort>
 domain=<domäne oder weglassen>
 ENDE
+chmod 600 /etc/jnpt/smb/sicherung.cred   # 0600, root, nie ins Repo
+umask 077; cat > /etc/jnpt/smb/ablage.cred <<'ENDE'
+username=<konto-ablage>
+password=<passwort>
+domain=<domäne oder weglassen>
+ENDE
+chmod 600 /etc/jnpt/smb/ablage.cred      # nur nötig, wenn auch Ablage-Einstiegspunkte per SMB hängen
 
 # Sicherungsziel (nur Host) — CIFS mountet einen Unterordner, nie die Wurzel der Freigabe
 cp /opt/jnpt/box/smb/srv-jnpt-sicherung.mount /etc/systemd/system/
@@ -1033,6 +1045,11 @@ chown root:jnpt /etc/jnpt/rclone/*.app; chmod 0640 /etc/jnpt/rclone/*.app
 
 # Secrets und Site-URLs TIPPT DER MENSCH, im eigenen Terminal:
 ssh -t root@<box> sh /opt/jnpt/box/sharepoint/zugang-sp.sh
+
+# Verzeichnisse des Abgleichs VOR dem Erstlauf, Eigentümer 65532: Der Erstlauf (`resync`) läuft
+# als 65532 und noch ohne Unit, also ohne StateDirectory. Legt sie niemand an, gehören die Ordner
+# root, und rclone kann weder Listings noch sein Token schreiben.
+install -d -o 65532 -g 65532 -m 0700 /var/lib/jnpt/rclone-bisync /var/lib/jnpt/rclone-ablage
 
 python3 sp-einrichten.py sicherung      # Token? Site 200/403/404? Bibliothek? Schreibrecht? Wurzel 403?
 python3 sp-einrichten.py ablage         # schreibt je Bringer den rclone-Remote — ohne Secret
@@ -1125,6 +1142,50 @@ Auf der Box kommen drei Dinge dazu:
   Ablage des Abholers und, schreibgeschützt, als Quelle der Datei-Integration —
   die vorbereitete Zeile in der Compose einkommentieren, **nachdem** der Ordner
   mit der richtigen Kennung angelegt ist.
+
+## 12. Optional: Skript-Läufer auf der Box
+
+Der Skript-Läufer ist ein eigener Beisteller: [`../script-runner/`](../script-runner/).
+Seine Box-Anbindung liegt in diesem Ordner, und Start und Host-Härtung gehören
+zusammen:
+
+- **Compose.** `docker-compose.script-runner.yml` ist byte-gleich mit
+  `../script-runner/docker-compose.yml`. Sie liegt auf der Box als
+  `/opt/jnpt/plugins/script-runner/docker-compose.yml` neben `seccomp/` und der
+  `.env` mit `JNPT_SCRIPT_RUNNER_IMAGE`. Davor muss die Box-Compose laufen: Sie
+  legt `jnpt_plugins` und `jnpt_apps` an, die der Läufer als `external` erwartet.
+- **Box-Override.** `docker-compose.script-runner.box.yml` setzt nur die feste Bridge
+  `jnpt-fetch0` des Abholer-Netzes `egress`. Sie liegt unter diesem Namen
+  neben der Compose, und der Start nennt **beide** Dateien, immer mit `-f`:
+  `docker compose -f docker-compose.yml -f docker-compose.script-runner.box.yml up -d`.
+  Der Name steht bewusst nicht in der allgemeinen Compose: Ein fester Bridge-Name
+  ließe auf einem Host kein zweites Compose-Projekt zu. ⚠️ Das Netz muss **vor
+  dem ersten Anlegen** mit dem Namen entstehen; legt es ein Lauf ohne Override an,
+  vorher `docker compose … down` und neu starten. Der Plugin-Aktuator führt je
+  Plugin nur eine Compose-Datei; ein Aktuator-Lauf ohne den Override legt `egress`
+  ohne den Namen neu an. Diesen Weg vor dem Aktuator-Betrieb klären.
+- **Die Firewall kennt nur feste Bridges.** Ohne passende Zeile in der
+  forward-Kette läuft alles fehlerfrei und holt doch nichts:
+
+  | Netz | Bridge | Freigabe in `scripts/hardening.sh` |
+  |---|---|---|
+  | `jnpt_plugins` (Vermittler ↔ Gateway) | `jnpt-plug0` | nur innerhalb der Bridge |
+  | `egress` (Abholer) | `jnpt-fetch0` | nur ausgehend `tcp dport 22` (ssh zum Git-Server) |
+  | `jnpt_apps` (Apphost, Profil `apps`) | `jnpt-apps0` | nur innerhalb der Bridge |
+
+  Liegt der Git-Server auf einem anderen ssh-Port, bekommt die Zeile für
+  `jnpt-fetch0` genau diesen Port zusätzlich (Skript ändern, erneut ausführen).
+  Eine Zeile für https gibt es nicht: der Abholer spricht nur ssh.
+- **Apps-Profil.** `apps.caddy` gehört nach `apps.d/`, `apps-global.caddy` nach
+  `apps-global.d/` neben der Compose; Caddy importiert die Site-Ebene in
+  `Caddyfile` und die TLS-Abfrage im globalen Block. **Stand dieser Vorlage:**
+  Das Netz, der Beitritt von Caddy und die Firewall-Zeile sind angelegt; die
+  Mounts der beiden Ordner, die Importe und die Gateway-Seite (Adresse im
+  Apps-Netz, Listener) pflegt der Kern und sind hier noch nicht nachgezogen.
+  Ohne sie startet der Apphost, ist aber nicht erreichbar.
+- **Prüfen.** `nft list chain inet filter forward` zeigt die drei Zeilen; ein Pin
+  kommt erst an, wenn der Abholer den Git-Server über ssh erreicht (Journal des
+  Läufers, nicht „Container läuft").
 
 ## Stolperfallen und Fehlerbilder
 

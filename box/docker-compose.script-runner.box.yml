@@ -1,0 +1,21 @@
+# Box-Override des Skript-Läufers (JanuaPort/januaport#1427): setzt genau einen Wert.
+#
+# Das Abholer-Netz `egress` bekommt auf der Box einen festen Bridge-Namen. Die
+# forward-Kette der Host-Firewall (scripts/hardening.sh, policy drop) kennt nur
+# feste Namen und gibt `jnpt-fetch0` genau ssh (tcp 22) zum Git-Server frei. Mit
+# zufälligem br-<hash> verwirft sie jedes Paket, die Container laufen fehlerfrei
+# weiter und holen nie einen Pin.
+#
+# Bewusst NICHT in docker-compose.script-runner.yml: Ein fester Bridge-Name in der
+# allgemeinen Compose ließe auf einem Host kein zweites Projekt zu (Tests,
+# Probeläufe, Kern-Hosts: „networks have same bridge name"). Der Name steht VOR dem
+# ersten Anlegen des Netzes fest; ein späteres Pinnen legte es neu an.
+#
+# Start auf der Box immer mit BEIDEN Dateien (RUNBOOK.md, Abschnitt 12):
+#   docker compose -f docker-compose.yml -f docker-compose.script-runner.box.yml up -d
+# (auf der Box liegen sie neben der Compose als docker-compose.yml und unter diesem Namen).
+# Wächter: script-runner/internal/hygiene/box_netz_test.go.
+networks:
+  egress:
+    driver_opts:
+      com.docker.network.bridge.name: jnpt-fetch0

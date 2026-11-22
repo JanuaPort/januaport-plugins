@@ -43,7 +43,7 @@ Die Hülle berührt das Gateway nur an benannten Stellen:
 
 | Naht | Richtung | Was |
 |---|---|---|
-| Image | Box → GHCR | `JANUAPORT_IMAGE`, gepinnter Tag, kein `:latest` |
+| Image | Box → GHCR | `JANUAPORT_IMAGE`, gepinnter Tag, kein `:latest`; `caddy` und `tailscale` mit Version und Digest |
 | Umgebung | `.env` → Container | `JNPT_*`-Variablen, Durchreiche nach dem Muster `${VAR:-}` (leer = aus) |
 | Master-Key | Host → Container | Docker-Secret `jnpt_master_key` (64 Hex-Zeichen, uid 65532, 0400) |
 | Daten | Volume | `jnpt_jnpt-data` → `/data` (SQLite, lokale Sicherungen) |
@@ -68,7 +68,10 @@ Produkts; die Hülle ruft sie nur auf.
 
 | Datei | Inhalt |
 |---|---|
-| `docker-compose.box.yml` | der Stack: `jnpt`, `caddy` (443), `caddy-admin` (8443), `tailscale` (Profil `wartung`), festes Netz |
+| `docker-compose.box.yml` | der Stack: `jnpt`, `caddy` (443), `caddy-admin` (8443), `tailscale` (Profil `wartung`), festes Netz, interne Netze `jnpt_plugins` und `jnpt_apps` |
+| `docker-compose.script-runner.yml` | optional: der Skript-Läufer (Vermittler, Sandbox, Abholer, Apphost) an der Box; byte-gleich mit `../script-runner/docker-compose.yml` |
+| `docker-compose.script-runner.box.yml` | optional: Box-Override zum Skript-Läufer, setzt nur die feste Bridge `jnpt-fetch0` des Abholers (RUNBOOK 12) |
+| `apps.caddy`, `apps-global.caddy` | optional, Profil `apps`: Site-Block und TLS-Abfrage für den Apphost; gehören nach `apps.d/` bzw. `apps-global.d/` (RUNBOOK 12) |
 | `.env.example` | Vorlage der `.env`, alle Variablen mit Begründung |
 | `Caddyfile` | Werkzeug-Fläche: Whitelist + Default-404 (die Sicherheitsgrenze) |
 | `Caddyfile.admin` | Betreiber-Fläche: volle Instanz, interne CA, nur LAN |
@@ -97,7 +100,10 @@ Betreiber-Fläche mit interner CA, der Tunnel-Weg zu ChatGPT im Alltagsbetrieb, 
 SharePoint-Weg samt Rücksicherung. **Nicht belegt:** die Gegenprobe der
 Tailnet-ACL von einem Konto mit fremder Identität, die pfadgenaue Form des
 Funnel-Rückfalls, der Ersatzbox-Durchlauf mit Zeitmessung und der SMB-Weg im
-Dauerbetrieb (gebaut und geprüft, aber nicht im Einsatz).
+Dauerbetrieb (gebaut und geprüft, aber nicht im Einsatz). Ebenfalls nicht am
+Gerät belegt: der Skript-Läufer hinter der Firewall (Abholer-Ausgang
+`jnpt-fetch0`, Apps-Netz `jnpt_apps`); die Gateway-Seite des Apps-Profils ist in
+dieser Vorlage nicht nachgezogen (RUNBOOK 12).
 
 Diese Fassung ist gegenüber der Pilot-Anlage **verallgemeinert**: neutrale
 Namen und Pfade, der Installationsort `/opt/jnpt/box`, das Wartungsprofil über
