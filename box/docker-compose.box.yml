@@ -214,6 +214,10 @@ services:
       - jnpt
     restart: unless-stopped
     networks:
+      # Browser-App-Netz (Profil apps des Skript-Laeufers): Caddy ist sein einziges
+      # Mitglied in dieser Datei und haelt es damit am Leben, damit die Plugin-
+      # Compose es als external finden kann.
+      apps: {}
       default:
         # Der Box-Name existiert nur in der Box. Im Compose-Netz löst er per
         # Alias auf DIESEN Caddy auf — so erreicht der Tunnel-Client (eigener
@@ -304,6 +308,24 @@ services:
         ipv4_address: 10.201.44.11
 
 networks:
+  # Internes Netz fuer den Apphost des Skript-Laeufers (docker-compose.script-
+  # runner.yml, Profil apps). Der feste Name jnpt_apps ist der Vertrag mit der
+  # Plugin-Compose (dort `external`): Legt diese Datei es nicht an, scheitert
+  # `--profile apps` am fehlenden Netz. `internal: true`: kein Weg hinaus.
+  # Fester Bridge-Name jnpt-apps0, die forward-Kette in scripts/hardening.sh gibt
+  # nur Verkehr INNERHALB frei; festes Subnetz ausserhalb von Dockers Pools.
+  # Stand der Vorlage: Netz, Beitritt von Caddy und Firewall sind hier angelegt.
+  # Die Gateway-Seite (apps-Adresse, Listener, Caddy-Importe von apps.d/ und
+  # apps-global.d/) pflegt der Kern; sie ist in dieser Vorlage nicht nachgezogen
+  # (box/README.md, Status).
+  apps:
+    name: jnpt_apps
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: jnpt-apps0
+    ipam:
+      config:
+        - subnet: ${JNPT_APPS_SUBNET:-172.31.250.0/28}
   default:
     driver_opts:
       # Fester Bridge-Name statt br-<hash>: Die Host-Firewall

@@ -36,7 +36,7 @@ prüft, ob die Änderung dort nachgezogen werden muss — und umgekehrt.
 | Datei | Verantwortung |
 |---|---|
 | `docker-compose.box.yml`, `.env.example` | Verdrahten Gateway, Proxy-Flächen, Wartungsprofil, Netze, Volumes und Betreiberwerte. |
-| `docker-compose.script-runner.yml` | Bindet Vermittler, Sandbox, Abholer, Bibliotheks-Init und optionalen Apphost an die Box an. |
+| `docker-compose.script-runner.yml` | Bindet Vermittler, Sandbox, Abholer, Bibliotheks-Init und optionalen Apphost an die Box an. Byte-gleich mit `../script-runner/docker-compose.yml` (Wächter `internal/hygiene`); das Abholer-Netz `egress` trägt die feste Bridge `jnpt-fetch0`. |
 | `Caddyfile`, `Caddyfile.admin` | Konfigurieren Werkzeug- und Betreiber-Fläche des Reverse-Proxys. |
 | `apps-global.caddy`, `apps.caddy` | Konfigurieren Zertifikatsfreigabe, Apphost-Proxy und App-Zugriffsprotokoll. |
 | `tailscale-serve.json` | Konfiguriert den TLS-Proxy des Wartungs-Containers zum Gateway. |
@@ -64,7 +64,9 @@ Pfad kennen `boot/jnpt-stack-nachstart.service`, `smb/jnpt-backup.sh`,
 **Compose (`docker-compose.box.yml`):** Projekt `jnpt` (Top-Level `name:`),
 Dienste `jnpt`, `caddy`, `caddy-admin`, `tailscale` (Profil `wartung`), Netz
 `jnpt_default` mit Bridge `jnpt0`, internes Netz `jnpt_plugins` mit Bridge
-`jnpt-plug0` (nur `jnpt` und der vermittler des Skript-Läufers), Volumes `jnpt_jnpt-data`, `jnpt_caddy-data`,
+`jnpt-plug0` (nur `jnpt` und der vermittler des Skript-Läufers), internes Netz `jnpt_apps`
+mit Bridge `jnpt-apps0` (Mitglied in dieser Compose nur `caddy`; erwartet vom Apphost des
+Skript-Läufers als `external`), Volumes `jnpt_jnpt-data`, `jnpt_caddy-data`,
 `jnpt_caddy-admin-data`, `jnpt_tailscale-state` (+ `*-config`), Secrets
 `jnpt_master_key`, `tailscale_authkey`.
 
@@ -193,6 +195,15 @@ drei.
   `jnpt-plug0`) erreicht die forward-Kette deshalb nicht. Die Freigabe
   `iifname "jnpt-plug0" oifname "jnpt-plug0"` ist Versicherung für den Fall,
   dass ein späteres Docker das Modul lädt. Beleg: `lsmod | grep br_netfilter`.
+- **Jedes Netz mit Weg durch die forward-Kette braucht einen festen Bridge-Namen
+  und eine eigene Zeile.** Der Abholer des Skript-Läufers hängt am Netz `egress`
+  (`jnpt-fetch0`); die Kette gibt ihm genau `tcp dport 22` frei, kein allgemeines
+  `accept`. Ein zufälliges `br-<hash>` ließe die Container fehlerfrei laufen, aber
+  nie einen Pin holen. `jnpt-apps0` ist wie `jnpt-plug0` nur innerhalb der Bridge
+  frei. Wächter: `script-runner/internal/hygiene/box_netz_test.go` (Compose,
+  Firewall-Zeilen und Apps-Netz zugleich). Die Gateway-Seite des Apps-Profils
+  (Adresse im Netz, Listener, Caddy-Importe) ist in dieser Vorlage nicht
+  nachgezogen; der Kern pflegt sie (RUNBOOK 12).
 - **`flush ruleset` räumt Dockers Regeln ab.** `hardening.sh` startet Docker
   nach einem Ruleset-Wechsel neu; bleibt „No chain … DOCKER-FORWARD", hilft
   `systemctl restart docker`.

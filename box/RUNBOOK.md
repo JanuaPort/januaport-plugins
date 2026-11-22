@@ -1126,6 +1126,41 @@ Auf der Box kommen drei Dinge dazu:
   die vorbereitete Zeile in der Compose einkommentieren, **nachdem** der Ordner
   mit der richtigen Kennung angelegt ist.
 
+## 12. Optional: Skript-Läufer auf der Box
+
+Der Skript-Läufer ist ein eigener Beisteller: [`../script-runner/`](../script-runner/).
+Seine Box-Anbindung liegt in diesem Ordner, und Start und Host-Härtung gehören
+zusammen:
+
+- **Compose.** `docker-compose.script-runner.yml` ist byte-gleich mit
+  `../script-runner/docker-compose.yml`. Sie liegt auf der Box als
+  `/opt/jnpt/plugins/script-runner/docker-compose.yml` neben `seccomp/` und der
+  `.env` mit `JNPT_SCRIPT_RUNNER_IMAGE`; Start immer mit `-f`. Davor muss die
+  Box-Compose laufen: Sie legt `jnpt_plugins` und `jnpt_apps` an, die der Läufer
+  als `external` erwartet.
+- **Die Firewall kennt nur feste Bridges.** Ohne passende Zeile in der
+  forward-Kette läuft alles fehlerfrei und holt doch nichts:
+
+  | Netz | Bridge | Freigabe in `scripts/hardening.sh` |
+  |---|---|---|
+  | `jnpt_plugins` (Vermittler ↔ Gateway) | `jnpt-plug0` | nur innerhalb der Bridge |
+  | `egress` (Abholer) | `jnpt-fetch0` | nur ausgehend `tcp dport 22` (ssh zum Git-Server) |
+  | `jnpt_apps` (Apphost, Profil `apps`) | `jnpt-apps0` | nur innerhalb der Bridge |
+
+  Liegt der Git-Server auf einem anderen ssh-Port, bekommt die Zeile für
+  `jnpt-fetch0` genau diesen Port zusätzlich (Skript ändern, erneut ausführen).
+  Eine Zeile für https gibt es nicht: der Abholer spricht nur ssh.
+- **Apps-Profil.** `apps.caddy` gehört nach `apps.d/`, `apps-global.caddy` nach
+  `apps-global.d/` neben der Compose; Caddy importiert die Site-Ebene in
+  `Caddyfile` und die TLS-Abfrage im globalen Block. **Stand dieser Vorlage:**
+  Das Netz, der Beitritt von Caddy und die Firewall-Zeile sind angelegt; die
+  Mounts der beiden Ordner, die Importe und die Gateway-Seite (Adresse im
+  Apps-Netz, Listener) pflegt der Kern und sind hier noch nicht nachgezogen.
+  Ohne sie startet der Apphost, ist aber nicht erreichbar.
+- **Prüfen.** `nft list chain inet filter forward` zeigt die drei Zeilen; ein Pin
+  kommt erst an, wenn der Abholer den Git-Server über ssh erreicht (Journal des
+  Läufers, nicht „Container läuft").
+
 ## Stolperfallen und Fehlerbilder
 
 | Bild | Ursache | Abhilfe |

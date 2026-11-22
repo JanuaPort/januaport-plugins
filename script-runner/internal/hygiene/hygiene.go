@@ -40,6 +40,12 @@ const (
 	// JanuaPort/januaport#1069): dort hängen nur Gateway und vermittler.
 	pluginNet  = "jnpt_plugins"
 	gatewayNet = "jnpt_default"
+
+	// Das Netz des abholers trägt einen festen Bridge-Namen, damit die
+	// forward-Kette der Box-Firewall ihm genau ssh freigeben kann
+	// (JanuaPort/januaport#1427). Höchstens 15 Zeichen (IFNAMSIZ).
+	bridgeNameKey = "com.docker.network.bridge.name"
+	fetcherBridge = "jnpt-fetch0"
 )
 
 // mediatorHealthcheck ist der Healthcheck des vermittlers ohne neuen Code:
@@ -188,8 +194,9 @@ type volume struct {
 }
 
 type network struct {
-	Name     string `yaml:"name"`
-	External bool   `yaml:"external"`
+	Name       string            `yaml:"name"`
+	External   bool              `yaml:"external"`
+	DriverOpts map[string]string `yaml:"driver_opts"`
 }
 
 // CheckCompose liefert alle Verstöße; leer heißt sauber.
@@ -212,6 +219,9 @@ func CheckCompose(src []byte) []string {
 	}
 	if n := c.Networks["plugins"]; !n.External || n.Name != pluginNet {
 		add("Netz plugins ist nicht das externe %s", pluginNet)
+	}
+	if got := c.Networks["egress"].DriverOpts[bridgeNameKey]; got != fetcherBridge {
+		add("Netz egress: Bridge %q, want %q (die Box-Firewall kennt nur feste Namen)", got, fetcherBridge)
 	}
 	if _, ok := c.Volumes["libs"]; !ok {
 		add("Volume libs fehlt")

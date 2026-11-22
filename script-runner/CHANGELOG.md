@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- JanuaPort/januaport#1427: Das Abholer-Netz `egress` trägt die feste Bridge `jnpt-fetch0`
+  (Compose und Box-Kopie byte-gleich); die Hygiene-Prüfung verlangt den Namen. Die Box
+  gibt dem Netz in ihrer forward-Kette genau `tcp dport 22` frei und legt `jnpt_apps`
+  an (`box/`). Image und Verhalten unverändert; vor dem Pin hatte der Abholer hinter
+  der Box-Firewall keinen Ausgang.
+
 - **Go 1.26.11** (GO-2026-6859, `net/http`, behoben in 1.26.11): `go.mod` und Build-Image `golang:1.26.11` per Digest `sha256:4165ee6b…` gepinnt, wie der Kern mit JanuaPort/januaport#1372. Ohne diesen Sprung schlägt `govulncheck` auf dem ausgelieferten Binary fehl.
 
 - JanuaPort/januaport#1246: Die Hygiene-Prüfung erkennt Windows-Laufwerksquellen

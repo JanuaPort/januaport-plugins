@@ -316,6 +316,21 @@ table inet filter {
     # Einen Ausgang hat das Netz ohnehin nicht (internal: true).
     iifname "jnpt-plug0" oifname "jnpt-plug0" accept
 
+    # Abholer des Skript-Laeufers (../script-runner, Dienst script-runner-fetcher):
+    # eigenes Netz egress, GEPINNT auf jnpt-fetch0 (docker-compose.script-runner.yml,
+    # Waechter internal/hygiene). Er darf genau eines: ssh (22) zum Git-Server — er
+    # spricht nur ssh, https lehnt er ab. Kein allgemeines accept fuer die Bridge.
+    # Liegt der Git-Server auf einem anderen ssh-Port, braucht er hier eine eigene
+    # Zeile; nicht raten. Ohne diese Zeile holt er nie einen Pin, waehrend alle
+    # Container fehlerfrei laufen (symptomlos, DNS geht trotzdem).
+    iifname "jnpt-fetch0" tcp dport 22 accept
+
+    # Browser-App-Netz (../script-runner, Profil apps): nur Verkehr INNERHALB der
+    # gepinnten Bridge jnpt-apps0 (Caddy <-> Apphost). Das Netz ist internal: true
+    # und hat keinen Ausgang; die Zeile haelt es auch dann zu, wenn br_netfilter
+    # aktiv wird.
+    iifname "jnpt-apps0" oifname "jnpt-apps0" accept
+
     # Eingehend ZU den Containern gilt dieselbe 443-Politik wie der Modus:
 $https_regeln
 

@@ -179,4 +179,12 @@ networks:
     name: jnpt_plugins
     # Das interne Netz legt die Kern-Compose an (internal: true). Fehlt es,
     # bucht der Aktuator (ab Fassung 3) unprovisioned, bevor er etwas zieht.
-  egress: {}
+  # Das Netz des abholers. Fester Bridge-Name statt br-<hash>: Die Host-Firewall
+  # einer Box (box/scripts/hardening.sh, forward-Kette mit policy drop) kennt
+  # nur feste Namen und gibt diesem Netz genau ssh zum Git-Server frei. Mit
+  # zufaelligem Namen verwirft sie jedes Paket; die Container laufen weiter,
+  # holen aber nie einen Pin. Der Name steht VOR dem ersten Anlegen fest, ein
+  # spaeteres Pinnen legte das Netz neu an. Hygiene: internal/hygiene.
+  egress:
+    driver_opts:
+      com.docker.network.bridge.name: jnpt-fetch0
