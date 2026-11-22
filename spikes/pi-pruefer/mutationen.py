@@ -91,6 +91,25 @@ def main():
         ("rohtexte", "phase2.py", '"id": z["id"], "kandidat": name', '"text": z["text"], "id": z["id"], "kandidat": name',
          "test_phase2.AuswertungTests.test_rohdaten_enthalten_keine_texte"),
     ]
+    proben += [
+        ("strands_offline_filter", "adapter.py", 'allow_patterns=MODELL_DATEIEN', 'allow_patterns=None',
+         "test_phase2.AdapterTests.test_strands_offline_loader_mit_download_filter"),
+        ("strands_offline", "adapter.py", 'token=False, local_files_only=True, allow_patterns=MODELL_DATEIEN',
+         'token=False, local_files_only=False, allow_patterns=MODELL_DATEIEN',
+         "test_phase2.AdapterTests.test_strands_offline_loader_mit_download_filter"),
+        ("strands_token", "adapter.py", 'token=False, local_files_only=True, allow_patterns=MODELL_DATEIEN',
+         'token=True, local_files_only=True, allow_patterns=MODELL_DATEIEN',
+         "test_phase2.AdapterTests.test_strands_offline_loader_mit_download_filter"),
+        ("strands_revision", "adapter.py", 'StrandsDecider.modell_id, revision=STRANDS_REVISION',
+         'StrandsDecider.modell_id, revision="main"',
+         "test_phase2.AdapterTests.test_strands_offline_loader_mit_download_filter"),
+        ("strands_cpu", "adapter.py", 'engine_loader(path, device="cpu", use_prefix_cache=False)',
+         'engine_loader(path, device="cuda", use_prefix_cache=False)',
+         "test_phase2.AdapterTests.test_strands_offline_loader_mit_download_filter"),
+        ("strands_prefix_cache", "adapter.py", 'engine_loader(path, device="cpu", use_prefix_cache=False)',
+         'engine_loader(path, device="cpu", use_prefix_cache=True)',
+         "test_phase2.AdapterTests.test_strands_offline_loader_mit_download_filter"),
+    ]
     for name, datei, original, mutation, test in proben:
         with tempfile.TemporaryDirectory(prefix="pi-mutation-") as tmp:
             ziel = Path(tmp) / "spike"

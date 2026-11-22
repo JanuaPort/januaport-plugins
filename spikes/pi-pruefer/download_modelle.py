@@ -1,7 +1,7 @@
 """Einmaliger anonymer Download fester Revisionen ins benannte Docker-Volume."""
 
 import argparse
-from adapter import MODELL_REVISION, STRANDS_REVISION, BASIS_REVISION, ProtectAI, StrandsDecider
+from adapter import MODELL_REVISION, STRANDS_REVISION, BASIS_REVISION, MODELL_DATEIEN, ProtectAI, StrandsDecider
 
 
 def main():
@@ -13,10 +13,7 @@ def main():
         (StrandsDecider.modell_id, STRANDS_REVISION), (StrandsDecider.basis_id, BASIS_REVISION)]
     for name, revision in modelle:
         path = snapshot_download(name, revision=revision, token=False, max_workers=2,
-            allow_patterns=["config.json", "tokenizer*", "special_tokens_map.json", "added_tokens.json",
-                            "spm.model", "vocab.*", "merges.txt", "chat_template.jinja", "model*.safetensors", "model*.json",
-                            "strands_decider_config.json", "head.safetensors", "lora/*.json",
-                            "lora/*.safetensors", "provenance.json", "LICENSE*"])
+            allow_patterns=MODELL_DATEIEN)
         print(f"{name} @ {revision}: {path}", flush=True)
 
 

@@ -220,14 +220,15 @@ docker run --rm --network none --cpus 1 -e PYTHONDONTWRITEBYTECODE=1 -v "${PWD}:
 Die Mutationsprobe erzeugt ausschließlich Kopien im Container-`/tmp`, entfernt
 jeweils eine Sperre und verlangt einen Assertion-Fehlschlag des zugehörigen Tests.
 Import-/Syntaxfehler zählen nicht als erkannte Mutation. Zusätzlich wird OR durch
-AND ersetzt. 67 Proben: die bisherigen 53 (39 Datenregeln, Meta-Adapter-/Tokenizer-Sperre,
+AND ersetzt. 73 Proben: die bisherigen 53 (39 Datenregeln, Meta-Adapter-/Tokenizer-Sperre,
 Schwellwert, Fensterparameter und Fenster-OR, unbekannte Erweiterung sowie
 Klassen-/Gegenstück-Auswertung und Markdown-Schwerpunkt, strukturierte MCP-Felder
 sowie verbotene E-Mail-/IBAN-Fixtures und Inline-Scan-Ausnahmen und die Auswertung
 der Markdown-Rückgabewege) und 14 Phase-2-Proben: Scorebereich/-anzahl/-label,
 Scannerrevision, Modellpin, Offline-Modus, Token-/Remote-Code-Optionen,
 Scannerwahrscheinlichkeit, feste Strands-Frage, Fenstermaximum, Kalibrierung,
-A3-Gruppe und Ausschluss von Texten aus Roh-Scores.
+A3-Gruppe und Ausschluss von Texten aus Roh-Scores; außerdem sechs Strands-Loader-
+Proben für Dateifilter, Offline-Modus, Token, Revision, CPU und ausgeschalteten Prefix-Cache.
 Die zehn Phase-1c-Regeln prüfen Host- und Query-Parität,
 KI-Ansprachen, Datei-Schema/-Anzahl, strukturierte Antworten, Vorlagen,
 Darstellungsvarianten, Ticket-Badges und eigene Query-Daten. Die exakte Satzgröße
@@ -255,6 +256,13 @@ rot mit `ImportError: cannot import name 'pruefe_scanner_revision'` und
 `FAILED (errors=1)`. Nach Umsetzung: `Ran 76 tests` / `OK`.
 Mutationslauf: `67/67 Mutationen erkannt; alle Originaldateien unverändert.`
 Die bisherigen 53 Proben bleiben enthalten, ergänzt um 14 neue.
+
+Strands-Resume: `7132d2c` ergänzt zuerst den Loader-Test; rot mit
+`ImportError: cannot import name 'lade_strands'` / `FAILED (errors=1)`.
+Hub 2.4 verlangt für einen absichtlich gefilterten Cache offline denselben
+Dateifilter wie beim Download. `MODELL_DATEIEN` ist deshalb die gemeinsame Quelle
+beider Wege. Danach `Ran 77 tests` / `OK`; sechs zusätzliche Mutanten prüfen den
+echten Strands-Loader mit Fake-Snapshot und Fake-Engine, ohne Modell-Download.
 
 Geheimnis-Scan mit der unveränderten, maßgeblichen Repo-Konfiguration (vom Worktree-Root):
 
@@ -337,11 +345,12 @@ müssen dafür ausdrücklich auf 0 gesetzt werden.
 ```powershell
 docker volume create pi-pruefer-hf
 docker run --rm --memory 6g --cpus 4 -v pi-pruefer-hf:/hf -v "${PWD}:/w" -e HF_HUB_OFFLINE=0 -e TRANSFORMERS_OFFLINE=0 pi-pruefer:1486-phase2 python -B download_modelle.py protectai
-docker run --rm --memory 6g --cpus 4 -v pi-pruefer-hf:/hf -v "${PWD}:/w" -e HF_HUB_OFFLINE=0 -e TRANSFORMERS_OFFLINE=0 pi-pruefer:1486-strands python -B download_modelle.py strands_decider
+docker run --rm --memory 10g --cpus 4 -v pi-pruefer-hf:/hf -v "${PWD}:/w" -e HF_HUB_OFFLINE=0 -e TRANSFORMERS_OFFLINE=0 pi-pruefer:1486-strands python -B download_modelle.py strands_decider
 ```
 
-Vor Strands-Inferenz: `(Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory`
-prüfen, nur bei mehr als 15 GB freiem Host-RAM starten, sonst warten.
+LEAD startet den Strands-Resume erst bei mehr als 15 GB freiem Host-RAM.
+Diese Freigabe liegt für den aktuellen Resume vor; keine eigene Prüfschleife.
+Download und Inferenz laufen nacheinander mit 10 GiB und vier CPUs.
 Images/Größen vorher mit `docker image inspect` lesen und als `PI_IMAGE_ID` und
 `PI_IMAGE_BYTES` übergeben. Die Roh-Erhebung schreibt ausschließlich ins externe
 Volume und enthält keine Texte. Je Kandidat einen frischen Container aufrufen:
