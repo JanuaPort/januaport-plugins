@@ -5,6 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parent
 SATZ2 = ROOT.parent / "pi-pruefer-holdout" / "messsatz2.jsonl"
@@ -118,6 +119,32 @@ class AuswertungTests(unittest.TestCase):
 
 
 class HardwareTests(unittest.TestCase):
+    def test_gpu_messung_bis_po_entscheidung_gesperrt(self):
+        from phase3 import messen
+        from adapter import StrandsDecider
+        from test_phase2 import FakeTokenizer
+        cuda = SimpleNamespace(reset_peak_memory_stats=lambda: None, synchronize=lambda: None,
+                               get_device_name=lambda: "Fake GPU", max_memory_allocated=lambda: 0,
+                               max_memory_reserved=lambda: 0)
+        fake = StrandsDecider(backend=lambda t, f: .1, tokenizer=FakeTokenizer())
+        with tempfile.TemporaryDirectory() as tmp, patch.dict("sys.modules", {"torch": SimpleNamespace(cuda=cuda)}), \
+             patch("hardware.adapter_hardware", return_value=fake):
+            with self.assertRaisesRegex(ValueError, "GPU offen"):
+                messen("strands_decider", "gpu_bf16", SATZ2, Path(tmp) / "gpu.json")
+
+    def test_gpu_ergebnisse_nicht_im_cpu_befund(self):
+        from phase3 import schreibe_bericht
+        from messen import lade_satz
+        import hashlib
+        daten = lade_satz(SATZ2, "satz2")
+        lauf = dict(kandidat="strands_decider", hardware="gpu_bf16", revision="test", laden_ms=1,
+                    ram=2, vram=1, scores=[.1] * 240, dauern=[10.] * 240,
+                    fenster=[1] * 240, budget=[512] * 240, pakete={},
+                    messsatz_sha256=hashlib.sha256(SATZ2.read_bytes()).hexdigest())
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(ValueError, "GPU offen"):
+                schreibe_bericht([lauf], daten, SATZ2, Path(tmp), "GPU offen")
+
     def test_offline_loader_gpu_und_int8(self):
         from hardware import lade_hardware
         from adapter import STRANDS_REVISION, MODELL_DATEIEN
