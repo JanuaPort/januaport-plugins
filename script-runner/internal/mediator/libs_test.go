@@ -944,6 +944,13 @@ func TestLibsURLChangeWithHeldLeaseDoesNotBlockRefresh(t *testing.T) {
 				}
 			}
 
+			// Der Testclient authentifiziert mit testKey: zurückrotieren, und auch das
+			// muss der laufende Abgleich übernehmen.
+			e.writeKey(testKey)
+			e.m.refresh(context.Background())
+			if got := e.currentKey(); got != testKey {
+				t.Fatal("zurückrotierter runtime-key nicht neu gelesen")
+			}
 			if r, ok := e.m.libs.Acquire(hash); ok {
 				r()
 				t.Fatal("Leihe während des Entwässerns")
