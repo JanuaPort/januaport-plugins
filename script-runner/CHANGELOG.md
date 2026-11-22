@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- JanuaPort/januaport#1423: Ein Wechsel der Repository-URL blockiert die Abgleichschleife des Vermittlers nicht mehr, solange ein Skript mit Bibliotheken läuft. `refresh` stößt das Entwässern von `libs` an und kehrt zurück; Warten auf die Leihen und Aufräumen laufen im Hintergrund (neue Leihen bleiben bis dahin gesperrt, ein zweiter Wechsel räumt nicht doppelt auf). Zeitplan-Takte und das Neulesen des runtime-key laufen weiter.
+
 - **Go 1.26.11** (GO-2026-6859, `net/http`, behoben in 1.26.11): `go.mod` und Build-Image `golang:1.26.11` per Digest `sha256:4165ee6b…` gepinnt, wie der Kern mit JanuaPort/januaport#1372. Ohne diesen Sprung schlägt `govulncheck` auf dem ausgelieferten Binary fehl.
 
 - JanuaPort/januaport#1246: Die Hygiene-Prüfung erkennt Windows-Laufwerksquellen
