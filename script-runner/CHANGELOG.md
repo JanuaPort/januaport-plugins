@@ -4,6 +4,10 @@
 
 ## 0.4.3 — 2026-11-22 (JanuaPort/januaport#1423, JanuaPort/januaport#1424)
 
+- **Image:** `sha256:c3b9a328d1d7bedb711efea5bae46752f54585777075aa5fbf348870bcb9e04d` (Index, nur `linux/amd64` `sha256:621e15a943035dbe3103c117654609fc9efa821163d88372f5f98dbde56f2f57`; arm64-Ausnahme siehe 0.3.1, JanuaPort/januaport#928; Release-Lauf 45017831296)
+- **Geprüft mit JanuaPort:** Kern 0.104.0 auf der Showcase seit 22.11. 11:50Z (`script_echo` nach dem Tausch `end=ok`, Audit 11:51:06Z, Python 3.12.15). Apphost läuft auf dem neuen Digest (Start nur mit `--profile apps`), antwortet ohne registrierte App mit 404; ein App-Aufruf durch den `/mcp`-Proxy (#1424) ist mangels App noch nicht live belegt
+- **Scan:** Trivy 0.74.0 vom 22.11.2026, 0 Funde mit Fix; 1 CRITICAL und 126 HIGH ohne Fix (0.4.2: 59 HIGH, Zuwachs aus Upstream-Einträgen des Basis-Images) fallen unter die Ausnahme JanuaPort/januaport#1059 bis 2027-01-08
+
 - JanuaPort/januaport#1423: Ein Wechsel der Repository-URL blockiert die Abgleichschleife des Vermittlers nicht mehr, solange ein Skript mit Bibliotheken läuft. `refresh` stößt das Entwässern von `libs` an und kehrt zurück; Warten auf die Leihen und Aufräumen laufen im Hintergrund (neue Leihen bleiben bis dahin gesperrt, ein zweiter Wechsel räumt nicht doppelt auf). Zeitplan-Takte und das Neulesen des runtime-key laufen weiter.
 - JanuaPort/januaport#1424: Der `/mcp`-Proxy des Apphost schneidet Werkzeugaufrufe nicht mehr nach 30 Sekunden ab. Eigener HTTP-Client ohne Gesamtfrist, die Frist läuft über den Anfrage-Kontext (Obergrenze: Wandzeit-Decke 86400 s plus eine Minute; Abbruch des Browsers bricht den Upstream ab), `ResponseHeaderTimeout` folgt der Proxy-Frist. Kopierfehler nach dem Header-Versand werden ohne Inhalt geloggt. Paketabruf und Anmeldung behalten ihre 30 Sekunden; gleiche Netz-Vorgaben (kein Umgebungs-Proxy, kein Redirect, expliziter TCP-Dialer).
 
