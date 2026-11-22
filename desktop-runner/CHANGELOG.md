@@ -2,6 +2,11 @@
 
 ## Unveröffentlicht
 
+### Bedienfeld öffnet kein Fenster mehr für eine gerade entzogene App (JanuaPort/januaport#1342)
+
+- **Fehler:** Kam während des Öffnens einer App eine Liste ohne sie, fand `CloseMissing` noch kein Fenster; danach baute das Bedienfeld es trotzdem. Die Liste meldet nur Änderungen, das Fenster blieb offen und `webview\<app>` gesperrt, das Aufräumen des Entzugs scheiterte bis zur nächsten Listenänderung.
+- **Jetzt:** `handleOpened` prüft vor dem Fensterbau die zuletzt empfangene Liste (`fensterio.StillAssigned`). Fehlt die App, wird nur das Geöffnete geschlossen: kein Fenster, kein Hinweis. Kein neues Format, kein neuer Logcode.
+
 ## 0.5.5 — 2026-11-22 (JanuaPort/januaport#1425, JanuaPort/januaport#1426, JanuaPort/januaport#1434, JanuaPort/januaport#1421, JanuaPort/januaport#1398, JanuaPort/januaport#1391, JanuaPort/januaport#1392)
 
 ### Upstream-Prüfpunkt

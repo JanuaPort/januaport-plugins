@@ -52,7 +52,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 | `internal/client/helpers.go`, `internal/client/questions.go`, `internal/pipe/questions.go` | Verbinden Skript-Rahmen mit Test-Ergebnissen, Bildschirmaufnahme und lokalen Rückfragen. |
 | `internal/client/python-allowlist.json`, `contract/python-allowlist.json` | Halten Laufzeit-Allowlist und Vertragsreferenz der Python-ZIP-Prüfsummen. |
 | `internal/anmeldung/anmeldung.go`, `internal/fensterio/login.go`, `internal/fensterio/login_windows.go`, `internal/fensterio/loopback_windows.go`, `internal/fensterio/login_surface_windows.go` | Definieren Anmeldefluss und Rückrufprüfung und verbinden sie mit Systembrowser und nativer Anmeldeleiste. |
-| `cmd/bedienfeld/apps_windows.go`, `cmd/bedienfeld/native_windows.go`, `internal/panel/tray.go` | Verbinden App-Fenster, native Aufrufhüllen und Tray-Aktualisierung mit dem Bedienfeld. |
+| `cmd/bedienfeld/apps_windows.go`, `cmd/bedienfeld/native_windows.go`, `internal/panel/tray.go` | Verbinden App-Fenster (Nähte `appSurface`, `openAsync`, `newSurface` für Tests ohne WebView; kein Fenster für eine während des Öffnens entzogene App, #1342), native Aufrufhüllen und Tray-Aktualisierung mit dem Bedienfeld. |
 | `internal/platform/screenshot.go`, `internal/platform/screenshot_windows.go`, `internal/platform/screenshot_other.go` | Stellen begrenzte PNG-Ausgabe, GDI-Aufnahme und den Plattform-Stub bereit. |
 | `internal/platform/install_stop_windows.go`, `internal/platform/error_windows.go` | Beenden das eigene Bedienfeld beim Deinstallieren und klassifizieren Windows-Operationsfehler. |
 | `internal/envsnap/envsnap.go` | Hält die Prozessumgebung beim Paketstart als Vergleichsstand fest. |
@@ -492,7 +492,12 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     (private DACL) und wird vom Widerruf des Läufers ohne Verweisen zu folgen gelöscht
     (`TestRevokeLoeschtWebviewOhneVerweiseZuFolgen`). `WebResourceRequested` ist Schicht 1 (siehe unten). Ein offenes Fenster
     sperrt die Dateien: Das Bedienfeld schließt das Fenster einer App, sobald sie aus der Liste verschwindet (`CloseMissing`),
-    und die Liste leert sich sofort, wenn die Zustandsdatei fehlt. **Restgrenze:** Löschte der Läufer vor dem Schließen,
+    und baut gar keins, wenn sie bei Eintreffen des Öffnungsergebnisses schon fehlt (`handleOpened` prüft die zuletzt empfangene
+    Liste mit `fensterio.StillAssigned` und ruft sonst nur `Opened.Close`, kein Hinweis; `TestOeffnenNachEntzugBautKeinFenster1342`,
+    #1342). Das Öffnen läuft in einer Goroutine: Kam die Liste ohne die App währenddessen an, fand `CloseMissing` noch kein Fenster,
+    und die Liste meldet nur Änderungen. Kommt sie dagegen während `NewSurface` (`embedding`, Nachrichtenpumpe), kehrt `drainApps`
+    sofort zurück, die Liste bleibt im Kanal und schließt das neue Fenster danach in derselben Schleife
+    (`TestListeWaehrendNewSurfaceSchliesstDasNeueFenster`). Die Liste leert sich sofort, wenn die Zustandsdatei fehlt. **Restgrenze:** Löschte der Läufer vor dem Schließen,
     können Reste von `webview\<app>` bleiben; das Bedienfeld löscht nichts (B3), der Läufer räumt sie beim nächsten
     geprüften Abgleich ab (Invariante 20).
 
@@ -635,7 +640,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     v1.0.19 bis v1.0.23 in `internal/edge/doc.go`. F4 `TestWindowsWebViewEinstellungenZurueckgelesen` liest alle 14
     Einstellungen der Sollliste zurück. F5 Aussagen korrigiert (`TestKeineFalschenAussagen`), der Klartext-Puffer von
     `credential` wird genullt (`TestStrictUndLoeschenNullt`, `TestReaderIdentityLoeschtDenKlartext`). F6 Das Fenster einer
-    App schließt, wenn sie aus der Liste verschwindet (`CloseMissing`, `TestCloseMissingSchliesstNurVerschwundene`); fehlt
+    App schließt, wenn sie aus der Liste verschwindet (`CloseMissing`, `TestCloseMissingSchliesstNurVerschwundene`; seit #1342 öffnet auch keine mehr, die während des Öffnens verschwand, `StillAssigned`); fehlt
     die Zustandsdatei, wird die Liste sofort leer. Die Mutanten stehen in `probe/k6b_mutations.py`.
     Lauf 11: `WM_SETFOCUS` kam während `Close` und traf den geleerten Controller (`Chromium.Focus`); im Bedienfeld hätte das den
     Prozess samt Halt beendet. Jetzt prüft jede Methode der Kopie, die `e.controller` oder `e.webview` aufruft, das Feld
@@ -723,7 +728,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Geräte-, Sequenz- und Vertragsprüfung, Pin-Schritt und Speichern des Manifests; ein kaputter Pin hält den Sync nicht auf, Invariante 23) vor `ensureApps` und
     (2) **im Takt des Heartbeats** in `Run` (alle 60 s, rein lokal, auch offline und ohne neue Sequenz). Grund für
     (2), der Hauptfall: Der Entzug kommt mit einem neuen Manifest, der Sync räumt sofort ab, das Bedienfeld erfährt
-    es erst danach und schließt das Fenster (`CloseMissing`); zum Zeitpunkt des Sync ist `webview\<app>` also
+    es erst danach und schließt das Fenster (`CloseMissing`; ein noch öffnendes Fenster wird gar nicht gebaut, `handleOpened`); zum Zeitpunkt des Sync ist `webview\<app>` also
     typischerweise noch gesperrt, und der Takt löscht es beim nächsten Durchlauf. Keine Netzanfrage. Ist das
     gespeicherte Manifest leer oder nicht prüfbar (Signatur, Gerät, Format), wird nichts gelöscht; nie nach
     Offline-, Parse-, Signatur-, Lese- oder Sequenzfehlern eines Sync (der speichert dann nichts Neues; auch nicht nach offline gescheitertem Paketabruf, Invariante 23); Server
@@ -749,7 +754,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     beginnt leer, eine Anmeldung muss neu erfolgen. **Das Manifest entscheidet:** Auch eine gestoppte App, die
     kurz fehlt, wird abgeräumt (das Profil ist nur ein Zwischenspeicher, die Daten liegen im Kern). **Nicht im
     Umfang:** alte Commits einer weiter zugewiesenen App (`apps\<name>\<commit>`), der Widerruf des Geräts
-    (`State.Revoke` löscht weiter alles), das Bedienfeld (löscht nichts, schließt nur Fenster per `CloseMissing`).
+    (`State.Revoke` löscht weiter alles), das Bedienfeld (löscht nichts, schließt nur Fenster per `CloseMissing` und baut für eine entzogene App keins, `StillAssigned`).
     **Grenzen:** Der Takt ist der Heartbeat (60 s); ein gesperrter Ordner bleibt höchstens bis zum Durchlauf nach
     der Entsperrung liegen, auch ohne neue Sequenz. Ein zum
     Teil gelöschter `apps\<name>\<commit>` (Sperre mittendrin) lässt eine zurückkehrende App mit `refused/hash`
