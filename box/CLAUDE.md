@@ -172,8 +172,8 @@ drei.
 - **Tunnel als eigener Stack**, nicht in dieser Compose: eigener Update-Takt,
   eigener Lebenszyklus; ein Neustart des Clients reißt das Gateway nie mit.
   Einzige Berührung: der Netz-Alias `${JNPT_DOMAIN}` am `caddy`.
-- **Festes Netz direkt in der Compose, kein Override** — der Aktuator kennt
-  genau eine Datei; ein Override wäre eine zweite, an die jeder denken müsste.
+- **Festes Netz direkt in der Compose, kein Override** — ein Override wäre eine
+  zweite Datei, an die jeder denken müsste (die Aktuator-Liste gibt es, aber der Kern-Stack braucht sie nicht).
 - **SSH-Grenze in der Firewall (`iifname "tailscale0"`), nicht als
   `ListenAddress`.** Die Tailnet-Adresse gibt es beim Boot noch nicht;
   `ListenAddress` ließe sshd scheitern. `iifname` statt `iif`, weil `iif` beim
@@ -219,9 +219,12 @@ drei.
   In der allgemeinen Läufer-Compose ließe ein fester Bridge-Name auf einem Host kein
   zweites Projekt zu („networks have same bridge name"; Tests, Probeläufe). `jnpt-apps0`
   steht in der Box-Compose, die nur auf der Box läuft, und ist dort unbedenklich.
-  Der Plugin-Aktuator kennt je Plugin genau **eine** Compose-Datei (`COMPOSE_FILE`
-  ohne Liste); ein Aktuator-Lauf ohne den Override würde `egress` ohne den Namen
-  neu anlegen — vor dem Aktuator-Betrieb klären (RUNBOOK 12). `jnpt-apps0` ist wie `jnpt-plug0` nur innerhalb der Bridge
+  Der Plugin-Aktuator nimmt je Plugin eine `:`-Liste von Compose-Dateien
+  (`COMPOSE_FILE`, ab Aktuator-Fassung 5, JanuaPort/januaport#1535); der Box-Deskriptor
+  nennt Basis **und** Override, in dieser Reihenfolge. Ein Lauf ohne den
+  Override würde `egress` ohne den Namen neu anlegen. Die Zeile steht in RUNBOOK 12
+  und ist durch `TestBoxRunbookDeskriptorNenntBasisUndOverride` gehalten.
+  `jnpt-apps0` ist wie `jnpt-plug0` nur innerhalb der Bridge
   frei. Wächter: `script-runner/internal/hygiene/box_netz_test.go` (Compose,
   Firewall-Zeilen und Apps-Netz zugleich). Die Gateway-Seite des Apps-Profils
   (Adresse im Netz, Listener, Caddy-Importe) ist in dieser Vorlage nicht
