@@ -12,8 +12,11 @@ Group=65532
 ExecStart=/usr/local/sbin/jnpt-ablage-abgleich.sh
 # Arbeitsverzeichnis von bisync (Listings), lokaler Papierkorb, Lock.
 StateDirectory=jnpt/rclone-bisync
-# <<< ANPASSEN: derselbe Einstiegspunkt wie LOKAL in jnpt-ablage-abgleich.sh.
-ReadWritePaths=/srv/jnpt/ablage/beispiel /srv/jnpt/ablage-papierkorb
+# /var/lib/jnpt/rclone-ablage: rclone schreibt das erneuerte Zugriffs-Token in seine
+# Config zurueck. Ohne diesen Pfad scheitert das bei jedem Lauf still (zehn vergebliche
+# Versuche je Aufruf), und der Abgleich stirbt erst, wenn das Refresh-Token ablaeuft.
+# <<< ANPASSEN: der erste Pfad ist derselbe Einstiegspunkt wie LOKAL in jnpt-ablage-abgleich.sh.
+ReadWritePaths=/srv/jnpt/ablage/beispiel /srv/jnpt/ablage-papierkorb /var/lib/jnpt/rclone-ablage
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true

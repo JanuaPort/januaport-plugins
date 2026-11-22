@@ -51,7 +51,7 @@ prüft, ob die Änderung dort nachgezogen werden muss — und umgekehrt.
 | `sharepoint/ablage.app.example`, `sharepoint/sicherung.app.example`, `sharepoint/zugang-sp.sh` | Stellen App-Kennungen und die lokale Eingabe der beiden SharePoint-Secrets bereit. |
 | `sharepoint/sp-token-probe.py` | Prüft Tokenbezug, Rollen und Zugriff auf Wurzel-Site sowie Site-Suche. |
 | `sharepoint/sp-einrichten.py`, `sharepoint/rclone-probe.sh` | Richten den Site-Remote ein und prüfen die rclone-Dateioperationen. |
-| `sharepoint/jnpt-ablage-abgleich.sh`, `sharepoint/jnpt-ablage-abgleich.service`, `sharepoint/jnpt-ablage-abgleich.timer` | Führen den periodischen Zwei-Wege-Abgleich der Ablage mit SharePoint aus. |
+| `sharepoint/jnpt-ablage-abgleich.sh`, `sharepoint/jnpt-ablage-abgleich.service`, `sharepoint/jnpt-ablage-abgleich.timer` | Führen den periodischen Zwei-Wege-Abgleich der Ablage mit SharePoint aus. Die Unit führt `/var/lib/jnpt/rclone-ablage` in `ReadWritePaths`; `rclone-bisync` und `rclone-ablage` gehören 65532 (0700), das Runbook legt sie vor dem Erstlauf an, `sp-einrichten.py` setzt auch das Verzeichnis (JanuaPort/januaport#1430, Wächter `box_sharepoint_test.go`). |
 | `sharepoint/jnpt-sicherung-sharepoint.sh`, `sharepoint/jnpt-sicherung-sharepoint.service`, `sharepoint/jnpt-sicherung-sharepoint.timer` | Erzeugen und übertragen die periodische Box-Sicherung nach SharePoint. |
 
 ## Öffentliche Schnittstelle

@@ -117,5 +117,9 @@ else:
                 f"client_credentials = true\ndrive_id = {drive['id']}\ndrive_type = documentLibrary\n")
     os.chmod(conf, 0o600)
     os.chown(conf, 65532 if name == "ablage" else 0, 65532 if name == "ablage" else 0)
+    if name == "ablage":
+        # Das Verzeichnis, nicht nur die Datei: makedirs lief als root, der Abgleich schreibt als 65532.
+        os.chown(os.path.dirname(conf), 65532, 65532)
+        os.chmod(os.path.dirname(conf), 0o700)
     print(f"OK   rclone.conf: [{name}] mit drive_id der Bibliothek '{drive.get('name')}' geschrieben")
 print("Naechster Schritt: sh rclone-probe.sh", name)

@@ -20,7 +20,10 @@ Abschnitt „Ablage und Sicherung über SharePoint".
 
 Vor dem Einsatz anpassen: `OBEN`/`LOKAL` in `jnpt-ablage-abgleich.sh` und
 `ReadWritePaths` in `jnpt-ablage-abgleich.service` (Voreinstellung: der Platzhalter
-`beispiel`).
+`beispiel`). Jede Abgleich-Unit mit `ProtectSystem=strict` führt zusätzlich
+`/var/lib/jnpt/rclone-ablage` in `ReadWritePaths`, damit rclone sein erneuertes
+Zugriffs-Token speichern kann; das Verzeichnis und `/var/lib/jnpt/rclone-bisync`
+gehören 65532 (0700) und werden vor dem Erstlauf angelegt (RUNBOOK).
 
 ⚠️ **Der Abgleich muss als uid 65532 laufen** — `fs.protected_hardlinks=1`: Was root
 anlegt, kann der Gateway-Prozess nicht per Hardlink verschieben (`move_file` scheitert).

@@ -1046,6 +1046,11 @@ chown root:jnpt /etc/jnpt/rclone/*.app; chmod 0640 /etc/jnpt/rclone/*.app
 # Secrets und Site-URLs TIPPT DER MENSCH, im eigenen Terminal:
 ssh -t root@<box> sh /opt/jnpt/box/sharepoint/zugang-sp.sh
 
+# Verzeichnisse des Abgleichs VOR dem Erstlauf, Eigentümer 65532: Der Erstlauf (`resync`) läuft
+# als 65532 und noch ohne Unit, also ohne StateDirectory. Legt sie niemand an, gehören die Ordner
+# root, und rclone kann weder Listings noch sein Token schreiben.
+install -d -o 65532 -g 65532 -m 0700 /var/lib/jnpt/rclone-bisync /var/lib/jnpt/rclone-ablage
+
 python3 sp-einrichten.py sicherung      # Token? Site 200/403/404? Bibliothek? Schreibrecht? Wurzel 403?
 python3 sp-einrichten.py ablage         # schreibt je Bringer den rclone-Remote — ohne Secret
 sh rclone-probe.sh sicherung
