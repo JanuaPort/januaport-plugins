@@ -12,6 +12,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", default="requirements.in")
     parser.add_argument("--output", default="requirements.txt")
+    parser.add_argument("--extra-index-url", default="https://download.pytorch.org/whl/cpu")
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="pi-lock-") as tmp:
         bericht = Path(tmp) / "resolver.json"
@@ -21,7 +22,7 @@ def main():
         pakete = json.loads(bericht.read_text())["install"]
     zeilen = ["# Linux/amd64, CPython 3.12; erzeugt mit python pin_requirements.py.",
               "# Ein SHA-256 je auf dieser Plattform aufgelöstem Wheel; keine Modellgewichte.",
-              "--extra-index-url https://download.pytorch.org/whl/cpu", ""]
+              "--extra-index-url " + args.extra_index_url, ""]
     for paket in sorted(pakete, key=lambda p: p["metadata"]["name"].casefold()):
         meta = paket["metadata"]
         digest = paket["download_info"]["archive_info"]["hashes"]["sha256"]

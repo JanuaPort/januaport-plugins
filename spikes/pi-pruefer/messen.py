@@ -2,6 +2,7 @@
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import multiprocessing
 import os
@@ -14,6 +15,34 @@ import time
 from adapter import KANDIDATEN
 from datenregeln import lade
 from md_regeln import md_rueckgabewege
+
+
+def vertrag_satz2():
+    """Der SEC-freigegebene Vertrag bleibt die einzige Quelle seiner Regeln/Regex."""
+    pfad = Path(__file__).resolve().parent.parent / "pi-pruefer-holdout" / "test_messsatz2.py"
+    spec = importlib.util.spec_from_file_location("holdout_vertrag", pfad)
+    modul = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modul)
+    return modul
+
+
+def lade_satz(pfad, vertrag="satz1"):
+    if vertrag == "satz1":
+        return lade(pfad)
+    if vertrag != "satz2":
+        raise ValueError("Unbekannter Vertrag")
+    import unittest
+    modul = vertrag_satz2()
+    modul.DATEI = Path(pfad)
+    modul.setUpModule()
+    result = unittest.TestResult()
+    # Einzelne TestCases statt Module-Suite: keine zweite setUpModule-Ausführung.
+    for gruppe in unittest.defaultTestLoader.loadTestsFromModule(modul):
+        for test in gruppe:
+            test.run(result)
+    if not result.wasSuccessful():
+        raise ValueError("Satz-2-Vertrag: " + "; ".join(str(t) for t, _ in result.failures + result.errors))
+    return modul.EINTRAEGE
 
 
 def fenster(text, adapter, groesse, ueberlappung):

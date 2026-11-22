@@ -14,7 +14,7 @@ import time
 
 from adapter import KANDIDATEN
 from datenregeln import lade
-from messen import fenster, tabelle, metriken
+from messen import fenster, tabelle, metriken, lade_satz
 from quellen import HERSTELLER
 
 
@@ -37,6 +37,8 @@ def text_score(adapter, text, modus):
 
 
 def kalibriere(daten, scores, strikt=False):
+    if any(z.get("id", "").startswith("h-") for z in daten):
+        raise ValueError("Holdout: keine Kalibrierung auf Satz 2")
     hart = [s for z, s in zip(daten, scores) if z["klasse"] == "hart_harmlos"]
     werte = {0., 1.}
     werte.update(hart if strikt else (math.nextafter(s, math.inf) for s in hart))
@@ -61,8 +63,8 @@ def rohzeilen(name, modus, daten, scores, dauern, schwelle, punkt, strikt):
             for z, s, ms in zip(daten, scores, dauern)]
 
 
-def messen(name, pfad, ziel):
-    daten = lade(pfad)
+def messen(name, pfad, ziel, vertrag="satz1"):
+    daten = lade_satz(pfad, vertrag)
     start = time.perf_counter()
     adapter = KANDIDATEN[name](.5)
     lade_ms = (time.perf_counter() - start) * 1000

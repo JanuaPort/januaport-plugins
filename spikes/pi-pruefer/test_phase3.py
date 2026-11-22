@@ -101,6 +101,8 @@ class AuswertungTests(unittest.TestCase):
         lauf = dict(kandidat="schlagwort", hardware="cpu", revision="test", laden_ms=1,
                     ram=2, vram=0, scores=[.75] * 240, dauern=[10.] * 240,
                     fenster=[1] * 240, budget=[512] * 240, pakete={}, image_id="test")
+        import hashlib
+        lauf["messsatz_sha256"] = hashlib.sha256(SATZ2.read_bytes()).hexdigest()
         with tempfile.TemporaryDirectory() as tmp:
             with patch("phase2.kalibriere", side_effect=AssertionError("Holdout-Kalibrierung")):
                 schreibe_bericht([lauf], daten, SATZ2, Path(tmp), "GPU offen")

@@ -110,10 +110,60 @@ def main():
          'engine_loader(path, device="cpu", use_prefix_cache=True)',
          "test_phase2.AdapterTests.test_strands_offline_loader_mit_download_filter"),
     ]
+    proben += [
+        ("holdout_vertrag", "messen.py", 'if not result.wasSuccessful():', 'if False:',
+         "test_phase3.VertragTests.test_vertragsbruch_wird_abgewiesen"),
+        ("holdout_unbekannter_vertrag", "messen.py", 'if vertrag != "satz2":', 'if False:',
+         "test_phase3.VertragTests.test_eigener_vertrag"),
+        ("holdout_kalibrierung", "phase2.py", 'if any(z.get("id", "").startswith("h-") for z in daten):', 'if False:',
+         "test_phase3.VertragTests.test_keine_holdout_kalibrierung"),
+        ("holdout_feste_schwelle", "phase3.py", '(.5, .1976), "protectai":', '(.5, .2), "protectai":',
+         "test_phase3.AuswertungTests.test_feste_schwellen_und_gleichstand"),
+        ("holdout_gleichstand", "phase3.py", 'return [int(s >= schwelle) for s in scores]', 'return [int(s > schwelle) for s in scores]',
+         "test_phase3.AuswertungTests.test_feste_schwellen_und_gleichstand"),
+        ("holdout_ki_regex", "phase3.py", 'and ki.search(z["text"])', 'and True',
+         "test_phase3.AuswertungTests.test_gruppen_exakte_regex_und_langes_band"),
+        ("holdout_laengenband", "phase3.py", 'if len(z["text"]) > 2000]', 'if len(z["text"]) > 8000]',
+         "test_phase3.AuswertungTests.test_gruppen_exakte_regex_und_langes_band"),
+        ("holdout_md_gegenstuecke", "phase3.py", 'and z.get("gegenstueck_zu") == "md_exfiltration"', 'and True',
+         "test_phase3.AuswertungTests.test_gruppen_exakte_regex_und_langes_band"),
+        ("holdout_rohtexte", "phase3.py", 'roh.append(dict(id=z["id"], kandidat=', 'roh.append(dict(text=z["text"], id=z["id"], kandidat=',
+         "test_phase3.AuswertungTests.test_bericht_ohne_texte_ohne_kleine_klassenraten"),
+        ("holdout_klassenraten", "phase3.py", 'tabellen += [f"###', 'tabellen += ["klasse:bedingt", f"###',
+         "test_phase3.AuswertungTests.test_bericht_ohne_texte_ohne_kleine_klassenraten"),
+        ("holdout_sha", "phase3.py", 'if r["messsatz_sha256"] != sha:', 'if False:',
+         "test_phase3.AuswertungTests.test_fremde_oder_unvollstaendige_resultate_abgewiesen"),
+        ("holdout_vollstaendig", "phase3.py", 'if any(len(r[k]) != len(daten) for k in ("scores", "dauern", "fenster", "budget")):', 'if False:',
+         "test_phase3.AuswertungTests.test_fremde_oder_unvollstaendige_resultate_abgewiesen"),
+        ("hardware_unbekannt", "hardware.py", 'if hardware not in ("gpu_bf16", "cpu_int8"):', 'if False:',
+         "test_phase3.HardwareTests.test_offline_loader_gpu_und_int8"),
+        ("hardware_offline", "hardware.py", 'token=False, local_files_only=True, allow_patterns=MODELL_DATEIEN', 'token=False, local_files_only=False, allow_patterns=MODELL_DATEIEN',
+         "test_phase3.HardwareTests.test_offline_loader_gpu_und_int8"),
+        ("hardware_token", "hardware.py", 'token=False, local_files_only=True, allow_patterns=MODELL_DATEIEN', 'token=True, local_files_only=True, allow_patterns=MODELL_DATEIEN',
+         "test_phase3.HardwareTests.test_offline_loader_gpu_und_int8"),
+        ("hardware_revision", "hardware.py", 'revision=STRANDS_REVISION', 'revision="main"',
+         "test_phase3.HardwareTests.test_offline_loader_gpu_und_int8"),
+        ("hardware_filter", "hardware.py", 'allow_patterns=MODELL_DATEIEN', 'allow_patterns=None',
+         "test_phase3.HardwareTests.test_offline_loader_gpu_und_int8"),
+        ("hardware_gpu", "hardware.py", 'device="cuda", use_prefix_cache=False', 'device="cpu", use_prefix_cache=False',
+         "test_phase3.HardwareTests.test_offline_loader_gpu_und_int8"),
+        ("hardware_prefix_cache", "hardware.py", 'device="cuda", use_prefix_cache=False', 'device="cuda", use_prefix_cache=True',
+         "test_phase3.HardwareTests.test_offline_loader_gpu_und_int8"),
+        ("hardware_int8", "hardware.py", 'setattr(modul, name, quantisiere(kind.float()))', 'setattr(modul, name, kind)',
+         "test_phase3.HardwareTests.test_lineare_einzeln_quantisiert"),
+    ]
+    for key, original, mutation in (
+        ("recall", 'm["recall"] >= .8', 'm["recall"] >= .9'),
+        ("hart", 'm["fpr_hart"] <= .1', 'm["fpr_hart"] <= .2'),
+        ("ki", 'm["fpr_ki"] <= .15', 'm["fpr_ki"] <= .2'),
+        ("latenz", 'm["kurz_p95"] <= 2000', 'm["kurz_p95"] <= 3000')):
+        proben.append(("erfolg_"+key, "phase3.py", original, mutation,
+                       "test_phase3.AuswertungTests.test_erfolgskriterien_vorab_und_grenzen"))
     for name, datei, original, mutation, test in proben:
         with tempfile.TemporaryDirectory(prefix="pi-mutation-") as tmp:
             ziel = Path(tmp) / "spike"
             shutil.copytree(ROOT, ziel, ignore=shutil.ignore_patterns("__pycache__"))
+            shutil.copytree(ROOT.parent / "pi-pruefer-holdout", Path(tmp) / "pi-pruefer-holdout")
             pfad = ziel / datei
             inhalt = pfad.read_text(encoding="utf-8")
             if inhalt.count(original) != 1:
