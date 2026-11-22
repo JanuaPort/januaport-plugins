@@ -51,6 +51,8 @@ CASES = [
     ("paket-koerper-protokollfehler", "client/http.go", 'return nil, res.StatusCode, "", &netzFehler{e}', 'return nil, res.StatusCode, "", ErrProtocol', "client", "TestPaketAbrufStillstandImKoerperIstNetzfehlerNieProtokollfehler"),
     ("paket-kopf-ohne-frist", "client/http.go", "return grenzen{kopf: a.fristen.stillstand, stillstand: true}", "return grenzen{kopf: 4 * time.Second, stillstand: true}", "client", "TestPaketAbrufStillstandVorDemKopfIstOffline"),
     ("werkzeug-kurze-frist", "client/http.go", "return grenzen{kopf: a.fristen.werkzeugKopf}", "return grenzen{kopf: a.fristen.kurzKopf, gesamt: a.fristen.kurzGesamt}", "client", "TestAppWerkzeugaufrufUeberDieKurzenFristenHinausGelingt"),
+    ("lauf-kurze-frist", "client/http.go", "g := grenzen{kopf: a.fristen.laufGrenze}", "g := grenzen{kopf: a.fristen.kurzKopf, gesamt: a.fristen.kurzGesamt}", "client", "TestLaufWerkzeugaufrufUeberDieKurzenFristenHinausGelingt"),
+    ("lauf-ohne-obergrenze", "client/http.go", "g.gesamt = a.fristen.laufGrenze", "g.gesamt = 0", "client", "TestLaufWerkzeugaufrufOhneDeadlineHatEineObergrenze"),
     ("kurz-ohne-gesamtfrist", "client/http.go", "return grenzen{kopf: a.fristen.kurzKopf, gesamt: a.fristen.kurzGesamt}", "return grenzen{kopf: a.fristen.kurzKopf}", "client", "TestKurzeAufrufeBehaltenKopfUndGesamtfrist"),
 
     ("sha1dc", "client/copied_contract.go", "if collision {", "if collision && false {", "client", "TestSHA1Collision"),

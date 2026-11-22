@@ -632,7 +632,9 @@ höchstens 30 s auf den Antwortkopf und 40 s insgesamt. Der Paketabruf hat keine
 Stillstandsfrist: 30 s ohne ein einziges empfangenes Byte (vor dem Kopf wie im Körper) brechen ab. Ein großes Paket
 (bis 128 MiB) an einer langsamen, aber stetigen Leitung kommt deshalb an. Stillstand und Netzfehler im Körper zählen als
 offline (der nächste Abgleich versucht es erneut), nie als Protokollfehler; Größe, Hash und Format bleiben Protokollfehler.
-Halt und Beenden brechen den Abruf sofort ab.
+Halt und Beenden brechen den Abruf sofort ab. Werkzeugaufrufe eines Laufs (Skript, `januaport.call`) haben ebenfalls keine
+Gesamtfrist im Client: Es gilt die Zeitgrenze des Laufs (Wandzeit, `timeout_s`, höchstens 86400 s), die der Kontext des Laufs
+trägt. Ohne Deadline im Kontext ist 86400 s die Obergrenze.
 
 Credential und Ed25519-Key liegen DPAPI-CurrentUser-verschlüsselt mit Entropie
 unter <code>%LOCALAPPDATA%\JanuaPort\desktop-runner\</code>. Der DACL erlaubt

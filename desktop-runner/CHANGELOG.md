@@ -25,6 +25,9 @@
   weiterhin sofort ab.
 - **App-Gateway:** Befehle gelten bis zur Zeitgrenze von 60 s je Befehl, die der Kontext der Brücke trägt. Die Kopf-Frist liegt
   bei 60 s, der Client setzt keine kürzere Gesamtfrist mehr. Code und README stimmen überein.
+- **Werkzeugaufrufe des Laufs** (`API.MCP`): wie beim App-Gateway keine Gesamtfrist und keine kurze Kopf-Frist im Client. Es gilt die
+  Zeitgrenze des Laufs, die der Kontext trägt (Wandzeit und `timeout_s`); ohne Deadline im Kontext ist 86400 s die Obergrenze.
+  Bisher endete ein Werkzeugaufruf nach 30 s (Kopf) oder 40 s (Körper) mit einem internen Fehler des Laufs.
 - **Heartbeat, Claim, Report** und die übrigen kurzen Aufrufe behalten 30 s bis zum Kopf und 40 s insgesamt.
 
 ### Laufmarker bleibt nach gescheitertem Speichern nicht mehr stehen (JanuaPort/januaport#1434)

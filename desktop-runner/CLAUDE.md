@@ -874,16 +874,20 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Hash und Paketform prüft weiter `Prepare`. Ein abgebrochener Kontext (Halt, Stop, Beenden) beendet den Abruf sofort und
     liefert `ctx.Err()`. (b) **App-Gateway** (`AppRPC`, App-Token): Kopf-Frist 60 s, **keine Gesamtfrist im Client**; die
     dokumentierte Zeitgrenze „60 s je Befehl“ setzt der Kontext der Brücke durch (`fenster.Bruecke.Frist`, README). Die
-    Kopf-Frist darf sie nie unterschreiten. (c) **Alle übrigen Aufrufe** (Heartbeat, Claim, Report, Start, Manifest, Config,
-    Pair, Lauf-Token-`mcp` u. a.) behalten 30 s bis zum Kopf und 40 s insgesamt; ein Lesefehler im Körper bleibt dort
+    Kopf-Frist darf sie nie unterschreiten. (c) **Werkzeugaufrufe des Laufs** (`API.MCP`, Lauf-Token): wie (b) keine
+    Client-Gesamtfrist und keine kurze Kopf-Frist; die Zeitgrenze trägt der Kontext des Laufs (`runCtx` in `Execute` ist
+    `WithTimeout(min(wall, env.Timeout))`, `timeout_s` höchstens 86400 s). Die Kopf-Frist ist `fristen.laufGrenze` (86400 s) und
+    unterschreitet die Laufgrenze nie; trägt ein Kontext keine Deadline, gilt `laufGrenze` als Obergrenze der Gesamtzeit,
+    damit nichts unbegrenzt hängt. (d) **Alle übrigen Aufrufe** (Heartbeat, Claim, Report, Start, Manifest, Config,
+    Pair u. a.) behalten 30 s bis zum Kopf und 40 s insgesamt; ein Lesefehler im Körper bleibt dort
     `ErrProtocol`. Die Fristen sind in Tests auf Millisekunden verkürzbar (`API.fristen`), echte 40 s laufen nie.
     Tests: `TestStandardfristen`, `TestPaketAbrufStetigUeberDieGesamtfristHinausGelingt`,
     `TestPaketAbrufStillstandImKoerperIstNetzfehlerNieProtokollfehler`, `TestPaketAbrufStillstandVorDemKopfIstOffline`,
     `TestPaketAbrufVerbindungsabbruchImKoerperIstOffline`, `TestPaketAbrufProtokollfehlerBleibenProtokollfehler`,
     `TestPaketAbrufKontextAbbruchBeendetSofort`, `TestAppWerkzeugaufrufUeberDieKurzenFristenHinausGelingt`,
-    `TestAppWerkzeugaufrufEndetSpaetestensMitDemKontext`, `TestKurzeAufrufeBehaltenKopfUndGesamtfrist`; Mutanten `paket-*`,
-    `werkzeug-*`, `kurz-*`. **Stolperfalle:** Die Lauf-Token-Werkzeugaufrufe der Skripte (`API.MCP`) bleiben bewusst bei der
-    kurzen Frist (nicht im Umfang von #1426, siehe Gate-Bericht).
+    `TestAppWerkzeugaufrufEndetSpaetestensMitDemKontext`, `TestLaufWerkzeugaufrufUeberDieKurzenFristenHinausGelingt`,
+    `TestLaufWerkzeugaufrufEndetMitDemKontextDesLaufs`, `TestLaufWerkzeugaufrufOhneDeadlineHatEineObergrenze`,
+    `TestKurzeAufrufeBehaltenKopfUndGesamtfrist`; Mutanten `paket-*`, `werkzeug-*`, `lauf-*`, `kurz-*`.
 27. Nach gesetztem Laufmarker gibt es keinen Rückweg ohne Abschluss (#1434): Sobald `Mark` oder `ReserveRun` den Marker gesetzt hat,
     endet jeder Fehlerpfad im Ad-hoc- und im Zeitplan-Weg über `Engine.abschluss` (`report(finish(r, "internal", ""))`), damit der
     Marker ins Journal wandert. Betroffen waren das Speichern der Testfreigabe `test-<job>` im Ad-hoc-Weg (`adhoc`), `ObserveTime` im
@@ -934,7 +938,7 @@ mit PASS ohne SKIP laufen. CI/Kompilierung ersetzen diesen Gate-Beleg nicht.
 | Runtime/Lock/Umgebung | TestPythonAllowlistUndWheel, TestUmgebungVorJedemStart, TestUmgebungFehlendeZusaetzlicheDateien, TestWheelTagsLockUndManifestVerbote, TestWindowsPythonEchterStartUndManipulation |
 | Reine Wheels, `._pth` festgepinnt (#1392, W1–W3) | TestReineWheelsTagTabelle, TestReinesWheelBrauchtHashImLock, TestUiaProbeWheelNamen, TestReinesWheelEntpacktNurUnterLibs, TestPthDateiIstFestgepinnt; nativ: TestWindowsPthImWheelBleibtWirkungslos |
 | Unfertige Umgebung ohne Siegel wird ersetzt, Manipulation mit Siegel bleibt ErrHash (#1425) | TestAbbruchVorSiegelDerNaechsteAbgleichMachtDenPinBereit, TestAbbruchVorSiegelKaputtesPaketMachtKeineUmgebung, TestAbbruchVorSiegelEntferntVerweisNichtDessenZiel, TestManipulationMitSiegelBleibtErrHashUndWirdNichtRepariert |
-| Stillstands- statt Gesamtfrist beim Paketabruf, Werkzeugaufrufe bis zur Zeitgrenze (#1426) | TestStandardfristen, TestPaketAbrufStetigUeberDieGesamtfristHinausGelingt, TestPaketAbrufStillstandImKoerperIstNetzfehlerNieProtokollfehler, TestPaketAbrufKontextAbbruchBeendetSofort, TestAppWerkzeugaufrufUeberDieKurzenFristenHinausGelingt, TestKurzeAufrufeBehaltenKopfUndGesamtfrist |
+| Stillstands- statt Gesamtfrist beim Paketabruf, Werkzeugaufrufe bis zur Zeitgrenze (#1426) | TestStandardfristen, TestPaketAbrufStetigUeberDieGesamtfristHinausGelingt, TestPaketAbrufStillstandImKoerperIstNetzfehlerNieProtokollfehler, TestPaketAbrufKontextAbbruchBeendetSofort, TestAppWerkzeugaufrufUeberDieKurzenFristenHinausGelingt, TestLaufWerkzeugaufrufUeberDieKurzenFristenHinausGelingt, TestLaufWerkzeugaufrufOhneDeadlineHatEineObergrenze, TestKurzeAufrufeBehaltenKopfUndGesamtfrist |
 | Kein Rückweg ohne Abschluss nach gesetztem Laufmarker (#1434) | TestAdHocSpeichernDerFreigabeScheitertSchliesstDenLaufUndGibtDenMarkerFrei, TestZeitplanObserveTimeScheitertSchliesstDenLaufUndGibtDenMarkerFrei, TestZeitplanMarkImWiederholungszweigScheitertSchliesstDenLaufUndGibtDenMarkerFrei |
 | Kaputter Pin sperrt das Manifest nicht (#1391, E1/E2) | TestPresyncUnveraendertesManifestLehntDenLaufNichtAb, TestKaputterPinTrifftNurDiesenPin, TestFehlerAufManifestEbeneVerwirftAlles, TestOfflinePaketabrufVerzoegertNurDenEntzug, TestGleicheSeqAndereHuelleBleibtErrManifest, TestByteGleichesManifestNachNeustartIstKeinFehler, TestSyncFehlerAufManifestEbeneSchreibtCodeMitKlasse, TestWiderrufUndAbbruchSchreibenKeinenSyncFehlerCode |
 | ZIP-Namen/Typen/Kollisionen/Bomben | TestZIPAbweisungAmEntpacker; Kopien: TestCopiedLibraryFunctions |
