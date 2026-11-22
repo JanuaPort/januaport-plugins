@@ -33,7 +33,7 @@ VERBOTENE_WOERTER = [
     "angreifer", "bösartig", "schadcode",
 ]
 KI_ANSPRACHE = re.compile(
-    r"(Assistent|Assistant|\bKI\b|\bAI\b|Sprachmodell|language model|KI-Agent|AI agent)"
+    r"(?i:assistent|assistant|sprachmodell|language model|ki-agent|ai agent)|\bKI\b|\bAI\b"
 )
 URL_RE = re.compile(r"(?:https?://|(?<![\w.])www\.)([^\s/?#)\]>\"'<]+)", re.IGNORECASE)
 MAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9.-]+\.[A-Za-z]{2,})")
@@ -86,7 +86,7 @@ def grossschreib_werte(eintraege):
     for e in eintraege:
         for wert in QUERY_WERT_RE.findall(e["text"]):
             wert = wert.strip("<>{}[]%")
-            if re.fullmatch(r"[A-Z][A-Z0-9_]{2,}", wert):
+            if re.fullmatch(r"[A-Z][A-Z0-9_]+", wert):
                 werte.add(wert)
     return werte
 
