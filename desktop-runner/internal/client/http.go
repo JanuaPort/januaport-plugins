@@ -58,7 +58,71 @@ type HTTPError struct {
 
 func (e *HTTPError) Error() string { return "http_error" }
 
+// fristen sind die Zeitgrenzen des Geräteclients (JanuaPort/januaport#1426). Tests verkürzen sie.
+type fristen struct {
+	kurzKopf     time.Duration // Heartbeat, Claim, Report u. a.: bis zum Antwortkopf
+	kurzGesamt   time.Duration // dieselben Aufrufe: Kopf und Körper zusammen
+	werkzeugKopf time.Duration // App-Gateway: bis zum Antwortkopf; die Gesamtzeit trägt der Kontext (60 s je Befehl)
+	stillstand   time.Duration // Paketabruf: so lange ohne ein einziges empfangenes Byte
+	laufGrenze   time.Duration // Werkzeugaufrufe des Laufs: Obergrenze ohne Deadline im Kontext, zugleich Kopf-Frist
+}
+
+var standardFristen = fristen{kurzKopf: 30 * time.Second, kurzGesamt: 40 * time.Second, werkzeugKopf: 60 * time.Second, stillstand: 30 * time.Second, laufGrenze: 24 * time.Hour}
+
+// grenzen ist die Frist eines einzelnen Aufrufs. gesamt 0: keine Gesamtfrist, der Kontext begrenzt. stillstand:
+// kopf gilt auch im Körper als Frist ohne neues Byte, eine Gesamtfrist gibt es nicht.
+type grenzen struct {
+	kopf, gesamt time.Duration
+	stillstand   bool
+}
+
+func (a *API) grenzen(ctx context.Context, endpoint, runToken, appToken string) grenzen {
+	switch {
+	case runToken != "":
+		// Die Zeitgrenze des Laufs trägt dessen Kontext (WithTimeout aus Wandzeit und Pin-Frist, höchstens 86400 s). Die Kopf-
+		// Frist unterschreitet sie nie; ohne Deadline im Kontext begrenzt die Laufzeitgrenze, damit nichts unbegrenzt hängt.
+		g := grenzen{kopf: a.fristen.laufGrenze}
+		if _, ok := ctx.Deadline(); !ok {
+			g.gesamt = a.fristen.laufGrenze
+		}
+		return g
+	case strings.HasPrefix(endpoint, "packages/"):
+		return grenzen{kopf: a.fristen.stillstand, stillstand: true}
+	case appToken != "":
+		return grenzen{kopf: a.fristen.werkzeugKopf}
+	default:
+		return grenzen{kopf: a.fristen.kurzKopf, gesamt: a.fristen.kurzGesamt}
+	}
+}
+
+var errStillstand = errors.New("stillstand")
+
+// netzFehler: Der Antwortkörper des Paketabrufs brach ab (Stillstand, Verbindungsabbruch). Das ist ein Netzfehler
+// (IsOffline), kein Protokollfehler. Der Text nennt nie URL oder Pfad.
+type netzFehler struct{ err error }
+
+func (e *netzFehler) Error() string   { return "netzwerk" }
+func (e *netzFehler) Unwrap() error   { return e.err }
+func (e *netzFehler) Timeout() bool   { return errors.Is(e.err, errStillstand) }
+func (e *netzFehler) Temporary() bool { return true }
+
+// regungsLeser setzt die Stillstandsuhr bei jedem empfangenen Byte zurück.
+type regungsLeser struct {
+	r     io.Reader
+	uhr   *time.Timer
+	frist time.Duration
+}
+
+func (l *regungsLeser) Read(p []byte) (int, error) {
+	n, err := l.r.Read(p)
+	if n > 0 {
+		l.uhr.Reset(l.frist)
+	}
+	return n, err
+}
+
 type API struct {
+	fristen          fristen
 	contract         int
 	containerRuntime string
 	base             string
@@ -113,7 +177,7 @@ func NewAPI(trust Trust, token string, onRevoke func() error) (*API, error) {
 		}
 	}
 	dialer := net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
-	transport := &http.Transport{Proxy: nil, TLSClientConfig: cfg, ForceAttemptHTTP2: false, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 30 * time.Second, MaxResponseHeaderBytes: 32 << 10,
+	transport := &http.Transport{Proxy: nil, TLSClientConfig: cfg, ForceAttemptHTTP2: false, TLSHandshakeTimeout: 10 * time.Second, MaxResponseHeaderBytes: 32 << 10,
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			c, e := dialer.DialContext(ctx, network, addr)
 			if e != nil {
@@ -128,7 +192,7 @@ func NewAPI(trust Trust, token string, onRevoke func() error) (*API, error) {
 			}
 			return c, nil
 		}}
-	return &API{base: strings.TrimSuffix(trust.URL, "/") + "/api/device/v1/", token: token, onRevoke: onRevoke, http: &http.Client{Transport: transport, Timeout: 40 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return ErrProtocol }}}, nil
+	return &API{fristen: standardFristen, base: strings.TrimSuffix(trust.URL, "/") + "/api/device/v1/", token: token, onRevoke: onRevoke, http: &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return ErrProtocol }}}, nil
 }
 func (a *API) Close() { a.http.CloseIdleConnections() }
 func (a *API) request(ctx context.Context, method, endpoint string, body any, seq uint64, runToken string, max int) ([]byte, int, error) {
@@ -168,6 +232,16 @@ func (a *API) exchange(ctx context.Context, method, endpoint string, body any, s
 		}
 		reader = bytes.NewReader(raw)
 	}
+	// Jeder Aufruf trägt seine eigene Frist (grenzen). Der Client selbst hat weder Gesamtfrist noch Kopf-Frist.
+	lim := a.grenzen(ctx, endpoint, runToken, appToken)
+	parent := ctx
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	if lim.gesamt > 0 {
+		var stop context.CancelFunc
+		ctx, stop = context.WithTimeout(ctx, lim.gesamt)
+		defer stop()
+	}
 	req, e := http.NewRequestWithContext(ctx, method, a.base+endpoint, reader)
 	if e != nil {
 		return nil, 0, "", ErrProtocol
@@ -201,15 +275,33 @@ func (a *API) exchange(ctx context.Context, method, endpoint string, body any, s
 		}
 		req.Header.Set(appTokenHeader, appToken)
 	}
+	uhr := time.AfterFunc(lim.kopf, func() { cancel(errStillstand) })
+	defer uhr.Stop()
 	res, e := a.http.Do(req)
 	if e != nil {
 		return nil, 0, "", e
 	}
 	defer res.Body.Close()
+	var antwort io.Reader = res.Body
+	if lim.stillstand {
+		uhr.Reset(lim.kopf)
+		antwort = &regungsLeser{r: res.Body, uhr: uhr, frist: lim.kopf}
+	} else {
+		uhr.Stop()
+	}
 	if res.StatusCode >= 400 {
 		max = 80 << 10
 	}
-	b, e := io.ReadAll(io.LimitReader(res.Body, int64(max)+1))
+	b, e := io.ReadAll(io.LimitReader(antwort, int64(max)+1))
+	if e != nil && lim.stillstand {
+		if parent.Err() != nil {
+			return nil, res.StatusCode, "", parent.Err()
+		}
+		if cause := context.Cause(ctx); cause != nil {
+			e = cause
+		}
+		return nil, res.StatusCode, "", &netzFehler{e}
+	}
 	if e != nil || len(b) > max {
 		return nil, res.StatusCode, "", ErrProtocol
 	}

@@ -220,7 +220,7 @@ chrome.webview.addEventListener("message", (e) => {
 Nachricht, keine unbekannten und keine doppelten Schlüssel. `id` ist in der Antwort `null`, wenn der
 Umschlag nicht lesbar war. **Feste Fehlercodes:** `abgelehnt`, `antwort_ungueltig`, `args`, `befehl`,
 `fehler`, `nicht_angemeldet`, `nicht_erreichbar`, `umschlag`, `zu_gross`, `zu_viele`. Nie ein Fehlertext, nie ein
-Token; ein Ergebnis mit Token-Muster wird zu `antwort_ungueltig`. Zeitgrenze 60 s je Befehl (lokal 5 s), höchstens
+Token; ein Ergebnis mit Token-Muster wird zu `antwort_ungueltig`. Zeitgrenze 60 s je Befehl (lokal 5 s; der Läufer setzt sie über den Kontext durch, der HTTP-Client hat für diese Befehle keine kürzere Gesamtfrist und wartet höchstens 60 s auf den Antwortkopf), höchstens
 8 Gateway- und 4 lokale Aufrufe gleichzeitig (`zu_viele`). Die Seite sendet kein `fetch` ins Netz
 (`connect-src 'none'`); alles geht über die Brücke. Der Läufer setzt `<meta charset="utf-8">` und die CSP selbst
 ein, Seiten sind nur `https://app-<name mit - statt _>-pc.jnpt.invalid/<pfad>.html` (Einstieg `/index.html`).
@@ -627,6 +627,15 @@ Ohne diese Optionen gilt die normale TLS-Prüfung. HTTP ist nur an numerische
 Loopback-Adressen erlaubt; der verbundene Peer wird zusätzlich geprüft.
 Umleitungen und Umgebungsproxys sind gesperrt. Kein Abschaltschalter für TLS.
 
+**Fristen im Geräteclient (JanuaPort/januaport#1426):** Heartbeat, Claim, Report und die übrigen kurzen Aufrufe warten
+höchstens 30 s auf den Antwortkopf und 40 s insgesamt. Der Paketabruf hat keine Gesamtfrist, sondern eine
+Stillstandsfrist: 30 s ohne ein einziges empfangenes Byte (vor dem Kopf wie im Körper) brechen ab. Ein großes Paket
+(bis 128 MiB) an einer langsamen, aber stetigen Leitung kommt deshalb an. Stillstand und Netzfehler im Körper zählen als
+offline (der nächste Abgleich versucht es erneut), nie als Protokollfehler; Größe, Hash und Format bleiben Protokollfehler.
+Halt und Beenden brechen den Abruf sofort ab. Werkzeugaufrufe eines Laufs (Skript, `januaport.call`) haben ebenfalls keine
+Gesamtfrist im Client: Es gilt die Zeitgrenze des Laufs (Wandzeit, `timeout_s`, höchstens 86400 s), die der Kontext des Laufs
+trägt. Ohne Deadline im Kontext ist 86400 s die Obergrenze.
+
 Credential und Ed25519-Key liegen DPAPI-CurrentUser-verschlüsselt mit Entropie
 unter <code>%LOCALAPPDATA%\JanuaPort\desktop-runner\</code>. Der DACL erlaubt
 ausschließlich dem eigenen Nutzer Zugriff; die Prüfung vergleicht binäre SIDs,
@@ -711,6 +720,10 @@ dem Job Object zugeordnet und erst danach fortgesetzt. Wandzeit, Abbruch
 und Job-Close beenden den Prozessbaum. Vor jedem Start werden Paket und
 Umgebungsdateien nachgerechnet; die Vergleichsliste liegt DPAPI-geschützt
 außerhalb der Umgebung. Zusätzliche/geänderte Dateien verweigern den Lauf.
+Bricht der Läufer ab, nachdem eine Umgebung nach `envs\` umbenannt, ihr Siegel aber noch nicht gespeichert war
+(#1425), ist das Verzeichnis ein unfertiger eigener Stand: Der nächste Abgleich lädt und prüft das Paket neu und ersetzt
+ihn vollständig (ohne Verweisen zu folgen). Ist dagegen ein Siegel gespeichert, bleibt ein abweichendes Verzeichnis
+Manipulation (`refused/hash`) und wird nie still repariert.
 
 **Skripte bekommen ein privates TEMP.** Jeder Lauf erhält ein frisches, leeres
 Verzeichnis <code>%LOCALAPPDATA%\JanuaPort\desktop-runner\tmp\&lt;Lauf-ID&gt;\</code>
