@@ -122,3 +122,30 @@ func TestModuswechselNachCloseTutNichts(t *testing.T) {
 		t.Fatalf("geschlossenes Login arbeitet: %v", v.events)
 	}
 }
+
+// Schutzschicht jedes Personen- und Moduswechsels (Messung auf der Test-VM): Erst wenn ClearBrowsingData gelaufen ist,
+// wird neu geladen und das Gateway freigegeben. Ohne das Löschen erreichte history.go(-2) die Seite der Vor-Person, und
+// Chromium stellte deren Formularwerte wieder her (Mutant: Wechsel ohne ClearBrowsingData).
+func TestWechselLaedtErstNachDemLoeschenDerBrowserdatenNeu(t *testing.T) {
+	for name, kind := range map[string]switchKind{"Person": switchLogin, "Abmelden": switchLogout, "Modus a": switchDevice} {
+		t.Run(name, func(t *testing.T) {
+			l, g, api := persoenlichesLogin(t)
+			v := &loginView{}
+			l.switchPerson(v, personForTest(t), kind, l.generation)
+			v.quiet(true)
+			if v.clear == nil {
+				t.Fatalf("Wechsel ohne ClearBrowsingData: %v", v.events)
+			}
+			if want := []string{"quiet", "clear"}; !reflect.DeepEqual(v.events, want) {
+				t.Fatalf("vor dem Löschen: %v, erwartet %v (kein Reload)", v.events, want)
+			}
+			if _, err := g.Werkzeuge(context.Background()); !errors.Is(err, fenster.ErrNichtAngemeldet) || api.rpcs != 0 {
+				t.Fatalf("Gateway vor dem Löschen offen: %v", err)
+			}
+			v.clear(true)
+			if want := []string{"quiet", "clear", "reload"}; !reflect.DeepEqual(v.events, want) {
+				t.Fatalf("Ablauf %v, erwartet %v", v.events, want)
+			}
+		})
+	}
+}

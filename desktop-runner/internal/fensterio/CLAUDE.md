@@ -60,6 +60,12 @@ Es gelten zusätzlich die Regeln in `../../CLAUDE.md`, insbesondere Invarianten 
   freigeben. Jeder Fehler/20-s-Frist schließt das App-Fenster. Auch beim ersten
   Öffnen werden alte Profildaten vor der ersten App-Navigation gelöscht, auch
   in Modus a. Eine App am PC behält keine lokalen Daten über das Öffnen hinaus.
+- **Invariante: Jeder Wechsel löscht die Browserdaten, bevor neu geladen wird** (Messung auf der Test-VM, #1537). Personenwechsel, Abmelden
+  und Wechsel b → a laufen alle über `Login.switchPerson`: `Quiesce`, dann `ClearBrowsingData`, erst in dessen Abschluss `Reload` und die
+  Freigabe des Gateways. `ClearBrowsingData` ist die eigentliche Schutzschicht: Ohne es erreichte `history.go(-2)` die Seite der
+  Vor-Person, und Chromium stellte deren Formularwerte wieder her. `about:blank` allein schützt davor nicht. Wer den Wechselpfad
+  umbaut, behält die Reihenfolge Quiesce → Clear → Reload. Wächter: `TestWechselLaedtErstNachDemLoeschenDerBrowserdatenNeu` (alle drei
+  Arten, Fake-View; Mutant: ohne `ClearBrowsingData` rot). Das echte Löschen in WebView2 belegt nur die native Sonde (unten).
 - `about:blank` ist ausschließlich während dieses nativen Übergangs zulässig,
   nur im obersten Rahmen. Der Rückruf akzeptiert keine Seitennachrichten. Ansonsten
   bleiben K6b-2-Navigation, Ressourcenfilter, Browser-Netzsperre und WebRTC unverändert.
