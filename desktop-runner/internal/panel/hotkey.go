@@ -119,8 +119,17 @@ func (m *Model) hasHotkey(h Hotkey) bool {
 	return false
 }
 
-// Hotkeys liefert die gültigen Kürzel in der Reihenfolge ihrer Kennung: Die Kennung i+1 gehört zum Eintrag i.
-// Auch doppelte Tasten stehen darin; SyncHotkeys meldet sie nicht an.
+// hotkeyID ist die Kennung der Anmeldung beim System: die Nummer der F-Taste (1 bis 12). Sie hängt an der Taste, nie an
+// der Listenposition (#1537): Ein WM_HOTKEY, der vor einer Neuanmeldung in der Warteschlange lag, trifft danach
+// höchstens die Taste, die der Mensch gedrückt hat, nie einen Eintrag, der durch eine kürzere oder umgestellte Liste
+// an seine Stelle gerückt ist. Eindeutig, weil dieselbe Taste in mehr als einem Eintrag nie angemeldet wird.
+func hotkeyID(key string) int {
+	n, _ := HotkeyNumber(key)
+	return n
+}
+
+// Hotkeys liefert die gültigen Kürzel in der Reihenfolge der Liste. Auch doppelte Tasten stehen darin; SyncHotkeys
+// meldet sie nicht an.
 func (m *Model) Hotkeys() []Hotkey {
 	out := make([]Hotkey, len(m.hk.entries))
 	for i, e := range m.hk.entries {
@@ -149,7 +158,7 @@ func (m *Model) SyncHotkeys(unregister func(id int), register func(id int, key s
 		if e.state == duplicate {
 			continue
 		}
-		id := i + 1
+		id := hotkeyID(e.Key)
 		err := register(id, e.Key)
 		m.HotkeyRegistered(i, err == nil)
 		if err == nil {
@@ -171,15 +180,20 @@ func (m *Model) ReleaseHotkeys(unregister func(id int)) {
 	}
 }
 
-// PressHotkey nimmt WM_HOTKEY mit der Kennung der Anmeldung entgegen. Es wartet nicht: Der Start folgt in
-// PollHotkey, sobald Strg, Alt, Shift und Win losgelassen sind. Ein zweiter Druck während des Wartens
-// wird verworfen, es gibt keine Warteschlange.
+// PressHotkey nimmt WM_HOTKEY mit der Kennung der Anmeldung entgegen (die Nummer der F-Taste, hotkeyID). Es wartet
+// nicht: Der Start folgt in PollHotkey, sobald Strg, Alt, Shift und Win losgelassen sind. Ein zweiter Druck während
+// des Wartens wird verworfen, es gibt keine Warteschlange. Eine Taste ohne angemeldeten Eintrag bleibt stumm.
 func (m *Model) PressHotkey(id int, now time.Time) Effects {
 	m.Tick(now)
-	if m.hk.pending != nil || id < 1 || id > len(m.hk.entries) || m.hk.entries[id-1].state != registered {
+	if m.hk.pending != nil {
 		return Effects{}
 	}
-	m.hk.pending = &pendingPress{Hotkey: m.hk.entries[id-1].Hotkey, deadline: now.Add(HotkeyWait)}
+	for _, e := range m.hk.entries {
+		if e.state == registered && hotkeyID(e.Key) == id {
+			m.hk.pending = &pendingPress{Hotkey: e.Hotkey, deadline: now.Add(HotkeyWait)}
+			break
+		}
+	}
 	return Effects{}
 }
 

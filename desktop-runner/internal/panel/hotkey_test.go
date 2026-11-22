@@ -21,6 +21,7 @@ var hotkeyDemo = Hotkey{Key: "Strg+Alt+F5", Pin: "demo", Setup: "ansicht"}
 
 // Die Kennung der Anmeldung ist die Nummer der F-Taste (#1537): Sie hängt nie an der Listenposition.
 const (
+	idF1 = 1
 	idF5 = 5
 	idF6 = 6
 )
@@ -425,7 +426,7 @@ func TestHotkeyNameWieMenueKennungBleibtSetup(t *testing.T) {
 		})
 		m.SetHotkeys([]Hotkey{h})
 		m.HotkeyRegistered(0, true)
-		m.PressHotkey(idF5, now)
+		m.PressHotkey(idF1, now)
 		keys.down = false
 		e := m.PollHotkey(now.Add(200 * time.Millisecond))
 		if len(e.Commands) != 1 || e.Commands[0].Type != "setup_start" || e.Commands[0].Pin != h.Pin || e.Commands[0].Setup != h.Setup || e.Quit || e.OpenApp != "" {
