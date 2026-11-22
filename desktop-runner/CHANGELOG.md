@@ -2,6 +2,12 @@
 
 ## Unveröffentlicht
 
+## 0.5.7 — 2026-11-22 (JanuaPort/januaport#1537)
+
+### Upstream-Prüfpunkt
+
+- `wailsapp/go-webview2` v1.0.19 unverändert (Upstream v1.0.23), 0 Advisories im Repo und in der GitHub-Advisory-Datenbank (BOX, 22.11.); Build mit gepinntem `golang:1.26.11`. Release-Punkte grün auf dem Testgerät gegen WebView2-Runtime 156.0.4314.58, dazu Moduswechsel, Instanzsperre, Abräumen und 5xx auf dem Gerät; 16 von 16 nativen Mutanten rot.
+
 ### Prüfbefunde aus #1438: Speicher, 5xx, Kürzel-Kennung, Moduswechsel, Instanzsperre (JanuaPort/januaport#1537)
 
 - **Speicher:** `envs\<key>`, `packages\<key>` und die Siegel `env-<key>` wurden nur vom Widerruf abgeräumt; jede neue Pin-Version ließ
@@ -18,8 +24,8 @@
 - **Instanzsperre:** Statt des benannten Mutex `Global\JanuaPort-Desktop-<SID>`, das ein anderes lokales Konto vorab belegen konnte, sperrt
   `LockFileEx` exklusiv die Datei `instance.lock` im privat abgesicherten Wurzelordner. Die zweite Instanz desselben Benutzers scheitert wie
   bisher, `main.go` unverändert. Der Widerruf löscht die Wurzel samt Sperrdatei weiter.
-- Kein neues Format, kein neues Setting, keine Änderung am Pipe-Protokoll. Nicht Teil dieses Stands (Sonden auf dem Testgerät): COM-Release
-  nach dem Entzug und Verlauf nach Personenwechsel.
+- Kein neues Format, kein neues Setting, keine Änderung am Pipe-Protokoll. Die Sonden auf dem Testgerät zu COM-Release
+  nach dem Entzug und Verlauf nach Personenwechsel haben beide Befunde widerlegt; kein Code nötig.
 
 ## 0.5.6 — 2026-11-22 (JanuaPort/januaport#1342)
 
