@@ -186,6 +186,12 @@ drei.
   beliebige Kundensysteme anspricht, nicht wartbar.
 - **SMB/SharePoint als Host-Sache.** Das Gateway sieht nur ein Verzeichnis; ein
   Client im Binary bräche das statische, CGO-freie Binary.
+- **SMB: zwei Credential-Dateien, zwei Konten.** `srv-jnpt-sicherung.mount` liest
+  `/etc/jnpt/smb/sicherung.cred`, die Ablage-Mounts `/etc/jnpt/smb/ablage.cred`
+  (JanuaPort/januaport#1429). Ein gemeinsames Konto ließe die Seite, über die
+  Ordner für die KI eingehängt werden, die Vollsicherungen lesen — und ein Konto
+  nur für die Sicherung ließe die Ablage-Mounts scheitern. Wächter:
+  `script-runner/internal/hygiene/box_smb_test.go`.
 
 ## Stolperfallen
 

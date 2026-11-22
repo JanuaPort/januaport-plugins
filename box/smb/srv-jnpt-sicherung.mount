@@ -23,13 +23,17 @@ Where=/srv/jnpt/sicherung
 Type=cifs
 
 #   credentials= Zugangsdaten in eigener Datei, 0600, root. NIE hier, nie im Repo.
+#                Eigene Datei NUR fuer die Sicherung (sicherung.cred), nie die der
+#                Ablage (ablage.cred): das Ablage-Konto haengt Ordner fuer die KI
+#                ein und duerfte sonst die Vollsicherungen lesen
+#                (JanuaPort/januaport#1429).
 #   uid/gid 0    der Host-Dienst (jnpt-backup.sh) laeuft als root; kein Container.
 #   file_mode/dir_mode: auf CIFS die EINZIGEN Rechte, die es gibt (fchmod ist
 #                ein No-Op) — der echte Schutz ist die ACL der Freigabe.
 #   seal         SMB3-Verschluesselung auf dem Draht (Artefakt = ganze Anlage).
 #                Kann der Server das nicht: streichen und im Betriebsprotokoll vermerken.
 #   nofail       ein nicht erreichbares NAS darf die Box nicht am Booten hindern.
-Options=credentials=/etc/jnpt/smb/ablage.cred,uid=0,gid=0,file_mode=0600,dir_mode=0700,vers=3.1.1,seal,nofail,_netdev
+Options=credentials=/etc/jnpt/smb/sicherung.cred,uid=0,gid=0,file_mode=0600,dir_mode=0700,vers=3.1.1,seal,nofail,_netdev
 
 TimeoutSec=30
 

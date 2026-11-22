@@ -956,18 +956,30 @@ chattr +i /srv/jnpt/ablage /srv/jnpt/sicherung
 
 ### SMB/CIFS (`smb/`)
 
-Der Betreiber stellt ein Konto bereit, das **nur** diese Freigabe darf, und
-eine Server-ACL, die **nur diesem Konto** Lesen erlaubt — ein
-Sicherungsartefakt ist die vollständige Installation.
+Der Betreiber stellt ein Konto bereit, das **nur** die Sicherungsfreigabe darf,
+und eine Server-ACL, die **nur diesem Konto** Lesen erlaubt — ein
+Sicherungsartefakt ist die vollständige Installation. Die Ablage-Einstiegspunkte
+bekommen ein **eigenes** Konto mit eigener Datei (`ablage.cred`): Das Sicherungskonto
+hängt nie eine Ablage ein, das Ablage-Konto nie die Sicherung.
 
 ```bash
 apt-get install -y cifs-utils
 install -d -m 700 /etc/jnpt/smb
-umask 077; cat > /etc/jnpt/smb/ablage.cred <<'ENDE'
-username=<konto>
+# Zwei Dateien, zwei Konten: sicherung.cred nur für die Sicherungsfreigabe,
+# ablage.cred nur für die Ablage-Einstiegspunkte. Ein gemeinsames Konto ließe das
+# Ablage-Konto der KI-Seite die Vollsicherungen lesen.
+umask 077; cat > /etc/jnpt/smb/sicherung.cred <<'ENDE'
+username=<konto-sicherung>
 password=<passwort>
 domain=<domäne oder weglassen>
 ENDE
+chmod 600 /etc/jnpt/smb/sicherung.cred   # 0600, root, nie ins Repo
+umask 077; cat > /etc/jnpt/smb/ablage.cred <<'ENDE'
+username=<konto-ablage>
+password=<passwort>
+domain=<domäne oder weglassen>
+ENDE
+chmod 600 /etc/jnpt/smb/ablage.cred      # nur nötig, wenn auch Ablage-Einstiegspunkte per SMB hängen
 
 # Sicherungsziel (nur Host) — CIFS mountet einen Unterordner, nie die Wurzel der Freigabe
 cp /opt/jnpt/box/smb/srv-jnpt-sicherung.mount /etc/systemd/system/
