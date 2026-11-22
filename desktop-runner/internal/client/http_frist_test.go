@@ -225,10 +225,13 @@ func TestKurzeAufrufeBehaltenKopfUndGesamtfrist(t *testing.T) {
 	f := fristen{kurzKopf: 150 * time.Millisecond, kurzGesamt: 400 * time.Millisecond, werkzeugKopf: 3 * time.Second, stillstand: time.Second}
 	t.Run("Kopf", func(t *testing.T) {
 		a := fristAPI(t, func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() }, f)
+		// Der Kontext ist nur das Sicherheitsnetz: Ohne Kopf-Frist würde der Aufruf sonst bis zum Testende hängen.
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
 		start := time.Now()
-		_, err := a.Config(context.Background())
+		_, err := a.Config(ctx)
 		var ne net.Error
-		if !errors.As(err, &ne) || time.Since(start) > 3*time.Second {
+		if !errors.As(err, &ne) || time.Since(start) > 1500*time.Millisecond {
 			t.Fatalf("Kopf-Frist: %v nach %v", err, time.Since(start))
 		}
 	})
@@ -242,8 +245,10 @@ func TestKurzeAufrufeBehaltenKopfUndGesamtfrist(t *testing.T) {
 			w.(http.Flusher).Flush()
 			<-r.Context().Done()
 		}, f)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
 		start := time.Now()
-		if _, err := a.Config(context.Background()); err == nil || time.Since(start) > 3*time.Second {
+		if _, err := a.Config(ctx); err == nil || time.Since(start) > 1500*time.Millisecond {
 			t.Fatalf("Gesamtfrist: %v nach %v", err, time.Since(start))
 		}
 	})
