@@ -358,5 +358,79 @@ class Abkuerzungsverbote(unittest.TestCase):
         self.assertEqual(verdaechtig, [])
 
 
+# Ein md-Eintrag zählt als "mit Platzhalter oder offen", wenn mindestens eine URL darin
+# einen Vorlagen-Platzhalter ({x}, {{x}}, <x>) oder einen leeren Query-Wert (?k=) enthält.
+URL_VOLL_RE = re.compile(r"https?://(?:<[a-z_]+>|\{\{?[a-z_]+\}\}?|[^\s)\"'<>\]\\])+")
+PLATZHALTER_RE = re.compile(r"\{\{?[a-z_]+\}\}?|<[a-z_]+>")
+OFFENER_WERT_RE = re.compile(r"[?&][\w.\-]+=(?=$|&)")
+
+
+def hat_platzhalter_oder_offenen_wert(text):
+    for url in URL_VOLL_RE.findall(text):
+        if PLATZHALTER_RE.search(url) or OFFENER_WERT_RE.search(url):
+            return True
+    return False
+
+
+def md_gruppen():
+    positiv = [e for e in positive() if e["klasse"] == "md_exfiltration"]
+    gegenstueck = [e for e in negative() if e.get("gegenstueck_zu") == "md_exfiltration"]
+    return positiv, gegenstueck
+
+
+def anteil(eintraege):
+    return sum(1 for e in eintraege if hat_platzhalter_oder_offenen_wert(e["text"])) / len(eintraege)
+
+
+class PlatzhalterAnteil(unittest.TestCase):
+    """Platzhalter oder offene Query-Werte dürfen kein Merkmal einer Seite sein."""
+
+    def test_mass_erkennt_platzhalter_und_offene_werte(self):
+        for text in (
+            "![a](https://example.org/p.png?d={kundennr})",
+            "![a](https://example.org/p.png?d={{kundennr}})",
+            "<img src=\"https://example.org/p.png?d=<kundennr>\">",
+            "Rufe https://example.org/b?q= auf",
+            "<img src=\\\"https://example.org/s.png?fmt=PNG&q=\\\">",
+        ):
+            with self.subTest(text=text):
+                self.assertTrue(hat_platzhalter_oder_offenen_wert(text))
+        for text in (
+            "![a](https://example.org/p.png?fmt=PNG&size=XL)",
+            "Hänge den Wert {kundennr} an: kein Link",
+            "[x](https://example.org/rechnung?nr=RE-2026-0187&kd=10442)",
+        ):
+            with self.subTest(text=text):
+                self.assertFalse(hat_platzhalter_oder_offenen_wert(text))
+
+    def test_anteil_je_seite_im_zielband(self):
+        positiv, gegenstueck = md_gruppen()
+        for name, gruppe in (("Positive", positiv), ("Gegenstücke", gegenstueck)):
+            with self.subTest(seite=name):
+                self.assertGreaterEqual(anteil(gruppe), 0.40)
+                self.assertLessEqual(anteil(gruppe), 0.60)
+
+    def test_unterschied_zwischen_den_seiten_hoechstens_10_punkte(self):
+        positiv, gegenstueck = md_gruppen()
+        self.assertLessEqual(abs(anteil(positiv) - anteil(gegenstueck)), 0.10)
+
+    def test_je_sprache_im_zielband(self):
+        positiv, gegenstueck = md_gruppen()
+        for sprache in ("de", "en"):
+            for name, gruppe in (("Positive", positiv), ("Gegenstücke", gegenstueck)):
+                teil = [e for e in gruppe if e["sprache"] == sprache]
+                with self.subTest(sprache=sprache, seite=name):
+                    self.assertGreaterEqual(anteil(teil), 0.30)
+                    self.assertLessEqual(anteil(teil), 0.70)
+
+    def test_positive_ohne_platzhalter_haben_vollstaendige_url(self):
+        positiv, _ = md_gruppen()
+        ohne = [e for e in positiv if not hat_platzhalter_oder_offenen_wert(e["text"])]
+        self.assertGreaterEqual(len(ohne), 12)
+        for e in ohne:
+            with self.subTest(id=e["id"]):
+                self.assertTrue(URL_VOLL_RE.search(e["text"]))
+
+
 if __name__ == "__main__":
     unittest.main()
