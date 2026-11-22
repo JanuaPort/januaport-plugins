@@ -69,7 +69,8 @@ Produkts; die Hülle ruft sie nur auf.
 | Datei | Inhalt |
 |---|---|
 | `docker-compose.box.yml` | der Stack: `jnpt`, `caddy` (443), `caddy-admin` (8443), `tailscale` (Profil `wartung`), festes Netz, interne Netze `jnpt_plugins` und `jnpt_apps` |
-| `docker-compose.script-runner.yml` | optional: der Skript-Läufer (Vermittler, Sandbox, Abholer, Apphost) an der Box; byte-gleich mit `../script-runner/docker-compose.yml`, Abholer-Bridge `jnpt-fetch0` |
+| `docker-compose.script-runner.yml` | optional: der Skript-Läufer (Vermittler, Sandbox, Abholer, Apphost) an der Box; byte-gleich mit `../script-runner/docker-compose.yml` |
+| `docker-compose.script-runner.box.yml` | optional: Box-Override zum Skript-Läufer, setzt nur die feste Bridge `jnpt-fetch0` des Abholers (RUNBOOK 12) |
 | `apps.caddy`, `apps-global.caddy` | optional, Profil `apps`: Site-Block und TLS-Abfrage für den Apphost; gehören nach `apps.d/` bzw. `apps-global.d/` (RUNBOOK 12) |
 | `.env.example` | Vorlage der `.env`, alle Variablen mit Begründung |
 | `Caddyfile` | Werkzeug-Fläche: Whitelist + Default-404 (die Sicherheitsgrenze) |

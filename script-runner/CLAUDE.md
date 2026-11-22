@@ -584,10 +584,7 @@ nicht von `isolation` ab; `/healthz` behält seine lokale Sandbox-Bedeutung.
     über den Docker-Healthcheck (`python3 -I -c …urlopen('http://127.0.0.1:8091/healthz')`,
     alle 10 s, kein neuer Code), den der Aktuator mit `HEALTH_DOCKER=1` liest.
     **Ausgang hat nur der abholer** (eigenes Netz `egress`, git über ssh); er
-    hängt nie an `jnpt_plugins` oder `jnpt_default`. Das Netz trägt die feste Bridge
-    `jnpt-fetch0` (JanuaPort/januaport#1427): Die forward-Kette der Box-Firewall
-    kennt nur feste Namen und gibt ihr genau `tcp dport 22` frei; mit `br-<hash>`
-    holt er nie einen Pin. `hygiene` verlangt den Namen, `box_netz_test.go` die Regel. Die Sandbox hat
+    hängt nie an `jnpt_plugins` oder `jnpt_default`. Die Sandbox hat
     `network_mode: none`. Jeder andere Dienst hat kein Netz oder nur
     `jnpt_plugins`; der optionale Apphost hängt ausschließlich an `jnpt_apps`. Ohne Netzliste hinge er am Projekt-Default mit Ausgang.
     Mechanik: `internal/hygiene` (`checkNoEgress`, `checkMediator`,

@@ -36,7 +36,8 @@ prüft, ob die Änderung dort nachgezogen werden muss — und umgekehrt.
 | Datei | Verantwortung |
 |---|---|
 | `docker-compose.box.yml`, `.env.example` | Verdrahten Gateway, Proxy-Flächen, Wartungsprofil, Netze, Volumes und Betreiberwerte. |
-| `docker-compose.script-runner.yml` | Bindet Vermittler, Sandbox, Abholer, Bibliotheks-Init und optionalen Apphost an die Box an. Byte-gleich mit `../script-runner/docker-compose.yml` (Wächter `internal/hygiene`); das Abholer-Netz `egress` trägt die feste Bridge `jnpt-fetch0`. |
+| `docker-compose.script-runner.yml` | Bindet Vermittler, Sandbox, Abholer, Bibliotheks-Init und optionalen Apphost an die Box an. Byte-gleich mit `../script-runner/docker-compose.yml` (Wächter `internal/hygiene`), trägt daher keinen festen Bridge-Namen. |
+| `docker-compose.script-runner.box.yml` | Box-Override, setzt nur `networks.egress.driver_opts` mit der festen Bridge `jnpt-fetch0` des Abholers. Auf der Box zusammen mit der Compose oben starten (zwei `-f`). |
 | `Caddyfile`, `Caddyfile.admin` | Konfigurieren Werkzeug- und Betreiber-Fläche des Reverse-Proxys. |
 | `apps-global.caddy`, `apps.caddy` | Konfigurieren Zertifikatsfreigabe, Apphost-Proxy und App-Zugriffsprotokoll. |
 | `tailscale-serve.json` | Konfiguriert den TLS-Proxy des Wartungs-Containers zum Gateway. |
@@ -214,7 +215,13 @@ drei.
   und eine eigene Zeile.** Der Abholer des Skript-Läufers hängt am Netz `egress`
   (`jnpt-fetch0`); die Kette gibt ihm genau `tcp dport 22` frei, kein allgemeines
   `accept`. Ein zufälliges `br-<hash>` ließe die Container fehlerfrei laufen, aber
-  nie einen Pin holen. `jnpt-apps0` ist wie `jnpt-plug0` nur innerhalb der Bridge
+  nie einen Pin holen. Der Name steht **nur** in `docker-compose.script-runner.box.yml`:
+  In der allgemeinen Läufer-Compose ließe ein fester Bridge-Name auf einem Host kein
+  zweites Projekt zu („networks have same bridge name"; Tests, Probeläufe). `jnpt-apps0`
+  steht in der Box-Compose, die nur auf der Box läuft, und ist dort unbedenklich.
+  Der Plugin-Aktuator kennt je Plugin genau **eine** Compose-Datei (`COMPOSE_FILE`
+  ohne Liste); ein Aktuator-Lauf ohne den Override würde `egress` ohne den Namen
+  neu anlegen — vor dem Aktuator-Betrieb klären (RUNBOOK 12). `jnpt-apps0` ist wie `jnpt-plug0` nur innerhalb der Bridge
   frei. Wächter: `script-runner/internal/hygiene/box_netz_test.go` (Compose,
   Firewall-Zeilen und Apps-Netz zugleich). Die Gateway-Seite des Apps-Profils
   (Adresse im Netz, Listener, Caddy-Importe) ist in dieser Vorlage nicht

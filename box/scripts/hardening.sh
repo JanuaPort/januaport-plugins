@@ -317,8 +317,8 @@ table inet filter {
     iifname "jnpt-plug0" oifname "jnpt-plug0" accept
 
     # Abholer des Skript-Laeufers (../script-runner, Dienst script-runner-fetcher):
-    # eigenes Netz egress, GEPINNT auf jnpt-fetch0 (docker-compose.script-runner.yml,
-    # Waechter internal/hygiene). Er darf genau eines: ssh (22) zum Git-Server — er
+    # eigenes Netz egress, GEPINNT auf jnpt-fetch0 (Box-Override
+    # docker-compose.script-runner.box.yml; Waechter internal/hygiene). Er darf genau eines: ssh (22) zum Git-Server — er
     # spricht nur ssh, https lehnt er ab. Kein allgemeines accept fuer die Bridge.
     # Liegt der Git-Server auf einem anderen ssh-Port, braucht er hier eine eigene
     # Zeile; nicht raten. Ohne diese Zeile holt er nie einen Pin, waehrend alle

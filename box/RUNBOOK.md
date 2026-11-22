@@ -1152,9 +1152,18 @@ zusammen:
 - **Compose.** `docker-compose.script-runner.yml` ist byte-gleich mit
   `../script-runner/docker-compose.yml`. Sie liegt auf der Box als
   `/opt/jnpt/plugins/script-runner/docker-compose.yml` neben `seccomp/` und der
-  `.env` mit `JNPT_SCRIPT_RUNNER_IMAGE`; Start immer mit `-f`. Davor muss die
-  Box-Compose laufen: Sie legt `jnpt_plugins` und `jnpt_apps` an, die der Läufer
-  als `external` erwartet.
+  `.env` mit `JNPT_SCRIPT_RUNNER_IMAGE`. Davor muss die Box-Compose laufen: Sie
+  legt `jnpt_plugins` und `jnpt_apps` an, die der Läufer als `external` erwartet.
+- **Box-Override.** `docker-compose.script-runner.box.yml` setzt nur die feste Bridge
+  `jnpt-fetch0` des Abholer-Netzes `egress`. Sie liegt unter diesem Namen
+  neben der Compose, und der Start nennt **beide** Dateien, immer mit `-f`:
+  `docker compose -f docker-compose.yml -f docker-compose.script-runner.box.yml up -d`.
+  Der Name steht bewusst nicht in der allgemeinen Compose: Ein fester Bridge-Name
+  ließe auf einem Host kein zweites Compose-Projekt zu. ⚠️ Das Netz muss **vor
+  dem ersten Anlegen** mit dem Namen entstehen; legt es ein Lauf ohne Override an,
+  vorher `docker compose … down` und neu starten. Der Plugin-Aktuator führt je
+  Plugin nur eine Compose-Datei; ein Aktuator-Lauf ohne den Override legt `egress`
+  ohne den Namen neu an. Diesen Weg vor dem Aktuator-Betrieb klären.
 - **Die Firewall kennt nur feste Bridges.** Ohne passende Zeile in der
   forward-Kette läuft alles fehlerfrei und holt doch nichts:
 
