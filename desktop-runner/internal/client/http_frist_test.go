@@ -208,7 +208,7 @@ func TestAppWerkzeugaufrufUeberDieKurzenFristenHinausGelingt(t *testing.T) {
 
 func TestAppWerkzeugaufrufEndetSpaetestensMitDemKontext(t *testing.T) {
 	f := fristen{kurzKopf: 100 * time.Millisecond, kurzGesamt: 200 * time.Millisecond, werkzeugKopf: time.Minute, stillstand: time.Minute}
-	a, s := appRPCServer(t, 5*time.Second, 0, f)
+	a, s := appRPCServer(t, 1500*time.Millisecond, 0, f)
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	start := time.Now()
