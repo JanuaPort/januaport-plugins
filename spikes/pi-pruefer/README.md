@@ -1,4 +1,4 @@
-# Lokaler Prompt-Injection-Prüfer — Phase 1c, JanuaPort/januaport#1486
+# Lokaler Prompt-Injection-Prüfer — Phase 2, JanuaPort/januaport#1486
 
 ## Phase 2 — vorab festgelegt, SEC c-7075804406
 
@@ -19,11 +19,12 @@ ERP-Feld, Ticketbeschreibung, Webseite und Upstream-MCP-Antwort. Ausgabe je Text
 SEC-Sichtungen c-7067915571 / c-7075650186: Phase 1b ergänzt die geforderten
 Angriffswege samt Gegenstücken; Phase 1c gleicht Hosts, URL-Merkmale, KI-Ansprachen
 und Rückgabeformen aus. Bestehende Zeilen werden umgeschrieben, keine angehängt.
-Die fachliche Sichtung der Ergänzungen und die Modellmessungen stehen noch aus.
+SEC hat diesen Satz mit c-7075804406 für Phase 2 freigegeben. Die 460 Texte bleiben
+unverändert; SHA-256: `f793602d4162d0128763ec3a9ea6e2d5bf52cb1da1baa1d8bcb26aa309ec2e40`.
 
-Phase 1 lädt keine Modellgewichte. Die vier Modelladapter brechen bei einem Aufruf
-mit `NotImplementedError: Phase 2` ab; dasselbe gilt für ihre Tokenizer. Nur der
-Dummy `schlagwort` läuft. Tests prüfen die echten Adapter direkt sowie den CLI-Weg.
+Phase 2 misst ProtectAI, dessen LLM-Guard-V2-Scanner, Strands Decider und den Dummy.
+Die beiden Meta-Adapter bleiben Stubs mit `NotImplementedError`; sie brauchen
+einen PO-Entscheid zur Lizenzannahme. Tests verwenden Fake-Modelle im echten Adapter.
 Es gibt keine Verbindung zu Produktdiensten und keine Änderung von Produktcode.
 
 ## Dateien und Vertrag
@@ -36,12 +37,16 @@ Es gibt keine Verbindung zu Produktdiensten und keine Änderung von Produktcode.
 | `md_beispiele.py` | Phase-1c-Markdown-Paare und Datei-/MCP-/Ticket-Hüllen |
 | `md_regeln.py` | Ausführbare A1–A5-Prüfung und aus dem Text abgeleitete Rückgabewege |
 | `datenregeln.py` | Datenvertrag; CLI validiert den kompletten Satz vor dem Adapteraufruf |
-| `adapter.py` | `klassifiziere(texte) -> list[int]`, vier Stubs, ein echter Wortlisten-Dummy |
+| `adapter.py` | Vier CPU-Score-Adapter einschließlich Dummy; zwei gesperrte Meta-Stubs |
 | `messen.py` | Fensterung, Kandidatenprozesse, Metriken und Markdown-Tabellen |
+| `phase2.py` | Offline-Erhebung, Schwellenkalibrierung, vollständige Phase-2-Auswertung |
+| `download_modelle.py` | Anonymer Download ausschließlich fester HF-Revisionen ins externe Volume |
+| `test_phase2.py` | Adapter mit Fake-Modellen, Fenstervergleich, A3, Kalibrierung und Rohscorevertrag |
+| `ergebnisse/phase2.md`, `ergebnisse/phase2-scores.jsonl` | Messbericht und Roh-Scores ohne Texte |
 | `test_messsatz.py` | Verteilungen, verbotene Eingaben, echte Adapter und Ende-zu-Ende-Test |
 | `mutationen.py` | Jede Sperre einzeln in einer temporären Containerkopie entfernen; Negativtest muss rot werden |
-| `requirements.in`, `pin_requirements.py`, `requirements.txt` | Direkte Pins, Resolverbericht und vollständiger Wheel-Lock mit SHA-256 |
-| `Dockerfile` | Python 3.12 slim, CPU-Torch, transformers; Standardkommando ist der Dummy |
+| `requirements*.in`, `pin_requirements.py`, `requirements*.txt` | Zwei getrennte Umgebungen mit vollständigen SHA-256-Locks |
+| `Dockerfile` | Python 3.12 slim, CPU-Torch; Targets `klassifikatoren` und `strands` |
 
 Pflichtfelder: `id`, `sprache` (`de|en`), `form`, `label` (Integer `0|1`, kein
 Boolean), `klasse`, `laenge_zeichen` (Python-Unicode-Codepoints, nicht Bytes),
@@ -215,11 +220,15 @@ docker run --rm --network none --cpus 1 -e PYTHONDONTWRITEBYTECODE=1 -v "${PWD}:
 Die Mutationsprobe erzeugt ausschließlich Kopien im Container-`/tmp`, entfernt
 jeweils eine Sperre und verlangt einen Assertion-Fehlschlag des zugehörigen Tests.
 Import-/Syntaxfehler zählen nicht als erkannte Mutation. Zusätzlich wird OR durch
-AND ersetzt. 53 Proben: 39 Datenregeln, Phase-1-Adapter- und Tokenizer-Sperre,
+AND ersetzt. 67 Proben: die bisherigen 53 (39 Datenregeln, Meta-Adapter-/Tokenizer-Sperre,
 Schwellwert, Fensterparameter und Fenster-OR, unbekannte Erweiterung sowie
 Klassen-/Gegenstück-Auswertung und Markdown-Schwerpunkt, strukturierte MCP-Felder
 sowie verbotene E-Mail-/IBAN-Fixtures und Inline-Scan-Ausnahmen und die Auswertung
-der Markdown-Rückgabewege. Die zehn Phase-1c-Regeln prüfen Host- und Query-Parität,
+der Markdown-Rückgabewege) und 14 Phase-2-Proben: Scorebereich/-anzahl/-label,
+Scannerrevision, Modellpin, Offline-Modus, Token-/Remote-Code-Optionen,
+Scannerwahrscheinlichkeit, feste Strands-Frage, Fenstermaximum, Kalibrierung,
+A3-Gruppe und Ausschluss von Texten aus Roh-Scores.
+Die zehn Phase-1c-Regeln prüfen Host- und Query-Parität,
 KI-Ansprachen, Datei-Schema/-Anzahl, strukturierte Antworten, Vorlagen,
 Darstellungsvarianten, Ticket-Badges und eigene Query-Daten. Die exakte Satzgröße
 wird ebenfalls negativ getestet. Die neun Phase-1b-Regeln prüfen Gegenstück-Metadaten,
@@ -258,78 +267,96 @@ Erneute Erzeugung (überschreibt ausschließlich den Messsatz):
 docker run --rm --network none -e PYTHONDONTWRITEBYTECODE=1 -v "${PWD}:/w" -w /w/spikes/pi-pruefer python:3.12-slim python -B erzeuge_messsatz.py
 ```
 
-## Modellkarten und Lizenzen
+## Modellkarten, Revisionen und Lizenzen
 
-Dokumentationsabruf ohne Login am 21.11.2026; keine Modellgewichte abgerufen.
-`offen` bedeutet ungeprüft, nicht freigegeben. Die Modellkarten sind Quellen für
-die Lizenzangabe, keine Quellen von Messsatzeinträgen.
+Öffentliche Primärquellen am 22.11.2026 anonym gelesen, vor dem Download.
 
-| Kandidat / CLI-Name | Modell-ID | Lizenzbeleg |
+| Kandidat | Lizenzbeleg (wörtlich) | Fester Pin |
 |---|---|---|
-| Prompt Guard 2 22M / `prompt_guard_22m` | `meta-llama/Llama-Prompt-Guard-2-22M` | **offen**: [Modellkarte](https://huggingface.co/meta-llama/Llama-Prompt-Guard-2-22M/raw/main/README.md) antwortet ohne Anmeldung HTTP 401; keine Lizenz geraten |
-| Prompt Guard 2 86M / `prompt_guard_86m` | `meta-llama/Llama-Prompt-Guard-2-86M` | **offen**: [Modellkarte](https://huggingface.co/meta-llama/Llama-Prompt-Guard-2-86M/raw/main/README.md) antwortet ohne Anmeldung HTTP 401; keine Lizenz geraten |
-| ProtectAI / `protectai` | `protectai/deberta-v3-base-prompt-injection-v2` | [Modellkarte](https://huggingface.co/protectai/deberta-v3-base-prompt-injection-v2/raw/main/README.md): `license: apache-2.0` und **„License: Apache License 2.0“** |
-| LLM Guard PromptInjection / `llm_guard` | geplanter V2-Scanner mit `protectai/deberta-v3-base-prompt-injection-v2` | Modell: dieselbe Kartenangabe **„License: Apache License 2.0“**; Scannerbibliothek: [LICENSE](https://github.com/protectai/llm-guard/blob/main/LICENSE) **„The MIT License (MIT)“** |
-| Schlagwort / `schlagwort` | `synthetische-wortliste-v1` | Eigener Spike-Code, Apache-2.0 wie dieses Repository |
+| ProtectAI | [Modellkarte](https://huggingface.co/protectai/deberta-v3-base-prompt-injection-v2/raw/89b085cd330414d3e7d9dd787870f315957e1e9f/README.md): `license: apache-2.0`, **License:** Apache License 2.0 | `89b085cd330414d3e7d9dd787870f315957e1e9f` |
+| LLM Guard V2 | [Bibliothekslizenz](https://github.com/protectai/llm-guard/blob/v0.3.16/LICENSE): "The MIT License (MIT)"; Gewichte wie ProtectAI | `llm-guard==0.3.16`; [Scannerquelltext](https://github.com/protectai/llm-guard/blob/v0.3.16/llm_guard/input_scanners/prompt_injection.py) nennt `revision="89b085cd330414d3e7d9dd787870f315957e1e9f"` |
+| Strands Decider | [Gewichtekarte](https://huggingface.co/StrandsAgents/strands-decider-2B-qwen3.5-v1-2610/raw/4d27d8d7edcfd6616806c8684e20e2673684e283/README.md): `license: apache-2.0`; "under the same Apache-2.0 license as this model (see `LICENSE.md`)" | `4d27d8d7edcfd6616806c8684e20e2673684e283`; `strands-decider==0.4.0` |
+| Qwen-Basis der Strands-Gewichte | [Basismodellkarte](https://huggingface.co/Qwen/Qwen3.5-2B-Base/raw/b1485b2fa6dfa1287294f269f5fb618e03d52d7c/README.md): `license: apache-2.0`; "This repository contains model weights and configuration files for the pre-trained only model in the Hugging Face Transformers format." | `b1485b2fa6dfa1287294f269f5fb618e03d52d7c`, aus der gepinnten Strands-`provenance.json` |
+| Schlagwort | Eigener Spike-Code, Apache-2.0 wie dieses Repo | `synthetische-wortliste-v1` |
+| Meta Prompt Guard 2 22M / 86M | HF-Modellkarten ohne Anmeldung HTTP 401; öffentliche [GitHub-Lizenz](https://github.com/meta-llama/PurpleLlama/blob/main/Llama-Prompt-Guard-2/86M/LICENSE): "LLAMA 4 COMMUNITY LICENSE AGREEMENT" | **Offen:** PO-Entscheid zur Lizenzannahme; beide Adapter bleiben Stubs |
 
-Der [Scannerquelltext](https://github.com/protectai/llm-guard/blob/main/llm_guard/input_scanners/prompt_injection.py)
-nennt `V2_MODEL` und dessen Modellrevision
-`89b085cd330414d3e7d9dd787870f315957e1e9f`; das ist ein gelesener Hinweis,
-noch kein implementierter Modell-Pin. Bibliotheksversion, Modellrevisionen und
-Lizenzstände werden vor Phase 2 verbindlich festgelegt. ProtectAI und dieser
-Scanner teilen sich voraussichtlich Modellgewichte, sind also keine unabhängigen
-Modellfamilien. Unterschiedliche Fensterung/Score-Normierung kann Ergebnisse ändern.
+ProtectAI und LLM Guard teilen exakt dieselben Gewichte, keine unabhängigen
+Modellfamilien. Der echte Scanner wird aufgerufen. Seine `scan`-Rückgabe ist ein
+schwellenabhängig normierter Risikoscore, keine Modellwahrscheinlichkeit. Der Adapter
+erfasst deshalb die Pipeline-Ausgabe während `scan`, invertiert `SAFE`, rundet wie
+Scanner-V2 auf zwei Stellen und erhält dessen strikten Vergleich `score > Schwelle`.
+ProtectAI und Strands verwenden `>=`. Bei Gleichständen berücksichtigt die
+Kalibrierung diese Unterschiede. Strands liefert `noul` (näher 1 = Ja), kein Textmodell-
+Klassifikationslabel. Seine Bibliotheks-API läuft direkt mit `device="cpu"`, ohne Server.
+`strands_decider_config.json` setzt 4096 Tokens. 512 werden für Frage/Hülle reserviert;
+Abschneiden verwendet daher maximal 3584 Inhaltstokens, Fenster maximal 512.
+Die Bibliothek hebt den Torso auf CPU auf float32 an; das erhöht den RAM-Bedarf.
+
 Öffentliche Messsatzeinträge: **0**, synthetischer Anteil: **460/460 = 100 %**.
+Herstellerzahlen zu Meta und die nicht gemessenen Decision-Modelle stehen mit
+wörtlichen Quellenzitaten im Messbericht. Clef/Clef-flash sind für diese CPU-Box zu
+groß; Jev als geschlossene API würde Inhalte aus der Anlage tragen. Lev/InterfazeAI
+ist an Primärquellen nicht bestätigt und wird nicht als Kandidat aufgenommen.
 
-## Image und Abhängigkeiten
+## Images und Abhängigkeiten
 
-```powershell
-docker build --platform linux/amd64 -t pi-pruefer:1486-phase1 spikes/pi-pruefer
-docker run --rm --network none --cpus 1 pi-pruefer:1486-phase1
-docker run --rm --network none pi-pruefer:1486-phase1 python -B -m unittest test_messsatz -v
-```
-
-`requirements.txt` pinnt alle 26 direkten/transitiven Pakete samt SHA-256.
-Torch ist ausdrücklich `2.9.1+cpu`, transformers `4.57.3`, sentencepiece `0.2.1`.
-Die Hashes gelten für die aufgelösten Linux/amd64-/CPython-3.12-Wheels. Andere
-Plattformen brauchen einen eigenen Lock. `pip install --require-hashes` prüft die
-Artefakte beim Image-Build. Der Build lädt Python-Pakete, keine Modellgewichte.
-`llm-guard` wird erst mit der Phase-2-Adapterimplementierung gepinnt und ergänzt.
-HF-Offline-Modus ist im Image gesetzt; CPU-Threadzahlen sind auf eins gesetzt.
-Das Basisimage ist der angeforderte Tag `python:3.12-slim`, kein Digest-Pin.
-
-Lock bei einer bewussten Aktualisierung im Container neu erzeugen (benötigt Netz):
+`requirements.txt`: 80 Pakete, Torch `2.9.1+cpu`, transformers `4.51.3`,
+`llm-guard 0.3.16`, sentencepiece `0.2.1`.
+`requirements-strands.txt`: 53 Pakete, gleicher CPU-Torch, torchvision `0.24.1+cpu`,
+transformers `5.18.0`, strands-decider `0.4.0`.
+Jedes Artefakt ist mit SHA-256 gepinnt, Linux/amd64, CPython 3.12. Beide Umgebungen
+sind wegen der unvereinbaren Transformers-Anforderungen getrennt. Das Basisimage
+bleibt `python:3.12-slim`; den aufgelösten Digest nennt der Build.
 
 ```powershell
-docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v "${PWD}:/w" -w /w/spikes/pi-pruefer python:3.12-slim python -B pin_requirements.py
+docker build --target klassifikatoren --memory 6g --cpu-quota 400000 -t pi-pruefer:1486-phase2 spikes/pi-pruefer
+docker build --target strands --memory 6g --cpu-quota 400000 -t pi-pruefer:1486-strands spikes/pi-pruefer
+docker run --rm --network none --memory 6g --cpus 4 -v "${PWD}:/w" -w /w/spikes/pi-pruefer pi-pruefer:1486-phase2 python -B -m unittest -v
+docker run --rm --network none --memory 6g --cpus 4 -v "${PWD}:/w" -w /w/spikes/pi-pruefer pi-pruefer:1486-phase2 python -B mutationen.py
 ```
 
-## Phase 2 nach SEC-Sichtung
+Ein Container nach dem anderen. Locks bei bewusster Aktualisierung ebenfalls nur
+im Container erzeugen: `python -B pin_requirements.py`, bzw. mit
+`--input requirements-strands.in --output requirements-strands.txt`.
 
-1. Messsatz/Labels mit SEC prüfen und eingefrorenen SHA-256 festhalten. Zusätzlichen
-   unabhängigen Testsatz sowie Schwellenkalibrierung getrennt vom Test planen.
-2. Modelllizenzen/Zugangsbedingungen klären. Konkrete Modellrevisionen und
-   llm-guard-Version pinnen; Gewichte separat bereitstellen. Dieser Auftrag enthält
-   weder den Download noch einen Hugging-Face-Login.
-3. Die vier TODO-Adapter implementieren: explizit `device='cpu'`, native
-   Tokenizer-Offsets ohne Spezialtokens, Spezialtokenbudget beachten, kein stilles
-   Abschneiden, relevante Label-IDs aus der Modellkonfiguration prüfen und
-   Wahrscheinlichkeiten mit dem jeweiligen Schwellwert auf `0|1` abbilden.
-   Beim Scanner die Richtung und Normierung seines Risikoscores belegen. Die
-   Modellgewichte gehören in die Initialisierung, damit Ladezeit getrennt bleibt.
-4. Adaptertests und Mutationsproben erweitern; Image neu bauen. Danach zum Beispiel
-   mit einem bereitgestellten lokalen HF-Cache im benannten Docker-Volume messen:
+## Phase 2 ausführen
+
+Gewichte ausschließlich im benannten externen Volume `pi-pruefer-hf`.
+Die Downloadfunktion verwendet `huggingface_hub.snapshot_download`, feste Revisionen
+und `token=False`. Kein Login, kein implizites Token, keine Meta-Lizenzannahme.
+Der folgende Downloadbefehl ist die einzige Phase mit Netz; beide Offline-Variablen
+müssen dafür ausdrücklich auf 0 gesetzt werden.
 
 ```powershell
-docker run --rm --network none --cpus 1 -v pi-pruefer-modelle:/modelle:ro -e HF_HOME=/modelle/huggingface pi-pruefer:1486-phase1 python -B messen.py --kandidat prompt_guard_22m --kandidat prompt_guard_86m --kandidat protectai --kandidat llm_guard --schwellwert prompt_guard_22m=0.5 --schwellwert prompt_guard_86m=0.5 --schwellwert protectai=0.5 --schwellwert llm_guard=0.5 --fenster-tokens 256 --ueberlappung-tokens 32
+docker volume create pi-pruefer-hf
+docker run --rm --memory 6g --cpus 4 -v pi-pruefer-hf:/hf -v "${PWD}:/w" -e HF_HUB_OFFLINE=0 -e TRANSFORMERS_OFFLINE=0 pi-pruefer:1486-phase2 python -B download_modelle.py protectai
+docker run --rm --memory 6g --cpus 4 -v pi-pruefer-hf:/hf -v "${PWD}:/w" -e HF_HUB_OFFLINE=0 -e TRANSFORMERS_OFFLINE=0 pi-pruefer:1486-strands python -B download_modelle.py strands_decider
 ```
 
-**Aktuell bricht dieser Aufruf mit der Phase-2-Meldung ab.** Der CLI- und der direkte
-Adapterweg benutzen dieselbe Sperre; es gibt keinen Aktivierungsschalter in Phase 1.
-Mehrere `--kandidat`-Optionen ergeben eine gemeinsame Tabelle. Pro Kandidat ist
-`--schwellwert NAME=WERT` möglich, Vorgabe jeweils `0.5`, gültig nur endlich in
-`[0,1]`. Die Wortliste nutzt die Scores `0.75` bei Treffer und `0.05` sonst;
-Ergebnis `1` bei Score >= Schwelle. Das sind keine kalibrierten Wahrscheinlichkeiten.
+Vor Strands-Inferenz: `(Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory`
+prüfen, nur bei mehr als 15 GB freiem Host-RAM starten, sonst warten.
+Images/Größen vorher mit `docker image inspect` lesen und als `PI_IMAGE_ID` und
+`PI_IMAGE_BYTES` übergeben. Die Roh-Erhebung schreibt ausschließlich ins externe
+Volume und enthält keine Texte. Je Kandidat einen frischen Container aufrufen:
+
+```powershell
+docker run --rm --network none --memory 6g --cpus 4 -v pi-pruefer-hf:/hf -v "${PWD}:/w" -e PI_IMAGE_BYTES=$imageBytes -e PI_IMAGE_ID=$imageId pi-pruefer:1486-phase2 python -B phase2.py --kandidat protectai
+# Danach separat llm_guard und schlagwort mit demselben Befehl.
+docker run --rm --network none --memory 10g --cpus 4 -v pi-pruefer-hf:/hf -v "${PWD}:/w" -e PI_IMAGE_BYTES=$strandsBytes -e PI_IMAGE_ID=$strandsId pi-pruefer:1486-strands python -B phase2.py --kandidat strands_decider
+docker run --rm --network none --memory 6g --cpus 4 -v pi-pruefer-hf:/hf -v "${PWD}:/w" pi-pruefer:1486-phase2 python -B phase2.py --bericht
+```
+
+Jeder Kandidat: Fensterung 512/64 und erster Kontext ohne Fensterung; pro Modus
+0,5 sowie die auf demselben Testsatz kalibrierte Schwelle (offengelegtes Tuning).
+Bei `>=` kann eine Schwelle knapp oberhalb des höchsten negativen Scores nötig
+sein; bei exakt 1 gesättigten Scores kann das 5-%-Ziel unerreichbar sein.
+Der SEC-Hinweis 17/20 KI-Ansprachen bei md-Positiven wird berücksichtigt: zusätzliche
+FPR-Zeile für alle 28 harmlosen A3-KI-Ansprachen neben den 20 md-Gegenstücken.
+Die 36 Texte über 8000 Zeichen erhalten eine eigene Vergleichszeile.
+`phase2-scores.jsonl` enthält IDs, Kandidat, Score, Urteil, Modus, Betriebspunkt,
+Schwelle und Dauer; wiederholte Scores je Betriebspunkt sind beabsichtigt.
+Die Legacy-CLI `messen.py` bleibt verfügbar; verbindliche Phase-2-Erhebung ist
+`phase2.py`, die Modellbudgets einschließlich Spezialtokens berücksichtigt.
 
 ## Messgrößen und Fensterung
 
@@ -362,8 +389,8 @@ Pro Kandidat ein frischer `spawn`-Prozess. Ein Warm-up-Aufruf vor den Messungen,
 ein Messdurchgang pro Text, Einzeltext-Latenzen einschließlich Tokenisierung,
 Fensterbildung und Klassifikation; Prozessstart, Laden und Warm-up liegen außerhalb
 der Latenz. Adapterinitialisierungszeit wird separat ausgegeben. CPU-Torch,
-ausgeblendete CUDA-Geräte und ein Thread; die Containerbefehle für Messungen
-begrenzen zusätzlich auf eine CPU. Die Ausgabe enthält Satz-SHA, Python-/OS-Angaben,
+ausgeblendete CUDA-Geräte und vier Threads; die Phase-2-Containerbefehle für Messungen
+begrenzen zusätzlich auf vier CPUs. Die Ausgabe enthält Satz-SHA, Python-/OS-Angaben,
 sichtbare CPUs, Modell-ID, Schwelle und Fensterparameter. Host-CPU/Containerquote
 und Image-Digest sind in Phase 2 zusätzlich im Messprotokoll festzuhalten.
 
@@ -408,5 +435,5 @@ gesonderte Produktintegration sind beide Kompositionswege zu berücksichtigen:
 | `agent-runner/internal/openai/adapter.go:182` | OpenAI-Projektion der MCP-Antwort |
 
 Diese Fundstellen werden nur dokumentiert. Der ausführbare Datenvertrag, alle
-fünf Spike-Adapter, die gemeinsame CLI und diese README beschreiben denselben
-Phase-1-Stand; bestehende Produktinvarianten werden nicht geändert.
+sechs Spike-Adapter, die gemeinsame CLI und diese README beschreiben denselben
+Phase-2-Stand; bestehende Produktinvarianten werden nicht geändert.

@@ -487,7 +487,7 @@ class GeruestTests(unittest.TestCase):
     def test_phase1_sperre(self):
         from adapter import KANDIDATEN
         for name, adapter in KANDIDATEN.items():
-            if name == "schlagwort":
+            if not name.startswith("prompt_guard_"):
                 continue
             with self.subTest(kandidat=name):
                 with self.assertRaisesRegex(NotImplementedError, "Phase 2"):
@@ -508,7 +508,7 @@ class GeruestTests(unittest.TestCase):
     def test_phase1_tokenizer_sperre(self):
         from adapter import KANDIDATEN
         for name, adapter in KANDIDATEN.items():
-            if name != "schlagwort":
+            if name.startswith("prompt_guard_"):
                 with self.subTest(kandidat=name):
                     with self.assertRaisesRegex(NotImplementedError, "Phase 2: Tokenizer"):
                         adapter(.5).token_spannen("Test")

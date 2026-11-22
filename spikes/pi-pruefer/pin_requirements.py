@@ -5,13 +5,18 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import argparse
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", default="requirements.in")
+    parser.add_argument("--output", default="requirements.txt")
+    args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="pi-lock-") as tmp:
         bericht = Path(tmp) / "resolver.json"
         subprocess.run([sys.executable, "-m", "pip", "install", "--dry-run", "--ignore-installed",
-                        "--only-binary=:all:", "--report", str(bericht), "-r", "requirements.in"],
+                        "--report", str(bericht), "-r", args.input],
                        check=True)
         pakete = json.loads(bericht.read_text())["install"]
     zeilen = ["# Linux/amd64, CPython 3.12; erzeugt mit python pin_requirements.py.",
@@ -21,8 +26,8 @@ def main():
         meta = paket["metadata"]
         digest = paket["download_info"]["archive_info"]["hashes"]["sha256"]
         zeilen.append(f"{meta['name']}=={meta['version']} --hash=sha256:{digest}")
-    Path("requirements.txt").write_text("\n".join(zeilen) + "\n", encoding="utf-8", newline="\n")
-    print(f"{len(pakete)} Pakete mit Hashes nach requirements.txt geschrieben.")
+    Path(args.output).write_text("\n".join(zeilen) + "\n", encoding="utf-8", newline="\n")
+    print(f"{len(pakete)} Pakete mit Hashes nach {args.output} geschrieben.")
 
 
 if __name__ == "__main__":
