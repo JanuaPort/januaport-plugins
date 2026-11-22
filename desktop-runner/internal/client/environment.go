@@ -318,6 +318,14 @@ func VerifyEnvironment(root string, want []FileSeal) error {
 }
 
 func Prepare(root string, raw []byte, p Pin) (Environment, error) {
+	return prepare(root, raw, p, false)
+}
+
+// prepare baut die Umgebung aus dem geprüften Paket. Ein vorhandenes Zielverzeichnis ist grundsätzlich Manipulation
+// (ErrHash, nie stilles Reparieren). Nur wenn der Aufrufer unter der Zustandssperre festgestellt hat, dass für den
+// Schlüssel kein Siegel gespeichert ist, ersetzt `ersetzeUnfertiges` es: Dann ist es der Rest eines abgebrochenen
+// eigenen Laufs (#1425), dem nie vertraut wird; er wird erst nach der vollständigen Paketprüfung entfernt.
+func prepare(root string, raw []byte, p Pin, ersetzeUnfertiges bool) (Environment, error) {
 	var env Environment
 	files, e := PackageFiles(raw, p)
 	if e != nil {
@@ -398,9 +406,15 @@ func Prepare(root string, raw []byte, p Pin) (Environment, error) {
 	}
 	dir := p.Commit + "-" + sum([]byte(p.Path))
 	dst := filepath.Join(root, dir)
-	// A pre-existing directory is never silently repaired after tampering.
+	// A pre-existing directory is never silently repaired after tampering. Ohne gespeichertes Siegel ist es kein
+	// Manipulationsfall, sondern ein unfertiger Stand: removeTree folgt keinem Symlink und keiner Junction.
 	if _, e = os.Lstat(dst); e == nil {
-		return env, ErrHash
+		if !ersetzeUnfertiges || !validID(p.Algo, p.Commit) {
+			return env, ErrHash
+		}
+		if e = removeTree(dst); e != nil {
+			return env, e
+		}
 	}
 	if e = os.Rename(stage, dst); e != nil {
 		return env, e

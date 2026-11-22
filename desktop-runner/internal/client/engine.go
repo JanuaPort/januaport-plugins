@@ -196,7 +196,10 @@ func (e *Engine) pinEnvironment(ctx context.Context, old Bundle, p Pin, key stri
 	env = Environment{}
 	err = e.State.Use(func() error {
 		var x error
-		env, x = Prepare(filepath.Join(e.State.Root, "envs"), raw, p)
+		// Kein Siegel gespeichert: Ein vorhandenes Verzeichnis ist der Rest eines Abbruchs vor dem Speichern (#1425).
+		var siegel Environment
+		unfertig := os.IsNotExist(e.State.loadLocked("env-"+key, &siegel))
+		env, x = prepare(filepath.Join(e.State.Root, "envs"), raw, p, unfertig)
 		if x != nil {
 			return x
 		}
