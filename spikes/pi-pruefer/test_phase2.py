@@ -46,6 +46,28 @@ class FakeScanner:
 
 
 class AdapterTests(unittest.TestCase):
+    def test_strands_offline_loader_mit_download_filter(self):
+        from adapter import lade_strands, MODELL_DATEIEN, STRANDS_REVISION, StrandsDecider
+        calls = []
+        engine_calls = []
+        engine = object()
+        def snapshot(name, **kwargs):
+            calls.append((name, kwargs))
+            return "/cache/fester-checkpoint"
+        def load_engine(path, **kwargs):
+            engine_calls.append((path, kwargs))
+            return engine
+        self.assertIs(lade_strands(snapshot, load_engine), engine)
+        name, kw = calls[0]
+        self.assertEqual(name, StrandsDecider.modell_id)
+        self.assertEqual(kw.get("revision"), STRANDS_REVISION)
+        self.assertIs(kw.get("token"), False)
+        self.assertIs(kw.get("local_files_only"), True)
+        self.assertEqual(kw.get("allow_patterns"), MODELL_DATEIEN)
+        self.assertIn("head.safetensors", MODELL_DATEIEN)
+        self.assertIn("provenance.json", MODELL_DATEIEN)
+        self.assertEqual(engine_calls, [("/cache/fester-checkpoint", {"device": "cpu", "use_prefix_cache": False})])
+
     def test_scanner_revision_abweichung(self):
         from adapter import pruefe_scanner_revision, MODELL_REVISION
         self.assertIsNone(pruefe_scanner_revision(MODELL_REVISION))
