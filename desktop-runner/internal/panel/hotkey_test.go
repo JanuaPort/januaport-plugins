@@ -19,6 +19,12 @@ func (k *keyProbe) Down() bool { return k.down }
 
 var hotkeyDemo = Hotkey{Key: "Strg+Alt+F5", Pin: "demo", Setup: "ansicht"}
 
+// Die Kennung der Anmeldung ist die Nummer der F-Taste (#1537): Sie hängt nie an der Listenposition.
+const (
+	idF5 = 5
+	idF6 = 6
+)
+
 // hotkeyModel bringt ein Modell in den gewünschten Zustand, mit dem Setup demo/ansicht und einem Kürzel darauf.
 func hotkeyModel(t *testing.T, scenario func(*pipe.Message)) (*Model, *keyProbe) {
 	t.Helper()
@@ -40,7 +46,7 @@ func hotkeyModel(t *testing.T, scenario func(*pipe.Message)) (*Model, *keyProbe)
 
 // press führt einen Druck aus, lässt die Umschalttasten los und tickt einmal.
 func press(m *Model, keys *keyProbe) Effects {
-	m.PressHotkey(1, now)
+	m.PressHotkey(idF5, now)
 	keys.down = false
 	return m.PollHotkey(now.Add(200 * time.Millisecond))
 }
@@ -115,7 +121,7 @@ func TestAbweisungOhneSprechblaseOderFenster(t *testing.T) {
 func TestAbweisungSymbolFuenfSekundenUndEinTon(t *testing.T) {
 	m, keys := hotkeyModel(t, func(s *pipe.Message) { s.Beschaeftigt = true })
 	normal := m.View()
-	m.PressHotkey(1, now)
+	m.PressHotkey(idF5, now)
 	keys.down = false
 	m.PollHotkey(now.Add(200 * time.Millisecond))
 	v := m.View()
@@ -151,10 +157,10 @@ func TestAbweisungUeberdecktStoerungNicht(t *testing.T) {
 func TestZweiterDruckWaehrendDesWartensIstVerworfen(t *testing.T) {
 	m, keys := hotkeyModel(t, nil)
 	keys.down = true
-	if e := m.PressHotkey(1, now); len(e.Commands) != 0 {
+	if e := m.PressHotkey(idF5, now); len(e.Commands) != 0 {
 		t.Fatalf("Druck startet sofort: %+v", e)
 	}
-	if e := m.PressHotkey(1, now.Add(300*time.Millisecond)); len(e.Commands) != 0 {
+	if e := m.PressHotkey(idF5, now.Add(300*time.Millisecond)); len(e.Commands) != 0 {
 		t.Fatalf("zweiter Druck wirkt: %+v", e)
 	}
 	if e := m.PollHotkey(now.Add(500 * time.Millisecond)); len(e.Commands) != 0 {
@@ -177,7 +183,7 @@ func TestDruckNachAbschlussWirdWiederAngenommen(t *testing.T) {
 		t.Fatal("erster Druck")
 	}
 	keys.down = true
-	m.PressHotkey(1, now.Add(time.Minute))
+	m.PressHotkey(idF5, now.Add(time.Minute))
 	keys.down = false
 	if e := m.PollHotkey(now.Add(time.Minute + 200*time.Millisecond)); len(e.Commands) != 1 {
 		t.Fatalf("zweiter Druck nach dem ersten: %+v", e)
@@ -189,7 +195,7 @@ func TestDruckNachAbschlussWirdWiederAngenommen(t *testing.T) {
 func TestStartErstNachLoslassenDerUmschalttasten(t *testing.T) {
 	m, keys := hotkeyModel(t, nil)
 	keys.down = true
-	m.PressHotkey(1, now)
+	m.PressHotkey(idF5, now)
 	for i := 1; i <= 8; i++ {
 		if e := m.PollHotkey(now.Add(time.Duration(i) * 200 * time.Millisecond)); len(e.Commands) != 0 {
 			t.Fatalf("Start nach %d ms bei gedrückten Tasten", i*200)
@@ -207,7 +213,7 @@ func TestStartErstNachLoslassenDerUmschalttasten(t *testing.T) {
 func TestUmschalttastenNachZweiSekundenWeisenAb(t *testing.T) {
 	m, keys := hotkeyModel(t, nil)
 	keys.down = true
-	m.PressHotkey(1, now)
+	m.PressHotkey(idF5, now)
 	if e := m.PollHotkey(now.Add(HotkeyWait - time.Millisecond)); len(e.Commands) != 0 || m.TakeBeep() {
 		t.Fatal("zu früh abgewiesen")
 	}
@@ -230,7 +236,7 @@ func TestUmschalttastenNachZweiSekundenWeisenAb(t *testing.T) {
 func TestOhneTastenzustandWirdAbgewiesen(t *testing.T) {
 	m, _ := hotkeyModel(t, nil)
 	m.SetModifierProbe(nil)
-	m.PressHotkey(1, now)
+	m.PressHotkey(idF5, now)
 	if e := m.PollHotkey(now.Add(200 * time.Millisecond)); len(e.Commands) != 0 {
 		t.Fatalf("Start ohne Tastenzustand: %+v", e)
 	}
@@ -273,8 +279,8 @@ func TestAppWegfallGibtKuerzelFrei(t *testing.T) {
 		t.Fatalf("entzogenes Kürzel bleibt angemeldet: %v", got)
 	}
 	m.HotkeyRegistered(0, true)
-	// Die Kennung 2 gehörte zum entzogenen Kürzel.
-	m.PressHotkey(2, now)
+	// Die Kennung gehört zur Taste F5, und diese Taste ist entzogen.
+	m.PressHotkey(idF5, now)
 	keys.down = false
 	if e := m.PollHotkey(now.Add(200 * time.Millisecond)); len(e.Commands) != 0 {
 		t.Fatalf("entzogenes Kürzel startet: %+v", e)
@@ -289,7 +295,7 @@ func TestAppWegfallGibtKuerzelFrei(t *testing.T) {
 func TestWartenderDruckUeberlebtEntzugNicht(t *testing.T) {
 	m, keys := hotkeyModel(t, nil)
 	keys.down = true
-	m.PressHotkey(1, now)
+	m.PressHotkey(idF5, now)
 	m.SetHotkeys(nil)
 	keys.down = false
 	if e := m.PollHotkey(now.Add(200 * time.Millisecond)); len(e.Commands) != 0 {
@@ -301,7 +307,7 @@ func TestWartenderDruckUeberlebtEntzugNicht(t *testing.T) {
 func TestWartenderDruckUeberlebtUnveraenderteListe(t *testing.T) {
 	m, keys := hotkeyModel(t, nil)
 	keys.down = true
-	m.PressHotkey(1, now)
+	m.PressHotkey(idF5, now)
 	m.SetHotkeys([]Hotkey{hotkeyDemo})
 	m.HotkeyRegistered(0, true)
 	keys.down = false
@@ -340,7 +346,7 @@ func TestAnmeldefehlerZeigtBelegtImMenue(t *testing.T) {
 func TestBelegtesKuerzelStartetNichts(t *testing.T) {
 	m, keys := hotkeyModel(t, nil)
 	m.HotkeyRegistered(0, false)
-	m.PressHotkey(1, now)
+	m.PressHotkey(idF5, now)
 	keys.down = false
 	if e := m.PollHotkey(now.Add(200 * time.Millisecond)); len(e.Commands) != 0 {
 		t.Fatalf("belegtes Kürzel startet: %+v", e)
@@ -390,7 +396,7 @@ func TestHotkeyNamenAusserhalbDesMustersErzeugenKeinenBefehl(t *testing.T) {
 				t.Fatalf("Hotkeys() = %v, erwartet gültig=%v", got, tt.ok)
 			}
 			m.HotkeyRegistered(0, true)
-			m.PressHotkey(1, now)
+			m.PressHotkey(idF5, now)
 			keys.down = false
 			e := m.PollHotkey(now.Add(200 * time.Millisecond))
 			if !tt.ok {
@@ -419,7 +425,7 @@ func TestHotkeyNameWieMenueKennungBleibtSetup(t *testing.T) {
 		})
 		m.SetHotkeys([]Hotkey{h})
 		m.HotkeyRegistered(0, true)
-		m.PressHotkey(1, now)
+		m.PressHotkey(idF5, now)
 		keys.down = false
 		e := m.PollHotkey(now.Add(200 * time.Millisecond))
 		if len(e.Commands) != 1 || e.Commands[0].Type != "setup_start" || e.Commands[0].Pin != h.Pin || e.Commands[0].Setup != h.Setup || e.Quit || e.OpenApp != "" {
@@ -440,7 +446,7 @@ func TestDoppeltesKuerzelAnZweiAppsWirdWieFremdesBehandelt(t *testing.T) {
 	sys := &fakeOS{taken: map[string]bool{}, holding: map[int]string{}}
 	m.SetHotkeys([]Hotkey{hotkeyDemo, second, other})
 	m.SyncHotkeys(sys.unregister, sys.register)
-	if !reflect.DeepEqual(sys.calls, []string{"an3"}) || !reflect.DeepEqual(sys.holding, map[int]string{3: "Strg+Alt+F6"}) {
+	if !reflect.DeepEqual(sys.calls, []string{"an6"}) || !reflect.DeepEqual(sys.holding, map[int]string{6: "Strg+Alt+F6"}) {
 		t.Fatalf("doppelte Taste wurde angemeldet: %v %v", sys.calls, sys.holding)
 	}
 	it, ok := findItem(m, "hotkey:Strg+Alt+F5")
@@ -453,7 +459,7 @@ func TestDoppeltesKuerzelAnZweiAppsWirdWieFremdesBehandelt(t *testing.T) {
 	// Auch eine verirrte Erfolgsmeldung macht keine der beiden startbar.
 	m.HotkeyRegistered(0, true)
 	m.HotkeyRegistered(1, true)
-	for _, id := range []int{1, 2} {
+	for _, id := range []int{idF5} {
 		m.PressHotkey(id, now)
 		keys.down = false
 		if e := m.PollHotkey(now.Add(200 * time.Millisecond)); len(e.Commands) != 0 {
@@ -461,7 +467,7 @@ func TestDoppeltesKuerzelAnZweiAppsWirdWieFremdesBehandelt(t *testing.T) {
 		}
 	}
 	// Die unbeteiligte Taste bleibt nutzbar.
-	m.PressHotkey(3, now.Add(time.Second))
+	m.PressHotkey(idF6, now.Add(time.Second))
 	if e := m.PollHotkey(now.Add(time.Second + 200*time.Millisecond)); len(e.Commands) != 1 {
 		t.Fatalf("unbeteiligte Taste: %+v", e)
 	}
@@ -483,13 +489,13 @@ func TestDoppeltesKuerzelNachEntzugEinerAppWirdAngemeldet(t *testing.T) {
 	sys.calls = nil
 	m.SetHotkeys([]Hotkey{second})
 	m.SyncHotkeys(sys.unregister, sys.register)
-	if !reflect.DeepEqual(sys.holding, map[int]string{1: "Strg+Alt+F5"}) {
+	if !reflect.DeepEqual(sys.holding, map[int]string{idF5: "Strg+Alt+F5"}) {
 		t.Fatalf("verbliebene App nicht angemeldet: %v", sys.holding)
 	}
 	if _, ok := findItem(m, "hotkey:Strg+Alt+F5"); ok {
 		t.Fatal("Hinweis bleibt nach dem Entzug")
 	}
-	m.PressHotkey(1, now)
+	m.PressHotkey(idF5, now)
 	keys.down = false
 	if e := m.PollHotkey(now.Add(200 * time.Millisecond)); len(e.Commands) != 1 || e.Commands[0].Pin != "zwei" {
 		t.Fatalf("verbliebenes Kürzel: %+v", e)
@@ -562,23 +568,23 @@ func TestAbgleichMeldetAllesAbUndNeuAn(t *testing.T) {
 	f6 := Hotkey{Key: "Strg+Alt+F6", Pin: "demo", Setup: "ansicht"}
 	m.SetHotkeys([]Hotkey{hotkeyDemo, f6})
 	m.SyncHotkeys(os.unregister, os.register)
-	if !reflect.DeepEqual(os.calls, []string{"an1", "an2"}) {
+	if !reflect.DeepEqual(os.calls, []string{"an5", "an6"}) {
 		t.Fatalf("erster Abgleich: %v", os.calls)
 	}
 	os.calls = nil
 	m.SetHotkeys([]Hotkey{hotkeyDemo, f6})
 	m.SyncHotkeys(os.unregister, os.register)
-	if !reflect.DeepEqual(os.calls, []string{"ab1", "ab2", "an1", "an2"}) {
+	if !reflect.DeepEqual(os.calls, []string{"ab5", "ab6", "an5", "an6"}) {
 		t.Fatalf("zweiter Abgleich ohne Änderung muss trotzdem alles ab- und neu anmelden: %v", os.calls)
 	}
 	// Entzug der App: nichts bleibt hängen, nur das Übrige wird angemeldet.
 	os.calls = nil
 	m.SetHotkeys([]Hotkey{f6})
 	m.SyncHotkeys(os.unregister, os.register)
-	if !reflect.DeepEqual(os.calls, []string{"ab1", "ab2", "an1"}) {
+	if !reflect.DeepEqual(os.calls, []string{"ab5", "ab6", "an6"}) {
 		t.Fatalf("Abgleich nach Entzug: %v", os.calls)
 	}
-	if !reflect.DeepEqual(os.holding, map[int]string{1: "Strg+Alt+F6"}) {
+	if !reflect.DeepEqual(os.holding, map[int]string{idF6: "Strg+Alt+F6"}) {
 		t.Fatalf("im System angemeldet: %v", os.holding)
 	}
 	m.SetHotkeys(nil)
@@ -633,8 +639,8 @@ func TestZweiterDruckAendertWederFristNochZiel(t *testing.T) {
 	m.HotkeyRegistered(0, true)
 	m.HotkeyRegistered(1, true)
 	keys.down = true
-	m.PressHotkey(1, now)
-	m.PressHotkey(2, now.Add(1500*time.Millisecond))
+	m.PressHotkey(idF5, now)
+	m.PressHotkey(idF6, now.Add(1500*time.Millisecond))
 	// Die Frist des ersten Drucks läuft nach zwei Sekunden ab, nicht 2 s nach dem zweiten Druck.
 	if e := m.PollHotkey(now.Add(HotkeyWait)); len(e.Commands) != 0 || !m.TakeBeep() {
 		t.Fatalf("Frist durch den zweiten Druck verlängert: %+v", e)
@@ -647,11 +653,73 @@ func TestZweiterDruckAendertWederFristNochZiel(t *testing.T) {
 	m2.HotkeyRegistered(0, true)
 	m2.HotkeyRegistered(1, true)
 	keys2.down = true
-	m2.PressHotkey(1, now)
-	m2.PressHotkey(2, now.Add(300*time.Millisecond))
+	m2.PressHotkey(idF5, now)
+	m2.PressHotkey(idF6, now.Add(300*time.Millisecond))
 	keys2.down = false
 	e := m2.PollHotkey(now.Add(600 * time.Millisecond))
 	if len(e.Commands) != 1 || e.Commands[0].Setup != "ansicht" {
 		t.Fatalf("zweiter Druck hat das Ziel getauscht: %+v", e)
+	}
+}
+
+// idOf liefert die Kennung, unter der das System die Taste hält.
+func (f *fakeOS) idOf(t *testing.T, key string) int {
+	t.Helper()
+	for id, k := range f.holding {
+		if k == key {
+			return id
+		}
+	}
+	t.Fatalf("Taste %s nicht angemeldet: %v", key, f.holding)
+	return 0
+}
+
+// #1537: Die Kennung gehört zur Taste, nicht zur Listenposition. Ein WM_HOTKEY, der vor einer Neuanmeldung in der
+// Warteschlange lag, trifft nach ihr nie einen verschobenen Eintrag (Mutant: Kennung wieder i+1).
+func TestAlterTastendruckNachNeuanmeldungMitVerschobenerListeTrifftKeinenFremdenEintrag(t *testing.T) {
+	m, keys := hotkeyModel(t, func(s *pipe.Message) {
+		s.Setups = []pipe.Setup{{Pin: "demo", Setup: "ansicht", Label: "A", Startbar: true}, {Pin: "demo", Setup: "drucken", Label: "B", Startbar: true}}
+	})
+	a := Hotkey{Key: "Strg+Alt+F1", Pin: "demo", Setup: "ansicht"}
+	b := Hotkey{Key: "Strg+Alt+F5", Pin: "demo", Setup: "drucken"}
+	sys := &fakeOS{taken: map[string]bool{}, holding: map[int]string{}}
+	m.SetHotkeys([]Hotkey{a, b})
+	m.SyncHotkeys(sys.unregister, sys.register)
+	idF1 := sys.idOf(t, a.Key)
+	idB := sys.idOf(t, b.Key)
+	// Der Mensch drückt F1; die Nachricht liegt noch in der Warteschlange, als die App von F1 entzogen wird. Der
+	// Eintrag von F5 rutscht dadurch an die erste Stelle der Liste.
+	m.SetHotkeys([]Hotkey{b})
+	m.SyncHotkeys(sys.unregister, sys.register)
+	if got := sys.idOf(t, b.Key); got != idB {
+		t.Fatalf("Kennung der Taste F5 wechselt von %d auf %d", idB, got)
+	}
+	m.PressHotkey(idF1, now)
+	keys.down = false
+	if e := m.PollHotkey(now.Add(200 * time.Millisecond)); len(e.Commands) != 0 || m.TakeBeep() {
+		t.Fatalf("alter Tastendruck trifft einen anderen Eintrag: %+v", e)
+	}
+	// Die verbliebene Taste selbst funktioniert weiter.
+	m.PressHotkey(idB, now.Add(time.Second))
+	e := m.PollHotkey(now.Add(time.Second + 200*time.Millisecond))
+	if len(e.Commands) != 1 || e.Commands[0].Setup != "drucken" {
+		t.Fatalf("verbliebenes Kürzel: %+v", e)
+	}
+}
+
+// Die Kennung ist die Nummer der F-Taste: F1 bis F12 ergeben 1 bis 12, unabhängig von Reihenfolge und Doppeln.
+func TestKennungIstDieNummerDerFTaste(t *testing.T) {
+	m := New()
+	sys := &fakeOS{taken: map[string]bool{}, holding: map[int]string{}}
+	var list []Hotkey
+	for n := 12; n >= 1; n-- { // absichtlich absteigend
+		list = append(list, Hotkey{Key: fmt.Sprintf("Strg+Alt+F%d", n), Pin: "demo", Setup: "ansicht"})
+	}
+	m.SetHotkeys(list)
+	m.SyncHotkeys(sys.unregister, sys.register)
+	for n := 1; n <= 12; n++ {
+		if got := sys.holding[n]; got != fmt.Sprintf("Strg+Alt+F%d", n) {
+			t.Errorf("Kennung %d hält %q", n, got)
+		}
 	}
 }
