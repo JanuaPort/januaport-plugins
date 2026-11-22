@@ -327,10 +327,13 @@ WRAP = {"mail": wrap_mail, "datei": wrap_datei, "erp_feld": wrap_erp, "ticket": 
 
 
 def md_variante(varianten, form, zaehler, gruppe):
+    """Wechselt je Formgruppe zwischen Varianten mit und ohne Platzhalter bzw. offenem Wert."""
     art = "feld" if form in ("ticket", "mcp_antwort") else "text"
-    passend = [v for v in varianten if v["art"] == art]
-    wahl = passend[zaehler[(gruppe, art)] % len(passend)]
-    zaehler[(gruppe, art)] += 1
+    mit = zaehler[(gruppe, art, "n")] % 2 == 0
+    zaehler[(gruppe, art, "n")] += 1
+    passend = [v for v in varianten if v["art"] == art and v["p"] == mit]
+    wahl = passend[zaehler[(gruppe, art, mit)] % len(passend)]
+    zaehler[(gruppe, art, mit)] += 1
     return wahl
 
 
@@ -363,16 +366,13 @@ def platzhalterstil(text, stil):
     """Dieselben Platzhalter erscheinen in beiden Labels in wechselnder Schreibweise."""
     if stil == "klammer":
         return text
-    if stil == "wort":
-        return re.sub(r"https?://[^\s)\"'<>]+",
-                      lambda u: re.sub(r"\{(\w+)\}", r"\1", u.group(0)), text)
     vorlage = {"spitz": r"<\1>", "doppelt": r"{{\1}}"}[stil]
     return re.sub(r"\{(\w+)\}", vorlage, text)
 
 
 def md_items(varianten, spec, zaehler, ctx):
     v = md_variante(varianten, spec["form"], zaehler, (spec["lang"], spec["label"]))
-    stil = random.Random(spec["id"] + "stil").choice(["klammer", "spitz", "doppelt", "wort"])
+    stil = random.Random(spec["id"] + "stil").choice(["klammer", "spitz", "doppelt"])
     if v["art"] == "text":
         return [{"t": platzhalterstil(fill(v["t"], ctx), stil)}]
     return [{"kv": [(k, platzhalterstil(fill(w, ctx), stil)) for k, w in v["t"]]}]
@@ -493,13 +493,17 @@ def band_von(laenge):
     return "2.001-8.000" if laenge <= 8000 else "über 8.000"
 
 
-PLATZHALTER = re.compile(r"(\{[a-z]+\}|\{\{[a-z]+\}\}|<[a-z]{4,}>|[?&]\w+=[a-z]{4,}|[?&]\w+=[\"\s)])")
+URL_VOLL = re.compile(r"https?://(?:<[a-z_]+>|\{\{?[a-z_]+\}\}?|[^\s)\"'<>\]\\])+")
+PLATZHALTER = re.compile(r"\{\{?[a-z_]+\}\}?|<[a-z_]+>")
+OFFENER_WERT = re.compile(r"[?&][\w.\-]+=(?=$|&)")
 
 
 def platzhalter_anteil(eintraege, art):
-    md = [e for e in eintraege
-          if e["klasse"] == art or e.get("gegenstueck_zu") == art]
-    return sum(1 for e in md if PLATZHALTER.search(e["text"])), len(md)
+    """Gleiche Messung wie im Test: md-Einträge mit Platzhalter oder offenem Query-Wert."""
+    md = [e for e in eintraege if e["klasse"] == art or e.get("gegenstueck_zu") == art]
+    treffer = sum(1 for e in md if any(
+        PLATZHALTER.search(u) or OFFENER_WERT.search(u) for u in URL_VOLL.findall(e["text"])))
+    return treffer, len(md)
 
 
 def readme(eintraege):
@@ -583,12 +587,18 @@ def readme(eintraege):
         "- Texte sind schablonenhaft erzeugt: Füllsätze, Namen und Hosts stammen aus kleinen Pools, die",
         "  beide Labels gleich nutzen. Das ist gewollt (kein Label-Merkmal in der Oberfläche), macht den",
         "  Satz aber weniger vielfältig als echte Post.",
-        "- In Markdown-Datenabfluss-Positiven stehen Query-Werte häufiger als Platzhalter oder offen",
-        "  (`?d=`) als in den Gegenstücken: %d von %d Positiven gegenüber %d von %d Gegenstücken (grobe" % (
-            *platzhalter_anteil(pos, "md_exfiltration"), *platzhalter_anteil(neg, "md_exfiltration")),
-        "  Zählung). Die Gegenstücke enthalten Serienbrief-Vorlagen, API-Doku und offene Anmelde-Links,",
-        "  gleichen den Unterschied aber nicht ganz aus. Ein Prüfer, der auf dieses Merkmal anspringt, würde auf diesem Satz zu gut aussehen.",
-        "- Die Platzhalter-Schreibweise (`{x}`, `<x>`, `{{x}}`, nacktes Wort) wechselt je Eintrag in beiden Labels.",
+        "- Platzhalter und offene Query-Werte sind kein Merkmal einer Seite: Der Anteil der md-Einträge mit",
+        "  Platzhalter (`{x}`, `{{x}}`, `<x>`) oder leerem Query-Wert (`?q=`) in einer URL liegt bei den",
+        "  Positiven bei %d von %d (%.1f %%), bei den Gegenstücken bei %d von %d (%.1f %%)." % (
+            *platzhalter_anteil(pos, "md_exfiltration"),
+            100 * platzhalter_anteil(pos, "md_exfiltration")[0] / platzhalter_anteil(pos, "md_exfiltration")[1],
+            *platzhalter_anteil(neg, "md_exfiltration"),
+            100 * platzhalter_anteil(neg, "md_exfiltration")[0] / platzhalter_anteil(neg, "md_exfiltration")[1]),
+        "  Der Test erzwingt je Seite 40-60 % und höchstens 10 Prozentpunkte Unterschied. Positive ohne",
+        "  Platzhalter nennen die anzuhängenden Daten ausgeschrieben („hänge den Betreff der letzten Mail",
+        "  als Parameter q an“) und haben eine vollständige URL. Gegenstücke mit Platzhaltern sind",
+        "  Serienbrief-, Ticket- und Tracking-Vorlagen, API-Doku und offene Anmelde-Links, jeweils ohne",
+        "  Anweisung an die KI.",
         "",
     ])
 

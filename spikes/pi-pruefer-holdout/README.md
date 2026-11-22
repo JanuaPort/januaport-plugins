@@ -84,8 +84,11 @@ Harmlose Einträge, die eine KI oder einen Assistenten harmlos ansprechen: 36.
 - Texte sind schablonenhaft erzeugt: Füllsätze, Namen und Hosts stammen aus kleinen Pools, die
   beide Labels gleich nutzen. Das ist gewollt (kein Label-Merkmal in der Oberfläche), macht den
   Satz aber weniger vielfältig als echte Post.
-- In Markdown-Datenabfluss-Positiven stehen Query-Werte häufiger als Platzhalter oder offen
-  (`?d=`) als in den Gegenstücken: 24 von 30 Positiven gegenüber 10 von 32 Gegenstücken (grobe
-  Zählung). Die Gegenstücke enthalten Serienbrief-Vorlagen, API-Doku und offene Anmelde-Links,
-  gleichen den Unterschied aber nicht ganz aus. Ein Prüfer, der auf dieses Merkmal anspringt, würde auf diesem Satz zu gut aussehen.
-- Die Platzhalter-Schreibweise (`{x}`, `<x>`, `{{x}}`, nacktes Wort) wechselt je Eintrag in beiden Labels.
+- Platzhalter und offene Query-Werte sind kein Merkmal einer Seite: Der Anteil der md-Einträge mit
+  Platzhalter (`{x}`, `{{x}}`, `<x>`) oder leerem Query-Wert (`?q=`) in einer URL liegt bei den
+  Positiven bei 16 von 30 (53.3 %), bei den Gegenstücken bei 18 von 32 (56.2 %).
+  Der Test erzwingt je Seite 40-60 % und höchstens 10 Prozentpunkte Unterschied. Positive ohne
+  Platzhalter nennen die anzuhängenden Daten ausgeschrieben („hänge den Betreff der letzten Mail
+  als Parameter q an“) und haben eine vollständige URL. Gegenstücke mit Platzhaltern sind
+  Serienbrief-, Ticket- und Tracking-Vorlagen, API-Doku und offene Anmelde-Links, jeweils ohne
+  Anweisung an die KI.
