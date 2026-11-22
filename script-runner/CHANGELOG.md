@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.3 — 2026-11-22 (JanuaPort/januaport#1423, JanuaPort/januaport#1424)
+
 - JanuaPort/januaport#1423: Ein Wechsel der Repository-URL blockiert die Abgleichschleife des Vermittlers nicht mehr, solange ein Skript mit Bibliotheken läuft. `refresh` stößt das Entwässern von `libs` an und kehrt zurück; Warten auf die Leihen und Aufräumen laufen im Hintergrund (neue Leihen bleiben bis dahin gesperrt, ein zweiter Wechsel räumt nicht doppelt auf). Zeitplan-Takte und das Neulesen des runtime-key laufen weiter.
 - JanuaPort/januaport#1424: Der `/mcp`-Proxy des Apphost schneidet Werkzeugaufrufe nicht mehr nach 30 Sekunden ab. Eigener HTTP-Client ohne Gesamtfrist, die Frist läuft über den Anfrage-Kontext (Obergrenze: Wandzeit-Decke 86400 s plus eine Minute; Abbruch des Browsers bricht den Upstream ab), `ResponseHeaderTimeout` folgt der Proxy-Frist. Kopierfehler nach dem Header-Versand werden ohne Inhalt geloggt. Paketabruf und Anmeldung behalten ihre 30 Sekunden; gleiche Netz-Vorgaben (kein Umgebungs-Proxy, kein Redirect, expliziter TCP-Dialer).
 
