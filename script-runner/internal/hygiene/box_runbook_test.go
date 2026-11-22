@@ -70,12 +70,13 @@ func TestRunbookTailscaleUpOhneSchluesselLiteralMitAcceptDnsAus(t *testing.T) {
 }
 
 func TestRunbookEbicsDropInLaedtBeideComposeDateien(t *testing.T) {
-	text := readFile(t, runbookPfad)
-	for _, soll := range []string{
-		"[Service]\nExecStart=\nExecStart=/usr/bin/docker compose -f /opt/jnpt/ebics-abholer/docker-compose.ebics-abholer.yml -f /opt/jnpt/ebics-abholer/docker-compose.box-netz.yml run --rm -T --no-deps ebics-abholer",
-	} {
-		if !strings.Contains(text, soll) {
-			t.Errorf("%s: EBICS-Drop-in fehlt: %q", runbookPfad, soll)
-		}
+	// Ohne Einrückung verglichen: das Drop-in steht je nach Runbook in einer Liste.
+	var ohneEinrueckung []string
+	for _, z := range runbookZeilen(t) {
+		ohneEinrueckung = append(ohneEinrueckung, strings.TrimSpace(z))
+	}
+	soll := "[Service]\nExecStart=\nExecStart=/usr/bin/docker compose -f /opt/jnpt/ebics-abholer/docker-compose.ebics-abholer.yml -f /opt/jnpt/ebics-abholer/docker-compose.box-netz.yml run --rm -T --no-deps ebics-abholer"
+	if !strings.Contains(strings.Join(ohneEinrueckung, "\n"), soll) {
+		t.Errorf("%s: EBICS-Drop-in fehlt: %q", runbookPfad, soll)
 	}
 }
