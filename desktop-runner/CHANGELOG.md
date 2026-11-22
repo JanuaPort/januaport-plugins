@@ -2,6 +2,40 @@
 
 ## Unveröffentlicht
 
+### Unfertige Umgebung ohne Siegel macht den Pin nicht mehr dauerhaft unbrauchbar (JanuaPort/januaport#1425)
+
+- **Fehler:** `pinEnvironment` benennt die vorbereitete Umgebung nach `envs\<key>` um, schreibt das Paket und speichert erst
+  danach das Siegel `env-<key>`. Brach der Läufer dazwischen ab (Abmelden, Herunterfahren, volle Platte), fand `Prepare` beim
+  nächsten Abgleich das Verzeichnis vor und lieferte für immer `ErrHash`: Der Pin blieb ohne Umgebung, seine Läufe wurden
+  abgelehnt, das Paket wurde bei jedem Abgleich erneut geladen. Der eigene Abbruch wurde wie Manipulation behandelt.
+- **Jetzt wird unterschieden:** Ist für den Schlüssel **kein Siegel gespeichert**, ist das Verzeichnis ein unfertiger eigener
+  Stand. Der nächste Abgleich lädt das Paket neu, prüft es vollständig und ersetzt das Verzeichnis (Entfernen nur unter `envs\`,
+  ohne Symlinks oder Junctions zu folgen); dem alten Inhalt wird nie vertraut. Ist ein **Siegel gespeichert**, bleibt es bei
+  `ErrHash` und `refused/hash`: Manipulation wird nicht still repariert.
+- Kein neues Format, kein neuer Logcode. Journal, State und Manifest unverändert.
+
+### Paketabruf mit Stillstandsfrist statt fester 40-s-Gesamtfrist (JanuaPort/januaport#1426)
+
+- **Fehler:** Der Geräteclient brach jede HTTP-Antwort nach 40 s Gesamtzeit ab (30 s bis zum Kopf). Ein Paket bis 128 MiB an
+  einer langsamen Leitung (zum Beispiel 40 MB bei 8 Mbit/s) scheiterte deshalb bei jedem Abgleich, und ein Lesefehler im Körper
+  galt als Protokollfehler statt als Netz. App-Werkzeugaufrufe brachen vor der dokumentierten Zeitgrenze von 60 s je Befehl ab.
+- **Paketabruf:** keine Gesamtfrist mehr, sondern eine Stillstandsfrist von 30 s ohne ein einziges empfangenes Byte (vor dem Kopf
+  wie im Körper). Die Größengrenze von 128 MiB bleibt. Stillstand und Netzfehler im Körper zählen als offline, der nächste
+  Abgleich versucht es erneut; Größe, Inhaltstyp, Hash und Format bleiben Protokollfehler. Halt und Beenden brechen den Abruf
+  weiterhin sofort ab.
+- **App-Gateway:** Befehle gelten bis zur Zeitgrenze von 60 s je Befehl, die der Kontext der Brücke trägt. Die Kopf-Frist liegt
+  bei 60 s, der Client setzt keine kürzere Gesamtfrist mehr. Code und README stimmen überein.
+- **Heartbeat, Claim, Report** und die übrigen kurzen Aufrufe behalten 30 s bis zum Kopf und 40 s insgesamt.
+
+### Laufmarker bleibt nach gescheitertem Speichern nicht mehr stehen (JanuaPort/januaport#1434)
+
+- **Fehler:** Scheiterte nach dem Setzen des Laufmarkers ein Speichern, kehrte die Funktion ohne Abschluss zurück. Der Marker
+  blieb bis zum Neustart des Prozesses, und jeder weitere Auftrag endete mit `ErrBusy`, während der Heartbeat weiter `ready`
+  meldete. Das traf drei Stellen: das Speichern der Testfreigabe im Ad-hoc-Weg, `ObserveTime` im Offline-Zweig des
+  Zeitplan-Wegs und das erneute `Mark` im Wiederholungszweig nach `409 manifest`.
+- **Jetzt** schließt jeder Fehler nach gesetztem Marker den Lauf als `internal` ab (der bestehende `report`-Weg), der Marker wandert
+  ins Journal, und der nächste Auftrag läuft. Halt-Semantik, Journal- und State-Format unverändert.
+
 ### Feste Sperr-Reihenfolge, kein Deadlock zwischen Takt und Pause (JanuaPort/januaport#1421)
 
 - **Fehler:** Der Aufräumtakt (`pruneStored`, nach jedem Sync und alle 60 s im Heartbeat) las das Manifest über `e.view()`

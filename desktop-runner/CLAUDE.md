@@ -17,11 +17,11 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 |---|---|
 | main.go | CLI und feste Fehlerausgaben |
 | console.go, console_windows.go, console_other.go | GUI-Läufer (`-H=windowsgui`): reine Entscheidung `planConsole`, Windows-Anschluss an die Konsole des Aufrufers, No-op sonst (Invariante 19) |
-| internal/client/http.go | Einziger HTTP-Client-Adapter, E3, Tokenrollen, Widerruf (Server-Ausnahme K6c: fensterio/loopback_windows.go) |
+| internal/client/http.go | Einziger HTTP-Client-Adapter, E3, Tokenrollen, Widerruf, Fristen je Aufruf (Invariante 26; Server-Ausnahme K6c: fensterio/loopback_windows.go) |
 | internal/client/sse.go | Liest die SSE-Antwort des Lauf-Zweigs von `mcp` bis zur ersten Nicht-Benachrichtigung (Invariante 1, #1340) |
 | `internal/client/manifest.go` | Manifestprüfung mit Ed25519, Cron/IANA und `OfflineAllowed` (Werkzeugdeklarationen, Pinfrist vor Gerätefrist und Zeitpunkt des letzten Syncs). |
 | `internal/client/environment.go`, `internal/client/copied_lock.go`, `internal/client/copied_zip.go` | Prüfen Python-Allowlist, Lock-Hashes und Wheel-Tags einschließlich reiner `py3`-/`py2.py3`-Wheels mit `none-any`, entpacken Pakete und versiegeln Umgebungen. |
-| `internal/client/engine.go`, `internal/client/halt.go`, `internal/client/bootstrap.py` | Gemeinsamer Laufplatz, Takt, Claim/Start, lokaler Halt und Rahmenkanal/MCP; `Sync`/`pinEnvironment` bereiten jeden Pin einzeln vor und trennen Pinfehler von Manifestfehlern. |
+| `internal/client/engine.go`, `internal/client/halt.go`, `internal/client/bootstrap.py` | Gemeinsamer Laufplatz, Takt, Claim/Start, lokaler Halt und Rahmenkanal/MCP; `Sync`/`pinEnvironment` bereiten jeden Pin einzeln vor und trennen Pinfehler von Manifestfehlern (Invariante 25: unfertige Umgebung ohne Siegel wird ersetzt); `abschluss` schließt nach gesetztem Marker immer ab (Invariante 27). |
 | `internal/client/state.go`, `internal/client/replace_windows.go`, `internal/client/replace_other.go` | Atomare OS-geschützte Dateien, Journal/Marker/Slot-Transaktion, Löschung; `loadLocked`/`saveLocked` für Leser/Schreiber unter `State.Use` |
 | `internal/client/runtemp.go` | Lauf-TEMP: RunID/RunTemps, Anlegen nur neu, Aufräumen/Besen ohne Reparse-Punkte, Kind-Umgebung |
 | `internal/client/log.go` | Geschlossene numerische Codes (1–10), 5 × 1 MiB; Code 2: n = Klasse 1 hash, 2 runtime, 3 manifest, 4 sonst (Invariante 23); Code 10: n=1 Ablage, n=2 Aufräumen (Invariante 20) |
@@ -829,8 +829,8 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     (`LogSyncFailed`) mit Klasse 1 hash, 2 runtime, 3 manifest, 4 sonst/IO, je Fehler auf Manifest-Ebene und je nicht
     bereitem Pin, ohne Namen und ohne Text, ohne Dedup (die Rotation 5 × 1 MiB begrenzt). Nach Widerruf und beim Abbruch
     des Prozesses wird nichts geschrieben (der Widerruf löscht den Zustand). Nicht im Umfang: Bereitschaft je Pin im
-    Heartbeat (Kern-Vertrag), laufende Prozesse beim Entzug (unverändert), die Dauerfalle „Zielordner existiert“ nach
-    gescheitertem `Save(env)`.
+    Heartbeat (Kern-Vertrag), laufende Prozesse beim Entzug (unverändert). Die frühere Dauerfalle „Zielordner existiert“ nach
+    gescheitertem `Save(env)` ist mit Invariante 25 (#1425) behoben.
     Tests: `TestPresyncUnveraendertesManifestLehntDenLaufNichtAb`, `TestKaputterPinTrifftNurDiesenPin` (Tabelle je
     Fehlerklasse), `TestKaputterPinImGespeichertenStandBleibtOhneUmgebung`,
     `TestByteGleichesManifestMitJetztGutemPaketMachtDenPinBereit`, `TestByteGleichesManifestNachNeustartIstKeinFehler`,
@@ -851,6 +851,49 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     (nur Tests) macht das Fenster deterministisch. Tests: `TestTaktUnterZustandssperreNimmtNieDieEngineSperre`
     (Hook, deterministisch), `TestTaktGegenPauseFortsetzenBleibtLebendig` (Belastung, Frist 10 s; Zusatz, das Fenster ist winzig, den Deadlock belegt der Hook-Test),
     `TestTaktNimmtDasGespeicherteManifestVonDerPlatte` (Tabelle: Platte neuer, Platte entzieht).
+25. Unfertige Umgebung ohne Siegel wird ersetzt (#1425): `pinEnvironment` benennt über `Prepare` die Umgebung nach `envs/<key>`
+    um, schreibt das Paket und speichert erst dann das Siegel `env-<key>`. Bricht der Läufer dazwischen ab (Abmelden,
+    Herunterfahren, volle Platte), steht ein Verzeichnis ohne Siegel. Das ist **kein Manipulationsfall, sondern ein
+    unfertiger eigener Stand**: Unter der Zustandssperre (`loadLocked("env-"+key)`, im `State.Use`-Callback, Invariante 24)
+    wird festgestellt, dass kein Siegel gespeichert ist (nur `os.IsNotExist`; ein unlesbares Siegel zählt nicht als fehlend);
+    dann ersetzt `prepare(…, ersetzeUnfertiges=true)` das Verzeichnis, aber **erst nach der vollständigen Prüfung des frisch
+    geholten Pakets** (Git, Python-Allowlist, Wheels, Entpacken in die Stage). Dem alten Inhalt wird nie vertraut, er wird
+    nur ersetzt: `removeTree` (Lstat, kein `os.RemoveAll`, folgt keinem Symlink und keiner Junction, entfernt einen Verweis nur
+    als Verweis), Pfad aus dem Schlüssel (`<commit>-<sha256 des Pfads>`, Commit vorher mit `validID` geprüft), nur unter
+    `envs/`. **Ist ein Siegel gespeichert, bleibt alles beim Alten:** ein abweichendes Verzeichnis ist Manipulation
+    (`ErrHash`, Logklasse 1), keine stille Reparatur; auch der öffentliche `Prepare` ersetzt nie ein vorhandenes
+    Verzeichnis. Kein neues Format, kein neuer Fehlercode. Tests: `TestAbbruchVorSiegelDerNaechsteAbgleichMachtDenPinBereit`,
+    `TestAbbruchVorSiegelKaputtesPaketMachtKeineUmgebung`, `TestAbbruchVorSiegelEntferntVerweisNichtDessenZiel`,
+    `TestManipulationMitSiegelBleibtErrHashUndWirdNichtRepariert`; Mutanten `env-*` in `probe/mutations.py`.
+26. Fristen im Geräteclient (#1426, `internal/client/http.go`, `API.fristen`, `grenzen`): Der `http.Client` hat **weder
+    `Timeout` noch `ResponseHeaderTimeout`**; jeder Aufruf trägt seine eigene Frist über Kontext und Uhr in `exchange`.
+    (a) **Paketabruf** (`packages/…`): keine Gesamtfrist, sondern eine **Stillstandsfrist** von 30 s ohne ein einziges
+    empfangenes Byte, vor dem Antwortkopf wie im Körper (`regungsLeser` setzt die Uhr bei jedem Byte zurück). Ein großes
+    Paket (Grenze unverändert 128 MiB) an einer langsamen, aber stetigen Leitung kommt an. Stillstand und Lesefehler im Körper
+    sind ein `netzFehler` (`IsOffline`, nie `ErrProtocol`, Text ohne URL); Größe, Inhaltstyp und Format bleiben `ErrProtocol`,
+    Hash und Paketform prüft weiter `Prepare`. Ein abgebrochener Kontext (Halt, Stop, Beenden) beendet den Abruf sofort und
+    liefert `ctx.Err()`. (b) **App-Gateway** (`AppRPC`, App-Token): Kopf-Frist 60 s, **keine Gesamtfrist im Client**; die
+    dokumentierte Zeitgrenze „60 s je Befehl“ setzt der Kontext der Brücke durch (`fenster.Bruecke.Frist`, README). Die
+    Kopf-Frist darf sie nie unterschreiten. (c) **Alle übrigen Aufrufe** (Heartbeat, Claim, Report, Start, Manifest, Config,
+    Pair, Lauf-Token-`mcp` u. a.) behalten 30 s bis zum Kopf und 40 s insgesamt; ein Lesefehler im Körper bleibt dort
+    `ErrProtocol`. Die Fristen sind in Tests auf Millisekunden verkürzbar (`API.fristen`), echte 40 s laufen nie.
+    Tests: `TestStandardfristen`, `TestPaketAbrufStetigUeberDieGesamtfristHinausGelingt`,
+    `TestPaketAbrufStillstandImKoerperIstNetzfehlerNieProtokollfehler`, `TestPaketAbrufStillstandVorDemKopfIstOffline`,
+    `TestPaketAbrufVerbindungsabbruchImKoerperIstOffline`, `TestPaketAbrufProtokollfehlerBleibenProtokollfehler`,
+    `TestPaketAbrufKontextAbbruchBeendetSofort`, `TestAppWerkzeugaufrufUeberDieKurzenFristenHinausGelingt`,
+    `TestAppWerkzeugaufrufEndetSpaetestensMitDemKontext`, `TestKurzeAufrufeBehaltenKopfUndGesamtfrist`; Mutanten `paket-*`,
+    `werkzeug-*`, `kurz-*`. **Stolperfalle:** Die Lauf-Token-Werkzeugaufrufe der Skripte (`API.MCP`) bleiben bewusst bei der
+    kurzen Frist (nicht im Umfang von #1426, siehe Gate-Bericht).
+27. Nach gesetztem Laufmarker gibt es keinen Rückweg ohne Abschluss (#1434): Sobald `Mark` oder `ReserveRun` den Marker gesetzt hat,
+    endet jeder Fehlerpfad im Ad-hoc- und im Zeitplan-Weg über `Engine.abschluss` (`report(finish(r, "internal", ""))`), damit der
+    Marker ins Journal wandert. Betroffen waren das Speichern der Testfreigabe `test-<job>` im Ad-hoc-Weg (`adhoc`), `ObserveTime` im
+    Offline-Zweig und das erneute `Mark` im Wiederholungszweig nach `409 manifest` (`scheduled`); alle drei ließen den Marker bis zum
+    Neustart stehen, und jeder Folgeauftrag endete mit `ErrBusy`. `ErrRevoked` und ein Fehler des Journals selbst gehen als Rückgabe
+    des Abschlusses an den Aufrufer (kann das Journal nicht schreiben, bleibt der Marker; das ist nicht behebbar). Wer nach `Mark`
+    oder `ReserveRun` eine neue Rückgabe einbaut, schließt mit `report` ab. `Execute`/`executeContainer` liefern dagegen immer ein
+    `Result` und gehören nicht zu diesem Weg. Tests: `TestAdHocSpeichernDerFreigabeScheitertSchliesstDenLaufUndGibtDenMarkerFrei`,
+    `TestZeitplanObserveTimeScheitertSchliesstDenLaufUndGibtDenMarkerFrei`,
+    `TestZeitplanMarkImWiederholungszweigScheitertSchliesstDenLaufUndGibtDenMarkerFrei`; Mutanten `marker-*`.
 
 ## Benannte Grenzen
 
@@ -890,6 +933,9 @@ mit PASS ohne SKIP laufen. CI/Kompilierung ersetzen diesen Gate-Beleg nicht.
 | B1: Git vor Spawn, Objektmenge/Modi/Namen | TestFalscherHashBrichtVorDemStartAb, TestPaketObjektmengeModiUndNamen, TestSHA1Collision, TestPaketMedientypAmHTTPAdapter, TestGoldenPaketeBytegenauUndManipulation |
 | Runtime/Lock/Umgebung | TestPythonAllowlistUndWheel, TestUmgebungVorJedemStart, TestUmgebungFehlendeZusaetzlicheDateien, TestWheelTagsLockUndManifestVerbote, TestWindowsPythonEchterStartUndManipulation |
 | Reine Wheels, `._pth` festgepinnt (#1392, W1–W3) | TestReineWheelsTagTabelle, TestReinesWheelBrauchtHashImLock, TestUiaProbeWheelNamen, TestReinesWheelEntpacktNurUnterLibs, TestPthDateiIstFestgepinnt; nativ: TestWindowsPthImWheelBleibtWirkungslos |
+| Unfertige Umgebung ohne Siegel wird ersetzt, Manipulation mit Siegel bleibt ErrHash (#1425) | TestAbbruchVorSiegelDerNaechsteAbgleichMachtDenPinBereit, TestAbbruchVorSiegelKaputtesPaketMachtKeineUmgebung, TestAbbruchVorSiegelEntferntVerweisNichtDessenZiel, TestManipulationMitSiegelBleibtErrHashUndWirdNichtRepariert |
+| Stillstands- statt Gesamtfrist beim Paketabruf, Werkzeugaufrufe bis zur Zeitgrenze (#1426) | TestStandardfristen, TestPaketAbrufStetigUeberDieGesamtfristHinausGelingt, TestPaketAbrufStillstandImKoerperIstNetzfehlerNieProtokollfehler, TestPaketAbrufKontextAbbruchBeendetSofort, TestAppWerkzeugaufrufUeberDieKurzenFristenHinausGelingt, TestKurzeAufrufeBehaltenKopfUndGesamtfrist |
+| Kein Rückweg ohne Abschluss nach gesetztem Laufmarker (#1434) | TestAdHocSpeichernDerFreigabeScheitertSchliesstDenLaufUndGibtDenMarkerFrei, TestZeitplanObserveTimeScheitertSchliesstDenLaufUndGibtDenMarkerFrei, TestZeitplanMarkImWiederholungszweigScheitertSchliesstDenLaufUndGibtDenMarkerFrei |
 | Kaputter Pin sperrt das Manifest nicht (#1391, E1/E2) | TestPresyncUnveraendertesManifestLehntDenLaufNichtAb, TestKaputterPinTrifftNurDiesenPin, TestFehlerAufManifestEbeneVerwirftAlles, TestOfflinePaketabrufVerzoegertNurDenEntzug, TestGleicheSeqAndereHuelleBleibtErrManifest, TestByteGleichesManifestNachNeustartIstKeinFehler, TestSyncFehlerAufManifestEbeneSchreibtCodeMitKlasse, TestWiderrufUndAbbruchSchreibenKeinenSyncFehlerCode |
 | ZIP-Namen/Typen/Kollisionen/Bomben | TestZIPAbweisungAmEntpacker; Kopien: TestCopiedLibraryFunctions |
 | E3: TLS vor Code, CA/Pin, keine Redirects/Proxys, Pubkey nötig | TestPairTLSUndLeererPubkey, TestCAFingerprintProxyUndURL, TestRedirectUndRemoteHTTPAbgewiesen, TestPairCodeFormat, TestPairLeererPubkey, TestPairRFC8032Pubkey, TestPairLeererPubkeySpeichertNichts, TestPairRFC8032PubkeySpeichertNichts |
