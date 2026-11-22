@@ -556,7 +556,7 @@ func (m *Manager) Prune(keep map[string]bool) {
 // Manager wieder annahmebereit ist. Läuft schon ein Entwässern, schließt sich
 // der Aufruf ihm an (derselbe Kanal): Während des Entwässerns kann nichts
 // Neues entstanden sein, das eine zweite Runde entfernen müsste, und ein
-// zweites Aufräumen risikierte eine Leihe auf halb gelöschtem Stand.
+// zweites Aufräumen riskierte eine Leihe auf halb gelöschtem Stand.
 func (m *Manager) BeginReset() <-chan struct{} {
 	m.mu.Lock()
 	defer m.mu.Unlock()
