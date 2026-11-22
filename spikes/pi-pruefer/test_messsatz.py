@@ -301,6 +301,19 @@ class DatenSperrenTests(unittest.TestCase):
                 r.update(text=json.dumps(antwort, ensure_ascii=False))
                 r["laenge_zeichen"] = len(r["text"])
             self.abgelehnt("md_datei_form", aendern)
+        for fehler in ("fehlend", "zusatzfeld", "leer", "ungueltiges_json"):
+            def aendern(z):
+                r = next(r for r in z if r["klasse"] == "md_exfiltration" and r["form"] == "datei")
+                antwort = json.loads(r["text"])
+                if fehler == "fehlend":
+                    antwort.pop("hidden_text_count")
+                elif fehler == "zusatzfeld":
+                    antwort["fremd"] = 1
+                elif fehler == "leer":
+                    antwort["text"] = ""
+                r["text"] = "{kaputt" if fehler == "ungueltiges_json" else json.dumps(antwort, ensure_ascii=False)
+                r["laenge_zeichen"] = len(r["text"])
+            self.abgelehnt("md_datei_form", aendern)
 
     def test_md_datei(self):
         def entfernen(z):

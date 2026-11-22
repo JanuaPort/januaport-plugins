@@ -13,6 +13,7 @@ import time
 
 from adapter import KANDIDATEN
 from datenregeln import lade
+from md_regeln import md_rueckgabewege
 
 
 def fenster(text, adapter, groesse, ueberlappung):
@@ -110,6 +111,10 @@ def tabelle(name, daten, result):
     for feld in ("sprache", "form", "klasse", "gegenstueck_zu"):
         for wert in sorted({z[feld] for z in daten if feld in z}):
             gruppen.append((f"{feld}:{wert}", [i for i, z in enumerate(daten) if z.get(feld) == wert]))
+    for weg in ("kern_datei", "structured_content", "ticket_badge", "freitext"):
+        indizes = [i for i, z in enumerate(daten) if weg in md_rueckgabewege(z)]
+        if indizes:
+            gruppen.append((f"md_rueckgabeweg:{weg}", indizes))
     zeilen = []
     for gruppe, indizes in gruppen:
         teil = [daten[i] for i in indizes]

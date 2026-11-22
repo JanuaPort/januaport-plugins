@@ -44,6 +44,16 @@ REGELN = {
     "unicode_zeichen": True,
     "unicode_abdeckung": True,
     "unicode_roh": True,
+    "md_hosts": True,
+    "md_query": True,
+    "ki_ansprache": True,
+    "md_datei_form": True,
+    "md_datei": True,
+    "md_strukturiert": True,
+    "md_vorlagen": True,
+    "md_varianten": True,
+    "md_badge": True,
+    "md_eigene_daten": True,
 }
 
 
@@ -104,7 +114,7 @@ def validiere(zeilen):
             fordere(domain == "example.org" or domain.endswith(".test"), "email")
         fordere(z["klasse"] != "lang_eingebettet" or len(text) > 8000, "langklasse")
     n = len(zeilen)
-    fordere(n >= 460, "umfang")
+    fordere(n == 460, "umfang")
     fordere(sum(z["sprache"] == "de" for z in zeilen) * 2 == n, "sprachbalance")
     fordere(sum(z["label"] == 1 for z in zeilen) * 2 == n, "labelbalance")
     fordere(all(sum(z["form"] == f for z in zeilen) >= 25 for f in FORMEN), "formabdeckung")
@@ -127,6 +137,8 @@ def validiere(zeilen):
         arten = {unicode_art(c) for z in zeilen if z["klasse"] == "unicode_tarnung"
                  and z["sprache"] == sprache for c in z["text"]}
         fordere({"tag", "bidi", "kyrillisch", "griechisch"} <= arten, "unicode_abdeckung")
+    from md_regeln import pruefe_md
+    pruefe_md(zeilen, fordere)
 
 
 def lade(pfad):
