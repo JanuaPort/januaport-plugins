@@ -75,6 +75,12 @@ Regeln:
 ## Voraussetzungen
 
 - Windows mit **Windows PowerShell 5.1** (die Fassung, die PAD startet).
+- **Mindest-Kernversion: ein JanuaPort-Kern mit #1540** (Kartei-Vorbedingung
+  `erwartet` am Satz-Update). Schritt 2 sendet `erwartet`; ein älterer Kern
+  lehnt das Argument als nicht deklariert ab, und es wird **nichts**
+  geschrieben (sicher, aber der Flow kommt nicht über Schritt 2 hinaus). Das
+  Modul prüft die Kernversion nicht selbst — vor dem Rollout den Kern
+  aktualisieren.
 - Eine Kartei-Satzart mit den Feldern oben, auf der Anlage eingerichtet.
 - Ein **Token** für den Roboter mit genau zwei Scopes — die Satzart lesen und
   **ein** werkzeug-genaues Schreibrecht:
@@ -160,6 +166,8 @@ Fachsystem nichts gebucht wurde.
 
 - `-Hoechstens <n>` ist der **Lauf-Deckel**: Nach `n` verbuchten oder auf
   `fehler` gesetzten Sätzen ist Schluss; der Rest bleibt auf `geprueft`.
+  Sätze, die ein gleichzeitiger Lauf zuerst gesperrt hat, werden übersprungen
+  und gezählt, zählen aber nicht zum Deckel.
 - `-Seitengroesse <n>` (1–100) ist nur die Größe **einer** Abfrage. Ohne
   `-Hoechstens` arbeitet der Lauf **alle** freigegebenen Sätze ab, egal wie
   klein die Seitengröße ist. Die kleinste Zahl an der falschen Stelle sieht
@@ -199,7 +207,18 @@ bricht es mit „Platzhalter nicht ersetzt" ab.
   zusammen: Felder, die ein Aufruf nicht nennt, bleiben erhalten. Das Modul
   schickt trotzdem alle gelesenen Felder samt Änderung zurück; zwischen `get`
   und `update` von Hand geänderte Felder gehen dabei auf den gelesenen Stand
-  zurück (ein Zeitfenster von Sekunden).
+  zurück (ein Zeitfenster von Sekunden) — außer die, die als Vorbedingung
+  `erwartet` mitgehen (Status und Lauf-Kennung, siehe unten).
+- **Gleichzeitige Läufe reservieren atomar:** Schritt 2 schickt mit dem
+  `update` die Vorbedingung `erwartet = {status: geprueft}`; der Kern prüft sie
+  beim Schreiben gegen den frischen Stand. Hat ein zweiter Lauf den Satz in der
+  Zwischenzeit gesperrt, schreibt der Kern nichts und antwortet mit dem Konflikt
+  `Konflikt: Vorbedingung …`. Dann gilt der Satz als vergeben: das Modul gibt
+  `$null` zurück und schreibt eine Log-Zeile, **ohne Fehlerstatus und ohne
+  Buchung**; `Invoke-Lauf.ps1` geht zum nächsten Satz. Schritt 3 und 4 senden
+  `erwartet = {status: in_buchung, <Lauf-Feld>: <eigener Lauf>}`; ein
+  Konflikt dort ist ein Abbruch (die Buchung im Fachsystem ist dann schon
+  passiert, ein Mensch klärt). Ein Fehler anderer Art bleibt immer ein Abbruch.
 - **Nie doppelt buchen:** Schritt 2 sperrt nur einen Satz mit Status `geprueft`
   **und** leerer Buchungsnummer; trägt ein `geprueft`-Satz schon eine (etwa nach
   einem Bedienfehler), bricht Schritt 2 ab, ohne zu schreiben. Schritt 3
@@ -224,9 +243,15 @@ bricht es mit „Platzhalter nicht ersetzt" ab.
 
 - **Kein Push, kein Trigger.** Die Kartei meldet sich nicht; der Flow fragt in
   seinem Takt. PAD selbst plant nicht (`pad/FLOW-VORLAGE.md` §5).
-- **Kein Konflikt-Schutz** über den Status hinaus — kein `If-Match`, keine
-  Transaktion. Der Status ist die Sperre und trägt, solange sich alle daran
-  halten.
+- **Keine Transaktion mit dem Fachsystem.** Die Reservierung (Status
+  `geprueft` → `in_buchung` mit Vorbedingung) schützt vor doppelter Buchung
+  durch gleichzeitige Läufe, verbindet aber nichts mit dem Fachsystem: Bricht
+  ein Lauf nach der Reservierung ab, bleibt der Satz auf `in_buchung`, und
+  ein Mensch klärt ihn (die Bremse).
+- **Im PAD-Flow beendet ein vergebener Satz den Flow.** `pad/2-satz-sperren.ps1`
+  kennt das Überspringen noch nicht: Liefert die Sperre `$null`, endet der
+  Schritt mit einem Skriptfehler (`ScriptError`), gebucht wird nichts. Das
+  Überspringen im Flow ist ein getrennter Folgeschritt.
 - **Pseudonyme reisen wörtlich mit.** Der Roboter bekommt nur die
   Ausgabefelder — wählen Sie sie so, dass er nichts anderes braucht.
 - **Kein Ersatz für einen Connector.** Hat das Fachsystem eine Schnittstelle,

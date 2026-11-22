@@ -59,6 +59,7 @@ Write-Host ('verbunden, Protokollfassung {0}, Lauf {1}' -f $jnpt.Protokollfassun
 
 $gebucht = 0
 $fehler = 0
+$uebersprungen = 0
 
 # In Runden holen, bis leer: Die Suche liefert hoechstens 100 Saetze und ist
 # kein Vollstaendigkeitsbeweis. Jeder geholte Satz verlaesst dabei den Zustand
@@ -70,8 +71,11 @@ $fehler = 0
 
     foreach ($t in $treffer) {
         # Wirft Lock-JnptSatz, endet der Lauf - gewollt: Dann hat jemand
-        # dazwischen gefunkt, und ein Mensch sieht nach.
+        # dazwischen gefunkt, und ein Mensch sieht nach. Liefert es $null, hat
+        # ein gleichzeitiger Lauf den Satz zuerst gesperrt (Kern #1540): Er
+        # gehoert dem anderen, hier wird nichts gebucht und nichts geschrieben.
         $satz = Lock-JnptSatz -Session $jnpt -Id $t.id -Lauf $lauf
+        if ($null -eq $satz) { $uebersprungen++; continue }
 
         try {
             $buchungsnr = Invoke-Klickfolge -Satz $satz
@@ -89,4 +93,4 @@ $fehler = 0
     }
 }
 
-Write-Host ('Lauf {0} fertig: {1} verbucht, {2} auf fehler.' -f $lauf, $gebucht, $fehler)
+Write-Host ('Lauf {0} fertig: {1} verbucht, {2} auf fehler, {3} uebersprungen.' -f $lauf, $gebucht, $fehler, $uebersprungen)

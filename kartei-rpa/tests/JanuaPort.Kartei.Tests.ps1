@@ -325,6 +325,150 @@ Describe 'JanuaPort.Kartei' {
         }
     }
 
+    Context 'Vorbedingung erwartet (#1540)' {
+
+        BeforeAll {
+            function Get-TestLockAusgabe {
+                # Trennt den Rueckgabewert von den Log-Zeilen (Write-Host = Informationsstrom).
+                param($Sitzung, [string]$Lauf = 'L1')
+                $roh = @(Lock-JnptSatz -Session $Sitzung -Id 'a1b2c3d4' -Lauf $Lauf 6>&1)
+                [pscustomobject]@{
+                    Satz = @($roh | Where-Object { $null -ne $_ -and $_ -isnot [System.Management.Automation.InformationRecord] })
+                    Log  = @($roh | Where-Object { $_ -is [System.Management.Automation.InformationRecord] } |
+                             ForEach-Object { [string]$_.MessageData })
+                }
+            }
+        }
+
+        It 'Lock sendet erwartet mit dem geprueften Ausgangsstatus und sonst nichts' {
+            Add-TestGet (New-TestSatz)
+            Add-TestUpdate (New-TestSatz -Felder @{ status = 'in_buchung' })
+            Lock-JnptSatz -Session (New-TestSitzung) -Id 'a1b2c3d4' -Lauf 'L1' | Out-Null
+
+            $erwartet = (Get-TestAufrufe 'zahlungseingang_update')[0].Body.params.arguments.erwartet
+            $erwartet.status | Should -Be 'geprueft'
+            @($erwartet.PSObject.Properties).Count | Should -Be 1
+        }
+
+        It 'Konflikt (Werkzeugfehler): der Satz gilt als vergeben, Lock ueberspringt ihn mit einer Log-Zeile' {
+            Add-TestGet (New-TestSatz)
+            Add-TestKonflikt
+            $r = Get-TestLockAusgabe (New-TestSitzung)
+
+            $r.Satz.Count | Should -Be 0
+            $r.Log.Count | Should -Be 1
+            $r.Log[0] | Should -BeLike '*a1b2c3d4*uebersprungen*'
+            (Get-TestAufrufe 'zahlungseingang_update').Count | Should -Be 1
+        }
+
+        It 'Konflikt (JSON-RPC-Fehler): wird genauso uebersprungen' {
+            Add-TestGet (New-TestSatz)
+            $rpc = @{ jsonrpc = '2.0'; id = 1; error = @{ code = -32602; message = (Get-TestKonfliktText) } }
+            $global:JnptTest.Antworten.Add((New-TestAntwort -Rumpf (New-TestSse (ConvertTo-Json $rpc -Depth 5 -Compress)))) | Out-Null
+            $r = Get-TestLockAusgabe (New-TestSitzung)
+
+            $r.Satz.Count | Should -Be 0
+            $r.Log[0] | Should -BeLike '*uebersprungen*'
+        }
+
+        It 'jeder andere Fehler beim Sperren wirft weiter (<Fall>)' -ForEach @(
+            @{ Fall = 'anderer Werkzeugfehler'; Text = 'Satz nicht gefunden.' }
+            @{ Fall = 'Konflikt ohne Vorbedingung (parallele Schreiber, #1445)'; Text = 'Konflikt: der Satz wurde gleichzeitig geaendert.' }
+        ) {
+            Add-TestGet (New-TestSatz)
+            Add-TestErgebnis @{ isError = $true; content = @(@{ type = 'text'; text = $Text }) }
+            { Lock-JnptSatz -Session (New-TestSitzung) -Id 'a1b2c3d4' -Lauf 'L1' } | Should -Throw ('*' + $Text + '*')
+        }
+
+        It 'Netzfehler beim Sperren wirft weiter' {
+            # Nur get ist beantwortet; das update scheitert im Transport (leere Warteschlange).
+            Add-TestGet (New-TestSatz)
+            { Lock-JnptSatz -Session (New-TestSitzung) -Id 'a1b2c3d4' -Lauf 'L1' } | Should -Throw
+        }
+
+        It 'zwei gleichzeitige Reservierungen: genau eine Buchung, der zweite Lauf ueberspringt' {
+            # Der Kern prueft erwartet wirklich. Der zweite Roboter schreibt zwischen get
+            # und update des ersten - beide haben vorher "geprueft" gelesen.
+            $s = New-TestSitzung
+            New-TestKern -Saetze @(New-TestSatz) -VorUpdate {
+                $global:JnptTest.Rivale = @(Lock-JnptSatz -Session $s -Id 'a1b2c3d4' -Lauf 'L2' 6>&1 |
+                    Where-Object { $null -ne $_ -and $_ -isnot [System.Management.Automation.InformationRecord] })
+            }.GetNewClosure()
+
+            $meiner = Get-TestLockAusgabe $s 'L1'
+
+            $buchungen = $global:JnptTest.Rivale.Count + $meiner.Satz.Count
+            $buchungen | Should -Be 1
+            $meiner.Satz.Count | Should -Be 0
+            $global:JnptTest.Kern.Updates | Should -Be 1
+            $stand = $global:JnptTest.Kern.Store['a1b2c3d4']
+            $stand.status | Should -Be 'in_buchung'
+            $stand.roboter_lauf | Should -Be 'L2'
+        }
+
+        It 'ohne Konkurrenz sperrt derselbe Kern ganz normal' {
+            $s = New-TestSitzung
+            New-TestKern -Saetze @(New-TestSatz)
+            $r = Get-TestLockAusgabe $s 'L1'
+
+            $r.Satz.Count | Should -Be 1
+            $global:JnptTest.Kern.Store['a1b2c3d4'].roboter_lauf | Should -Be 'L1'
+        }
+
+        It 'Set-JnptSatz ohne -Erwartet sendet kein erwartet' {
+            Add-TestUpdate (New-TestSatz)
+            InModuleScope JanuaPort.Kartei -Parameters @{ S = (New-TestSitzung); Satz = [pscustomobject](New-TestSatz) } {
+                Set-JnptSatz -Session $S -Satz $Satz -Aenderung @{ status = 'in_buchung' }
+            }
+            $arg = (Get-TestAufrufe 'zahlungseingang_update')[0].Body.params.arguments
+            $arg.PSObject.Properties.Name | Should -Not -Contain 'erwartet'
+        }
+
+        It 'Set-JnptSatz mit -Erwartet sendet es als erwartet' {
+            Add-TestUpdate (New-TestSatz)
+            InModuleScope JanuaPort.Kartei -Parameters @{ S = (New-TestSitzung); Satz = [pscustomobject](New-TestSatz) } {
+                Set-JnptSatz -Session $S -Satz $Satz -Aenderung @{ status = 'x' } -Erwartet @{ status = 'geprueft' }
+            }
+            (Get-TestAufrufe 'zahlungseingang_update')[0].Body.params.arguments.erwartet.status | Should -Be 'geprueft'
+        }
+
+        It 'Set-JnptSatzErgebnis erwartet in_buchung und den eigenen Lauf' {
+            Add-TestGet (New-TestSatz -Felder @{ status = 'in_buchung'; roboter_lauf = 'L1' })
+            Add-TestUpdate (New-TestSatz -Felder @{ status = 'verbucht' })
+            Set-JnptSatzErgebnis -Session (New-TestSitzung) -Id 'a1b2c3d4' -Lauf 'L1' -Buchungsnr 'BU-1' | Out-Null
+
+            $erwartet = (Get-TestAufrufe 'zahlungseingang_update')[0].Body.params.arguments.erwartet
+            $erwartet.status | Should -Be 'in_buchung'
+            $erwartet.roboter_lauf | Should -Be 'L1'
+            @($erwartet.PSObject.Properties).Count | Should -Be 2
+        }
+
+        It 'Set-JnptSatzFehler erwartet in_buchung und den eigenen Lauf' {
+            Add-TestGet (New-TestSatz -Felder @{ status = 'in_buchung'; roboter_lauf = 'L1' })
+            Add-TestUpdate (New-TestSatz -Felder @{ status = 'fehler' })
+            Set-JnptSatzFehler -Session (New-TestSitzung) -Id 'a1b2c3d4' -Lauf 'L1' -Schritt 'S' -Meldung 'M' | Out-Null
+
+            $erwartet = (Get-TestAufrufe 'zahlungseingang_update')[0].Body.params.arguments.erwartet
+            $erwartet.status | Should -Be 'in_buchung'
+            $erwartet.roboter_lauf | Should -Be 'L1'
+        }
+
+        It 'Set-JnptSatzErgebnis ueberschreibt keinen Satz, den jemand zwischen get und update uebernommen hat' {
+            $s = New-TestSitzung
+            New-TestKern -Saetze @(New-TestSatz -Felder @{ status = 'in_buchung'; roboter_lauf = 'L1' }) -VorUpdate {
+                $global:JnptTest.Kern.Store['a1b2c3d4'].status = 'geprueft'
+                $global:JnptTest.Kern.Store['a1b2c3d4'].roboter_lauf = ''
+            }
+
+            { Set-JnptSatzErgebnis -Session $s -Id 'a1b2c3d4' -Lauf 'L1' -Buchungsnr 'BU-1' } |
+                Should -Throw '*Konflikt: Vorbedingung*'
+            $stand = $global:JnptTest.Kern.Store['a1b2c3d4']
+            $stand.status | Should -Be 'geprueft'
+            $stand.buchungs_nr | Should -Be ''
+            $global:JnptTest.Kern.Updates | Should -Be 0
+        }
+    }
+
     Context 'Set-JnptSatzErgebnis' {
 
         It 'setzt verbucht mit der Buchungsnummer' {

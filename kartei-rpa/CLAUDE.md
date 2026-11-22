@@ -39,8 +39,20 @@ eines Pilot-Beistellers; Muster `arbeitsliste-rpa`, Voreinstellungen = Satzart
 | Lauf | `Connect-JnptKartei`, `New-JnptLauf`, `Get-JnptArbeitsliste`, `Lock-JnptSatz`, `Set-JnptSatzErgebnis`, `Set-JnptSatzFehler` |
 
 Nicht exportiert und frei änderbar: `Find-JnptSaetze`, `Get-JnptSatz`,
-`Set-JnptSatz`, `New-JnptAenderung`, `Get-JnptFeld`, `Assert-JnptEigenerLauf`,
-`Format-JnptFehlerText`, `Merge-JnptEinstellungen`, `Assert-JnptEinstellungen`.
+`Set-JnptSatz` (optional `-Erwartet`), `New-JnptAenderung`,
+`New-JnptEigenerLaufErwartung`, `Test-JnptVorbedingungVerfehlt`, `Get-JnptFeld`,
+`Assert-JnptEigenerLauf`, `Format-JnptFehlerText`, `Merge-JnptEinstellungen`,
+`Assert-JnptEinstellungen`.
+
+**Rückgabe von `Lock-JnptSatz`:** der gelesene Satz, oder `$null`, wenn ein
+gleichzeitiger Lauf den Satz zuerst reserviert hat (siehe Invariante 11). Jeder
+Aufrufer prüft auf `$null`; `Invoke-Lauf.ps1` tut es, `pad/2-satz-sperren.ps1`
+(Stand #1540) noch nicht und endet dann mit einem Skriptfehler.
+
+**Mindest-Kernversion:** ein Kern mit #1540 (Kartei-Vorbedingung `erwartet`).
+Ein älterer Kern lehnt `erwartet` als nicht deklariertes Feld ab (fail-closed:
+nichts wird geschrieben). Eine Versionsprüfung im Modul ist ausdrücklich nicht
+gewollt.
 
 Das **Sitzungsobjekt** aus `Connect-JnptKartei` trägt `Endpoint`, `Token`,
 `Satzart`, `Protokollfassung`, `TimeoutSec`, `Quelle`, `Felder` (Hashtable mit
@@ -78,7 +90,9 @@ verschiedene Satzarten tragen kann.
    Felder bleiben erhalten); `New-JnptUpdateArgs` schickt trotzdem alle
    gelesenen Felder zurück — überflüssig, aber bewusst unverändert. Folge:
    Ein zwischen `get` und `update` von Hand geändertes Feld fällt auf den
-   gelesenen Stand zurück.
+   gelesenen Stand zurück — **außer** Status und Lauf-Kennung: Die gehen seit
+   #1540 als Vorbedingung `erwartet` mit (Invariante 11) und lassen das
+   `update` am Kern scheitern, statt still zu überschreiben.
 2. **Kein Retry auf Schreibschritten.** JanuaPort sendet einen `tools/call`
    genau einmal, ohne Deduplizierung. Eine Wiederholungsschleife hier wäre ein
    Fehler, kein Feature.
@@ -90,10 +104,12 @@ verschiedene Satzarten tragen kann.
    es wird nichts geschrieben (JanuaPort/januaport#1514). `Set-JnptSatzErgebnis`
    verweigert ein gefülltes Buchungsnummer-Feld und eine leere Buchungsnummer
    (letzteres ohne Aufruf). Das Rezept `zahlungseingang` verspricht dieselbe
-   Regel für Schritt 2. Der Abbruch ist ein `throw` und beendet den Lauf — kein
-   Überspringen: `pad/2` meldet `ScriptError`, der Flow beendet sich;
-   `Invoke-Lauf.ps1` bricht ab (`tests/Invoke-Lauf.Tests.ps1`). Der Satz bleibt
-   `geprueft` und stoppt auch jeden Folgelauf, bis ein Mensch ihn berichtigt.
+   Regel für Schritt 2. Der Abbruch an der gesetzten Buchungsnummer ist ein
+   `throw` und beendet den Lauf — **kein Überspringen** (anders als der
+   Konflikt in Invariante 11): `pad/2` meldet `ScriptError`, der Flow beendet
+   sich; `Invoke-Lauf.ps1` bricht ab (`tests/Invoke-Lauf.Tests.ps1`). Der Satz
+   bleibt `geprueft` und stoppt auch jeden Folgelauf, bis ein Mensch ihn
+   berichtigt.
 5. **Kein Aufräumen.** Ein hängender `in_buchung`-Satz bricht den nächsten
    Lauf ab (`Get-JnptArbeitsliste`). Wer das „repariert", nimmt dem Betreiber
    die einzige Absicherung gegen Doppelbuchungen.
@@ -109,8 +125,26 @@ verschiedene Satzarten tragen kann.
 10. **Quelltext (.ps1/.psm1/.psd1) ist ASCII ohne BOM.** Windows PowerShell 5.1
     liest eine Datei ohne BOM als ANSI; ein Sonderzeichen bricht den Parser.
     Auch Meldungstexte („Saetze", nicht „Sätze").
+11. **Die Sperre ist atomar, nicht nur ein Gegenlesen (#1540).** `get` und
+    Statusprüfung allein lassen zwei gleichzeitige Läufe denselben `geprueft`-Satz
+    sperren und doppelt buchen. Deshalb sendet `Lock-JnptSatz` mit dem `update`
+    `erwartet = {status: geprueft}`; der Kern prüft es in jedem Schreibversuch
+    gegen den frischen Stand. Antwortet er mit dem Satz `Konflikt: Vorbedingung …`
+    (`Test-JnptVorbedingungVerfehlt`), gehört der Satz einem anderen Lauf: Log-Zeile,
+    Rückgabe `$null`, keine Buchung, kein Fehlerstatus. **Nur dieser Satz** heißt
+    „vergeben" — jeder andere Fehler (auch der Konflikt der parallelen Schreiber
+    ohne Vorbedingung) wirft wie bisher. `Set-JnptSatzErgebnis` und
+    `Set-JnptSatzFehler` erwarten `status = in_buchung` und die eigene Lauf-Kennung
+    (`New-JnptEigenerLaufErwartung`); dort ist ein Konflikt ein Abbruch, denn die
+    Klickfolge im Fachsystem ist dann schon gelaufen und ein Mensch klärt.
+    `erwartet` auf die Buchungsnummer bewusst nicht: „fehlend" ist für den Kern
+    weder `null` noch `""`, ein leeres Feld könnte falsch scheitern. Ohne `-Erwartet`
+    bleibt die Anfrage von `Set-JnptSatz` byte-gleich wie vor #1540.
 
-Die Tests in `tests/Quelltext.Tests.ps1` erzwingen 10, dazu: kein Token-Wert,
+Die Tests in `tests/Quelltext.Tests.ps1` erzwingen 10; 11 belegt der „Kern im
+Speicher" (`New-TestKern` in `tests/TestHelfer.ps1`), der `erwartet` wirklich
+prüft — eine feste Antwort-Warteschlange könnte nicht erkennen, dass das Modul
+`erwartet` weglässt. Dazu: kein Token-Wert,
 keine Kennung des Pilotbetriebs (Sperrliste als SHA-256), nur `example.com` und
 `localhost` als Host im Code. `tests/Pad.Tests.ps1` erzwingt, dass in `pad/*.ps1`
 kein Prozent-Paar außer den bekannten Platzhaltern steht.
@@ -129,6 +163,14 @@ kein Prozent-Paar außer den bekannten Platzhaltern steht.
   der Roboter schreibt in das Voreinstellungsfeld, das es in dieser Satzart
   vielleicht gar nicht gibt — und die Doppelbuchungs-Prüfung sähe ein leeres
   Feld.
+- **Eine Mindest-Kernversion statt Versionsprüfung.** Ein Kern ohne #1540 lehnt
+  `erwartet` ab (`additionalProperties: false`); das ist fail-closed und braucht
+  keine Prüfung im Modul. Wer es doch baut, hat zwei Wahrheiten über die Version.
+- **Überspringen nur im Modul und in `Invoke-Lauf.ps1`.** `pad/2-satz-sperren.ps1`
+  fragt `$null` nicht ab (Stand #1540; die PAD-Skripte gehörten einem anderen
+  Branch): Der Schritt endet mit einem Skriptfehler, nichts wird gebucht. Ein
+  Überspringen im Flow braucht eine Ausgabeform für „vergeben" im Vertrag der
+  Schritte.
 - **Kein `Set-StrictMode`.** Der Transport lebt davon, dass ein fehlendes Feld
   `$null` ist (`isError`, `structuredContent.record`).
 - **Kein Modul-Manifest, kein Installer.** Eine `.psm1`, vier `.ps1` und eine
