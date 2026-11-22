@@ -701,3 +701,126 @@ func TestAcquireNeedsReadyDirectory(t *testing.T) {
 		t.Fatal("Leihe auf ein von außen entferntes Verzeichnis")
 	}
 }
+
+// BeginReset (#1423): Ein URL-Wechsel stößt das Entwässern an und kehrt sofort
+// zurück, auch wenn ein Lauf noch leiht. Ab der Rückkehr gibt es keine neue
+// Leihe; das Verzeichnis des Laufs bleibt vollständig, bis er endet; danach
+// räumt der Hintergrund auf und der Manager nimmt wieder Arbeit an.
+func TestBeginResetReturnsWhileLeaseIsHeld(t *testing.T) {
+	f := newLibFixture(t, nil)
+	hash := f.plan.Lock.Hash
+	f.m.Ensure(f.plan, f.src)
+	waitState(t, f.m, hash, StatusReady)
+	release, ok := f.m.Acquire(hash)
+	if !ok {
+		t.Fatal("keine Leihe auf ein fertiges Verzeichnis")
+	}
+	defer release()
+
+	returned := make(chan (<-chan struct{}), 1)
+	go func() { returned <- f.m.BeginReset() }()
+	var done <-chan struct{}
+	select {
+	case done = <-returned:
+	case <-time.After(5 * time.Second):
+		t.Fatal("BeginReset wartet auf den laufenden Lauf")
+	}
+	if r, ok := f.m.Acquire(hash); ok {
+		r()
+		t.Fatal("Leihe nach dem Anstoßen des Entwässerns")
+	}
+	select {
+	case <-done:
+		t.Fatal("Aufräumen vor dem Ende des Laufs")
+	default:
+	}
+	if err := verifyDir(f.m.Path(hash), hash); err != nil {
+		t.Fatalf("das verliehene Verzeichnis wurde angefasst: %v", err)
+	}
+	release()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Aufräumen endet nicht nach dem Ende des Laufs")
+	}
+	if got := listDir(t, f.dir); len(got) != 0 {
+		t.Fatalf("libs = %v nach dem Reset", got)
+	}
+	if f.m.State(hash).Status != StatusNone {
+		t.Fatal("Zustand überlebt Reset")
+	}
+	f.m.Ensure(f.plan, f.src)
+	waitState(t, f.m, hash, StatusReady)
+	if r, ok := f.m.Acquire(hash); !ok {
+		t.Fatal("nach dem Aufräumen gibt es keine Leihe mehr")
+	} else {
+		r()
+	}
+}
+
+// Ein weiterer URL-Wechsel, während das Entwässern noch läuft, räumt nicht ein
+// zweites Mal auf und lässt keine Leihe auf halb gelöschtem Stand zu: Er
+// schließt sich dem laufenden Entwässern an (derselbe Kanal).
+func TestBeginResetWhileDrainingJoinsRunningReset(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		again int
+	}{
+		{"ein weiterer Wechsel", 1},
+		{"mehrere weitere Wechsel", 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newLibFixture(t, nil)
+			hash := f.plan.Lock.Hash
+			f.m.Ensure(f.plan, f.src)
+			waitState(t, f.m, hash, StatusReady)
+			release, ok := f.m.Acquire(hash)
+			if !ok {
+				t.Fatal("keine Leihe")
+			}
+			defer release()
+			first := f.m.BeginReset()
+			for i := 0; i < tc.again; i++ {
+				if again := f.m.BeginReset(); again != first {
+					t.Fatalf("Wechsel %d startet ein eigenes Aufräumen", i+1)
+				}
+			}
+			if r, ok := f.m.Acquire(hash); ok {
+				r()
+				t.Fatal("Leihe während des Entwässerns")
+			}
+			if err := verifyDir(f.m.Path(hash), hash); err != nil {
+				t.Fatalf("Verzeichnis des laufenden Skripts angefasst: %v", err)
+			}
+			release()
+			select {
+			case <-first:
+			case <-time.After(5 * time.Second):
+				t.Fatal("Aufräumen endet nicht")
+			}
+			if got := listDir(t, f.dir); len(got) != 0 {
+				t.Fatalf("libs = %v", got)
+			}
+		})
+	}
+}
+
+// Nach dem Ende eines Entwässerns löst der nächste URL-Wechsel ein neues aus.
+func TestBeginResetAfterCompletionStartsNewReset(t *testing.T) {
+	f := newLibFixture(t, nil)
+	hash := f.plan.Lock.Hash
+	f.m.Ensure(f.plan, f.src)
+	waitState(t, f.m, hash, StatusReady)
+	first := f.m.BeginReset()
+	<-first
+	f.m.Ensure(f.plan, f.src)
+	waitState(t, f.m, hash, StatusReady)
+	second := f.m.BeginReset()
+	if second == first {
+		t.Fatal("der zweite Wechsel hängt am beendeten Entwässern")
+	}
+	<-second
+	if got := listDir(t, f.dir); len(got) != 0 {
+		t.Fatalf("libs = %v nach dem zweiten Reset", got)
+	}
+}
