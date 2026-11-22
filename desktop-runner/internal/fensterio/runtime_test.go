@@ -361,3 +361,27 @@ func TestRuntimeOpenAsyncKehrtSofortZurueck(t *testing.T) {
 		t.Fatal("kein Rückruf")
 	}
 }
+
+// JanuaPort/januaport#1342: Eine App gilt als zugewiesen, solange ihr Name in der zuletzt geprüften Liste steht.
+func TestStillAssignedNurExakterNameInDerListe(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		names []string
+		app   string
+		want  bool
+	}{
+		{"enthalten", []string{"kasse", "lager"}, "lager", true},
+		{"fehlt", []string{"kasse", "lager"}, "bank", false},
+		{"leere Liste", []string{}, "kasse", false},
+		{"nil-Liste", nil, "kasse", false},
+		{"Präfix ist kein Treffer", []string{"kasse2"}, "kasse", false},
+		{"Großschreibung ist kein Treffer", []string{"kasse"}, "Kasse", false},
+		{"leerer Name", []string{"kasse"}, "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := StillAssigned(tc.names, tc.app); got != tc.want {
+				t.Fatalf("StillAssigned(%v, %q) = %v, erwartet %v", tc.names, tc.app, got, tc.want)
+			}
+		})
+	}
+}

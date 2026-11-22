@@ -280,7 +280,8 @@ CASES = [
     ("rd-size-gross", "client", "TestReaderGroessenGrenze", [edit(RDRS, "info.Size() > 20<<20", "info.Size() > 21<<20")]),
     ("rd-size-klein", "client", "TestReaderGroessenGrenze", [edit(RDRS, "info.Size() > 20<<20", "info.Size() > 19<<20")]),
     ("closemissing-schliesst-nicht", "fensterio", "TestCloseMissingSchliesstNurVerschwundene", [edit(RTM, "			w.Close()\n", "			_ = w\n")]),
-    ("closemissing-alle", "fensterio", "TestCloseMissingSchliesstNurVerschwundene", [edit(RTM, "if !slices.Contains(names, name) {\n			closed", "if true {\n			closed")]),
+    ("closemissing-alle", "fensterio", "TestCloseMissingSchliesstNurVerschwundene", [edit(RTM, "if !StillAssigned(names, name) {\n			closed", "if true {\n			closed")]),
+    ("stillassigned-immer-wahr", "fensterio", "TestStillAssignedNurExakterNameInDerListe", [edit(RTM, "bool { return slices.Contains(names, name) }", "bool { return true }")]),  # #1342; die Prüfung in handleOpened belegt TestOeffnenNachEntzugBautKeinFenster1342 (Windows, nicht im Läufer)
     ("bedienfeld-schliesst-nicht", "fensterio", "TestBedienfeldSchliesstFensterVerschwundenerApps", [edit(APW, "			fensterio.CloseMissing(a.surfaces, l.Names)\n", "")]),
     ("watch-notexist-ignoriert", "fensterio", "TestWatchLeertDieListeSofortBeiFehlenderDatei", [edit(RTM, "			if errors.Is(err, fs.ErrNotExist) {\n				failures = 3 // die Zustandsdatei ist weg (Widerruf): eindeutig, nicht erst nach drei Versuchen\n			}\n", "")]),
     ("watch-eins", "fensterio", "TestWatchLeertDieListeErstNachDreiFehlern", [edit(RTM, "if failures == 3 &&", "if failures == 1 &&")]),

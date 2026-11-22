@@ -122,17 +122,18 @@ type application struct {
 
 	// K6b-2: Apps. Alles Blockierende (Zustand lesen, Gateway, Brücke, Pipe-Gespräch) läuft in fensterio-
 	// Goroutinen; hier stehen nur Kanäle, Karten und der Wecker.
-	rt        *fensterio.Runtime
-	exchange  *fensterio.PanelExchange
-	gen       atomic.Uint64
-	appLists  chan fensterio.AppList
-	apps      fensterio.AppList // letzter geprüfter Anzeigestand, nur UI-Thread
-	opened    chan openResult
-	surfaces  map[string]*fensterio.Surface
-	opening   map[string]bool
-	aux       uintptr
-	auxLink   *fensterio.Link
-	embedding bool
+	openAsync  func(name string, done func(*fensterio.Opened, error))
+	newSurface func(*fensterio.Opened, fensterio.SurfaceConfig) (appSurface, error)
+	exchange   *fensterio.PanelExchange
+	gen        atomic.Uint64
+	appLists   chan fensterio.AppList
+	apps       fensterio.AppList // letzter geprüfter Anzeigestand, nur UI-Thread
+	opened     chan openResult
+	surfaces   map[string]appSurface
+	opening    map[string]bool
+	aux        uintptr
+	auxLink    *fensterio.Link
+	embedding  bool
 }
 
 var app *application
@@ -152,7 +153,8 @@ func main() {
 	a.ctx = ctx
 	a.appLists = make(chan fensterio.AppList, 4)
 	a.opened = make(chan openResult, 8)
-	a.surfaces = map[string]*fensterio.Surface{}
+	a.surfaces = map[string]appSurface{}
+	a.newSurface = newWindowSurface
 	a.opening = map[string]bool{}
 	a.exchange = fensterio.NewPanelExchange(a.sendCommand)
 	a.instance, _, _ = getModuleHandle.Call(0)
@@ -195,7 +197,7 @@ func main() {
 	// K6b-2: Apps. Die Laufzeit liest nur (Reader), schreibt nie in den Zustand und löscht bei Widerruf nichts;
 	// Gateway, Brücke und Pipe-Gespräch laufen in Goroutinen von fensterio, nie auf diesem Thread.
 	if rt, err := fensterio.NewWindowsRuntime(a.exchange.Func(), a.wake); err == nil {
-		a.rt = rt
+		a.openAsync = rt.OpenAsync
 		go rt.Watch(ctx, 15*time.Second, func(l fensterio.AppList) {
 			select {
 			case a.appLists <- l:
