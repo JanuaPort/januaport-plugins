@@ -223,7 +223,10 @@ auch mit maximalem JSON-Escaping unter dieser Rahmengrenze. Es gibt im Wächter
 und im Bootstrap keine eigene Ausgabe-/Aufrufsumme oder Lauf-Wandzeitkappe.
 Der Wächter begrenzt Job-/Bootstrap-Rahmen auf 8 MiB (dazu gehört das volle Stück des
 ETL-Stroms, siehe unten); das beschränkt weder die
-Gesamtausgabe noch die Zahl der Aufrufe. Lauf-Protokoll (64 KiB), Job-/Codegröße,
+Gesamtausgabe noch die Zahl der Aufrufe. Die Grenze gilt auch Richtung Wächter:
+Ein Werkzeugergebnis, das mit Umschlag (4 KiB Reserve) nicht in 8 MiB passt, wird
+nicht zugestellt; das Skript bekommt einen Werkzeugfehler mit festem Satz
+„Werkzeugergebnis zu groß (Grenze 8 MiB).“, der Lauf geht weiter (#1538). Lauf-Protokoll (64 KiB), Job-/Codegröße,
 Speicher, PIDs und Mindestlebensdauer bleiben eigenständige Grenzen.
 
 ## ETL-Rohstrom und Rückfall (Fassung 6, JanuaPort/januaport#1215 P2)

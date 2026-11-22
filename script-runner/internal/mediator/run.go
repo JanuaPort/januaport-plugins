@@ -15,6 +15,7 @@ import (
 
 	"github.com/januaport/januaport-plugins/script-runner/internal/contract"
 	"github.com/januaport/januaport-plugins/script-runner/internal/frame"
+	"github.com/januaport/januaport-plugins/script-runner/internal/guard"
 	"github.com/januaport/januaport-plugins/script-runner/internal/runlog"
 	"github.com/januaport/januaport-plugins/script-runner/internal/store"
 )
@@ -283,11 +284,31 @@ func (r *runner) toolCall(ctx context.Context, payload []byte, wall *time.Timer)
 			return res, out, true
 		}
 	}
+	if !toolResultFits(result) {
+		result = errorResult(toolResultTooLarge)
+	}
 	if err := frame.Write(r.sc.c, frame.ToolResult{Type: frame.TypeToolResult, ID: tc.ID, Result: result}); err != nil {
 		res, out := r.end(contract.EndLimit, contract.DetailSandboxLost)
 		return res, out, true
 	}
 	return contract.Run{}, nil, false
+}
+
+// toolResultEnvelope reserviert Platz für den Umschlag des tool_result-Rahmens
+// (type, id, Feldnamen; gemessen unter 100 Byte, wie MaxFromSandbox großzügig
+// auf 4 KiB gerundet).
+const toolResultEnvelope = 4 << 10
+
+// maxToolResultBytes ist das größte Werkzeugergebnis, das noch in einen Rahmen
+// passt, den der Wächter liest (guard.MaxJobFrame). Alles darüber ließe den
+// Wächter den Strom abbrechen und kostete die Instanz (limit/sandbox_lost).
+const maxToolResultBytes = guard.MaxJobFrame - toolResultEnvelope
+
+// toolResultTooLarge ist fest und enthält nichts aus dem Ergebnis.
+const toolResultTooLarge = "Werkzeugergebnis zu groß (Grenze 8 MiB)."
+
+func toolResultFits(result json.RawMessage) bool {
+	return len(result) <= maxToolResultBytes
 }
 
 // exited ordnet das Ende des Skripts einer Klasse zu. Ein SIGKILL, den der
@@ -330,22 +351,54 @@ type gatewayClient struct {
 	url   string
 	token string
 	sess  *mcp.ClientSession
+	http  *http.Client
 }
 
-type bearer struct{ token string }
+// bearer setzt das Lauf-Token auf jeden Request über base, der keine
+// Proxy-Umgebung kennt (directTransport).
+type bearer struct {
+	token string
+	base  http.RoundTripper
+}
 
 func (b bearer) RoundTrip(r *http.Request) (*http.Response, error) {
 	r = r.Clone(r.Context())
 	r.Header.Set("Authorization", "Bearer "+b.token)
-	return http.DefaultTransport.RoundTrip(r)
+	return b.base.RoundTrip(r)
+}
+
+func (b bearer) CloseIdleConnections() {
+	if c, ok := b.base.(interface{ CloseIdleConnections() }); ok {
+		c.CloseIdleConnections()
+	}
+}
+
+// directTransport ist der Transport für jeden ausgehenden Weg zum Gateway:
+// die Standardwerte, aber nie über eine Proxy-Umgebung (SEC E5, wie etl.go).
+func directTransport() *http.Transport {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.Proxy = nil
+	return t
+}
+
+var errGatewayRedirect = errors.New("gateway: Umleitung abgewiesen")
+
+// newGatewayHTTPClient ist der Client von Weg B. Das Lauf-Token geht an genau
+// die eine Gateway-Adresse; eine Umleitung wird abgelehnt, nicht verfolgt.
+func newGatewayHTTPClient(token string) *http.Client {
+	return &http.Client{
+		Transport:     bearer{token: token, base: directTransport()},
+		CheckRedirect: func(*http.Request, []*http.Request) error { return errGatewayRedirect },
+	}
 }
 
 func (g *gatewayClient) call(ctx context.Context, name string, args json.RawMessage) json.RawMessage {
 	if g.sess == nil {
+		g.http = newGatewayHTTPClient(g.token)
 		client := mcp.NewClient(&mcp.Implementation{Name: "januaport-script-runner", Version: "1"}, nil)
 		sess, err := client.Connect(ctx, &mcp.StreamableClientTransport{
 			Endpoint:   g.url,
-			HTTPClient: &http.Client{Transport: bearer{token: g.token}},
+			HTTPClient: g.http,
 		}, nil)
 		if err != nil {
 			return errorResult("Werkzeugaufruf gescheitert.")
@@ -369,5 +422,8 @@ func (g *gatewayClient) call(ctx context.Context, name string, args json.RawMess
 func (g *gatewayClient) close() {
 	if g.sess != nil {
 		_ = g.sess.Close()
+	}
+	if g.http != nil {
+		g.http.CloseIdleConnections()
 	}
 }
