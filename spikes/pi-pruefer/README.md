@@ -8,6 +8,11 @@ Texte: `ergebnisse/phase3-scores.jsonl`. Satz 2 wird unverändert aus
 führt dessen eigenen vollständigen Testvertrag aus. Der Satz-1-Vertrag bleibt
 getrennt. Der bestehende Phase-2-Kalibrierer weist Holdout-IDs zurück.
 
+CPU-int8 verfehlt bei der festen Schwelle `0.1976` alle drei Qualitätsziele:
+44,17 % Recall, 21,25 % FPR hart, 27,78 % FPR KI-Ansprache. Das Latenzziel
+wird mit 963,16 ms p95 bis 2.000 Zeichen erreicht; Spitzen-RAM 7,52 GiB.
+Satz- und Quantisierungseffekt lassen sich ohne die offene bf16-Messung nicht trennen.
+
 Vorab feste Schwellen: Strands `0.5`, `0.1976`; ProtectAI `0.5`,
 `0.9957233667373658`; Wortliste `0.5`. Keine Kalibrierung auf Satz 2.
 Die Strands-Schwelle `0.1976` ist die wörtliche Vorgabe des Schnitts; Phase 2

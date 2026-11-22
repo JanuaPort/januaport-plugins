@@ -147,7 +147,7 @@ def schreibe_bericht(laeufe, daten, pfad, ziel, gpu_befund):
         "Fensterbudget 512 Tokens, Überlappung 64, native Modelltokenizer; ProtectAI: 510 Inhalt + 2 Spezialtokens = 512.",
         "Grenz-Retokenisierung verkleinert nötigenfalls das Inhaltsbudget ohne Textverlust. Strands: 512 Inhaltstokens, 512 Reserve für Frage/Hülle im 4096er Kontext.",
         "Alle Fenster werden ausgewertet, Textscore = Maximum. Die Konfiguration 512/64 ist für alle Kandidaten gleich; native Tokenisierung und Spezialtokens ergeben unterschiedliche Fensterzahlen.",
-        "Ein Warm-up, ein Messdurchgang. Latenz umfasst Tokenisierung und alle Fenster; GPU-Zeit vor/nach dem Text synchronisiert.",
+        "Ein Warm-up, ein Messdurchgang. CPU-Latenz umfasst Tokenisierung und alle Fenster. Der gesperrte GPU-Pfad würde vor/nach dem Text synchronisieren; hier fehlen GPU-Latenzen.",
         "p50/p95 linear interpoliert; ms/10k ist das Quantil der je Text normierten Zeiten, kein Durchsatz.",
         "RAM: Prozess-ru_maxrss einschließlich Laden; VRAM: PyTorch max_memory_allocated (Reservierung zusätzlich angegeben), kein Gesamtverbrauch fremder GPU-Prozesse.", "",
         "## SEC-Grenzen P-H1 / P-H2", "",
@@ -161,7 +161,10 @@ def schreibe_bericht(laeufe, daten, pfad, ziel, gpu_befund):
         f"> {STRANDS_FRAGE}", "",
         "## Hardware", "", gpu_befund,
         "CPU: AMD Ryzen 9 9950X; vier Threads/vier CPUs. Strands int8: dynamische torch-Quantisierung aller Linear-Schichten im Torso nach LoRA-Merge, Embeddings/Convs/Normen/Pointer-Head fp32.",
-        "Limits: Strands GPU --gpus all --memory 8g; Strands CPU --memory 8g --cpus 4; ProtectAI/Wortliste --memory 6g --cpus 4. Immer ein Messcontainer gleichzeitig, offline aus externem HF-Volume.", "",
+        "CPU-Limits: Strands --memory 8g --cpus 4; ProtectAI/Wortliste --memory 6g --cpus 4. Immer ein Messcontainer gleichzeitig, offline aus externem HF-Volume.",
+        "Die drei CPU-Läufe waren vor der letzten Speicher-Vorgabe vollständig abgeschlossen und wurden ohne Wiederholung übernommen. Der begonnene, später verworfene GPU-Versuch hatte --gpus all --memory 8g --cpus 4.",
+        "Beim CPU-only-Resume: Host-RAM 25,1 GB nach vorgegebenem PowerShell-Verfahren; WSL-Seitencache nach dem Image-Bau mit dem vorgegebenen privilegierten Alpine/nsenter-Befehl geleert (Exit 0).",
+        "Für weitere Messcontainer gilt: vorher freien Host-RAM prüfen; unter 12 GB abbrechen. Nach Container-OOM kein neuer Versuch. Seit der CPU-only-Vorgabe keine neuen Modellläufe/-bauten.", "",
         "## Zusammenfassung", "",
         "| Kandidat | Hardware | Schwelle | Recall | Recall md | FPR hart | FPR KI | FPR md-Gegenstücke | Precision | p95 kurz ms | RAM MiB | VRAM MiB |",
         "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
@@ -232,7 +235,7 @@ def schreibe_bericht(laeufe, daten, pfad, ziel, gpu_befund):
     for r, s, m in ergebnisse:
         zeilen.append(f"| {r['kandidat']} | Satz 2 / {r['hardware']} | {s!r} | " + " | ".join(prozent(m[k]) for k in ("recall", "recall_md", "fpr_hart", "fpr_ki")) + " |")
     zeilen += ["", "## Fensterzahl der 18 Texte über 8.000 Zeichen", "",
-        "512 Tokens / 64 Überlappung bei allen Kandidaten; Anzahl pro Text und nativem Tokenizer. Strands GPU/int8 nutzen denselben Tokenizer.", "",
+        "512 Tokens / 64 Überlappung bei allen gemessenen Kandidaten; Anzahl pro Text und nativem Tokenizer. GPU-Fensterzahlen wurden nicht gemessen.", "",
         "| ID | Zeichen | " + " | ".join(r["kandidat"]+"/"+r["hardware"] for r in laeufe) + " |",
         "|---|---:|" + "---:|" * len(laeufe)]
     for i, z in enumerate(daten):
