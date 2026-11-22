@@ -333,7 +333,7 @@ Describe 'JanuaPort.Kartei' {
                 param($Sitzung, [string]$Lauf = 'L1')
                 $roh = @(Lock-JnptSatz -Session $Sitzung -Id 'a1b2c3d4' -Lauf $Lauf 6>&1)
                 [pscustomobject]@{
-                    Satz = @($roh | Where-Object { $_ -isnot [System.Management.Automation.InformationRecord] })
+                    Satz = @($roh | Where-Object { $null -ne $_ -and $_ -isnot [System.Management.Automation.InformationRecord] })
                     Log  = @($roh | Where-Object { $_ -is [System.Management.Automation.InformationRecord] } |
                              ForEach-Object { [string]$_.MessageData })
                 }
@@ -392,7 +392,7 @@ Describe 'JanuaPort.Kartei' {
             $s = New-TestSitzung
             New-TestKern -Saetze @(New-TestSatz) -VorUpdate {
                 $global:JnptTest.Rivale = @(Lock-JnptSatz -Session $s -Id 'a1b2c3d4' -Lauf 'L2' 6>&1 |
-                    Where-Object { $_ -isnot [System.Management.Automation.InformationRecord] })
+                    Where-Object { $null -ne $_ -and $_ -isnot [System.Management.Automation.InformationRecord] })
             }.GetNewClosure()
 
             $meiner = Get-TestLockAusgabe $s 'L1'
