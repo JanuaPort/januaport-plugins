@@ -952,7 +952,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     scheitert wie bisher mit einem festen Operationsfehler (`LockFileEx`), `main.go` prüft nur auf einen Fehler und bleibt unverändert.
     Die Datei wird mit `FILE_SHARE_DELETE` geöffnet, damit `State.Revoke` die Wurzel samt Sperrdatei auch löscht, während der Prozess sie
     hält (POSIX-Löschung, auf dem Entwicklungsrechner belegt, `TestInstanzsperreBehindertDenWiderrufNicht`); eine Reparse-Marke oder ein
-    Verzeichnis anstelle der Datei wird abgewiesen. Die Sperre hängt am Handle und endet mit dem Prozess; das Freigeben ist idempotent.
+    Verzeichnis anstelle der Datei wird abgewiesen. Die Sperre hängt am Handle und endet mit dem Prozess; das Freigeben ist idempotent. Die Sperrdatei bleibt nach dem Ende im Wurzelordner liegen und ist kein Zustand: `TestPairLeererPubkeySpeichertNichts` und `TestPairRFC8032PubkeySpeichertNichts` nehmen sie aus der Prüfung „nichts gespeichert“ aus.
     Grenze: Nach einem Widerruf kann eine neu gestartete Instanz eine neue Sperrdatei anlegen, solange der alte Prozess noch ausläuft; der
     Zustand ist dann schon gelöscht. Tests (`lock_windows_test.go`): `TestInstanzsperreZweiteInstanzScheitertBisZurFreigabe`,
     `TestInstanzsperreFreigabeIstIdempotent`, `TestInstanzsperreIstUnabhaengigVomGlobalenMutexNamen`,

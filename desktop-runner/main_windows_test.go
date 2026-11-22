@@ -63,8 +63,14 @@ func pairStorageProbe(t *testing.T, forbidden string) {
 		t.Fatal(err)
 	}
 	entries, err := os.ReadDir(root)
-	if err != nil || len(entries) != 0 {
-		t.Fatal("abgewiesene Kopplung speichert Daten", err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		// Die Sperrdatei der Instanz (#1537) liegt im Wurzelordner, ist aber keine gespeicherte Kopplung.
+		if entry.Name() != "instance.lock" {
+			t.Fatalf("abgewiesene Kopplung speichert Daten: %s", entry.Name())
+		}
 	}
 	pub, _, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
