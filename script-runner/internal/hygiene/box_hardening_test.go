@@ -118,7 +118,8 @@ func TestSchreibeDateiSchreibtWeiterhinBeiErfolg(t *testing.T) {
 	if code != 0 || !strings.Contains(aus, "GEAENDERT") {
 		t.Fatalf("Erfolgsfall: Exit %d, stdout %q, stderr %q", code, aus, fehl)
 	}
-	if got, err := os.ReadFile(ziel); err != nil || string(got) != "inhalt\n" {
+	got, err := os.ReadFile(ziel) //nolint:gosec // Pfad liegt im t.TempDir() des Tests.
+	if err != nil || string(got) != "inhalt\n" {
 		t.Errorf("Ziel = %q, %v", got, err)
 	}
 }
