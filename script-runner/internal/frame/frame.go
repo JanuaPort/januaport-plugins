@@ -24,8 +24,8 @@ var (
 )
 
 // Rahmentypen. Richtung Wächter → vermittler: hello, tool_call, output,
-// log, exited. Richtung vermittler → Wächter: job, tool_result. Nur zwischen
-// Wächter und Bootstrap: error.
+// log, exited, etl_open, etl_next. Richtung vermittler → Wächter: job,
+// tool_result, etl_chunk, etl_end. Nur zwischen Wächter und Bootstrap: error.
 const (
 	TypeHello      = "hello"
 	TypeJob        = "job"
@@ -35,6 +35,13 @@ const (
 	TypeLog        = "log"
 	TypeExited     = "exited"
 	TypeError      = "error"
+
+	// ETL-Rohstrom (Vertragsfassung 3, #1215 P2), Pull-Modell: Auf jedes
+	// etl_next antwortet der vermittler mit genau einem etl_chunk oder etl_end.
+	TypeETLOpen  = "etl_open"
+	TypeETLNext  = "etl_next"
+	TypeETLChunk = "etl_chunk"
+	TypeETLEnd   = "etl_end"
 )
 
 // Hello meldet eine frische Sandbox-Instanz (Vertrag §5, V1). Profile ist

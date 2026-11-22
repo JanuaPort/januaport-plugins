@@ -1,22 +1,28 @@
-# Draht-Vertrag, Fassung 5 — Laufgrenzen
+# Draht-Vertrag, Fassung 6 — ETL-Strom und Rückfall
 
-JanuaPort/januaport#1040 P3 und Schritt L (0.3.0), Plan 6176555886, SEC 6176617758 L1–L8.
-Die Vertragskennung im Draht ist **2** (`internal/contract.Version`), unabhängig
-von der Nummer dieser Textfassung. Bestehende Felder und Ende-Klassen gelten
-weiter; Referenzdaten stehen unter `golden/`.
+Fassung 6 (JanuaPort/januaport#1215 P2) ergänzt den ETL-Rohstrom und die
+Rückfallregel, siehe [ETL-Rohstrom und Rückfall](#etl-rohstrom-und-rückfall-fassung-6-januaportjanuaport1215-p2).
+Der Rest dieses Textes ist Fassung 5 (Laufgrenzen, JanuaPort/januaport#1040 P3 und
+Schritt L, 0.3.0, Plan 6176555886, SEC 6176617758 L1–L8) und gilt unverändert.
+Die Vertragskennung im Draht ist **2 oder 3** (`internal/contract.LegacyVersion`,
+`internal/contract.Version`), unabhängig von der Nummer dieser Textfassung: 3 nur,
+wenn der Kern sie zulässt, sonst 2. Bestehende Felder und Ende-Klassen gelten weiter;
+Referenzdaten stehen unter `golden/`.
 
 ## Anmeldung und Kompatibilität
 
-`tools/list` meldet `_meta["januaport.ai/runner"].contract = 2`, auch ohne Pins
+`tools/list` meldet `_meta["januaport.ai/runner"].contract = 2` (Rückfall) oder 3
+(Kern ab 0.100.0, siehe Rückfallregel unten), auch ohne Pins
 oder bei ungültiger Isolation und auch mit Zeitplänen. Die bisherigen drei
-`tools_list*`-Goldens und das neue `tools_list_wall.json` tragen diese Kennung. Das Dateiformat von Zeitplänen bleibt
+`tools_list*`-Goldens und das neue `tools_list_wall.json` tragen Kennung 2, `tools_list_v3.json` die 3. Das Dateiformat von Zeitplänen bleibt
 unverändert bei Version 1; dies ist eine eigene Kennung.
 
 **Benannte Kompatibilitätsgrenze:** Ein Läufer mit `contract: 2` braucht ein
 Gateway ab **0.77.0**. Ein älteres Gateway sperrt den Läufer ganz
-(„andere Vertragsfassung“). **Update-Reihenfolge: erst das Gateway, dann der Läufer.**
-Ein Gateway ab 0.77.0 akzeptiert die Läuferkennungen 1 und 2; dieser Läufer
-meldet ausschließlich 2.
+(„andere Vertragsfassung“). **Update-Reihenfolge über diese Grenze (0.77.0): erst das Gateway, dann der Läufer.** Für Fassung 3 gilt die Rückfallregel unten, dort ist die Reihenfolge nur Empfehlung.
+Ein Gateway ab 0.77.0 akzeptiert die Läuferkennungen 1 und 2, ein Kern ab 0.100.0
+auch 3. Dieser Läufer meldet 2, bis er an `/healthz` einen Kern ab 0.100.0 liest;
+erst dann meldet er 3 (Fassung 6), damit ihn ein Kern, der die 3 nicht kennt, nicht sperrt.
 
 ## Kopfzeile auf Weg A
 
@@ -68,7 +74,7 @@ entscheidet der Header. Ohne Header bleiben 25 s / 1 MiB / 50 Aufrufe
 Die Eingabe bleibt auf 256 KiB begrenzt. Desktop-Timeouts bleiben Pflicht.
 
 Der vermittler meldet in **`tools/list` auf Ergebnisebene**:
-`_meta["januaport.ai/runner"] = {contract: 2, max_wall_s: 86400, isolation, pins, …}`.
+`_meta["januaport.ai/runner"] = {contract: 2 oder 3, max_wall_s: 86400, isolation, pins, …}`.
 `JNPT_SCRIPT_RUNNER_MAX_WALL_S` setzt die positive ganzzahlige Meldung und
 die zusätzlich selbst eingehaltene Decke (1..86400; Standard 86400).
 Ungültige Konfiguration verhindert den Start mit festem Fehler ohne Wertecho.
@@ -84,8 +90,10 @@ Der synchrone Kern-Weg nimmt das Werkzeug-Metadatum als ausdrückliche Wahl
 (`syncRunLimits`); der Ersatzwert 86400 würde deshalb vor F und bei kleineren
 Anlagenobergrenzen abgewiesen. Ohne Header bleibt der Lauf bei höchstens 25 s.
 
-Die Kennung bleibt **2**, weil Header und Ende-Klassen gleich bleiben und
-`max_wall_s` additiv ist; eine neue Kennung sperrt der Kern. Maßgeblich sind
+Die Kennung blieb für diese Fassung **2**, weil Header und Ende-Klassen gleich bleiben und
+`max_wall_s` additiv ist; eine neue Kennung sperrt der Kern **— außer der Läufer bietet sie nur an,
+wenn der Kern sie zulässt (Rückfallregel der Fassung 6: ohne lesbare, ausreichende Kern-Version
+bleibt es bei 2, ein alter Kern sperrt den Läufer also nicht)**. Maßgeblich sind
 `cmd/jnpt/script_runtime.go` (`DiscoverWithMeta` → `parseRunnerMeta`) und
 `script_contract.go` (`runnerMeta.MaxWallS`, `releasedWall`) auf origin/main.
 Der Kern glaubt nur positive ganze Sekunden nach unten:
@@ -213,9 +221,126 @@ Die gesonderte Protokollgrenze je Rahmen bleibt **1 MiB + 4 KiB**. Sie ist
 keine Summengrenze für Ausgabe: der Wächter streamt stdout in 64-KiB-Stücken,
 auch mit maximalem JSON-Escaping unter dieser Rahmengrenze. Es gibt im Wächter
 und im Bootstrap keine eigene Ausgabe-/Aufrufsumme oder Lauf-Wandzeitkappe.
-Der Wächter begrenzt Job-/Bootstrap-Rahmen auf 8 MiB; das beschränkt weder die
+Der Wächter begrenzt Job-/Bootstrap-Rahmen auf 8 MiB (dazu gehört das volle Stück des
+ETL-Stroms, siehe unten); das beschränkt weder die
 Gesamtausgabe noch die Zahl der Aufrufe. Lauf-Protokoll (64 KiB), Job-/Codegröße,
 Speicher, PIDs und Mindestlebensdauer bleiben eigenständige Grenzen.
+
+## ETL-Rohstrom und Rückfall (Fassung 6, JanuaPort/januaport#1215 P2)
+
+Kennung **3** ist Kennung 2 plus ETL-Rohstrom. Der Kern kennt sie ab seiner
+Version **0.100.0** (`contract.MinCoreVersion`, Kern-Gegenstelle K2). Ein Läufer
+mit Kennung 2 verhält sich unverändert: Header, Ende-Klassen, Rahmen und alle
+Goldens der Fassungen 1 bis 5 bleiben bytegleich (`TestOldGoldensUnchanged`).
+
+### Rückfallregel (E4)
+
+Der Läufer bietet Kennung 3 nur an, wenn der Kern sie zulässt. Der vermittler
+liest die Kern-Version aus `GET <Gateway>/healthz` (Feld `version`, höchstens
+4 KiB, ohne Umleitung, ohne Proxy-Umgebung) und wählt:
+
+| Lage | Kennung in `tools/list` |
+|---|---|
+| `version` ist `X.Y.Z` (optional mit `v`, nur Dezimalzahlen ohne führende Null) und ≥ 0.100.0 | **3** |
+| `version` ist älter | 2 |
+| `version` ist unlesbar: kein JSON, keine Zeichenkette, Vorabversion (`-rc1`), Build-Anhang, Leerraum, `dev`, fehlendes Feld, Status ≠ 200, Umleitung, Kern nicht erreichbar | 2 |
+| noch keine Antwort (Start) | 2 |
+
+Das Fenster zwischen Start und erster Antwort und jeder Ausfall führen zu 2,
+nie zu 3: Der Rückfall nimmt nur eine Fähigkeit weg (`etl_stream`) und fügt
+keine hinzu. Der vermittler fragt alle 30 s (`Config.CoreProbeInterval`) und
+loggt nur die gewählte Fassung (`vertragsfassung contract=<n>`), nie den Text
+des Kerns. **Nachweis nach einem Update:** Binnen 30 s nach dem Start des Läufers steht im Log eine Zeile
+`vertragsfassung contract=3`. Steht dort `contract=2`, ist der Kern älter als 0.100.0 oder seine Version unlesbar. Die Wahl gilt je Lauf ab dem Laufbeginn. Der Satz „eine neue Kennung
+sperrt der Kern“ gilt weiter: Deshalb meldet der Läufer 3 nicht blind, sondern nur nach
+dieser Prüfung; **Update-Reihenfolge ist damit Empfehlung** (erst der Kern, dann
+der Läufer), nicht mehr Pflicht. Unter Kennung 2 kennt der Läufer keinen Strom:
+`etl_open` wird mit `etl_end{vertrag}` beantwortet, und der Kern registriert einen
+Pin mit `etl_stream` ohnehin nicht (`etl_needs_runner`).
+
+`golden/tools_list_v3.json` ist `tools_list.json` mit `contract: 3`.
+
+### Rahmen auf Weg C (Pull-Modell)
+
+Gleicher Socket, gleiche Rahmung (4 Byte Länge, JSON mit `type`). Auf **jedes**
+`etl_next` antwortet der vermittler mit **genau einem** `etl_chunk` oder `etl_end`.
+`etl_open` hat keine eigene Antwort.
+
+| Rahmen | Richtung | Inhalt | Golden |
+|---|---|---|---|
+| `etl_open` | Sandbox → vermittler | `{id, integration, query_id, params?}`, höchstens 64 KiB | `frame_etl_open.json` |
+| `etl_next` | Sandbox → vermittler | `{id, close?}` | `frame_etl_next.json` |
+| `etl_chunk` | vermittler → Sandbox | `{id, data_b64}`, roh höchstens 256 KiB, an beliebiger Bytegrenze geschnitten | `frame_etl_chunk.json` |
+| `etl_end` | vermittler → Sandbox | `{id, status, code?, retry_after_s?}` | `frame_etl_end.json` |
+
+`etl_end.status` ist eines aus `eof` (Körper zu Ende; ob der Strom vollständig war,
+sagt der Endsatz in den Daten), `abgewiesen` (mit `code` = HTTP-Status 400, 401, 403,
+404, 409, 429 oder 503 und `retry_after_s` als Zahl, nie ein Text des Kerns),
+`abgebrochen`, `grenze`, `vertrag`, `geschlossen` (Antwort auf `close`).
+Der Wächter reicht die Typen nur in ihrer Richtung durch (`etl_open`, `etl_next`
+zum vermittler; `etl_chunk`, `etl_end` zum Skript), sonst nichts.
+
+**Rahmengröße (gemessen):** Ein volles Stück (262 144 Byte roh) ist als Base64
+349 528 Byte und als Rahmen 349 584 Byte (341,4 KiB). Die kleinste Leserschranke
+auf dem Weg ist `MaxFromSandbox` (1 MiB + 4 KiB, vermittler), die des Wächters
+8 MiB; es passt mit mehr als dem Dreifachen Luft, das Stück bleibt bei 256 KiB
+(`TestETLFullChunkFitsEveryFrameLimit`). Die Grenzen je Rahmen gelten unverändert
+beim Lesen.
+
+### Der vermittler
+
+- Er öffnet nur, wenn das Manifest `etl_stream` in `tools` deklariert; sonst
+  `etl_end{abgewiesen}`. Höchstens **ein** Strom je Lauf: Jeder weitere Versuch,
+  auch nach dem Ende des ersten, ist abgewiesen und macht das Ergebnis nie „fertig“.
+- Den HTTP-Aufruf `POST /api/etl/stream` schickt er erst beim ersten `etl_next`, liest
+  den Körper nur auf `etl_next` und puffert höchstens ein Stück. Er ist inhaltsblind:
+  Er parst keine Zeilen, zählt Zeilenumbrüche, prüft nur die letzte Zeile strukturell
+  auf `{"t":"end","grund":…}` und loggt nur Zähler.
+- `etl_open` zählt nicht als Werkzeugaufruf. Stromzeilen zählen weder in `bytes_out`
+  noch gegen die Ausgabegrenze; stdout und stderr behalten ihre 16 MiB.
+- **Kein Abbruch nach Budget.** Der Deckel liegt allein im Gateway; der Zähler ist
+  ein Beleg im Lauf-Ergebnis.
+- Wandzeit, verlorene Sandbox, Kontext des Laufs, Skriptende und `close` schließen die
+  HTTP-Anfrage.
+- **Client (SEC E5):** Lauf-Token nur im `Authorization`-Header; keine Umleitung
+  (`CheckRedirect` gibt einen Fehler zurück, ein Redirect ist `vertrag`); fester Pfad
+  `/api/etl/stream`; `Proxy: nil`; Anfragekörper höchstens 64 KiB; gelesen wird mit
+  Rahmengrenze; feste Fehlerklassen aus dem Statuscode, nie ein Antworttext.
+
+### Feld `stream` im Lauf-Ergebnis
+
+`_meta["januaport.ai/run"].stream = {status, bytes, zeilen}`, **nur wenn der Lauf einen
+Strom geöffnet oder versucht hat**, nur Zähler, nie Inhalt. `bytes` sind die vom Kern
+gelieferten Bytes, `zeilen` die Datenzeilen ohne Endsatz.
+
+| `status` | Bedeutung |
+|---|---|
+| `fertig` | Die letzte Zeile war der Endsatz mit Grund `fertig` (und ein weiterer Versuch war nicht da). Nur das ist „vollständig gelesen“. |
+| `grenze` | Endsatz mit Grund `deckel` oder `wandzeit`, oder `etl_open` über 64 KiB |
+| `abgebrochen` | Endsatz mit anderem Grund, Strom ohne Endsatz, Verbindung abgerissen, Wandzeit, Sandbox verloren, Kontext |
+| `geschlossen` | Das Skript hat den Strom selbst verlassen (`close`, Skriptende bei offenem Strom) |
+| `abgewiesen` | Kein Manifest-Recht, zweiter Strom, oder HTTP 400/401/403/404/409/429/503 |
+| `vertrag` | Unerwartete Antwort (anderer Status, falscher Inhaltstyp, Umleitung), falsche ID oder Form, Fassung 2 |
+
+Der Kern wertet `ok` mit nicht-fertigem Strom als `error/stream` (K2). Beispiele:
+`golden/end_ok_stream_fertig.json`, `golden/end_ok_stream_abgebrochen.json`
+(unveränderte Kopien der Kern-Beispiele).
+
+### SDK im Skript
+
+`januaport.etl_stream(integration, query_id, params=None)` ist ein Generator, der die
+Zeilen als dicts liefert, nie sammelt und die Zeilen über Stückgrenzen zusammensetzt.
+Normal endet er nur beim Endsatz `fertig` (nicht mitgeliefert); jeder andere Grund wirft
+`januaport.StreamEnded(grund, zeilen, bytes)`, ein fehlender Endsatz
+`StreamEnded("abgebrochen")`, eine Abweisung `januaport.StreamRefused(code, retry_after)`.
+Das SDK wiederholt nie selbst. `close()` am Generator sendet `etl_next{close}` und liest die
+Antwort. Regeln für Skripte (E6): Stromzeilen **nie drucken** (alles, was ein Skript ausgibt,
+steht im Lauf-Ergebnis), erst in ein Zwischenziel schreiben und nach `fertig` übernehmen,
+nicht in einer Schleife wiederholen.
+
+Nachweise: `internal/mediator/etl_test.go` (httptest-Kern, echter Socket, Kanarien,
+Redirect, Rückfall), `internal/frame/etl_test.go`, `internal/guard/etl_linux_test.go`,
+`sandbox/test_etl_sdk.py`.
 
 ## Referenzen und Nachweise
 
@@ -257,13 +382,14 @@ Bote, Senke und Meldung sind angebunden: zunächst `pending`, bei Fehlern
 `invalid/fetch_failed` (Liste, Schlüssel, Transport) bzw.
 `invalid/hash_mismatch` (Paketstruktur, Hash). Eine Abholerfreigabe allein
 ist kein `ready`; Manifest-, Bibliotheks- und Sandboxprüfung bleiben erforderlich.
-Kein neues Feld in `tools/list`, Vertragskennung bleibt 2. Bestehende
+Kein neues Feld in `tools/list`, Vertragskennung blieb damit 2. Bestehende
 Git-/Desktop-Dateien und alle bisherigen Goldens bleiben bytegleich.
 
 - `golden/call_headers.json`: Fassung 5 mit Grenz-Header.
 - `golden/call_headers_v1.json`: unveränderte alten Lauf-Header ohne Grenz-Header;
   `TestRunHeadersGoldenV1AndV2` pinnt ihre Altgrenzen als Literale.
-- `golden/tools_list*.json`: Vertragskennung 2.
+- `golden/tools_list*.json`: Vertragskennung 2; `golden/tools_list_v3.json`: Kennung 3 (Fassung 6).
+- `golden/frame_etl_{open,next,chunk,end}.json`, `golden/end_ok_stream_{fertig,abgebrochen}.json`: ETL-Strom (Fassung 6).
 - `golden/end_limit_{output,tool_calls}.json`: feste Sätze ohne Zahlen.
 - Parser: `internal/contract/limits_test.go`; echter MCP-Adapter:
   `internal/mediator/limits_test.go`; echter Wächter-Adapter:

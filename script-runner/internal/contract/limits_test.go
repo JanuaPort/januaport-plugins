@@ -81,9 +81,14 @@ func TestParseRunLimits(t *testing.T) {
 	}
 }
 
-func TestRunnerContractTwoLiteral(t *testing.T) {
-	if Version != 2 || ToolsList(nil, IsolationStandard, nil).Meta[MetaRunner].(RunnerMeta).Contract != 2 {
-		t.Fatal("runner must advertise contract 2")
+func TestRunnerContractVersionsLiteral(t *testing.T) {
+	// Fassung 6 (#1215 P2): Der Läufer spricht höchstens 3 und fällt auf 2 zurück.
+	if Version != 3 || LegacyVersion != 2 {
+		t.Fatal("runner speaks contract 3 and falls back to 2")
+	}
+	if ToolsList(LegacyVersion, nil, IsolationStandard, nil).Meta[MetaRunner].(RunnerMeta).Contract != 2 ||
+		ToolsList(Version, nil, IsolationStandard, nil).Meta[MetaRunner].(RunnerMeta).Contract != 3 {
+		t.Fatal("tools/list must carry the selected contract")
 	}
 	if MaxWallS != 86400 || MaxOutputBytes != 16777216 || MaxToolCalls != 10000 {
 		t.Fatal("technical ceilings changed (SEC L8)")

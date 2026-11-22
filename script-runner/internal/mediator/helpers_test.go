@@ -58,6 +58,31 @@ type stubGateway struct {
 	mu    sync.Mutex
 	auth  []string
 	args  []string
+
+	// Kern-Stub für #1215 P2: /healthz meldet version (leer = Pfad unbekannt),
+	// /api/etl/stream ruft etl (nil = 404). healthz nimmt auch eine fertige
+	// Antwort entgegen, damit Tests kaputte Formen liefern können.
+	version string
+	health  http.HandlerFunc
+	etl     http.HandlerFunc
+}
+
+func (g *stubGateway) setVersion(v string) {
+	g.mu.Lock()
+	g.version = v
+	g.mu.Unlock()
+}
+
+func (g *stubGateway) setHealth(h http.HandlerFunc) {
+	g.mu.Lock()
+	g.health = h
+	g.mu.Unlock()
+}
+
+func (g *stubGateway) setETL(h http.HandlerFunc) {
+	g.mu.Lock()
+	g.etl = h
+	g.mu.Unlock()
 }
 
 func newStubGateway(t *testing.T) *stubGateway {
@@ -81,6 +106,31 @@ func newStubGateway(t *testing.T) *stubGateway {
 	g.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/plugin/script-runner/storage/") {
 			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if r.URL.Path == "/healthz" {
+			g.mu.Lock()
+			health, version := g.health, g.version
+			g.mu.Unlock()
+			switch {
+			case health != nil:
+				health(w, r)
+			case version != "":
+				_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok", "version": version, "saturated": false})
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+			return
+		}
+		if r.URL.Path == "/api/etl/stream" {
+			g.mu.Lock()
+			etl := g.etl
+			g.mu.Unlock()
+			if etl == nil {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			etl(w, r)
 			return
 		}
 		g.mu.Lock()
@@ -238,15 +288,16 @@ func newEnvFx(t *testing.T, fx *fixture, pins []pinRow, opts ...envOpt) *env {
 		e.writePins(pins)
 	}
 	cfg := Config{
-		SocketPath:     e.sock,
-		KeyDir:         e.keys,
-		StoreDir:       fx.store,
-		LibsDir:        e.libs,
-		LibsStagingDir: libsTempDir(t),
-		GatewayURL:     gw.srv.URL,
-		Logger:         slog.New(slog.NewTextHandler(e.logs, nil)),
-		BusyWait:       3 * time.Second,
-		PollInterval:   20 * time.Millisecond,
+		SocketPath:        e.sock,
+		KeyDir:            e.keys,
+		StoreDir:          fx.store,
+		LibsDir:           e.libs,
+		LibsStagingDir:    libsTempDir(t),
+		GatewayURL:        gw.srv.URL,
+		Logger:            slog.New(slog.NewTextHandler(e.logs, nil)),
+		BusyWait:          3 * time.Second,
+		PollInterval:      20 * time.Millisecond,
+		CoreProbeInterval: 20 * time.Millisecond,
 	}
 	for _, o := range opts {
 		o(&cfg)

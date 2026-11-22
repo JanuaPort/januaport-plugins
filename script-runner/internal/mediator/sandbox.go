@@ -173,6 +173,9 @@ func (sc *sbConn) detach(a *attachment) {
 	sc.att = nil
 	sc.mu.Unlock()
 	close(a.done)
+	// Ein Schreiber, der an einem nie lesenden Skript hängt (Strom-Stück),
+	// endet sofort; danach bekommt der Wächter EOF.
+	_ = sc.c.SetWriteDeadline(time.Now())
 	_ = sc.c.CloseWrite()
 }
 

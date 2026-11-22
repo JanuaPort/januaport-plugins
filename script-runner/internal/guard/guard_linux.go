@@ -253,8 +253,8 @@ func (r *runState) pumpOutput(stdout io.Reader) {
 	}
 }
 
-// pumpBootstrap forwards tool_call and bounded log, and retains the sanitized
-// error metadata. The explicit log is the only extra text channel (M6).
+// pumpBootstrap forwards tool_call, the ETL frames etl_open and etl_next, and
+// the bounded log, and retains the sanitized error metadata. The explicit log is the only extra text channel (M6).
 func (r *runState) pumpBootstrap(ch io.Reader) {
 	for {
 		payload, err := frame.Read(ch, MaxJobFrame)
@@ -279,7 +279,9 @@ func (r *runState) pumpBootstrap(ch io.Reader) {
 					}
 				}
 			}
-		case frame.TypeToolCall:
+		case frame.TypeToolCall, frame.TypeETLOpen, frame.TypeETLNext:
+			// ETL-Rahmen (Fassung 3) gehen unverändert durch: der Wächter liest
+			// den Strom nicht und kennt keinen Inhalt, nur die Richtung.
 			r.writeMu.Lock()
 			err := writeRaw(r.conn, payload)
 			r.writeMu.Unlock()
@@ -297,15 +299,21 @@ func (r *runState) pumpBootstrap(ch io.Reader) {
 	}
 }
 
-// pumpMediator reicht tool_result an den Bootstrap durch. Endet die
-// Verbindung, ist der Lauf vorbei (timeout, Grenze, V1).
+// pumpMediator reicht tool_result und die ETL-Rahmen etl_chunk und etl_end an
+// den Bootstrap durch (Richtung vermittler → Skript). Endet die Verbindung,
+// ist der Lauf vorbei (timeout, Grenze, V1).
 func (r *runState) pumpMediator(ch io.Writer) {
 	for {
 		payload, err := frame.Read(r.conn, MaxJobFrame)
 		if err != nil {
 			return
 		}
-		if typ, err := frame.TypeOf(payload); err == nil && typ == frame.TypeToolResult {
+		typ, err := frame.TypeOf(payload)
+		if err != nil {
+			continue
+		}
+		switch typ {
+		case frame.TypeToolResult, frame.TypeETLChunk, frame.TypeETLEnd:
 			if writeRaw(ch, payload) != nil {
 				return
 			}
