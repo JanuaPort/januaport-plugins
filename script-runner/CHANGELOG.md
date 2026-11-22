@@ -2,12 +2,6 @@
 
 ## Unreleased
 
-## 0.4.3 — 2026-11-22 (JanuaPort/januaport#1423, JanuaPort/januaport#1424)
-
-- JanuaPort/januaport#1423: Ein Wechsel der Repository-URL blockiert die Abgleichschleife des Vermittlers nicht mehr, solange ein Skript mit Bibliotheken läuft. `refresh` stößt das Entwässern von `libs` an und kehrt zurück; Warten auf die Leihen und Aufräumen laufen im Hintergrund (neue Leihen bleiben bis dahin gesperrt, ein zweiter Wechsel räumt nicht doppelt auf). Zeitplan-Takte und das Neulesen des runtime-key laufen weiter.
-- JanuaPort/januaport#1424: Der `/mcp`-Proxy des Apphost schneidet Werkzeugaufrufe nicht mehr nach 30 Sekunden ab. Eigener HTTP-Client ohne Gesamtfrist, die Frist läuft über den Anfrage-Kontext (Obergrenze: Wandzeit-Decke 86400 s plus eine Minute; Abbruch des Browsers bricht den Upstream ab), `ResponseHeaderTimeout` folgt der Proxy-Frist. Kopierfehler nach dem Header-Versand werden ohne Inhalt geloggt. Paketabruf und Anmeldung behalten ihre 30 Sekunden; gleiche Netz-Vorgaben (kein Umgebungs-Proxy, kein Redirect, expliziter TCP-Dialer).
-
-- **Go 1.26.11** (GO-2026-6859, `net/http`, behoben in 1.26.11): `go.mod` und Build-Image `golang:1.26.11` per Digest `sha256:4165ee6b…` gepinnt, wie der Kern mit JanuaPort/januaport#1372. Ohne diesen Sprung schlägt `govulncheck` auf dem ausgelieferten Binary fehl.
 - **JanuaPort/januaport#1215 (P2): ETL-Rohstrom über den Vermittler, Vertragsfassung 3.**
   Ein Skript mit `etl_stream` im Manifest ruft `januaport.etl_stream(integration, query_id,
   params=None)` und bekommt einen Iterator über Zeilen-Dicts (nie gesammelt, höchstens ein
@@ -34,6 +28,12 @@
     Schleife wiederholen.
   - Test-first; Linux-Wächtertests, Python-SDK-Tests und Docker-Sonde `probe/etl_test.go`.
 
+## 0.4.3 — 2026-11-22 (JanuaPort/januaport#1423, JanuaPort/januaport#1424)
+
+- JanuaPort/januaport#1423: Ein Wechsel der Repository-URL blockiert die Abgleichschleife des Vermittlers nicht mehr, solange ein Skript mit Bibliotheken läuft. `refresh` stößt das Entwässern von `libs` an und kehrt zurück; Warten auf die Leihen und Aufräumen laufen im Hintergrund (neue Leihen bleiben bis dahin gesperrt, ein zweiter Wechsel räumt nicht doppelt auf). Zeitplan-Takte und das Neulesen des runtime-key laufen weiter.
+- JanuaPort/januaport#1424: Der `/mcp`-Proxy des Apphost schneidet Werkzeugaufrufe nicht mehr nach 30 Sekunden ab. Eigener HTTP-Client ohne Gesamtfrist, die Frist läuft über den Anfrage-Kontext (Obergrenze: Wandzeit-Decke 86400 s plus eine Minute; Abbruch des Browsers bricht den Upstream ab), `ResponseHeaderTimeout` folgt der Proxy-Frist. Kopierfehler nach dem Header-Versand werden ohne Inhalt geloggt. Paketabruf und Anmeldung behalten ihre 30 Sekunden; gleiche Netz-Vorgaben (kein Umgebungs-Proxy, kein Redirect, expliziter TCP-Dialer).
+
+- **Go 1.26.11** (GO-2026-6859, `net/http`, behoben in 1.26.11): `go.mod` und Build-Image `golang:1.26.11` per Digest `sha256:4165ee6b…` gepinnt, wie der Kern mit JanuaPort/januaport#1372. Ohne diesen Sprung schlägt `govulncheck` auf dem ausgelieferten Binary fehl.
 - JanuaPort/januaport#1246: Die Hygiene-Prüfung erkennt Windows-Laufwerksquellen
   (`C:\…:/ziel`, `c:/…`) als Host-Pfad und meldet sie fail-closed, statt sie
   als benanntes Volume `C` durchzulassen. Tabellentest über alle vier Dienste.
