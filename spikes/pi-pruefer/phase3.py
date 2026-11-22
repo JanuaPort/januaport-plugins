@@ -16,6 +16,13 @@ from phase2 import text_score
 
 SCHWELLEN = {"strands_decider": (.5, .1976), "protectai": (.5, .9957233667373658), "schlagwort": (.5,)}
 SATZ2 = Path(__file__).resolve().parent.parent / "pi-pruefer-holdout" / "messsatz2.jsonl"
+GPU_BEFUND = ("**GPU offen:** CUDA-Torch-Image und WSL-Speicher auf diesem Rechner. "
+               "Der Image-Bau blähte laut LEAD den WSL-Seitencache auf und führte zu Host-Speichermangel. "
+               "Der begonnene GPU-Container endete extern mit Exit 137 (Docker OOMKilled=false); "
+               "keine vollständige GPU-Messung, keine GPU-Scores in dieser Auswertung. "
+               "Gemäß vorläufiger PO-ASSIST-Vorgabe vom 22.11.2026 keine weiteren CUDA-Bauten/-Starts. "
+               "Anderer Rechner oder gemietete GPU: Entscheidung beim PO. "
+               "Quantisiert gegen bf16 bleibt daher offen; fehlende Werte sind keine Nullwerte.")
 
 
 def urteile(scores, schwelle):
@@ -73,6 +80,8 @@ def erhebe(adapter, daten, synchronisiere=lambda: None, zwischenstand=lambda r: 
 
 
 def messen(name, hardware, pfad, ziel):
+    if hardware == "gpu_bf16":  # MUTATION gpu_messsperre
+        raise ValueError("GPU offen: CUDA-Image und WSL-Speicher auf diesem Rechner; PO-Entscheidung nötig")
     daten = lade_satz(pfad, "satz2")
     r = dict(kandidat=name, hardware=hardware,
              messsatz_sha256=hashlib.sha256(Path(pfad).read_bytes()).hexdigest(),
@@ -125,6 +134,8 @@ def schreibe_bericht(laeufe, daten, pfad, ziel, gpu_befund):
     sha = hashlib.sha256(Path(pfad).read_bytes()).hexdigest()
     for r in laeufe:
         pruefe_lauf(r, daten, sha)
+        if r["hardware"] == "gpu_bf16":
+            raise ValueError("GPU offen: GPU-Ergebnisse gehören nicht in den freigegebenen CPU-Befund")
     zeilen = ["# Phase 3b — unabhängiger Holdout, JanuaPort/januaport#1486", "",
         f"240 synthetische Texte, SEC-Freigabe c-7078653283; Messsatz SHA-256 `{sha}`.",
         "Satz 2 wurde unverändert über seinen eigenen vollständigen Testvertrag eingelesen.", "",
@@ -242,11 +253,11 @@ def main():
     p.add_argument("--messsatz", type=Path, default=SATZ2)
     p.add_argument("--extern", type=Path, default=Path("/hf/phase3"))
     p.add_argument("--bericht", action="store_true")
-    p.add_argument("--gpu-befund", default="offen")
+    p.add_argument("--gpu-befund", default=GPU_BEFUND)
     p.add_argument("--ziel", type=Path, default=Path("ergebnisse"))
     args = p.parse_args()
     if args.bericht:
-        laeufe = [json.loads(z.read_text()) for z in sorted(args.extern.glob("*.json"))]
+        laeufe = [json.loads(z.read_text()) for z in sorted(args.extern.glob("*-cpu*.json"))]
         schreibe_bericht(laeufe, lade_satz(args.messsatz, "satz2"), args.messsatz, args.ziel, args.gpu_befund)
     else:
         if not args.kandidat:

@@ -159,6 +159,12 @@ def main():
         ("latenz", 'm["kurz_p95"] <= 2000', 'm["kurz_p95"] <= 3000')):
         proben.append(("erfolg_"+key, "phase3.py", original, mutation,
                        "test_phase3.AuswertungTests.test_erfolgskriterien_vorab_und_grenzen"))
+    proben += [
+        ("gpu_messsperre", "phase3.py", 'if hardware == "gpu_bf16":  # MUTATION gpu_messsperre', 'if False:',
+         "test_phase3.HardwareTests.test_gpu_messung_bis_po_entscheidung_gesperrt"),
+        ("gpu_berichtssperre", "phase3.py", 'if r["hardware"] == "gpu_bf16":', 'if False:',
+         "test_phase3.HardwareTests.test_gpu_ergebnisse_nicht_im_cpu_befund"),
+    ]
     for name, datei, original, mutation, test in proben:
         with tempfile.TemporaryDirectory(prefix="pi-mutation-") as tmp:
             ziel = Path(tmp) / "spike"

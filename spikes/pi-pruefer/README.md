@@ -29,24 +29,40 @@ ergeben unterschiedliche Fensterzahlen; Grenz-Retokenisierung kann das
 Inhaltsbudget verkleinern. Der Bericht nennt alle 18 langen Texte einzeln mit
 Fensterzahl je Kandidat. Textscore ist das Maximum aller Fenster, Batchgröße 1.
 
-GPU: `requirements-gpu.txt` ist der eigene Linux/amd64-Python-3.12-Hashlock
+GPU ist bis zur PO-Entscheidung **offen und in der Mess-CLI gesperrt**: CUDA-Image
+und WSL-Speicher auf diesem Rechner. Laut LEAD führte der WSL-Seitencache beim
+Image-Bau zu Host-Speichermangel. Kein weiterer CUDA-Bau oder -Start in diesem
+Lauf; anderer Rechner oder gemietete GPU ist PO-Entscheidung. Vorbereiteter Stand:
+`requirements-gpu.txt` ist der eigene Linux/amd64-Python-3.12-Hashlock
 mit CUDA-12.8-Torch. CPU benutzt unverändert `requirements-strands.txt`.
 Dynamisches CPU-int8 wird nach LoRA-Merge schichtweise erzeugt; nur Linear-
 Gewichte im Torso werden quantisiert, Embeddings/Normen/Convs/Pointer-Head sind
-fp32. Der GPU-Pfad benutzt das bf16-Torso des gepinnten Checkpoints, ohne den
+fp32. Der vorbereitete GPU-Pfad benutzt das bf16-Torso des gepinnten Checkpoints, ohne den
 CPU-Upcast der Bibliothek. Bibliotheks-API, Frageform `noul`, kein Server.
 
-Alle folgenden Container nacheinander, bei bestehenden Offline-Gewichten
-im externen Volume `pi-pruefer-hf`; kein Host-Paket installieren:
+Alle Container nacheinander, bei bestehenden Offline-Gewichten im externen
+Volume `pi-pruefer-hf`; kein Host-Paket installieren. Vor JEDEM Messcontainer
+Host-RAM mit dem folgenden PowerShell-Befehl prüfen. Unter 12 GB abbrechen und
+Stand berichten. Nach Container-OOM folgt kein neuer Versuch. Die bereits vor
+dieser Ergänzung vollständig abgeschlossenen drei CPU-Läufe werden weiterverwendet.
 
 ```powershell
-docker run --rm --gpus all --memory 8g nvidia/cuda:12.8.1-base-ubuntu24.04 nvidia-smi
-docker build --target strands_gpu -t pi-pruefer:1486-strands-gpu spikes/pi-pruefer
-docker run --rm --gpus all --memory 8g --network none -v pi-pruefer-hf:/hf -v ${PWD}:/w pi-pruefer:1486-strands-gpu python -B phase3.py --kandidat strands_decider --hardware gpu_bf16
+powershell -NoProfile -Command "[math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1MB,1)"
 docker run --rm --memory 8g --cpus 4 --network none -v pi-pruefer-hf:/hf -v ${PWD}:/w pi-pruefer:1486-strands python -B phase3.py --kandidat strands_decider --hardware cpu_int8
+powershell -NoProfile -Command "[math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1MB,1)"
 docker run --rm --memory 6g --cpus 4 --network none -v pi-pruefer-hf:/hf -v ${PWD}:/w pi-pruefer:1486-phase2 python -B phase3.py --kandidat protectai --hardware cpu
+powershell -NoProfile -Command "[math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1MB,1)"
 docker run --rm --memory 6g --cpus 4 --network none -v pi-pruefer-hf:/hf -v ${PWD}:/w pi-pruefer:1486-phase2 python -B phase3.py --kandidat schlagwort --hardware cpu
-docker run --rm --memory 1g --network none -v pi-pruefer-hf:/hf -v ${PWD}:/w -w /w/spikes/pi-pruefer python:3.12-slim python -B phase3.py --bericht --gpu-befund "Befund aus dem GPU-Lauf"
+docker run --rm --memory 1g --network none -v pi-pruefer-hf:/hf -v ${PWD}:/w -w /w/spikes/pi-pruefer python:3.12-slim python -B phase3.py --bericht
+```
+
+Nach JEDEM künftig freigegebenen `docker build` vor einem weiteren Container den
+WSL-Seitencache leeren (für den vor dieser Vorgabe beendeten Bau nachgeholt,
+Exit 0; Host-RAM bei Fortsetzung 25,1 GB):
+
+```powershell
+$env:MSYS_NO_PATHCONV = '1'
+docker run --rm --privileged --pid=host alpine:3.20 nsenter -t 1 -m -- sh -c 'sync; echo 1 > /proc/sys/vm/drop_caches'
 ```
 
 `phase3.py` speichert Zwischenstände ohne Texte in `/hf/phase3`; für den Bericht
@@ -76,7 +92,7 @@ Abgeschlossen: vier Kandidaten, beide Modi und beide Betriebspunkte;
 Strands erreicht bei der auf diesem Satz kalibrierten Schwelle 87,39 % Recall,
 aber 28,57 % FPR auf A3; p95 81,734 s je 10k Zeichen, Spitzen-RAM 9,87 GiB.
 
-Messsatz und isoliertes CPU-Messgerüst für einen möglichen Prüfer von
+Messsätze und isoliertes CPU-/GPU-Messgerüst für einen möglichen Prüfer von
 **Werkzeugantworten, bevor sie der Agent erhält**: Mailtext, Datei-/PDF-Auszug,
 ERP-Feld, Ticketbeschreibung, Webseite und Upstream-MCP-Antwort. Ausgabe je Text:
 `1` = Verdacht, `0` = harmlos. Der Spike ist noch kein produktiver Schutzmechanismus.
@@ -104,13 +120,15 @@ Es gibt keine Verbindung zu Produktdiensten und keine Änderung von Produktcode.
 | `adapter.py` | Vier CPU-Score-Adapter einschließlich Dummy; zwei gesperrte Meta-Stubs |
 | `messen.py` | Fensterung, Kandidatenprozesse, Metriken und Markdown-Tabellen |
 | `phase2.py` | Offline-Erhebung, Schwellenkalibrierung, vollständige Phase-2-Auswertung |
+| `phase3.py` / `test_phase3.py` | Unabhängiger Holdout, feste Schwellen, Hardwarevergleich, Fake-Modell-Tests |
+| `hardware.py` | Offline-Bibliotheks-API für Strands GPU bf16 und dynamisches CPU-int8 |
 | `download_modelle.py` | Anonymer Download ausschließlich fester HF-Revisionen ins externe Volume |
 | `test_phase2.py` | Adapter mit Fake-Modellen, Fenstervergleich, A3, Kalibrierung und Rohscorevertrag |
 | `ergebnisse/phase2.md`, `ergebnisse/phase2-scores.jsonl` | Messbericht und Roh-Scores ohne Texte |
 | `test_messsatz.py` | Verteilungen, verbotene Eingaben, echte Adapter und Ende-zu-Ende-Test |
 | `mutationen.py` | Jede Sperre einzeln in einer temporären Containerkopie entfernen; Negativtest muss rot werden |
-| `requirements*.in`, `pin_requirements.py`, `requirements*.txt` | Zwei getrennte Umgebungen mit vollständigen SHA-256-Locks |
-| `Dockerfile` | Python 3.12 slim, CPU-Torch; Targets `klassifikatoren` und `strands` |
+| `requirements*.in`, `pin_requirements.py`, `requirements*.txt` | Zwei CPU-Umgebungen und eine CUDA-Umgebung mit vollständigen SHA-256-Locks |
+| `Dockerfile` | Python 3.12 slim; CPU-Targets `klassifikatoren` / `strands`, CUDA-Target `strands_gpu` |
 
 Pflichtfelder: `id`, `sprache` (`de|en`), `form`, `label` (Integer `0|1`, kein
 Boolean), `klasse`, `laenge_zeichen` (Python-Unicode-Codepoints, nicht Bytes),
@@ -366,10 +384,14 @@ erfasst deshalb die Pipeline-Ausgabe während `scan`, invertiert `SAFE`, rundet 
 Scanner-V2 auf zwei Stellen und erhält dessen strikten Vergleich `score > Schwelle`.
 ProtectAI und Strands verwenden `>=`. Bei Gleichständen berücksichtigt die
 Kalibrierung diese Unterschiede. Strands liefert `noul` (näher 1 = Ja), kein Textmodell-
-Klassifikationslabel. Seine Bibliotheks-API läuft direkt mit `device="cpu"`, ohne Server.
+Klassifikationslabel. Phase 2 nutzt die Bibliotheks-API direkt mit `device="cpu"`,
+der vorbereitete, aktuell gesperrte Phase-3b-GPU-Pfad mit `device="cuda"`;
+beide ohne Server.
 `strands_decider_config.json` setzt 4096 Tokens. 512 werden für Frage/Hülle reserviert;
 Abschneiden verwendet daher maximal 3584 Inhaltstokens, Fenster maximal 512.
-Die Bibliothek hebt den Torso auf CPU auf float32 an; das erhöht den RAM-Bedarf.
+Der Phase-2-CPU-Pfad hebt den Torso auf float32 an; das erhöht den RAM-Bedarf.
+Phase 3b quantisiert vorher seine Linear-Schichten, sodass deren gepackte int8-
+Gewichte erhalten bleiben; der GPU-Torso bleibt bf16.
 
 Öffentliche Messsatzeinträge: **0**, synthetischer Anteil: **460/460 = 100 %**.
 Herstellerzahlen zu Meta und die nicht gemessenen Decision-Modelle stehen mit
@@ -468,7 +490,7 @@ Je Kandidat eine Gesamtzeile, eine hervorgehobene Zeile
   Derselbe Kandidatenpeak wird in seinen Gruppenzeilen wiederholt; keine
   vorgetäuschte isolierte RAM-Messung pro Untergruppe.
 
-Pro Kandidat ein frischer `spawn`-Prozess. Ein Warm-up-Aufruf vor den Messungen,
+In Phase 1/2 pro Kandidat ein frischer `spawn`-Prozess. Ein Warm-up-Aufruf vor den Messungen,
 ein Messdurchgang pro Text, Einzeltext-Latenzen einschließlich Tokenisierung,
 Fensterbildung und Klassifikation; Prozessstart, Laden und Warm-up liegen außerhalb
 der Latenz. Adapterinitialisierungszeit wird separat ausgegeben. CPU-Torch,
