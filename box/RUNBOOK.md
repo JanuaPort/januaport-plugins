@@ -1161,9 +1161,23 @@ zusammen:
   Der Name steht bewusst nicht in der allgemeinen Compose: Ein fester Bridge-Name
   ließe auf einem Host kein zweites Compose-Projekt zu. ⚠️ Das Netz muss **vor
   dem ersten Anlegen** mit dem Namen entstehen; legt es ein Lauf ohne Override an,
-  vorher `docker compose … down` und neu starten. Der Plugin-Aktuator führt je
-  Plugin nur eine Compose-Datei; ein Aktuator-Lauf ohne den Override legt `egress`
-  ohne den Namen neu an. Diesen Weg vor dem Aktuator-Betrieb klären.
+  vorher `docker compose … down` und neu starten.
+- **Aktuator-Deskriptor mit beiden Dateien.** Der Plugin-Aktuator nimmt je Plugin
+  eine durch `:` getrennte Liste von Compose-Dateien und hängt jede als eigenes
+  `-f` an, in dieser Reihenfolge. Auf der Box nennt
+  `/etc/jnpt-updater.d/script-runner.conf` deshalb **beide**, Basis zuerst:
+
+  ```
+  COMPOSE_FILE=/opt/jnpt/plugins/script-runner/docker-compose.yml:/opt/jnpt/plugins/script-runner/docker-compose.script-runner.box.yml
+  ```
+
+  Fehlt der Override, legte ein Aktuator-Lauf `egress` ohne `jnpt-fetch0` neu an;
+  die Firewall passte nicht mehr, und der Abholer holte still keinen Pin. Jeder
+  Eintrag muss absolut und lesbar sein, sonst bucht der Aktuator `unprovisioned`
+  und fasst Docker nicht an. ⚠️ Braucht den Aktuator ab Fassung 5
+  (JanuaPort/januaport#1535): Ein älterer lehnt die Liste ab. Erst das Skript
+  nachziehen, dann den Deskriptor ändern. Auf Hosts ohne Box-Override bleibt die
+  Einzeldatei. Wächter: `script-runner/internal/hygiene/box_netz_test.go`.
 - **Die Firewall kennt nur feste Bridges.** Ohne passende Zeile in der
   forward-Kette läuft alles fehlerfrei und holt doch nichts:
 

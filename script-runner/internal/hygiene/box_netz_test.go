@@ -29,6 +29,7 @@ const (
 	boxComposePath   = "../../../box/docker-compose.box.yml"
 	boxOverridePath  = "../../../box/docker-compose.script-runner.box.yml"
 	boxRunnerCompose = "../../../box/docker-compose.script-runner.yml"
+	boxRunbookPath   = "../../../box/RUNBOOK.md"
 )
 
 func readFile(t *testing.T, path string) string {
@@ -169,4 +170,47 @@ func TestBoxComposeCreatesAppsNetwork(t *testing.T) {
 	if !found {
 		t.Error("hardening.sh: Freigabe innerhalb der Bridge jnpt-apps0 fehlt")
 	}
+}
+
+// Der Plugin-Aktuator der Box nimmt je Plugin eine Liste von Compose-Dateien
+// (januaport#1535). Steht im Box-Deskriptor nur die Basis, legte ein
+// Aktuator-Lauf das Netz egress ohne den festen Bridge-Namen jnpt-fetch0 neu an:
+// Die Firewall passt nicht mehr, der Abholer holt still keinen Pin. Das
+// RUNBOOK (Abschnitt 12) muss deshalb die Deskriptor-Zeile mit BEIDEN Dateien
+// nennen, Basis zuerst.
+func TestBoxRunbookDeskriptorNenntBasisUndOverride(t *testing.T) {
+	abschnitt := runbookAbschnitt12(t)
+	var zeilen []string
+	for _, z := range strings.Split(abschnitt, "\n") {
+		if z = strings.TrimSpace(z); strings.HasPrefix(z, "COMPOSE_FILE=") {
+			zeilen = append(zeilen, strings.TrimPrefix(z, "COMPOSE_FILE="))
+		}
+	}
+	if len(zeilen) != 1 {
+		t.Fatalf("RUNBOOK 12 enthält %d COMPOSE_FILE=-Zeilen, erwartet genau 1: %q", len(zeilen), zeilen)
+	}
+	eintraege := strings.Split(zeilen[0], ":")
+	want := []string{
+		"/opt/jnpt/plugins/script-runner/docker-compose.yml",
+		"/opt/jnpt/plugins/script-runner/docker-compose.script-runner.box.yml",
+	}
+	if len(eintraege) != len(want) || eintraege[0] != want[0] || eintraege[1] != want[1] {
+		t.Errorf("COMPOSE_FILE = %q, erwartet %q (Basis zuerst, dann der Box-Override)", eintraege, want)
+	}
+}
+
+// runbookAbschnitt12 liefert den Abschnitt „12. Optional: Skript-Läufer" bis
+// zur nächsten Überschrift der obersten Ebene.
+func runbookAbschnitt12(t *testing.T) string {
+	t.Helper()
+	text := readFile(t, boxRunbookPath)
+	start := strings.Index(text, "\n## 12. Optional: Skript-Läufer")
+	if start < 0 {
+		t.Fatal("RUNBOOK: Abschnitt 12 (Skript-Läufer) fehlt")
+	}
+	rest := text[start+1:]
+	if ende := strings.Index(rest[3:], "\n## "); ende >= 0 {
+		rest = rest[:ende+3]
+	}
+	return rest
 }
