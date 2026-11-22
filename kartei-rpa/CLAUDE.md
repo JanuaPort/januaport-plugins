@@ -144,6 +144,9 @@ kein Prozent-Paar außer den bekannten Platzhaltern steht.
   meldet „Syntaxfehler", wenn darin keine bekannte Flow-Variable steht. Das
   Prüfmuster für nicht ersetzte Platzhalter wird deshalb mit `[char]37`
   **berechnet**, nie hingeschrieben. Ein Test wacht darüber.
+  In Kommentaren steht auch kein *bekanntes* Paar: Ein Zeilenumbruch im Wert
+  beendete die Kommentarzeile, der Rest liefe als Code. Kommentare nennen den
+  Namen ohne Prozentzeichen; `tests/Pad.Tests.ps1` prüft die Kommentar-Token (#1539).
 - **PAD-Platzhalter gehören in einfach quotierte Here-Strings.** Eine
   Oberflächen-Meldung darf Anführungszeichen und Zeilenumbrüche tragen.
 - **`Mock -ModuleName`.** Die Mocks laufen in der Sitzung des Moduls, die

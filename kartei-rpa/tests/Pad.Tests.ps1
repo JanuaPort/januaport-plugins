@@ -69,6 +69,24 @@ Describe 'PAD-Skripte' {
             $rest.Contains($script:P) | Should -BeFalse
         }
 
+        It '<_> enthaelt in Kommentaren keine Prozent-Paare' -ForEach @(
+            '1-arbeitsliste.ps1', '2-satz-sperren.ps1', '3-satz-verbuchen.ps1', '4-satz-fehler.ps1'
+        ) {
+            # PAD ersetzt Muster auch in Kommentaren. Ein Zeilenumbruch im Wert
+            # beendet dort die Kommentarzeile, der Rest wird zu Code.
+            $tokens = $null
+            $null = [System.Management.Automation.Language.Parser]::ParseFile(
+                (Join-Path $script:PadOrdner $_), [ref]$tokens, [ref]$null)
+            $muster = [regex]::Escape($script:P) + '[^' + [regex]::Escape($script:P) + '
+]*' + [regex]::Escape($script:P)
+            $treffer = @(foreach ($t in $tokens) {
+                if ($t.Kind -eq [System.Management.Automation.Language.TokenKind]::Comment -and [regex]::IsMatch($t.Text, $muster)) {
+                    'Zeile {0}' -f $t.Extent.StartLineNumber
+                }
+            })
+            ($treffer -join ', ') | Should -BeNullOrEmpty
+        }
+
         It '<_> bricht ohne PAD mit klarer Meldung ab, bevor etwas geladen wird' -ForEach @(
             '1-arbeitsliste.ps1', '2-satz-sperren.ps1', '3-satz-verbuchen.ps1', '4-satz-fehler.ps1'
         ) {
