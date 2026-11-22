@@ -39,6 +39,18 @@ func shrinkPackageClient(f *fixture, d time.Duration) {
 	f.h.client.Transport.(*http.Transport).ResponseHeaderTimeout = d
 }
 
+// awaitAbort wartet, bis der Upstream-Kontext endet. Der Körper wird zuerst
+// gelesen: net/http erkennt das Trennen des Clients erst, nachdem der Handler
+// den Körper bis EOF gelesen hat (sonst bliebe der Kontext offen). Die Frist
+// ist ein Sicherheitsnetz, damit ein Fehler als Fehlschlag statt als Hänger endet.
+func awaitAbort(r *http.Request) {
+	_, _ = io.Copy(io.Discard, r.Body)
+	select {
+	case <-r.Context().Done():
+	case <-time.After(20 * time.Second):
+	}
+}
+
 // slowFor wartet d oder bis die Anfrage endet; false heißt abgebrochen.
 func slowFor(r *http.Request, d time.Duration) bool {
 	select {
@@ -105,7 +117,7 @@ func TestProxyBrowserAbortCancelsUpstream(t *testing.T) {
 	entered, cancelled := make(chan struct{}), make(chan struct{})
 	f.proxyUpstream(func(w http.ResponseWriter, r *http.Request) {
 		close(entered)
-		<-r.Context().Done()
+		awaitAbort(r)
 		close(cancelled)
 	})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -128,7 +140,11 @@ func TestProxyBrowserAbortCancelsUpstream(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Upstream-Kontext wurde nach dem Abbruch des Browsers nicht abgebrochen")
 	}
-	<-done
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Browser-Aufruf kehrt nach dem Abbruch nicht zurück")
+	}
 }
 
 // #1424: Die Frist der Anfrage ist die Obergrenze: ohne Header endet der
@@ -137,7 +153,7 @@ func TestProxyDeadlineBoundsHeaderWait(t *testing.T) {
 	f := setupWith(t, func(c *Config) { c.ProxyTimeout = 300 * time.Millisecond })
 	cancelled := make(chan struct{})
 	f.proxyUpstream(func(w http.ResponseWriter, r *http.Request) {
-		<-r.Context().Done()
+		awaitAbort(r)
 		close(cancelled)
 	})
 	start := time.Now()
@@ -165,7 +181,7 @@ func TestProxyCopyFailureIsLoggedWithoutContent(t *testing.T) {
 	f.proxyUpstream(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, "body-canary-teil")
 		w.(http.Flusher).Flush()
-		<-r.Context().Done()
+		awaitAbort(r)
 	})
 	resp, err := f.browserProxyCall(context.Background(), "?query=copy-query-canary")
 	if err != nil {
