@@ -69,7 +69,7 @@ func TestComposeMutationsAreCaught(t *testing.T) {
 		{"tmpfs ohne mode", "/work:size=64m,noexec,nosuid,nodev,uid=65533,gid=65533,mode=0700", "/work:size=64m,noexec,nosuid,nodev"},
 		{"Socket-Ordner rw", "      - sockets:/run/script-runner:ro\n", "      - sockets:/run/script-runner\n"},
 		{"Deploy-Key im mediator", "      - /run/jnpt/plugins/script-runner:/run/jnpt/plugins/script-runner:ro\n", "      - /run/jnpt/plugins/script-runner:/run/jnpt/plugins/script-runner:ro\n      - /run/jnpt/plugins/script-runner-git:/k:ro\n"},
-		{"abholer im jnpt_default", "  egress: {}\n", "  egress:\n    external: true\n    name: jnpt_default\n"},
+		{"abholer im jnpt_default", egressBlock, "  egress:\n    external: true\n    name: jnpt_default\n"},
 		{"read_only fehlt", "    read_only: true\n", "    read_only: false\n"},
 		// #1041: genau ein zusätzlicher Mount in der Sandbox, read-only; der
 		// vermittler schreibt Inhalte; Init legt nur die Wurzelordner an.
