@@ -25,6 +25,15 @@ func newTransport() *http.Transport {
 		IdleConnTimeout: 60 * time.Second, MaxIdleConns: 32}
 }
 
+// newProxyTransport ist der Transport des /mcp-Proxys: dieselben Vorgaben wie
+// newTransport (kein Umgebungs-Proxy, expliziter TCP-Dialer), nur die Wartezeit
+// auf die Antwort-Header folgt der Proxy-Frist statt 30 s.
+func newProxyTransport(headerTimeout time.Duration) *http.Transport {
+	t := newTransport()
+	t.ResponseHeaderTimeout = headerTimeout
+	return t
+}
+
 // Listen disables MPTCP explicitly, independently of GODEBUG and kernel defaults.
 func Listen(ctx context.Context, addr string) (net.Listener, error) {
 	return newListenConfig().Listen(ctx, "tcp", addr)

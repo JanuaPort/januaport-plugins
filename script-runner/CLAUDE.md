@@ -1254,6 +1254,21 @@ Die Sitzungstabelle bleibt auf 4096 Einträge begrenzt: zuerst abgelaufene entfe
 bei weiter voller Tabelle den frühesten Ablauf verdrängen, statt Anmeldungen mit
 503 zu sperren. Das Erneuern eines vorhandenen Tokens verdrängt keine andere Sitzung.
 
+**`/mcp`-Proxy ohne 30-s-Grenze (#1424):** Der Proxy hat einen eigenen `proxyClient`
+ohne `Client.Timeout`; der 30-s-`client` bedient nur Paketabruf und Anmeldung.
+Die Frist kommt über `context.WithTimeout(r.Context(), proxyTimeout)`: Standard
+`defaultProxyTimeout` = Wandzeit-Decke des Vertrags (`max_wall_s` 86400) plus eine
+Minute, überschreibbar über `Config.ProxyTimeout` (Tests). Ein Abbruch des Browsers
+bricht den Upstream ab. `newProxyTransport` baut auf `newTransport` (kein
+Umgebungs-Proxy, derselbe explizite TCP-Dialer, keine Redirects, Ziel nur
+`Config.GatewayURL`) und setzt nur `ResponseHeaderTimeout` auf die Proxy-Frist —
+kein zweiter, ungeprüfter Netzweg. Ein Kopierfehler von `io.Copy` nach dem
+Header-Versand wird als `apphost_proxy_copy_failed` mit fester Ursache
+(`browser_gone`, `deadline`, `upstream`) geloggt, nie mit Inhalt, Token oder
+Query; der Status lässt sich dann nicht mehr ändern, der Browser sieht den bis
+dahin gelieferten Teil. Der `/mcp`-Proxy flusht nicht je Ereignis (kein
+Streaming-Versprechen über die Vollständigkeit hinaus).
+
 | Invariante | Adaptertest |
 |---|---|
 | Hash und Pfad | `TestInvariant1VerifiedPackageAtHTTP` |
@@ -1270,6 +1285,7 @@ bei weiter voller Tabelle den frühesten Ablauf verdrängen, statt Anmeldungen m
 | App ausschließlich aus dem Host | `TestInvariant5AppFromHostAtHTTP` |
 | Cookie- und CSP-Literale, begrenzte Sitzungsdauer | `TestInvariant6CookiesAndCSPAtHTTP` |
 | Origin, Headerfilter, Bodygrenze, 401 und Geheimnisfreiheit | `TestInvariant7ProxyAtHTTP`, `TestLogsNeverContainCredentialsOrQuery` |
+| `/mcp` ohne 30-s-Grenze: langsame Header und verzögerter Körper kommen vollständig an; Frist ist die Obergrenze; Browser-Abbruch bricht den Upstream ab; Kopierfehler geloggt ohne Inhalt; gleiche Netz-Vorgaben wie der Paket-Client (#1424) | `TestProxySlowHeadersOutlastPackageClientDeadline`, `TestProxySlowBodyArrivesComplete`, `TestProxyDeadlineBoundsHeaderWait`, `TestProxyBrowserAbortCancelsUpstream`, `TestProxyCopyFailureIsLoggedWithoutContent`, `TestProxyCompleteCallLogsNoCopyFailure`, `TestProxyClientKeepsNetworkRestrictions`, `TestProxyDefaultDeadlineCoversContractMaxWall`, `TestProxyTransportExplicitTCPUnderMultipathEnvironment` |
 | Getrennte Listener und Abmeldung | `TestStaticLogoutAndRelaySeparationAtHTTP` |
 | ETag, Widerruf und Schlüsselrotation | `TestCacheETagRevocationAndKeyRotationAtHTTP` |
 | Genau Apps-Netz, genau ein Schlüsselmount, Box-Gleichheit | `TestInvariant10ApphostNetworkAndMounts` |
