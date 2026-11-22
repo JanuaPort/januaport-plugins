@@ -104,9 +104,12 @@ def prozess_messen(name, daten, schwellwert, groesse, ueberlappung):
 
 def tabelle(name, daten, result):
     gruppen = [("gesamt", list(range(len(daten))))]
-    for feld in ("sprache", "form"):
-        for wert in sorted({z[feld] for z in daten}):
-            gruppen.append((f"{feld}:{wert}", [i for i, z in enumerate(daten) if z[feld] == wert]))
+    schwerpunkt = [i for i, z in enumerate(daten) if z["klasse"] == "md_exfiltration"]
+    if schwerpunkt:
+        gruppen.append(("**md_exfiltration (Schwerpunkt)**", schwerpunkt))
+    for feld in ("sprache", "form", "klasse", "gegenstueck_zu"):
+        for wert in sorted({z[feld] for z in daten if feld in z}):
+            gruppen.append((f"{feld}:{wert}", [i for i, z in enumerate(daten) if z.get(feld) == wert]))
     zeilen = []
     for gruppe, indizes in gruppen:
         teil = [daten[i] for i in indizes]

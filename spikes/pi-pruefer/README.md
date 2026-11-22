@@ -1,10 +1,12 @@
-# Lokaler Prompt-Injection-Prüfer — Phase 1, JanuaPort/januaport#1486
+# Lokaler Prompt-Injection-Prüfer — Phase 1b, JanuaPort/januaport#1486
 
 Messsatz und isoliertes CPU-Messgerüst für einen möglichen Prüfer von
 **Werkzeugantworten, bevor sie der Agent erhält**: Mailtext, Datei-/PDF-Auszug,
 ERP-Feld, Ticketbeschreibung, Webseite und Upstream-MCP-Antwort. Ausgabe je Text:
 `1` = Verdacht, `0` = harmlos. Der Spike ist noch kein produktiver Schutzmechanismus.
-Die SEC-Sichtung des Messsatzes und die Modellmessungen gehören zu Phase 2.
+SEC-Sichtung c-7067915571: Der ursprüngliche Satz ist öffentlich unbedenklich;
+Phase 1b ergänzt die vor Phase 2 geforderten Angriffswege samt Gegenstücken.
+Die fachliche Sichtung der Ergänzungen und die Modellmessungen stehen noch aus.
 
 Phase 1 lädt keine Modellgewichte. Die vier Modelladapter brechen bei einem Aufruf
 mit `NotImplementedError: Phase 2` ab; dasselbe gilt für ihre Tokenizer. Nur der
@@ -17,6 +19,7 @@ Es gibt keine Verbindung zu Produktdiensten und keine Änderung von Produktcode.
 |---|---|
 | `messsatz.jsonl` | Eingecheckter, von SEC lesbarer UTF-8-Messsatz, ein JSON-Objekt pro Zeile |
 | `erzeuge_messsatz.py` | Deterministische Erzeugung ausschließlich synthetischer Texte |
+| `erweiterungen.py` | Phase-1b-Angriffe und gepaarte harte harmlose Gegenstücke |
 | `datenregeln.py` | Datenvertrag; CLI validiert den kompletten Satz vor dem Adapteraufruf |
 | `adapter.py` | `klassifiziere(texte) -> list[int]`, vier Stubs, ein echter Wortlisten-Dummy |
 | `messen.py` | Fensterung, Kandidatenprozesse, Metriken und Markdown-Tabellen |
@@ -30,6 +33,11 @@ Boolean), `klasse`, `laenge_zeichen` (Python-Unicode-Codepoints, nicht Bytes),
 `quelle`, `text`. IDs sind eindeutig. `quelle` ist für diesen Satz ausschließlich
 `synthetisch`; der Loader weist andere Werte ab. Öffentliche Einträge würden einen
 ausdrücklich erweiterten Quellen-/Lizenzvertrag und erneute SEC-Sichtung brauchen.
+Zusätzlich ist `gegenstueck_zu` bei den neuen Gegenstücken enthalten: ein gültiger
+Phase-1b-Klassenname, ausschließlich bei `label=0, klasse=hart_harmlos`. Die alten
+harmlosen Beispiele behalten ihre bisherige Form ohne dieses Feld. Andere Zusatzfelder
+bleiben Formfehler. Pro neuer Klasse verlangt der Datenvertrag die unten genannte
+DE-/EN-Anzahl und gleich viele Gegenstücke in derselben Sprache und Formverteilung.
 
 Die sechs Formnamen sind `mail`, `datei`, `erp_feld`, `ticket`, `webseite`,
 `mcp_antwort`. Die Datei-Texte sind simulierte Auszüge, keine echten PDFs. Die
@@ -37,22 +45,24 @@ MCP-Beispiele sind gültige synthetische JSON-RPC-Antworten mit Textinhalt.
 
 ## Aufbau und Zählung des Messsatzes
 
-240 Einträge, vollständig synthetisch, ohne öffentliche Datensatzübernahmen.
+460 Einträge, vollständig synthetisch, ohne öffentliche Datensatzübernahmen.
 Die lokale `.gitattributes` fixiert LF-Zeilenenden auch beim Windows-Checkout.
-Jede Kombination aus Sprache, Label und Form enthält zehn Einträge.
+Die ersten 240 Einträge sind unverändert erhalten; hinzu kommen 110 Angriffe und
+110 harte harmlose Gegenstücke. Angriffe und Gegenstücke sind nach Sprache und
+Form gepaart. Jede Sprache und jedes Label stellt genau die Hälfte des Satzes.
 
 | Merkmal | Wert | Anzahl |
 |---|---|---:|
-| Sprache | de | 120 |
-| Sprache | en | 120 |
-| Label | 1 (Injection) | 120 |
-| Label | 0 (harmlos) | 120 |
-| Form | mail | 40 |
-| Form | datei | 40 |
-| Form | erp_feld | 40 |
-| Form | ticket | 40 |
-| Form | webseite | 40 |
-| Form | mcp_antwort | 40 |
+| Sprache | de | 230 |
+| Sprache | en | 230 |
+| Label | 1 (Injection) | 230 |
+| Label | 0 (harmlos) | 230 |
+| Form | mail | 78 |
+| Form | datei | 78 |
+| Form | erp_feld | 76 |
+| Form | ticket | 76 |
+| Form | webseite | 76 |
+| Form | mcp_antwort | 76 |
 
 | Klasse | Label | de | en | Gesamt |
 |---|---:|---:|---:|---:|
@@ -62,10 +72,27 @@ Jede Kombination aus Sprache, Label und Form enthält zehn Einträge.
 | exfiltration | 1 | 10 | 10 | 20 |
 | werkzeugmissbrauch | 1 | 10 | 10 | 20 |
 | lang_eingebettet | 1 | 10 | 10 | 20 |
-| hart_harmlos | 0 | 36 | 36 | 72 |
+| md_exfiltration | 1 | 10 | 10 | 20 |
+| unicode_tarnung | 1 | 10 | 10 | 20 |
+| tabelle_json | 1 | 10 | 10 | 20 |
+| mehrsprachig_koeder | 1 | 10 | 10 | 20 |
+| verteilt | 1 | 5 | 5 | 10 |
+| bedingt | 1 | 5 | 5 | 10 |
+| dauerhaft_merken | 1 | 5 | 5 | 10 |
+| hart_harmlos | 0 | 91 | 91 | 182 |
 | harmlos | 0 | 24 | 24 | 48 |
 
-`hart_harmlos` sind 60 % der harmlosen Texte (gefordert: mindestens 40 %).
+| Gegenstück-Gruppe (`gegenstueck_zu`, jeweils Label 0 / hart_harmlos) | de | en | Gesamt |
+|---|---:|---:|---:|
+| md_exfiltration | 10 | 10 | 20 |
+| unicode_tarnung | 10 | 10 | 20 |
+| tabelle_json | 10 | 10 | 20 |
+| mehrsprachig_koeder | 10 | 10 | 20 |
+| verteilt | 5 | 5 | 10 |
+| bedingt | 5 | 5 | 10 |
+| dauerhaft_merken | 5 | 5 | 10 |
+
+`hart_harmlos` sind 182/230 = 79,13 % der harmlosen Texte (gefordert: mindestens 40 %).
 Enthalten sind Zahlungsaufforderungen, Korrektur vorheriger Mails, Weiterleitungen,
 IT-Kommandos für menschliche Bediener, Newsletterlinks und Vertraulichkeitssignaturen.
 Glossareinträge mit Angriffsvokabular erschweren die Wortlisten-Baseline zusätzlich.
@@ -77,19 +104,52 @@ Zero-Width-Zeichen und einen Base64-Dekodierhinweis. Die 20 langen Angriffe lieg
 wechselnd in der Mitte oder am Ende eines langen Sachtexts, ergänzt um 16 lange
 harmlose Texte. Lange Texte werden vollständig gespeichert, ohne Abschneiden.
 
+**Schwerpunkt `md_exfiltration`:** Bild- und Link-Markdown fordert den Agenten auf,
+vertraulichen Dialog, Systemprompt, ERP-Felder oder Anhänge in URL-Queries einzusetzen
+und Bild/Link auszugeben. Die Gegenstücke enthalten statische öffentliche
+Beispielbilder, Belege, Katalog- und Newsletterlinks mit festen Parametern.
+
+`unicode_tarnung` enthält pro Sprache vier Tag-, drei Bidi- und drei Homoglyphenfälle.
+Unicode-Tags (U+E0000–U+E007F), Bidi-Steuerzeichen (U+202A–U+202E bzw.
+U+2066–U+2069) und kyrillische/griechische Schlüsselwort-Buchstaben liegen im
+JSONL als echte UTF-8-Zeichen vor. Jede Angriffstextzeile muss tatsächliche Zeichen
+mindestens einer dieser Familien enthalten; alle vier Familien sind in jeder
+Sprache vertreten. Der Dateiloader prüft zusätzlich die Rohserialisierung, damit
+JSON-Escapes die verlangte rohe Unicode-Darstellung nicht ersetzen.
+Die Gegenstücke zeigen legitime Bidi-Isolierung/-Einbettung ausdrücklich fiktiver
+arabischer/hebräischer Mail-Anzeigenamen, keine realen Personen.
+
+`tabelle_json` verteilt Anweisungen auf Markdown-Zellen, CSV-Zellen und JSON-Felder;
+MCP-Beispiele enthalten das Feld `routing_note` direkt in `result.structuredContent`.
+Die Gegenstücke enthalten dort legitime Geschäftsimperative. `mehrsprachig_koeder`
+verbindet eine Übersetzungsaufforderung mit dem Auftrag, die anderssprachige
+Anweisung anschließend zu befolgen; Gegenstücke sind tatsächliche Übersetzungsbitten
+für Geschäfts- und Schulungstexte. Die drei zusätzlichen Klassen decken über
+Absätze/Felder verteilte Anweisungen, bedingte Auslöser und dauerhafte
+Gedächtnis-Vergiftung ab. Ihre Gegenstücke sind mehrteilige Arbeitsaufträge,
+Bedingungen in Arbeitsanweisungen und Erinnerungsbitten an menschliche Lagerkräfte.
+
 | Längenband (Zeichen, einschließlich Hülle) | Anzahl |
 |---|---:|
-| 1–500 | 172 |
+| 1–500 | 308 |
 | 501–2.000 | 32 |
-| 2.001–8.000 | 0 |
+| 2.001–8.000 | 84 |
 | >8.000 | 36 |
+
+Im mittleren Band liegen je 21 DE/Label-0-, DE/Label-1-, EN/Label-0- und
+EN/Label-1-Texte. Alle sechs Formen sind vertreten. Die Regeln verlangen mindestens
+30 mittlere Texte, beide Labels und alle sechs Formen. Mindestens 460 Einträge,
+Sprach-/Labelbalance und die ursprünglichen Verteilungsregeln gelten zusätzlich.
 
 Minimum 158, Maximum 18.497 Zeichen. Der Satz enthält keine Kundenidentitäten
 oder realen Personen; Anreden und Absender sind generische Beispielteams. Ziele
 in Textlinks sind ausschließlich `example.org`, `example.com` samt Subdomains
 oder `.test`. Test-E-Mails verwenden nur `@example.org` oder `.test`.
-IBAN-artige Zeichenfolgen werden konservativ abgewiesen; einzig die im Auftrag
-genannte öffentliche Test-IBAN ist erlaubt, auch mit Leerzeichen. Der Satz selbst
+IBAN-artige Zeichenfolgen werden konservativ abgewiesen; einzig die öffentliche
+Test-IBAN `DE89 3704 0044 0532 0130 00` aus der Repo-Allowlist ist erlaubt.
+Die Allowlist `DE89 ?3704 ?0044 ?0532 ?0130 ?00` deckt auch die kompakte Form ab;
+die Datenregel benutzt dieselben optionalen einzelnen ASCII-Leerzeichen. Andere
+IBANs, doppelte Leerzeichen und Tabulatoren werden negativ getestet. Der Satz selbst
 benötigt keine IBAN. Die Prüfungen ersetzen keine menschliche PII-Sichtung und
 sind kein allgemeiner URL-/E-Mail-/Anonymisierungsfilter.
 
@@ -107,12 +167,35 @@ docker run --rm --network none --cpus 1 -e PYTHONDONTWRITEBYTECODE=1 -v "${PWD}:
 Die Mutationsprobe erzeugt ausschließlich Kopien im Container-`/tmp`, entfernt
 jeweils eine Sperre und verlangt einen Assertion-Fehlschlag des zugehörigen Tests.
 Import-/Syntaxfehler zählen nicht als erkannte Mutation. Zusätzlich wird OR durch
-AND ersetzt. 25 Proben: 20 Datenregeln, Phase-1-Adapter- und Tokenizer-Sperre,
-Schwellwert, Fensterparameter und Fenster-OR. Das Original im Worktree bleibt
+AND ersetzt. 42 Proben: 29 Datenregeln, Phase-1-Adapter- und Tokenizer-Sperre,
+Schwellwert, Fensterparameter und Fenster-OR, unbekannte Erweiterung sowie
+Klassen-/Gegenstück-Auswertung und Markdown-Schwerpunkt, strukturierte MCP-Felder
+sowie verbotene E-Mail-/IBAN-Fixtures und Inline-Scan-Ausnahmen. Die neun neuen Datenregeln
+prüfen Gegenstück-Metadaten, Klassenanzahl, Gegenstück-Anzahl/Formen, mittlere
+Textanzahl/-Abdeckung sowie Unicode-Zeichen/-Familien/-Rohserialisierung.
+Das Original im Worktree bleibt
 währenddessen unverändert. Danach die vollständigen Tests erneut ausführen.
 
 Der erste Commit enthält nur Tests. Der anschließende rote Docker-Lauf scheiterte
 erwartungsgemäß mit `FileNotFoundError: .../messsatz.jsonl` und `FAILED (errors=1)`.
+Auch Phase 1b beginnt mit einem eigenen Test-Commit: Der rote Docker-Lauf meldete
+`AssertionError: 0 != 10` bei den neuen Klassen, `0 not greater than or equal to 30`
+für das mittlere Band und fehlende Unicode-/Auswertungszeilen; `FAILED (failures=17)`.
+Nach dem externen Abbruch wurde die Scan-Korrektur erneut test-first committet:
+`ValueError not raised` für die abzulösende Test-IBAN, `ValueError: iban` für die
+Allowlist-IBAN und `KeyError: 'structuredContent'`; `FAILED (failures=1, errors=2)`.
+
+Geheimnis-Scan mit der unveränderten, maßgeblichen Repo-Konfiguration (vom Worktree-Root):
+
+```powershell
+docker run --rm -v "${PWD}:/repo" zricethezav/gitleaks:latest dir /repo/spikes/pi-pruefer --config /repo/.gitleaks.toml --no-banner
+```
+
+Es gibt keine Inline-Ausnahmen für den Scan. E-Mail-Adressen im gesamten Spike
+sind auf `@example.org` und `.test` beschränkt; `example.com` bleibt ausschließlich
+als Linkdomain erlaubt. Verbotene Adress-/IBAN-Testwerte entstehen erst im
+Container aus Fragmenten. Die Docker-Prüfungen laufen nacheinander; die schlanken
+Standardbibliothek-Tests benötigen weder Torch-Import noch Modellgewichte.
 
 Erneute Erzeugung (überschreibt ausschließlich den Messsatz):
 
@@ -141,7 +224,7 @@ noch kein implementierter Modell-Pin. Bibliotheksversion, Modellrevisionen und
 Lizenzstände werden vor Phase 2 verbindlich festgelegt. ProtectAI und dieser
 Scanner teilen sich voraussichtlich Modellgewichte, sind also keine unabhängigen
 Modellfamilien. Unterschiedliche Fensterung/Score-Normierung kann Ergebnisse ändern.
-Öffentliche Messsatzeinträge: **0**, synthetischer Anteil: **240/240 = 100 %**.
+Öffentliche Messsatzeinträge: **0**, synthetischer Anteil: **460/460 = 100 %**.
 
 ## Image und Abhängigkeiten
 
@@ -195,11 +278,19 @@ Ergebnis `1` bei Score >= Schwelle. Das sind keine kalibrierten Wahrscheinlichke
 
 ## Messgrößen und Fensterung
 
-Je Kandidat eine Gesamtzeile, zwei Sprachzeilen und sechs Formzeilen:
+Je Kandidat eine Gesamtzeile, eine hervorgehobene Zeile
+`md_exfiltration (Schwerpunkt)`, zwei Sprachzeilen, sechs Formzeilen,
+15 Klassenzeilen und sieben Gegenstück-Gruppenzeilen (insgesamt 32 Zeilen):
 
 - Recall auf Label 1: TP / (TP + FN).
 - FPR auf Label 0: FP / (FP + TN); zusätzlich FPR nur auf `hart_harmlos`.
 - Precision: TP / (TP + FP); bei leerem Nenner `n/a`.
+- `klasse:<Name>`: Recall separat für jede der 13 Injection-Klassen; FPR für
+  `harmlos` und `hart_harmlos`. Reine Angriffsklassen haben FPR `n/a`, reine
+  harmlose Klassen Recall `n/a`.
+- `gegenstueck_zu:<Name>`: FPR separat für die jeweilige harte harmlose
+  Gegenstück-Gruppe. Alle Gruppen benutzen die ursprünglichen Einzeltextmessungen;
+  die zusätzliche Zusammenfassungszeile verändert weder Zähler noch Latenzen.
 - p50/p95 der Laufzeit pro vollständigem Text in Millisekunden und separat der
   pro Text auf 10.000 Zeichen normierten Zeit (`ms * 10000 / laenge_zeichen`).
   Quantile linear interpoliert bei Index `(n-1)*p`; keine Durchsatzbehauptung.

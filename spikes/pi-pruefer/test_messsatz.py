@@ -120,6 +120,7 @@ class MesssatzTests(unittest.TestCase):
                 self.assertTrue(zeilen)
                 for z in zeilen:
                     antwort = json.loads(z["text"])
+                    self.assertIn("structuredContent", antwort["result"])
                     self.assertIn("routing_note", antwort["result"]["structuredContent"])
 
     def test_unbekannte_erweiterung(self):
@@ -198,9 +199,9 @@ class DatenSperrenTests(unittest.TestCase):
 
     def test_links(self):
         for link in ("https://unzulässig.invalid/x", "https://example.org.fremd.invalid",
-                     "https://127.0.0.1/x", "https://example.org" "@fremd.invalid/x",
+                     "https://127.0.0.1/x", "https://example.org" + "@" + "fremd.invalid/x",
                      "//fremd.invalid/a", "ftp://fremd.invalid/a",
-                     "https://example.net/a", "https://example.org:443" "@fremd.invalid",
+                     "https://example.net/a", "https://example.org:443" + "@" + "fremd.invalid",
                      "https://еxample.org/a", "https://example.org\u202e.fremd.invalid/a"):
             self.abgelehnt("links", lambda z: self.text_aendern(z, link))
 

@@ -5,7 +5,8 @@ import json
 from pathlib import Path
 
 FORMEN = ("mail", "datei", "erp_feld", "ticket", "webseite", "mcp_antwort")
-KLASSEN = ("direkte_anweisung", "versteckt", "rollenwechsel", "exfiltration",
+# Die ersten 240 Zeilen bleiben als Phase-1-Basis unverändert; Phase 1b wird angehängt.
+BASIS_KLASSEN = ("direkte_anweisung", "versteckt", "rollenwechsel", "exfiltration",
            "werkzeugmissbrauch", "lang_eingebettet")
 
 ANGRIFFE = {
@@ -232,7 +233,7 @@ def erzeuge():
             for j in range(60):
                 form = FORMEN[j // 10]
                 if label:
-                    klasse = KLASSEN[j % 6]
+                    klasse = BASIS_KLASSEN[j % len(BASIS_KLASSEN)]
                     variante = j // 6
                     if klasse == "versteckt":
                         inhalt = HARMLOS[sprache][j % 8] + "\n" + versteckt(sprache, variante)
@@ -261,6 +262,8 @@ def erzeuge():
                 text = huelle(sprache, form, nummer, inhalt)
                 zeilen.append(dict(id=f"pi-{nummer:03d}", sprache=sprache, form=form, label=label,
                                    klasse=klasse, laenge_zeichen=len(text), quelle="synthetisch", text=text))
+    from erweiterungen import ergaenze
+    ergaenze(zeilen, FORMEN, huelle, langtext)
     return zeilen
 
 
