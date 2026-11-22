@@ -2,6 +2,12 @@
 
 ## Unveröffentlicht
 
+## 0.5.6 — 2026-11-22 (JanuaPort/januaport#1342)
+
+### Upstream-Prüfpunkt
+
+- `wailsapp/go-webview2` v1.0.19 unverändert (Upstream v1.0.23), 0 Advisories im Repo und in der GitHub-Advisory-Datenbank (BOX, 22.11.); Build mit gepinntem `golang:1.26.11`. `TestWindowsWebViewWebRTCNull` samt Kontrolle grün auf dem Testgerät gegen WebView2-Runtime 156.0.4314.58.
+
 ### Bedienfeld öffnet kein Fenster mehr für eine gerade entzogene App (JanuaPort/januaport#1342)
 
 - **Fehler:** Kam während des Öffnens einer App eine Liste ohne sie, fand `CloseMissing` noch kein Fenster; danach baute das Bedienfeld es trotzdem. Die Liste meldet nur Änderungen, das Fenster blieb offen und `webview\<app>` gesperrt, das Aufräumen des Entzugs scheiterte bis zur nächsten Listenänderung.
