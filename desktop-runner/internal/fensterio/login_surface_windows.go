@@ -84,6 +84,7 @@ func (s *Surface) UpdateApps(l AppList) {
 	if !ok {
 		return // CloseMissing behandelt verschwundene Apps.
 	}
+	wasPersonal := s.o.ShowLoginBar()
 	s.o.Mode, s.o.ManifestSeq = mode, l.ManifestSeq
 	if s.o.ShowLoginBar() && s.o.login != nil {
 		if s.loginButton == 0 {
@@ -101,6 +102,10 @@ func (s *Surface) UpdateApps(l AppList) {
 			}
 		}
 		s.loginButton, s.logoutButton, s.accountLabel = 0, 0, 0
+		if wasPersonal && s.o.login != nil {
+			// b -> a: Die persönliche Sitzung und die Daten der Person bleiben nicht im Fenster (#1537).
+			s.o.login.ToDeviceMode(s)
+		}
 	}
 	s.layout()
 }
