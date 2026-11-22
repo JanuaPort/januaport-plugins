@@ -150,6 +150,17 @@ drei.
     Konstruktion nicht.
 13. **Der Master-Key gehört dem Kunden.** Er wird bei der Einrichtung erzeugt,
     geht versiegelt an den Kunden; der Hersteller behält keine Kopie.
+14. **Geheimnisse stehen in `RUNBOOK.md` nie als Literal in einer Zeile.**
+    Master-Key und Tailscale-Schlüssel kommen per `read -rs`, die Datei entsteht
+    unter `umask 077`, danach `unset`; sonst läge der Wert im Shell-Verlauf und
+    die Zwischendatei weltlesbar. Der Host-Knoten bekommt einen einmal nutzbaren,
+    kurzlebigen Schlüssel und immer `--accept-dns=false`. Wächter:
+    `../script-runner/internal/hygiene/box_runbook_test.go`.
+15. **`schreibe_datei` in `hardening.sh` bricht bei jedem Schreibfehler ab.**
+    Sie läuft im `if`, dort greift `set -e` nicht; `cat` und `install` tragen
+    deshalb `|| fehler`. Ohne das meldet sie „geändert“, obwohl nichts auf der
+    Platte steht. Die Funktion bleibt wortgleich mit `deploy/box/scripts/hardening.sh`
+    im Produkt-Repo. Wächter: `../script-runner/internal/hygiene/box_hardening_test.go`.
 
 ## Bewusste Design-Entscheidungen
 
@@ -263,6 +274,9 @@ drei.
 
 ## Verifikation
 
+- `box_hardening_test.go` fährt `schreibe_datei` aus dem echten Skript ohne root
+  (Ziel unter einer Datei, Zwischendatei auf `/dev/full`); `box_runbook_test.go` prüft die
+  Geheimnis-Zeilen und das EBICS-Drop-in des Runbooks (#1539).
 - `bash -n` für alle Shell-Skripte, `python3 -m py_compile` für
   `scripts/lasttest.py` und `sharepoint/*.py`.
 - `docker compose -f docker-compose.box.yml config -q` mit gesetztem
