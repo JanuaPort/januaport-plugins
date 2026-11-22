@@ -100,6 +100,12 @@ type fixture struct {
 
 func setup(t *testing.T, files ...fileSpec) *fixture {
 	t.Helper()
+	return setupWith(t, nil, files...)
+}
+
+// setupWith lässt die Konfiguration vor New anpassen (zum Beispiel die Proxy-Frist).
+func setupWith(t *testing.T, mutate func(*Config), files ...fileSpec) *fixture {
+	t.Helper()
 	if len(files) == 0 {
 		files = []fileSpec{{"index.html", "<h1>app</h1>", ""}, {"main.js", "console.log(1)", ""}, {"jnpt.app.json", "{}", ""}}
 	}
@@ -112,7 +118,11 @@ func setup(t *testing.T, files ...fileSpec) *fixture {
 	gw := httptest.NewServer(http.HandlerFunc(f.gateway))
 	t.Cleanup(gw.Close)
 	var err error
-	f.h, err = New(Config{Domain: "example.test", GatewayURL: gw.URL, LoginURL: "https://gateway.example.test", KeyPath: f.keyPath, Now: func() time.Time { return f.now }, Logger: slog.New(slog.NewTextHandler(&f.logs, nil))})
+	cfg := Config{Domain: "example.test", GatewayURL: gw.URL, LoginURL: "https://gateway.example.test", KeyPath: f.keyPath, Now: func() time.Time { return f.now }, Logger: slog.New(slog.NewTextHandler(&f.logs, nil))}
+	if mutate != nil {
+		mutate(&cfg)
+	}
+	f.h, err = New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
