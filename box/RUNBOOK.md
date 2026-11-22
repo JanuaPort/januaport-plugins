@@ -558,10 +558,13 @@ und bringt den Host **nicht** ins Tailnet:
 curl -fsSL https://tailscale.com/install.sh | sh
 # Eigener Schlüssel für den Host-Knoten aus der Tailscale-Konsole: EINMAL nutzbar
 # (nicht wiederverwendbar), kurzlebig (Ablauf höchstens 1 Tag), mit ACL-Tag. Per
-# read -rs eingeben, nie als Literal in die Zeile (Shell-Verlauf, Prozessliste).
+# read -rs eingeben, nie als Literal in die Zeile (Shell-Verlauf). Der Schlüssel
+# geht per Datei an tailscale (--auth-key=file:), nicht als Argument: printf ist
+# ein Shell-Builtin, so steht er in keiner Prozessliste.
 read -rs TSKEY
-tailscale up --ssh=false --accept-dns=false --hostname=<box>-host --authkey "$TSKEY"
-unset TSKEY
+( umask 077; printf '%s' "$TSKEY" > /run/jnpt-tskey ); unset TSKEY
+tailscale up --ssh=false --accept-dns=false --hostname=<box>-host --auth-key=file:/run/jnpt-tskey
+shred -u /run/jnpt-tskey
 ip -brief addr show tailscale0        # jetzt greift die nftables-Regel für Port 22
 tailscale dns status | head -3        # disabled
 ```
