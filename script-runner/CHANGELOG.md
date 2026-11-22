@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.0 — 2026-11-22 (JanuaPort/januaport#1215 P2)
+
 - **JanuaPort/januaport#1215 (P2): ETL-Rohstrom über den Vermittler, Vertragsfassung 3.**
   Ein Skript mit `etl_stream` im Manifest ruft `januaport.etl_stream(integration, query_id,
   params=None)` und bekommt einen Iterator über Zeilen-Dicts (nie gesammelt, höchstens ein
