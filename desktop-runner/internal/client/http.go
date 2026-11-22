@@ -64,9 +64,10 @@ type fristen struct {
 	kurzGesamt   time.Duration // dieselben Aufrufe: Kopf und Körper zusammen
 	werkzeugKopf time.Duration // App-Gateway: bis zum Antwortkopf; die Gesamtzeit trägt der Kontext (60 s je Befehl)
 	stillstand   time.Duration // Paketabruf: so lange ohne ein einziges empfangenes Byte
+	laufGrenze   time.Duration // Werkzeugaufrufe des Laufs: Obergrenze ohne Deadline im Kontext, zugleich Kopf-Frist
 }
 
-var standardFristen = fristen{kurzKopf: 30 * time.Second, kurzGesamt: 40 * time.Second, werkzeugKopf: 60 * time.Second, stillstand: 30 * time.Second}
+var standardFristen = fristen{kurzKopf: 30 * time.Second, kurzGesamt: 40 * time.Second, werkzeugKopf: 60 * time.Second, stillstand: 30 * time.Second, laufGrenze: 24 * time.Hour}
 
 // grenzen ist die Frist eines einzelnen Aufrufs. gesamt 0: keine Gesamtfrist, der Kontext begrenzt. stillstand:
 // kopf gilt auch im Körper als Frist ohne neues Byte, eine Gesamtfrist gibt es nicht.
@@ -75,8 +76,16 @@ type grenzen struct {
 	stillstand   bool
 }
 
-func (a *API) grenzen(endpoint, appToken string) grenzen {
+func (a *API) grenzen(ctx context.Context, endpoint, runToken, appToken string) grenzen {
 	switch {
+	case runToken != "":
+		// Die Zeitgrenze des Laufs trägt dessen Kontext (WithTimeout aus Wandzeit und Pin-Frist, höchstens 86400 s). Die Kopf-
+		// Frist unterschreitet sie nie; ohne Deadline im Kontext begrenzt die Laufzeitgrenze, damit nichts unbegrenzt hängt.
+		g := grenzen{kopf: a.fristen.laufGrenze}
+		if _, ok := ctx.Deadline(); !ok {
+			g.gesamt = a.fristen.laufGrenze
+		}
+		return g
 	case strings.HasPrefix(endpoint, "packages/"):
 		return grenzen{kopf: a.fristen.stillstand, stillstand: true}
 	case appToken != "":
@@ -224,7 +233,7 @@ func (a *API) exchange(ctx context.Context, method, endpoint string, body any, s
 		reader = bytes.NewReader(raw)
 	}
 	// Jeder Aufruf trägt seine eigene Frist (grenzen). Der Client selbst hat weder Gesamtfrist noch Kopf-Frist.
-	lim := a.grenzen(endpoint, appToken)
+	lim := a.grenzen(ctx, endpoint, runToken, appToken)
 	parent := ctx
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
