@@ -43,8 +43,11 @@ type Engine struct {
 	activeDone      chan struct{}
 	cancel          context.CancelFunc
 	syncErr         error
-	pruneFault      bool   // guarded by mu; letzter Aufräumversuch scheiterte (Log nur beim ersten Mal)
-	pruneHook       func() // nur Tests: läuft in pruneStored unter der Zustandssperre (#1421)
+	envPruneFault   bool       // guarded by mu; wie pruneFault, für das Abräumen der Umgebungen (#1537)
+	pruneFault      bool       // guarded by mu; letzter Aufräumversuch scheiterte (Log nur beim ersten Mal)
+	pruneHook       func()     // nur Tests: läuft in pruneStored unter der Zustandssperre (#1421)
+	useMu           sync.Mutex // Blattsperre: nimmt nie eine andere Sperre
+	useEnv          string     // guarded by useMu; Umgebungsschlüssel des laufenden Jobs, vom Abräumen ausgenommen (#1537)
 	halt            haltState
 	haltLoaded      bool
 	haltFault       bool
@@ -161,6 +164,7 @@ func (e *Engine) Sync(ctx context.Context) (err error) {
 	e.Config = config
 	e.mu.Unlock()
 	e.pruneStored()
+	e.pruneEnvironments(m)
 	e.ensureApps(ctx, m)
 	return nil
 }
@@ -373,6 +377,11 @@ func (e *Engine) executeReserved(ctx context.Context, r Result, env Environment,
 	if why != nil {
 		return refused(r, why)
 	}
+	release, err := e.holdEnv(env.Dir)
+	if err != nil {
+		return finish(r, "internal", "")
+	}
+	defer release()
 	if !safeName(env.Dir) || env.Dir != envKey(env.Origin) || env.Origin.Commit != r.Commit {
 		return refused(r, ErrHash)
 	}
@@ -625,7 +634,9 @@ func (e *Engine) removeRunTemp(dir string) {
 // Kern dauerhaft abgelehntes Ergebnis, bleibt davon nur eine feste Logzeile.
 func (e *Engine) deliverOne(ctx context.Context) {
 	before := e.State.Dropped()
-	_ = e.State.DeliverOne(func(r Result) error {
+	var reported string // Testauftrag, dessen Ergebnis der Kern bestätigt hat
+	err := e.State.DeliverOne(func(r Result) error {
+		reported = ""
 		if len(r.Result) > 0 {
 			var order TestOrder
 			if !uuidRE.MatchString(r.JobID) {
@@ -634,13 +645,53 @@ func (e *Engine) deliverOne(ctx context.Context) {
 			if err := e.State.Load("test-"+r.JobID, &order); err != nil {
 				return err
 			}
-			return e.API.ReportTest(ctx, r, e.Credential, order)
+			if err := e.API.ReportTest(ctx, r, e.Credential, order); err != nil {
+				return err
+			}
+			reported = r.JobID
+			return nil
 		}
 		return e.API.Report(ctx, r)
 	})
+	// Erst nach dem Journal: Scheitert dessen Speichern, wiederholt sich die Zustellung und braucht das Siegel noch.
+	if err == nil && reported != "" {
+		e.dropTestSeal(reported)
+	}
 	if after := e.State.Dropped(); after > before {
 		e.logCode(LogResultDropped, after)
 	}
+}
+
+// dropTestSeal löscht die Freigabebindung test-<job_id> eines bestätigten Testergebnisses (#1537). Scheitert das, bleibt
+// sie liegen; die Zustellung ist davon nicht berührt.
+func (e *Engine) dropTestSeal(jobID string) {
+	_ = e.State.Use(func() error { return removeTree(filepath.Join(e.State.Root, "test-"+jobID)) })
+}
+
+// holdEnv nimmt den Umgebungsschlüssel des Jobs vom Abräumen aus (#1537). Das Eintragen läuft unter der
+// Zustandssperre wie das Abräumen: Es liegt entweder ganz davor (der Job prüft danach, was übrig ist) oder ganz danach
+// (das Abräumen sieht den Schlüssel). Genau ein Job läuft zugleich (runMu).
+func (e *Engine) holdEnv(key string) (release func(), err error) {
+	err = e.State.Use(func() error {
+		e.useMu.Lock()
+		e.useEnv = key
+		e.useMu.Unlock()
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return func() {
+		e.useMu.Lock()
+		e.useEnv = ""
+		e.useMu.Unlock()
+	}, nil
+}
+
+func (e *Engine) heldEnv() string {
+	e.useMu.Lock()
+	defer e.useMu.Unlock()
+	return e.useEnv
 }
 
 // abschluss beendet einen Lauf, dessen Marker schon steht, nach einem internen Fehler (Speichern, Uhr): Ohne

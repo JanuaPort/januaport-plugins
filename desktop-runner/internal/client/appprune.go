@@ -55,13 +55,17 @@ func (e *Engine) storedManifestLocked() (Manifest, bool) {
 
 // notePruneResult loggt den festen Code `10 2` nur beim ersten Fehlschlag in Folge, nicht bei jedem Takt. Ein
 // Widerruf ist kein App-Fehler.
-func (e *Engine) notePruneResult(err error) {
+func (e *Engine) notePruneResult(err error) { e.noteFault(&e.pruneFault, err) }
+
+// noteFault führt flag (unter e.mu) und loggt nur beim ersten Fehlschlag in Folge. Jede Abräumart hat ihr eigenes Flag,
+// sonst setzte der Erfolg der einen die Warnung der anderen bei jedem Durchlauf zurück.
+func (e *Engine) noteFault(flag *bool, err error) {
 	if errors.Is(err, ErrRevoked) {
 		return
 	}
 	e.mu.Lock()
-	first := err != nil && !e.pruneFault
-	e.pruneFault = err != nil
+	first := err != nil && !*flag
+	*flag = err != nil
 	e.mu.Unlock()
 	if first {
 		e.logCode(LogAppFault, 2)
@@ -78,15 +82,17 @@ func pruneWithdrawn(root string, keep map[string]bool) error {
 			first = err
 		}
 	}
-	note(pruneArea(filepath.Join(root, "apps"), keep))
+	withdrawn := func(name string) bool { return fenster.ValidAppName(name) && !keep[name] }
+	note(pruneArea(filepath.Join(root, "apps"), withdrawn))
 	note(pruneSeals(root, keep))
-	note(pruneArea(filepath.Join(root, "webview"), keep))
+	note(pruneArea(filepath.Join(root, "webview"), withdrawn))
 	return first
 }
 
-// pruneArea löscht die direkten Einträge von dir, deren Name ein gültiger, nicht mehr zugewiesener App-Name ist.
-// removeTree folgt keinem Verweis; ein Eintrag, der selbst ein Verweis ist, verliert nur den Verweis.
-func pruneArea(dir string, keep map[string]bool) error {
+// pruneArea löscht die direkten Einträge von dir, für die stale gilt (gültiger Name, nicht mehr zugewiesen). Der Name
+// kommt nur aus der lokalen Aufzählung. removeTree folgt keinem Verweis; ein Eintrag, der selbst ein Verweis ist,
+// verliert nur den Verweis.
+func pruneArea(dir string, stale func(name string) bool) error {
 	info, err := os.Lstat(dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -104,7 +110,7 @@ func pruneArea(dir string, keep map[string]bool) error {
 	var first error
 	for _, entry := range entries {
 		name := entry.Name()
-		if !fenster.ValidAppName(name) || keep[name] {
+		if !stale(name) {
 			continue
 		}
 		if err = removeTree(filepath.Join(dir, name)); err != nil && first == nil {

@@ -13,7 +13,6 @@ import (
 // Testergebnis bestätigt hat und das Journal den Eintrag nicht mehr führt. Vorher bleibt es, denn jede Wiederholung
 // der Zustellung braucht es (Invariante 13: Replay prüft erneut).
 
-
 // testSiegelBett legt Siegel und Testergebnis ab und liefert die Engine gegen einen Fake-Kern, der mit status antwortet.
 func testSiegelBett(t *testing.T, status int) (*Engine, *State, string) {
 	t.Helper()
