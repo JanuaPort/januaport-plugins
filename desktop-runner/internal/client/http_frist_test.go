@@ -50,7 +50,7 @@ func TestStandardfristen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := fristen{kurzKopf: 30 * time.Second, kurzGesamt: 40 * time.Second, werkzeugKopf: 60 * time.Second, stillstand: 30 * time.Second}
+	want := fristen{kurzKopf: 30 * time.Second, kurzGesamt: 40 * time.Second, werkzeugKopf: 60 * time.Second, stillstand: 30 * time.Second, laufGrenze: 24 * time.Hour}
 	if a.fristen != want {
 		t.Fatalf("fristen = %+v, erwartet %+v", a.fristen, want)
 	}
@@ -252,4 +252,69 @@ func TestKurzeAufrufeBehaltenKopfUndGesamtfrist(t *testing.T) {
 			t.Fatalf("Gesamtfrist: %v nach %v", err, time.Since(start))
 		}
 	})
+}
+
+func mcpServer(t *testing.T, kopfVerzoegerung, koerperPause time.Duration, f fristen) *API {
+	t.Helper()
+	return fristAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Jnpt-Run-Token") != "synthetic" {
+			t.Error("Lauf-Token fehlt")
+		}
+		select {
+		case <-time.After(kopfVerzoegerung):
+		case <-r.Context().Done():
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,`))
+		w.(http.Flusher).Flush()
+		select {
+		case <-time.After(koerperPause):
+		case <-r.Context().Done():
+			return
+		}
+		_, _ = w.Write([]byte(`"result":{"ok":true}}`))
+	}, f)
+}
+
+// Werkzeugaufrufe des Laufs (API.MCP): wie der App-Gateway keine Client-Gesamtfrist und keine kurze Kopf-Frist.
+// Die Zeitgrenze trägt der Kontext des Laufs (WithTimeout aus Wandzeit und Pin-Frist).
+func TestLaufWerkzeugaufrufUeberDieKurzenFristenHinausGelingt(t *testing.T) {
+	f := fristen{kurzKopf: 100 * time.Millisecond, kurzGesamt: 200 * time.Millisecond, werkzeugKopf: 100 * time.Millisecond, stillstand: time.Second, laufGrenze: time.Minute}
+	a := mcpServer(t, 400*time.Millisecond, 400*time.Millisecond, f)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	res, err := a.MCP(ctx, "synthetic", 1, "werkzeug", nil)
+	if err != nil || string(res) != `{"ok":true}` {
+		t.Fatalf("Werkzeugaufruf des Laufs: %s %v", res, err)
+	}
+}
+
+func TestLaufWerkzeugaufrufEndetMitDemKontextDesLaufs(t *testing.T) {
+	f := fristen{kurzKopf: time.Minute, kurzGesamt: time.Minute, werkzeugKopf: time.Minute, stillstand: time.Minute, laufGrenze: time.Minute}
+	a := mcpServer(t, 5*time.Second, 0, f)
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	if _, err := a.MCP(ctx, "synthetic", 1, "werkzeug", nil); err == nil {
+		t.Fatal("Aufruf trotz abgelaufenem Kontext erfolgreich")
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Fatalf("Kontext nicht beachtet: %v", d)
+	}
+}
+
+// Trägt der Kontext keine Deadline, gilt die Laufzeitgrenze (obere Grenze von timeout_s) als Obergrenze: Nichts hängt unbegrenzt.
+func TestLaufWerkzeugaufrufOhneDeadlineHatEineObergrenze(t *testing.T) {
+	f := fristen{kurzKopf: time.Minute, kurzGesamt: time.Minute, werkzeugKopf: time.Minute, stillstand: time.Minute, laufGrenze: 300 * time.Millisecond}
+	a := mcpServer(t, 5*time.Second, 0, f)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second) // nur Sicherheitsnetz des Tests, nicht der Kontext des Laufs
+	defer cancel()
+	start := time.Now()
+	_, err := a.MCP(context.WithoutCancel(ctx), "synthetic", 1, "werkzeug", nil)
+	if err == nil || time.Since(start) > 2*time.Second {
+		t.Fatalf("keine Obergrenze: %v nach %v", err, time.Since(start))
+	}
 }
