@@ -46,6 +46,12 @@ class FakeScanner:
 
 
 class AdapterTests(unittest.TestCase):
+    def test_scanner_revision_abweichung(self):
+        from adapter import pruefe_scanner_revision, MODELL_REVISION
+        self.assertIsNone(pruefe_scanner_revision(MODELL_REVISION))
+        with self.assertRaisesRegex(ValueError, "scanner_revision"):
+            pruefe_scanner_revision("andere-revision")
+
     def test_protectai_labelrichtung(self):
         from adapter import ProtectAI
         p = FakePipeline([{"label": "SAFE", "score": .8}, {"label": "INJECTION", "score": .7}])
