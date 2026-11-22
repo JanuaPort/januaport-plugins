@@ -28,7 +28,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 | `cmd/bedienfeld/main_windows.go`, `internal/panel/model.go`, `internal/panelio/link.go` | Nativer Tray-Prozess, reines Modell und getrennter Pipe-I/O-Adapter |
 | `internal/pipe/schema.go`, `internal/pipe/security.go`, `internal/pipe/signature_windows.go`, `internal/pipe/transport.go`, `internal/pipe/transport_windows.go`, `internal/pipe/transport_other.go`, `internal/client/pipe.go` | Lokales Schema, Windows-Pipe, Serverprüfung, Setup-Zulassung und interne Rückfragen |
 | `internal/client/lastrun.go`, `internal/panel/lastrun.go` | Zuletzt gelaufen je Setup (#1398): Speicherstand des Läufers (seit Start) und Menüzeile, nur Zeitpunkt und Status |
-| `internal/platform/security_windows.go`, `internal/platform/session_windows.go`, `internal/platform/process_windows.go`, `internal/platform/install_windows.go` | DPAPI/ACL (SecureRoot, MkdirPrivate), WTS/LastInput, suspendierter Prozess/Job Object, COM/HKCU |
+| `internal/platform/security_windows.go`, `internal/platform/session_windows.go`, `internal/platform/process_windows.go`, `internal/platform/install_windows.go` | DPAPI/ACL (SecureRoot, MkdirPrivate), Instanzsperre (`Lock`, Invariante 29), WTS/LastInput, suspendierter Prozess/Job Object, COM/HKCU |
 | `internal/platform/install.go`, `internal/platform/other.go` | Windows-Nähte und Fail-closed-Stubs für andere Systeme |
 | `internal/platform/security_linux.go`, `server_linux.go` | Linux-HMAC/Dateirechte, Sperre und Server-Konfiguration |
 | `internal/client/container.go`, `internal/client/container_engine.go`, `internal/client/secrets_linux.go`, `internal/client/secrets_other.go` | Docker-CLI, Startwege und Geheimnisgrenze |
@@ -39,6 +39,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 | internal/client/reader.go | `Reader`: nur lesender Zugriff des Bedienfelds auf Zugangsdaten, geprüftes Manifest und App-Siegel; `Reader.Hotkeys` liefert Tastenkürzel nur bei gültigem Siegel |
 | internal/client/apphotkeys.go, internal/panel/hotkey.go, cmd/bedienfeld/hotkey_windows.go | Tastenkürzel für Setups (#1240 F-T, Invariante 22): strenges Parsen von `tasten`, Modell (Taste gleich Klick, Warten, Abweisung), Windows-Anmeldung als einzige Stelle für `RegisterHotKey` |
 | `internal/client/apptoken.go`, `internal/client/applogin.go`, `internal/client/appstore.go`, `internal/client/appload.go`, `internal/client/copied_apphost.go` | Vertrag 5 im Client: App-Token, privates Ablegen mit Siegel, Ladeprüfung, markierte apphost-Kopie |
+| `internal/client/envprune.go` | Abräumen (#1537): räumt am Ende jedes erfolgreichen `Sync` `envs\<key>`, `packages\<key>` und `env-<key>` ab, deren Schlüssel nicht im geprüften Manifest steht; der Schlüssel des laufenden Jobs bleibt (Invariante 28) |
 | `internal/client/appprune.go` | Entzug (#1342): räumt nach jedem Sync und im Heartbeat-Takt Ablage, WebView-Profil und Siegel nicht mehr zugewiesener Apps gegen das gespeicherte, geprüfte Manifest ab (Invariante 20); liest es von der Platte unter der Zustandssperre (Sperr-Reihenfolge, Invariante 24) |
 | `contract/golden-v5/SHA256SUMS` | Prüfsummen des bytegleichen Kernspiegels von Vertrag 5 (Manifest und Routen). |
 | probe/k6b_mutations.py | Mutationen K6b-1 im Container mit Go und Python |
@@ -113,7 +114,9 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
    Pull und Image-Digest. Offline nur ohne declared_tools und
    `max(Uhr, persistente Uhrmarke) − letzter erfolgreicher Sync < grace_hours`
    (1–72 h), sonst
-   `refused/offline`. Werkzeuge brauchen Box/Lauf-Token. Deterministischer
+   `refused/offline`. **Offline heißt Netzfehler oder HTTP 5xx des Kerns** (`IsOffline`, #1537): Ein 5xx beim Sync
+   ist eine Störung der Gegenseite, sie greift die Kulanz und bucht nie `refused/hash`; er ist nie ein Widerruf
+   (das ist allein 401 `revoked`). Werkzeuge brauchen Box/Lauf-Token. Deterministischer
    `run_key = pin/schedule/UTC-Slot`; Online-Start mit Werkzeugen über
    `runs/start`, Standbindung per `X-Jnpt-Manifest-Seq`, veraltet 409 manifest.
    Ad-hoc bleibt claim → jobs/start; Job liefert seine Freigabe-manifest_seq und holt ein älteres lokales Manifest einmal nach (Invariante 21).
@@ -209,7 +212,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     `Report` weist `result` ab. Historische Freigaben liegen separat in
     DPAPI-Dateien `test-<job_id>`, nur Bindungsfelder und signiertes Manifest,
     keine Claim-Eingabe; Journaländerung nur Feld `result`. Replay
-    prüft erneut. Testresultate weder offline noch über Setup-run_key.
+    prüft erneut. Das Siegel fällt nach bestätigtem `ReportTest` und gespeichertem Journal weg (Invariante 28). Testresultate weder offline noch über Setup-run_key.
     `StartSetup` prüft das signierte Manifest, erzeugt 128 Zufallsbits über
     `crypto/rand` (22 Zeichen base64url) und bindet `X-Jnpt-Manifest-Seq`.
     `API.Halt` meldet nur; `Engine.Halt` steuert seit L2 lokal (Invariante 14).
@@ -429,7 +432,10 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     `path == apps/<name>`, streng aufsteigend nach Name. Ein Cache v1/v3/v4 liefert beim Upgrade nur
     die Sequenz (Invariante 5/10). `mode` optional, nur a/b/leer, sonst Manifestfehler.
     Nur Bedienhilfe: b zeigt die native Anmeldeleiste, a weder Leiste noch Knöpfe/Meldungen;
-    fehlend/leer zeigt sie wie bisher. Neue geprüfte Manifeste aktualisieren auch offene Fenster
+    fehlend/leer zeigt sie wie bisher. **Ausnahme Wechsel b → a (#1537):** Wechselt eine offene App im Fenster von b
+    (oder leer) nach a, vergisst `Surface.UpdateApps` die persönliche Sitzung wie beim Personenwechsel
+    (`Login.ToDeviceMode`: `Gateway.Forget`, Host-Epoche, `about:blank`, Browserdaten löschen, neu laden) und
+    gibt danach den Gerätezweig frei (`Gateway.useDevice`, `personal=false`); a → a und a → b tun das nicht. Neue geprüfte Manifeste aktualisieren auch offene Fenster
     beim Abgleich (`Reader` → `Runtime.Apps/Watch` → `Surface.UpdateApps`); asynchrones Öffnen
     übernimmt keinen älteren Anzeigestand. Rechte, `/token`, Login-Fluss und K6b-2/K6c-Sperren
     bleiben unverändert. Goldens: `contract/golden-v5/` (Kernbytes), Manifest seit #1321 mit mode,
@@ -737,7 +743,7 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Einträge von `<Zustand>\apps` und `<Zustand>\webview` selbst auf (`os.ReadDir`), nie aus Servernamen. Gelöscht
     wird nur ein Eintrag mit gültigem App-Namen (`fenster.ValidAppName`, wie im Manifest), der nicht im geprüften
     Manifest steht. Ungültige Namen (`.prepare-*`, Großbuchstaben, Punkte, Trenner), fremde Dateien und alle
-    anderen Bereiche (`envs`, `tmp`, `packages`) bleiben unberührt. Entfernt werden `apps\<name>` (alle Commits),
+    anderen Bereiche (`tmp`, Journal und Zustandsdateien; `envs`, `packages` und `env-*` räumt dagegen der Sync ab, Invariante 28) bleiben unberührt. Entfernt werden `apps\<name>` (alle Commits),
     `webview\<name>` und die Siegel `app-<name>-<commit>` (`sealOwner`, aus dem lokalen Wurzelverzeichnis). Mit dem
     Siegel entfallen die Kürzel der App (Invariante 22): `Reader.Hotkeys` liefert sie nur bei gültigem Siegel, und das Bedienfeld
     meldet beim nächsten Abgleich alle ab und neu an, ohne eigenen Entzugspfad.
@@ -787,7 +793,11 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     Ein ungültiges Feld sperrt nur die Kürzel, nicht die App. `Reader.Hotkeys` liefert die Kürzel nur bei gültigem Siegel
     (Name, Commit, Ordner gleich Siegel wie bei `OpenApp`, Grammatik erneut) und nie eine Teilmenge; `Runtime.Apps` füllt
     `AppList.Hotkeys` daraus, `Watch` meldet auch eine Änderung allein der Kürzel (`client.Hotkey` steht in der B3-Liste
-    `clientErlaubt`: reiner Datentyp). Ein Siegel aus einem älteren Läufer kennt `tasten` nicht; es gibt kein Nachholen. **S2:**
+    `clientErlaubt`: reiner Datentyp). Ein Siegel aus einem älteren Läufer kennt `tasten` nicht; es gibt kein Nachholen. **Kennung (#1537):** Die Anmeldung beim System läuft unter der
+    Nummer der F-Taste (`hotkeyID`, 1 bis 12), nie unter der Listenposition; `PressHotkey(id)` sucht den angemeldeten Eintrag zu dieser Nummer. Ein `WM_HOTKEY` aus
+    der Warteschlange trifft nach einer Neuanmeldung mit verschobener Liste so nie einen anderen Eintrag. Gewählt statt `HIWORD(lParam)`: keine Änderung an
+    `cmd/bedienfeld`, rein im Modell testbar (`TestAlterTastendruckNachNeuanmeldungMitVerschobenerListeTrifftKeinenFremdenEintrag`, `TestKennungIstDieNummerDerFTaste`;
+    Mutant: Kennung wieder `i+1`). Grenze: Ein Druck, der vor der Neuanmeldung ankam, löst die neue Belegung derselben Taste aus. **S2:**
     `Model.SetHotkeys` prüft Taste (`HotkeyNumber`) und beide Namen noch einmal und verwirft Einträge außerhalb; so entsteht nie ein
     anderer Befehl als `setup_start` (kein `exit`, `app:`, Pause, Anhalten). **Anmeldung:** nur `cmd/bedienfeld/hotkey_windows.go`
     (`registerHotKey`/`unregisterHotKey` je genau eine Aufrufstelle), am Fenster des UI-Threads, immer mit
@@ -819,7 +829,8 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
 23. Das Manifest trotz kaputtem Pin (#1391, SEC E1/E2): `Engine.Sync` trennt zwei Ebenen. **Fehler auf Manifest-Ebene**
     verwerfen alles, der alte Stand und `LastSync` bleiben: Konfiguration/Manifest abrufen, Gerät, Signatur, Seq
     (Ausnahme: byte-gleiche Hülle, Invariante 3), Vertrag, `ObserveTime`, `Save("manifest")`, `ErrRevoked` von überall,
-    abgebrochener Kontext und **offline auch beim Paketabruf** (`manifestLevel`). Warum offline dazugehört: Bei kurzem
+    abgebrochener Kontext und **offline auch beim Paketabruf** (`manifestLevel`; nur ein Netzfehler, nicht `IsOffline`: Ein 5xx beim Paketabruf trifft
+    wie bisher nur diesen Pin, #1537). Warum offline dazugehört: Bei kurzem
     Netzausfall laufen die alten, versiegelten Umgebungen weiter; ein Entzug wartet nur bis zum nächsten Abgleich mit Netz,
     und der nächste Heartbeat mit höherer Seq löst ihn erneut aus, weil die gespeicherte Seq nicht fortschreitet.
     **Jeder andere Fehler im Pin-Schritt** (`pinEnvironment`: Paketabruf mit Antwort, `Prepare`, `VerifyEnvironment`,
@@ -846,12 +857,12 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     zwei Wege in entgegengesetzter Reihenfolge hängen den Läufer dauerhaft (AB/BA-Deadlock). Erlaubt ist nur
     `e.mu` → `State.mu`: `setHaltLocked` (`State.Save("halt")`), `loadHaltLocked` (`State.Load`) und `reserveScheduled`
     (`State.ReserveRun`) laufen unter `e.mu`, ihre Atomarität gegen Halt und Reservierung ist gewollt und bleibt. Alle
-    Callbacks von `State.Use` (`pruneStored`, `AppStore.Prepare`, der `Prepare`-Schritt in `pinEnvironment`) und alle
+    Callbacks von `State.Use` (`pruneStored`, `pruneEnvironments`, `holdEnv`, `dropTestSeal`, `AppStore.Prepare`, der `Prepare`-Schritt in `pinEnvironment`) und alle
     anderen Stellen unter `s.mu` (`Revoke`, Journal, `Load`/`Save`, Cipher) nehmen `e.mu` nicht, auch nicht über
     `e.view()`. Deshalb liest der Takt das Manifest nicht aus `e.bundle` (`e.view()`), sondern unter der schon gehaltenen
     Zustandssperre den gespeicherten Stand (`State.loadLocked("manifest")`, Gegenstück zu `saveLocked`; `Load` darf dort
     nicht gerufen werden). Das ist gleichwertig: `Sync` speichert das Bundle vor dem Setzen von `e.bundle`, die Platte ist
-    gleich neu oder neuer. `notePruneResult` (nimmt `e.mu`) läuft **nach** `State.Use`, nie darin. Wer in einen
+    gleich neu oder neuer. `notePruneResult`/`noteFault` (nehmen `e.mu`) laufen **nach** `State.Use`, nie darin; `useMu` (`useEnv`) ist eine Blattsperre, unter der nichts anderes genommen wird. Wer in einen
     `State.Use`-Callback Engine-Zustand holen will, liest ihn vorher oder holt ihn über die Platte. Der Hook `pruneHook`
     (nur Tests) macht das Fenster deterministisch. Tests: `TestTaktUnterZustandssperreNimmtNieDieEngineSperre`
     (Hook, deterministisch), `TestTaktGegenPauseFortsetzenBleibtLebendig` (Belastung, Frist 10 s; Zusatz, das Fenster ist winzig, den Deadlock belegt der Hook-Test),
@@ -903,6 +914,49 @@ Maßgeblich: [L1-Ergänzungen](README.md#vertrag-4-und-testaufträge);
     `Result` und gehören nicht zu diesem Weg. Tests: `TestAdHocSpeichernDerFreigabeScheitertSchliesstDenLaufUndGibtDenMarkerFrei`,
     `TestZeitplanObserveTimeScheitertSchliesstDenLaufUndGibtDenMarkerFrei`,
     `TestZeitplanMarkImWiederholungszweigScheitertSchliesstDenLaufUndGibtDenMarkerFrei`; Mutanten `marker-*`.
+
+28. Abräumen von Umgebungen und Testsiegeln (#1537, Windows): `pruneEnvironments` (`envprune.go`) läuft am Ende jedes erfolgreichen
+    `Engine.Sync` (nach Speichern des Manifests und `pruneStored`), unter `State.Use`, gegen das **geprüfte Manifest dieses
+    Syncs**, nicht gegen die Platte. Es löscht `envs\<key>`, `packages\<key>` und das Siegel `env-<key>` jedes Schlüssels
+    (`envKey`: `<Commit>-<SHA-256 des Pfads>`), der zu keinem Nicht-Container-Pin des Manifests gehört; ohne das wüchse die Platte
+    mit jeder Pin-Version, denn nur `State.Revoke` räumte ab. Ein Pin im Manifest zählt auch ohne Umgebung (Pin-Fehler,
+    Invariante 23) als zugewiesen. **Muster wie Invariante 20:** nur lokal aufgezählte Einträge mit gültigem Schlüssel
+    (`validEnvKey`: Commit 40 oder 64, Pfad-Hash 64 kleine Hex-Zeichen; `.prepare-*` und Fremdes bleiben), `removeTree` ohne
+    `os.RemoveAll`, ein Verweis verliert nur sich selbst, ist `envs\` oder `packages\` selbst ein Verweis, geschieht darin nichts;
+    ein Fehler (Sperre) lässt den Rest liegen und lässt `Sync` nicht scheitern, im Log steht beim ersten Fehlschlag in Folge nur
+    der feste Code `10 2` (eigenes Flag `envPruneFault`, damit der Erfolg des App-Aufräumens es nicht zurücksetzt). **Reihenfolge
+    Siegel, Paket, Umgebung:** Jeder Zwischenstand heilt sich selbst, denn ohne Siegel baut der nächste Pin-Schritt neu und ersetzt
+    das Verzeichnis (Invariante 25); ein Siegel ohne Verzeichnis, das den Pin dauerhaft sperrte, entsteht nie.
+    **Kein Heartbeat-Takt, anders als Invariante 20:** `pinEnvironment` legt Ablage und Siegel des neuen Schlüssels in getrennten
+    Schritten vor dem Speichern des Manifests an; ein Takt gegen das noch gespeicherte, ältere Manifest löschte den frisch
+    vorbereiteten Schlüssel. `Sync` läuft nur in der Run-Schleife (seriell mit `pinEnvironment`), deshalb ist das Abräumen am
+    Ende von `Sync` sicher; eine gesperrte Umgebung bleibt bis zum nächsten Sync (Manifestwechsel, Presync, Start) liegen.
+    **Der laufende Job bleibt:** `executeReserved` trägt den Umgebungsschlüssel (`env.Dir`) über `holdEnv` unter der Zustandssperre
+    ein, bevor es Paket und Umgebung prüft, und beim Ende wieder aus; `pruneEnvironments` liest ihn (`heldEnv`, Blattsperre
+    `useMu`) und nimmt ihn aus. Die Eintragung liegt damit ganz vor oder ganz nach dem Abräumen. Rest-Fenster: Ein Job, dessen
+    Umgebung aus einem älteren Bundle stammt und im neuen Manifest fehlt, kann vor `holdEnv` abgeräumt werden und endet dann mit
+    `refused/hash`, nie als halber Lauf. **Testsiegel:** `deliverOne` löscht `test-<job_id>` (`dropTestSeal`), sobald `ReportTest`
+    bestätigt **und** das Journal gespeichert hat; scheitert dessen Speichern, bleibt das Siegel, denn der Replay braucht es
+    (Invariante 13). Ein Löschfehler ist still, das Siegel bleibt bis zum Widerruf. **Nicht im Umfang:** Siegel von Ergebnissen, die
+    das Journal verwirft (gezählte Verdrängung, zehnmal HTTP 400), das Widerrufsverhalten und `apps\`. Tests: `TestSyncRaeumtUmgebungenAusserhalbDesManifestsAb`
+    (Mutant: Manifest-Filter weg), `TestSyncAbraeumenLoeschtNurGueltigeSchluessel`, `TestKeinAbraeumenBeiGescheitertemSync`,
+    `TestSyncLaesstUmgebungDesLaufendenJobsStehen` (Mutant: `holdEnv` ohne Wirkung), `TestGesperrteUmgebungBleibtUndWirdBeimNaechstenSyncGeloescht`,
+    `TestVerweisUnterEnvsWirdNichtVerfolgt`, `TestVerweisAlsEnvsOderPackagesWurzelBleibtUnberuehrt`,
+    `TestUmgebungAufraeumenLaeuftUnterZustandssperreOhneRemoveAll`, `TestAbraeumenZaehltAuchPinsOhneUmgebungAlsZugewiesen`,
+    `TestTestSiegelWirdNachBestaetigtemReportTestGeloescht`, `TestTestSiegelBleibtSolangeDasErgebnisNichtBestaetigtIst`,
+    `TestTestSiegelBleibtWennDasJournalNachDerBestaetigungNichtSpeichert`.
+29. Instanzsperre (#1537, Windows): `platform.Lock` sichert den Wurzelordner ab (`SecureRoot`, wiederholbar) und sperrt darin die Datei
+    `instance.lock` exklusiv mit `LockFileEx` (`LOCKFILE_FAIL_IMMEDIATELY`). Die frühere Sperre war ein benanntes Mutex
+    `Global\JanuaPort-Desktop-<SID>`; diesen Namen konnte ein anderes lokales Konto vorab belegen und den Läufer aussperren, in den
+    privaten Ordner (ein Zugriffseintrag, nur der Benutzer; die Datei erbt ihn) kommt es nicht. Die zweite Instanz desselben Benutzers
+    scheitert wie bisher mit einem festen Operationsfehler (`LockFileEx`), `main.go` prüft nur auf einen Fehler und bleibt unverändert.
+    Die Datei wird mit `FILE_SHARE_DELETE` geöffnet, damit `State.Revoke` die Wurzel samt Sperrdatei auch löscht, während der Prozess sie
+    hält (POSIX-Löschung, auf dem Entwicklungsrechner belegt, `TestInstanzsperreBehindertDenWiderrufNicht`); eine Reparse-Marke oder ein
+    Verzeichnis anstelle der Datei wird abgewiesen. Die Sperre hängt am Handle und endet mit dem Prozess; das Freigeben ist idempotent. Die Sperrdatei bleibt nach dem Ende im Wurzelordner liegen und ist kein Zustand: `TestPairLeererPubkeySpeichertNichts` und `TestPairRFC8032PubkeySpeichertNichts` nehmen sie aus der Prüfung „nichts gespeichert“ aus.
+    Grenze: Nach einem Widerruf kann eine neu gestartete Instanz eine neue Sperrdatei anlegen, solange der alte Prozess noch ausläuft; der
+    Zustand ist dann schon gelöscht. Tests (`lock_windows_test.go`): `TestInstanzsperreZweiteInstanzScheitertBisZurFreigabe`,
+    `TestInstanzsperreFreigabeIstIdempotent`, `TestInstanzsperreIstUnabhaengigVomGlobalenMutexNamen`,
+    `TestInstanzsperreDateiImPrivatenWurzelordner`, `TestInstanzsperreBehindertDenWiderrufNicht`, `TestInstanzsperreVerweigertJunctionAlsWurzel`.
 
 ## Benannte Grenzen
 

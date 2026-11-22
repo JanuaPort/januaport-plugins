@@ -23,7 +23,16 @@ Es gelten zusätzlich die Regeln in `../../CLAUDE.md`, insbesondere Invarianten 
 - #1321, unverändert Vertrag 5: `apps[].mode` optional, nur a/b/leer, sonst Manifestfehler.
   Anmeldeleiste mit Knöpfen/Meldungen nur bei b oder fehlendem/leerem Feld (alter Kern);
   in a erscheint nichts davon. Ausschließlich Bedienhilfe: Rechte, `/token`, Login-Fluss
-  und K6b-2/K6c-Sperren unverändert. `Reader` → `Runtime.Open` übernimmt den geprüften Modus;
+  und K6b-2/K6c-Sperren unverändert. **Eine Ausnahme (#1537):** Wechselt eine offene App
+  von b (oder leer) nach a, vergisst `Surface.UpdateApps` die persönliche Sitzung:
+  `Login.ToDeviceMode` ruft wie beim Personenwechsel `Gateway.Forget` auf, wechselt die
+  Host-Epoche, beendet das Dokument (`about:blank`), löscht die Browserdaten und lädt neu;
+  danach gibt `Gateway.useDevice` den Gerätezweig frei (`personal=false`), sonst lieferte die
+  App dauerhaft `ErrNichtAngemeldet`. Ein laufender Anmeldeversuch wird verworfen, ein Fehler
+  im Übergang schließt das Fenster und lässt das Gateway gesperrt. a → a und a → b tun nichts
+  davon. Tests: `login_moduswechsel_test.go` (Ablauf, Fehlerpfade, laufende Anmeldung; Mutanten
+  ohne `Forget` und mit `personal=true`), `login_moduswechsel_windows_test.go` (Verdrahtung in
+  `Surface.UpdateApps`; das echte WebView-Löschen bleibt Sache der nativen Sonde unten). `Reader` → `Runtime.Open` übernimmt den geprüften Modus;
   `Runtime.Apps/Watch` → `Surface.UpdateApps` aktualisiert offene Fenster beim nächsten
   Manifestabgleich. Die Sequenz verhindert einen älteren Anzeigestand beim asynchronen Öffnen.
   Die Startmeldung „Bitte mit dem eigenen Konto anmelden.“ bleibt nach dem ersten `Login.Pump`:
@@ -51,6 +60,12 @@ Es gelten zusätzlich die Regeln in `../../CLAUDE.md`, insbesondere Invarianten 
   freigeben. Jeder Fehler/20-s-Frist schließt das App-Fenster. Auch beim ersten
   Öffnen werden alte Profildaten vor der ersten App-Navigation gelöscht, auch
   in Modus a. Eine App am PC behält keine lokalen Daten über das Öffnen hinaus.
+- **Invariante: Jeder Wechsel löscht die Browserdaten, bevor neu geladen wird** (Messung auf der Test-VM, #1537). Personenwechsel, Abmelden
+  und Wechsel b → a laufen alle über `Login.switchPerson`: `Quiesce`, dann `ClearBrowsingData`, erst in dessen Abschluss `Reload` und die
+  Freigabe des Gateways. `ClearBrowsingData` ist die eigentliche Schutzschicht: Ohne es erreichte `history.go(-2)` die Seite der
+  Vor-Person, und Chromium stellte deren Formularwerte wieder her. `about:blank` allein schützt davor nicht. Wer den Wechselpfad
+  umbaut, behält die Reihenfolge Quiesce → Clear → Reload. Wächter: `TestWechselLaedtErstNachDemLoeschenDerBrowserdatenNeu` (alle drei
+  Arten, Fake-View; Mutant: ohne `ClearBrowsingData` rot). Das echte Löschen in WebView2 belegt nur die native Sonde (unten).
 - `about:blank` ist ausschließlich während dieses nativen Übergangs zulässig,
   nur im obersten Rahmen. Der Rückruf akzeptiert keine Seitennachrichten. Ansonsten
   bleiben K6b-2-Navigation, Ressourcenfilter, Browser-Netzsperre und WebRTC unverändert.

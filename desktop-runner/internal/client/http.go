@@ -532,7 +532,17 @@ func (a *API) report(ctx context.Context, r Result) error {
 	}
 	return nil
 }
-func IsOffline(err error) bool { var ne net.Error; return errors.As(err, &ne) }
+
+// IsOffline: Der Kern ist nicht erreichbar oder antwortet mit einem Serverfehler (HTTP 5xx, #1537). Beides ist eine
+// Störung auf der Gegenseite, kein Prüffehler des Geräts: Es greift die Offline-Kulanz, und refused() bucht dafür kein
+// `hash`. Ein 5xx sagt nichts über das Token (401 `revoked` bleibt der einzige Widerruf) und nichts über die Kopplung.
+func IsOffline(err error) bool {
+	var he *HTTPError
+	return isNetworkFailure(err) || (errors.As(err, &he) && he.Status >= 500)
+}
+
+// isNetworkFailure ist nur der Netzfehler (Verbindung, Frist, abgebrochener Körper), nie eine Antwort des Kerns.
+func isNetworkFailure(err error) bool { var ne net.Error; return errors.As(err, &ne) }
 
 // Server mode is fixed before the API is shared by heartbeat and execution.
 func (a *API) Server(runtime string) error {

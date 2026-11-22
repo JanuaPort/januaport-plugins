@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"unsafe"
 )
 
@@ -163,23 +164,56 @@ func checkPrivateDescriptor(sd *windows.SECURITY_DESCRIPTOR, sid *windows.SID) e
 	runtime.KeepAlive(sd)
 	return nil
 }
+
+// lockFileName ist die Sperrdatei der Instanz im Wurzelordner des Läufers.
+const lockFileName = "instance.lock"
+
+// Lock sperrt den Läufer je Benutzer gegen eine zweite Instanz (#1537): eine exklusive LockFileEx-Sperre auf eine Datei
+// im privat abgesicherten Wurzelordner. Das ersetzt das benannte Mutex `Global\JanuaPort-Desktop-<SID>`; diesen Namen
+// konnte ein anderes lokales Konto vorab belegen und den Läufer so aussperren, in den privaten Ordner (eine Zugriffs-
+// Eintragung, nur der Benutzer) kommt es nicht. Die zweite Instanz desselben Benutzers scheitert wie bisher mit einem
+// festen Operationsfehler; der Aufrufer in main.go prüft nur auf einen Fehler.
 func Lock() (func(), error) {
-	sid, e := userSID()
+	root, e := Root()
 	if e != nil {
 		return nil, e
 	}
-	name, e := windows.UTF16PtrFromString("Global\\JanuaPort-Desktop-" + sid.String())
-	if e != nil {
-		return nil, winError("MutexNameUTF16", e)
+	return lockIn(root)
+}
+
+// lockIn sichert root zuerst ab (SecureRoot ist wiederholbar, main ruft es danach noch einmal) und sperrt dann die
+// Datei darin. Die Datei wird mit FILE_SHARE_DELETE geöffnet: Ein Widerruf löscht die Wurzel samt Sperrdatei, auch
+// während dieser Prozess sie noch hält (State.Revoke). Die Sperre hängt am Handle und endet mit dem Prozess.
+func lockIn(root string) (func(), error) {
+	if e := SecureRoot(root); e != nil {
+		return nil, e
 	}
-	h, e := windows.CreateMutex(nil, false, name)
+	name, e := windows.UTF16PtrFromString(filepath.Join(root, lockFileName))
 	if e != nil {
-		if h != 0 {
-			windows.CloseHandle(h)
-		}
-		return nil, winError("CreateMutex", e)
+		return nil, winError("LockPathUTF16", e)
 	}
-	return func() { windows.CloseHandle(h) }, nil
+	h, e := windows.CreateFile(name, windows.GENERIC_READ|windows.GENERIC_WRITE,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, windows.OPEN_ALWAYS,
+		windows.FILE_ATTRIBUTE_NORMAL|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	if e != nil {
+		return nil, winError("CreateLockFile", e)
+	}
+	var info windows.ByHandleFileInformation
+	if e = windows.GetFileInformationByHandle(h, &info); e != nil {
+		windows.CloseHandle(h)
+		return nil, winError("GetFileInformationByHandle", e)
+	}
+	if info.FileAttributes&(windows.FILE_ATTRIBUTE_REPARSE_POINT|windows.FILE_ATTRIBUTE_DIRECTORY) != 0 {
+		windows.CloseHandle(h)
+		return nil, winError("LockFileNotRegular", nil)
+	}
+	var overlapped windows.Overlapped
+	if e = windows.LockFileEx(h, windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &overlapped); e != nil {
+		windows.CloseHandle(h)
+		return nil, winError("LockFileEx", e)
+	}
+	var once sync.Once
+	return func() { once.Do(func() { windows.CloseHandle(h) }) }, nil
 }
 func WindowsEnv() []string {
 	root, e := windows.GetWindowsDirectory()

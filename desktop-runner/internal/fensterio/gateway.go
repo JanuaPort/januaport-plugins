@@ -120,6 +120,18 @@ func (g *Gateway) Forget() {
 	g.blocked = true
 	g.personal = true
 }
+
+// useDevice gibt das Gateway nach einem Wechsel nach Modus a wieder frei (#1537): keine persönliche Sitzung, das
+// Gerätetoken wird beim nächsten Aufruf geholt. Es setzt voraus, dass Forget vorausging, und läuft erst, wenn das
+// alte Dokument beendet und die Browserdaten gelöscht sind.
+func (g *Gateway) useDevice() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.session = client.AppSession{}
+	g.gen++
+	g.blocked = false
+	g.personal = false
+}
 func (g *Gateway) install(s client.AppSession) {
 	g.mu.Lock()
 	defer g.mu.Unlock()

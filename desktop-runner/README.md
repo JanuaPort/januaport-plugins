@@ -87,7 +87,10 @@ Die Anmeldeleiste erscheint in Modus b. In Modus a erscheinen weder Anmeldeleist
 noch Anmelde-/Abmeldeknopf oder Anmeldemeldung. Fehlt `apps[].mode` oder ist es leer
 (älterer Kern), erscheint die Leiste wie bisher. Ein neuer geprüfter Manifeststand
 aktualisiert auch offene Fenster beim nächsten Abgleich. Rechte, `/token`, Login-Fluss
-und alle Sperren aus K6b-2/K6c bleiben unverändert; der Modus ist nur Bedienhilfe.
+und alle Sperren aus K6b-2/K6c bleiben unverändert; der Modus ist Bedienhilfe. Eine Ausnahme: Wechselt eine
+offene App von Modus b nach a, vergisst das Fenster die persönliche Sitzung wie beim Personenwechsel (Gateway
+sperren, Dokument beenden, Browserdaten löschen, neu laden, #1537) und arbeitet danach mit dem Gerätezweig,
+statt dauerhaft „nicht angemeldet“ zu melden. Ein Wechsel von a nach b oder ohne Änderung des Modus tut das nicht.
 
 Die Leiste zeigt anfangs „Bitte mit dem eigenen Konto anmelden.“ auch nach dem
 ersten `Login.Pump`. `NewLogin` und die native Control-Anlage verwenden dafür
@@ -194,6 +197,20 @@ erst danach schließt), bleibt er liegen und der nächste Takt versucht es erneu
 Fehlschlag der feste Code `10 2`. Kommt die App zurück, lädt der Läufer sie neu und das Profil beginnt
 leer (Anmeldung neu). Das Manifest entscheidet auch bei einer gestoppten App, die kurz fehlt. Nicht betroffen sind
 alte Commits einer weiter zugewiesenen App und der Widerruf des Geräts (der löscht weiter den gesamten Zustand).
+
+### Aufräumen alter Umgebungen (#1537)
+
+Jeder Pin-Commit legt unter `envs\<key>` die versiegelte Umgebung, unter `packages\<key>` das geprüfte Paket und
+als `env-<key>` das Siegel ab (`<key>` = Commit und Pfad-Hash). Am Ende jedes erfolgreich geprüften Manifest-Abgleichs
+löscht der Läufer alle drei, deren Schlüssel zu keinem Pin des neuen Manifests gehört; so wächst die Platte nicht mit
+jeder Pin-Version. Wie beim App-Entzug zählt er die Ordner lokal auf, löscht nur Einträge mit gültigem Schlüssel
+(`.prepare-*` und Fremdes bleiben), entfernt Symlinks und Junctions nur als Verweis und lässt eine gesperrte Umgebung
+liegen (fester Logcode `10 2`, nur beim ersten Fehlschlag in Folge); der nächste Abgleich versucht es erneut. Anders als
+beim App-Entzug gibt es keinen Takt, nur den Abgleich selbst (Manifestwechsel, Vorabgleich vor einem geplanten Lauf, Start).
+Die Umgebung des gerade laufenden Jobs bleibt immer. Nach einem Fehler, einer abgelehnten Signatur oder offline wird nichts
+gelöscht. Die Freigabebindung `test-<job_id>` eines Testauftrags löscht der Läufer, sobald der Kern das Testergebnis
+bestätigt hat. Nicht betroffen: `apps\`, der Widerruf (löscht weiter alles) und Siegel von Ergebnissen, die das Journal
+verwirft.
 
 ### Brücke: Aufruf aus der Seite
 
@@ -389,7 +406,7 @@ der App noch einmal, das Bedienfeld ein drittes Mal (Namen im Muster `^[a-z0-9_]
 Menü-Kennung wie `exit` oder `pause0` erzeugt). Der Läufer legt `tasten` im verschlüsselten Siegel der App ab, nie im
 Ordner der WebView, und liefert es nur bei gültigem Siegel. Das Bedienfeld meldet die Kürzel mit `RegisterHotKey` und
 `MOD_NOREPEAT` an, ausschließlich in `cmd/bedienfeld/hotkey_windows.go`, am versteckten Fenster des UI-Threads. Bei jedem Abgleich
-der App-Liste meldet es alle Kürzel ab und neu an; einen eigenen Entzugspfad gibt es nicht, und beim Beenden gibt es alle frei.
+der App-Liste meldet es alle Kürzel ab und neu an (unter der Nummer der F-Taste als Kennung, nie unter der Listenposition, #1537); einen eigenen Entzugspfad gibt es nicht, und beim Beenden gibt es alle frei.
 Eine App, die aus dem Manifest fällt, verliert mit dem Siegel ihre Kürzel beim nächsten Abgleich.
 
 Ablauf eines Drucks: `WM_HOTKEY` ruft nur das Modell (`PressHotkey`), das den Druck vormerkt. Im 200-ms-Zeitgeber wartet
@@ -632,6 +649,8 @@ höchstens 30 s auf den Antwortkopf und 40 s insgesamt. Der Paketabruf hat keine
 Stillstandsfrist: 30 s ohne ein einziges empfangenes Byte (vor dem Kopf wie im Körper) brechen ab. Ein großes Paket
 (bis 128 MiB) an einer langsamen, aber stetigen Leitung kommt deshalb an. Stillstand und Netzfehler im Körper zählen als
 offline (der nächste Abgleich versucht es erneut), nie als Protokollfehler; Größe, Hash und Format bleiben Protokollfehler.
+Ebenso gilt eine Serverstörung des Kerns (HTTP 5xx) als offline (#1537): Es greift die Offline-Kulanz oder `refused/offline`,
+nie `refused/hash`. Ein 5xx beim Paketabruf trifft weiter nur diesen Pin.
 Halt und Beenden brechen den Abruf sofort ab. Werkzeugaufrufe eines Laufs (Skript, `januaport.call`) haben ebenfalls keine
 Gesamtfrist im Client: Es gilt die Zeitgrenze des Laufs (Wandzeit, `timeout_s`, höchstens 86400 s), die der Kontext des Laufs
 trägt. Ohne Deadline im Kontext ist 86400 s die Obergrenze.

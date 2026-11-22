@@ -104,7 +104,7 @@ func (l *Login) Pump(v LoginView) {
 			l.busy = false
 			l.message = loginMessage(r.err)
 		} else if r.person.Changed || !l.signed {
-			l.switchPerson(v, r.person, false, r.generation)
+			l.switchPerson(v, r.person, switchLogin, r.generation)
 		} else {
 			l.gateway.install(r.person.Session)
 			l.name = anmeldung.DisplayName(r.person.Name)
@@ -152,9 +152,42 @@ func (l *Login) SignOut(v LoginView) {
 	}
 	l.busy = true
 	l.mu.Unlock()
-	l.switchPerson(v, client.PersonSession{}, true, gen)
+	l.switchPerson(v, client.PersonSession{}, switchLogout, gen)
 }
-func (l *Login) switchPerson(v LoginView, p client.PersonSession, logout bool, gen uint64) {
+
+// ToDeviceMode vergisst die persönliche Sitzung beim Wechsel der offenen App von Modus b nach a (#1537, UI-Thread):
+// wie beim Personenwechsel Gateway sperren, Host-Epoche wechseln, altes Dokument beenden, Browserdaten löschen und
+// neu laden. Danach gilt der Gerätezweig (personal=false). Ein laufender Anmeldeversuch wird verworfen.
+func (l *Login) ToDeviceMode(v LoginView) {
+	l.mu.Lock()
+	if l.closed {
+		l.mu.Unlock()
+		return
+	}
+	l.generation++
+	select {
+	case <-l.out:
+	default:
+	}
+	gen := l.generation
+	if l.cancel != nil {
+		l.cancel()
+	}
+	l.busy = true
+	l.mu.Unlock()
+	l.switchPerson(v, client.PersonSession{}, switchDevice, gen)
+}
+
+// switchKind: Was nach dem Löschen der Browserdaten gilt.
+type switchKind int
+
+const (
+	switchLogin  switchKind = iota // neue Person
+	switchLogout                   // niemand, Gateway bleibt gesperrt
+	switchDevice                   // Modus a: Gerätezweig, keine Person
+)
+
+func (l *Login) switchPerson(v LoginView, p client.PersonSession, kind switchKind, gen uint64) {
 	l.gateway.Forget()
 	if l.host != nil {
 		l.host.Suspend()
@@ -179,13 +212,17 @@ func (l *Login) switchPerson(v LoginView, p client.PersonSession, logout bool, g
 			fail()
 			return
 		}
-		if !logout {
+		switch kind {
+		case switchLogin:
 			l.gateway.install(p.Session)
 			l.name = anmeldung.DisplayName(p.Name)
 			l.signed = true
 			l.message = anmeldung.Message("angemeldet")
-		} else {
+		case switchLogout:
 			l.message = anmeldung.Message("abgemeldet")
+		case switchDevice:
+			l.gateway.useDevice()
+			l.message = anmeldung.Message("start")
 		}
 		if l.host != nil {
 			l.host.Resume()
