@@ -104,6 +104,10 @@ def messen(name, pfad, ziel):
 def bericht(quellen, ziel, pfad):
     daten = lade(pfad)
     alle_roh = []
+    kurz = ["## Zusammenfassung: Fensterung, beide Betriebspunkte", "",
+            "FPR A3: 28 harte harmlose KI-Ansprachen. Kalibrierte Schwellen sind auf diesem Testsatz bestimmt.", "",
+            "| Kandidat | Betriebspunkt | Schwelle | Recall gesamt | Recall md | FPR hart | FPR A3 | p95 ms/10k | RAM MiB |",
+            "|---|---|---:|---:|---:|---:|---:|---:|---:|"]
     zeilen = ["# Phase 2 — lokale CPU-Messung, JanuaPort/januaport#1486", "",
               "SEC-Freigabe c-7075804406. Synthetischer Messsatz, 460 Texte; keine Kundendaten.", "",
               "**Kalibrierung auf dem Messsatz:** Die zweite Schwelle ist die kleinste aus den",
@@ -140,6 +144,14 @@ def bericht(quellen, ziel, pfad):
                 roh = rohzeilen(name, modus, daten, lauf["scores"], lauf["dauern"], s, punkt, r["strikt"])
                 alle_roh.extend(roh)
                 result = {"prognosen": [z["urteil"] for z in roh], "dauern": lauf["dauern"], "ram": r["ram"]}
+                if modus == "fenster":
+                    m = metriken(daten, result["prognosen"], lauf["dauern"])
+                    md = [i for i, z in enumerate(daten) if z["klasse"] == "md_exfiltration"]
+                    a3 = dict(extra_gruppen(daten))["A3_harmlose_KI_Ansprache"]
+                    recall_md = sum(result["prognosen"][i] for i in md) / len(md)
+                    fpr_a3 = sum(result["prognosen"][i] for i in a3) / len(a3)
+                    kurz.append(f"| {name} | {punkt} | {s!r} | {m['recall']:.2%} | {recall_md:.2%} | "
+                                f"{m['fpr_hart']:.2%} | {fpr_a3:.2%} | {m['p95_10k']:.2f} | {r['ram']:.2f} |")
                 zeilen += [f"### {modus}, {punkt}, Schwelle {s!r} ({'>' if r['strikt'] else '>='})", "",
                            f"Inhaltsbudget min/max {min(lauf['budget'])}/{max(lauf['budget'])}; Fenster je Text min/max {min(lauf['fenster'])}/{max(lauf['fenster'])}.", "",
                            kopf, trenn, *tabelle(name, daten, result)]
@@ -149,6 +161,7 @@ def bericht(quellen, ziel, pfad):
                              "dauern": [result["dauern"][i] for i in ids], "ram": r["ram"]}
                     zeilen.append(tabelle(name, teil, teilr)[0].replace("| gesamt |", f"| {gruppe} |"))
                 zeilen.append("")
+    zeilen[3:3] = kurz + [""]
     zeilen.append(HERSTELLER)
     ziel = Path(ziel)
     ziel.mkdir(parents=True, exist_ok=True)

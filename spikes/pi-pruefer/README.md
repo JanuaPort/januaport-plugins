@@ -249,6 +249,13 @@ belegt den nur positiven Host, `0 not greater than or equal to 20` harmlose
 KI-Ansprachen, `0 not greater than or equal to 4` Dateiantworten sowie die noch
 akzeptierte Erweiterung auf 464 Einträge; `FAILED (failures=4)`.
 
+Phase 2: Test-Commit `f067285`, rot mit `Ran 10 tests` / `FAILED (errors=10)`
+(noch fehlende Adapter-/Auswertungsverträge). Ergänzender Test-Commit `04c309f`,
+rot mit `ImportError: cannot import name 'pruefe_scanner_revision'` und
+`FAILED (errors=1)`. Nach Umsetzung: `Ran 76 tests` / `OK`.
+Mutationslauf: `67/67 Mutationen erkannt; alle Originaldateien unverändert.`
+Die bisherigen 53 Proben bleiben enthalten, ergänzt um 14 neue.
+
 Geheimnis-Scan mit der unveränderten, maßgeblichen Repo-Konfiguration (vom Worktree-Root):
 
 ```powershell
@@ -433,6 +440,10 @@ gesonderte Produktintegration sind beide Kompositionswege zu berücksichtigen:
 | `agent-runner/internal/runner/conversation.go:120` | OpenAI-Rückgabeweg |
 | `agent-runner/internal/anthropic/adapter.go:159` | Anthropic-Projektion der MCP-Antwort |
 | `agent-runner/internal/openai/adapter.go:182` | OpenAI-Projektion der MCP-Antwort |
+| `agent-runner/contract/README.md:125` | Vertrag für Text und structuredContent |
+| `kartei-rpa/JanuaPort.Kartei.psm1:238` | record/records als alternativer strukturierter Verbraucher |
+| `linkedin-seite/linkedin_seite/gateway.py:138`, `:156` | Weitere structuredContent-Verbraucher |
+| `script-runner/README.md:136` | Dokumentierter strukturierter Rückgabeweg |
 
 Diese Fundstellen werden nur dokumentiert. Der ausführbare Datenvertrag, alle
 sechs Spike-Adapter, die gemeinsame CLI und diese README beschreiben denselben

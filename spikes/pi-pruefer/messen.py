@@ -66,8 +66,8 @@ def arbeiter(kanal, name, daten, schwellwert, groesse, ueberlappung):
     try:
         # Phase-2-Adapter müssen zusätzlich device='cpu' explizit setzen.
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
-        os.environ["OMP_NUM_THREADS"] = "1"
-        os.environ["MKL_NUM_THREADS"] = "1"
+        os.environ["OMP_NUM_THREADS"] = "4"
+        os.environ["MKL_NUM_THREADS"] = "4"
         start = time.perf_counter()
         adapter = KANDIDATEN[name](schwellwert)
         laden_ms = (time.perf_counter() - start) * 1000
@@ -152,7 +152,7 @@ def main():
         parser.exit(2, f"Messung abgebrochen: {fehler}\n")
     print(f"Messsatz SHA-256: {hashlib.sha256(args.messsatz.read_bytes()).hexdigest()}")
     print(f"Python {platform.python_version()}, {platform.platform()}, CPU {platform.machine()}, "
-          f"sichtbare CPUs {os.cpu_count()}, Threads 1, Warm-up 1, Texte {len(daten)}.")
+          f"sichtbare CPUs {os.cpu_count()}, Threads 4, Warm-up 1, Texte {len(daten)}.")
     print(f"Fenster {args.fenster_tokens} Tokens, Überlappung {args.ueberlappung_tokens} Tokens; OR.")
     for name, result in ergebnisse:
         print(f"{name}: Modell {KANDIDATEN[name].modell_id}, Schwelle {schwellen[name]}, "
