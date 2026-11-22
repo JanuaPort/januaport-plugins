@@ -309,7 +309,7 @@ func TestLaufWerkzeugaufrufEndetMitDemKontextDesLaufs(t *testing.T) {
 // Trägt der Kontext keine Deadline, gilt die Laufzeitgrenze (obere Grenze von timeout_s) als Obergrenze: Nichts hängt unbegrenzt.
 func TestLaufWerkzeugaufrufOhneDeadlineHatEineObergrenze(t *testing.T) {
 	f := fristen{kurzKopf: time.Minute, kurzGesamt: time.Minute, werkzeugKopf: time.Minute, stillstand: time.Minute, laufGrenze: 300 * time.Millisecond}
-	a := mcpServer(t, 5*time.Second, 0, f)
+	a := mcpServer(t, 0, 5*time.Second, f) // Kopf sofort, der Körper hängt: nur die Gesamtfrist begrenzt
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second) // nur Sicherheitsnetz des Tests, nicht der Kontext des Laufs
 	defer cancel()
 	start := time.Now()
